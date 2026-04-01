@@ -1,23 +1,29 @@
-//
-//  LIFE_IN_SYNCApp.swift
-//  LIFE-IN-SYNC
-//
-//  Created by Colton Thomas on 3/31/26.
-//
-
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 @main
-struct LIFE_IN_SYNCApp: App {
-    var sharedModelContainer: ModelContainer = {
+struct LifeInSyncApp: App {
+    private var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            CompletionRecord.self,
+            TagRecord.self,
+            NoteRecord.self,
+            Habit.self,
+            HabitEntry.self,
+            TaskItem.self,
+            CalendarEvent.self,
+            SupplyItem.self,
+            ExpenseRecord.self,
+            BudgetRecord.self,
+            WorkoutTemplate.self,
+            WorkoutSession.self,
+            StudyEntry.self,
+            SwingRecord.self
         ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
         do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            return try ModelContainer(for: schema, configurations: [configuration])
         } catch {
             fatalError("Could not create ModelContainer: \(error)")
         }

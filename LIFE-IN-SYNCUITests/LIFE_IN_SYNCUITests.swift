@@ -23,14 +23,39 @@ final class LIFE_IN_SYNCUITests: XCTestCase {
     }
 
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    func testModuleMenuShowsCanonicalModules() throws {
         let app = XCUIApplication()
         app.launch()
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // XCUIAutomation Documentation
-        // https://developer.apple.com/documentation/xcuiautomation
+        app.buttons["open-module-menu"].tap()
+
+        XCTAssertTrue(app.navigationBars["Modules"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["module-menu-habitStack"].exists)
+        XCTAssertTrue(app.buttons["module-menu-taskProtocol"].exists)
+        XCTAssertTrue(app.buttons["module-menu-calendar"].exists)
+        XCTAssertTrue(app.buttons["module-menu-supplyList"].exists)
+    }
+
+    @MainActor
+    func testDashboardNavigatesToCalendarFromDashboardRow() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        app.buttons["dashboard-module-calendar"].tap()
+
+        XCTAssertTrue(app.navigationBars["Calendar"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["return-to-dashboard"].exists)
+    }
+
+    @MainActor
+    func testDashboardShowsTodaySnapshotCards() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Habits"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Tasks"].exists)
+        XCTAssertTrue(app.staticTexts["Events"].exists)
+        XCTAssertTrue(app.staticTexts["Items"].exists)
     }
 
     @MainActor
