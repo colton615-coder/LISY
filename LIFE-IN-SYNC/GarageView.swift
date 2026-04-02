@@ -4,37 +4,37 @@ import SwiftUI
 struct GarageView: View {
     @Query(sort: \SwingRecord.createdAt, order: .reverse) private var swingRecords: [SwingRecord]
     @State private var isShowingAddRecord = false
+    @State private var selectedTab: ModuleHubTab = .overview
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                ModuleHeroCard(
-                    module: .garage,
-                    eyebrow: "Live Module",
-                    title: "Store swing work without overclaiming analysis.",
-                    message: "Garage starts as a clean record of swing sessions, simple notes, and optional media references that you can review over time."
-                )
-
+        ModuleHubScaffold(
+            module: .garage,
+            title: "Store swing work without overclaiming analysis.",
+            subtitle: "Track records and review sessions with local-first consistency.",
+            currentState: "\(swingRecords.count) swing records currently stored.",
+            nextAttention: swingRecords.isEmpty ? "Add your first swing record." : "Review recent records and tag what to repeat.",
+            tabs: [.overview, .records, .review],
+            selectedTab: $selectedTab
+        ) {
+            switch selectedTab {
+            case .overview:
                 GarageOverviewCard(recordCount: swingRecords.count)
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Swing Records")
-                        .font(.headline)
-
-                    if swingRecords.isEmpty {
-                        GarageEmptyStateView {
-                            isShowingAddRecord = true
-                        }
-                    } else {
-                        ForEach(swingRecords.prefix(8)) { record in
-                            SwingRecordCard(record: record)
-                        }
-                    }
+            case .records:
+                GarageRecordsTab(records: swingRecords) {
+                    isShowingAddRecord = true
                 }
+            case .review:
+                ModuleEmptyStateCard(
+                    theme: AppModule.garage.theme,
+                    title: "Review scaffolding ready",
+                    message: "Use this tab to compare sessions and summarize what changed before your next range block.",
+                    actionTitle: "Add Swing Record",
+                    action: { isShowingAddRecord = true }
+                )
+            default:
+                EmptyView()
             }
-            .padding()
         }
-        .background(AppModule.garage.theme.screenGradient)
         .safeAreaInset(edge: .bottom) {
             HStack {
                 Spacer()
@@ -52,6 +52,26 @@ struct GarageView: View {
         }
         .sheet(isPresented: $isShowingAddRecord) {
             AddSwingRecordSheet()
+        }
+    }
+}
+
+private struct GarageRecordsTab: View {
+    let records: [SwingRecord]
+    let addRecord: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Swing Records")
+                .font(.headline)
+
+            if records.isEmpty {
+                GarageEmptyStateView(action: addRecord)
+            } else {
+                ForEach(records.prefix(8)) { record in
+                    SwingRecordCard(record: record)
+                }
+            }
         }
     }
 }

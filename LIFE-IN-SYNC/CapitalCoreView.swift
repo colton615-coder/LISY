@@ -6,72 +6,44 @@ struct CapitalCoreView: View {
     @Query(sort: \BudgetRecord.title) private var budgets: [BudgetRecord]
     @State private var isShowingAddExpense = false
     @State private var isShowingAddBudget = false
+    @State private var selectedTab: ModuleHubTab = .overview
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                ModuleHeroCard(
-                    module: .capitalCore,
-                    eyebrow: "Live Module",
-                    title: "Track money without extra noise.",
-                    message: "Capital Core starts with simple expense capture, category visibility, and budget targets that stay local to the device."
-                )
-
-                CapitalOverviewCard(
+        ModuleHubScaffold(
+            module: .capitalCore,
+            title: "Track money without extra noise.",
+            subtitle: "Simple local capture for expenses and budgets with clear monthly visibility.",
+            currentState: "\(currentMonthExpenses.count) expense entries logged this month.",
+            nextAttention: budgets.isEmpty ? "Create your first budget target." : "Review categories running above target.",
+            tabs: [.overview, .entries, .advisor],
+            selectedTab: $selectedTab
+        ) {
+            switch selectedTab {
+            case .overview:
+                CapitalOverviewTab(
                     monthlySpend: currentMonthExpenses.reduce(0) { $0 + $1.amount },
                     expenseCount: currentMonthExpenses.count,
-                    budgetCount: budgets.count
+                    budgets: budgets,
+                    spentAmount: spentAmount(for:)
+                ) {
+                    isShowingAddBudget = true
+                }
+            case .entries:
+                CapitalEntriesTab(expenses: expenses) {
+                    isShowingAddExpense = true
+                }
+            case .advisor:
+                ModuleEmptyStateCard(
+                    theme: AppModule.capitalCore.theme,
+                    title: "Advisor remains user-triggered",
+                    message: "Use this tab for guided prompts only. No autonomous writes happen without explicit confirmation.",
+                    actionTitle: "Add Expense",
+                    action: { isShowingAddExpense = true }
                 )
-
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text("Current Budgets")
-                            .font(.headline)
-                        Spacer()
-                        Button("Add Budget") {
-                            isShowingAddBudget = true
-                        }
-                        .buttonStyle(.bordered)
-                    }
-
-                    if budgets.isEmpty {
-                        CapitalEmptyStateView(
-                            title: "No budgets yet",
-                            message: "Set a simple target to keep spending visible.",
-                            actionTitle: "Create Budget",
-                            action: { isShowingAddBudget = true }
-                        )
-                    } else {
-                        ForEach(budgets) { budget in
-                            BudgetCard(
-                                budget: budget,
-                                spentAmount: spentAmount(for: budget)
-                            )
-                        }
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Recent Expenses")
-                        .font(.headline)
-
-                    if expenses.isEmpty {
-                        CapitalEmptyStateView(
-                            title: "No expenses logged",
-                            message: "Add the first expense to start building your monthly picture.",
-                            actionTitle: "Add Expense",
-                            action: { isShowingAddExpense = true }
-                        )
-                    } else {
-                        ForEach(expenses.prefix(8)) { expense in
-                            ExpenseCard(expense: expense)
-                        }
-                    }
-                }
+            default:
+                EmptyView()
             }
-            .padding()
         }
-        .background(AppModule.capitalCore.theme.screenGradient)
         .safeAreaInset(edge: .bottom) {
             HStack {
                 Spacer()
@@ -103,6 +75,70 @@ struct CapitalCoreView: View {
         currentMonthExpenses
             .filter { $0.category == budget.title }
             .reduce(0) { $0 + $1.amount }
+    }
+}
+
+private struct CapitalOverviewTab: View {
+    let monthlySpend: Double
+    let expenseCount: Int
+    let budgets: [BudgetRecord]
+    let spentAmount: (BudgetRecord) -> Double
+    let createBudget: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            CapitalOverviewCard(
+                monthlySpend: monthlySpend,
+                expenseCount: expenseCount,
+                budgetCount: budgets.count
+            )
+
+            HStack {
+                Text("Current Budgets")
+                    .font(.headline)
+                Spacer()
+                Button("Add Budget", action: createBudget)
+                    .buttonStyle(.bordered)
+            }
+
+            if budgets.isEmpty {
+                CapitalEmptyStateView(
+                    title: "No budgets yet",
+                    message: "Set a simple target to keep spending visible.",
+                    actionTitle: "Create Budget",
+                    action: createBudget
+                )
+            } else {
+                ForEach(budgets) { budget in
+                    BudgetCard(budget: budget, spentAmount: spentAmount(budget))
+                }
+            }
+        }
+    }
+}
+
+private struct CapitalEntriesTab: View {
+    let expenses: [ExpenseRecord]
+    let addExpense: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Recent Expenses")
+                .font(.headline)
+
+            if expenses.isEmpty {
+                CapitalEmptyStateView(
+                    title: "No expenses logged",
+                    message: "Add the first expense to start building your monthly picture.",
+                    actionTitle: "Add Expense",
+                    action: addExpense
+                )
+            } else {
+                ForEach(expenses.prefix(8)) { expense in
+                    ExpenseCard(expense: expense)
+                }
+            }
+        }
     }
 }
 

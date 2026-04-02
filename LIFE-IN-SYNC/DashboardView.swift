@@ -13,15 +13,37 @@ struct DashboardView: View {
     @Query private var studyEntries: [StudyEntry]
     @Query private var swingRecords: [SwingRecord]
 
-    private let primaryModules: [AppModule] = [.habitStack, .taskProtocol, .calendar, .supplyList]
-    private let secondaryModules: [AppModule] = [.capitalCore, .ironTemple, .bibleStudy, .garage]
+    private let allModules: [AppModule] = [.habitStack, .taskProtocol, .calendar, .supplyList, .capitalCore, .ironTemple, .bibleStudy, .garage]
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                DashboardHeroCard()
+                DashboardSection(title: "Daily Focus") {
+                    DashboardHeroCard(
+                        keyMetricTitle: "Open Tasks",
+                        keyMetricValue: "\(openTasksCount)"
+                    )
+                }
 
-                DashboardSection(title: "Today") {
+                DashboardSection(title: "Module Pulse") {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(rankedModules) { module in
+                                DashboardModuleEntryCard(
+                                    module: module,
+                                    progressSummary: statusText(for: module),
+                                    urgencyLabel: urgencyText(for: module),
+                                    importanceLabel: importanceText(for: module)
+                                ) {
+                                    selectedModule = module
+                                }
+                                .frame(width: 230)
+                            }
+                        }
+                    }
+                }
+
+                DashboardSection(title: "Timeline + Quiet Alerts") {
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                         DashboardStatCard(
                             module: .habitStack,
@@ -51,32 +73,6 @@ struct DashboardView: View {
                             detail: "remaining to buy",
                             accessibilityID: "dashboard-stat-items"
                         )
-                    }
-                }
-
-                DashboardSection(title: "Primary Modules") {
-                    VStack(spacing: 10) {
-                        ForEach(primaryModules) { module in
-                            DashboardModuleRow(
-                                module: module,
-                                status: statusText(for: module)
-                            ) {
-                                selectedModule = module
-                            }
-                        }
-                    }
-                }
-
-                DashboardSection(title: "Secondary Modules") {
-                    VStack(spacing: 10) {
-                        ForEach(secondaryModules) { module in
-                            DashboardModuleRow(
-                                module: module,
-                                status: statusText(for: module)
-                            ) {
-                                selectedModule = module
-                            }
-                        }
                     }
                 }
             }
@@ -118,6 +114,17 @@ struct DashboardView: View {
         }.count
     }
 
+    private var rankedModules: [AppModule] {
+        allModules.sorted { lhs, rhs in
+            let lhsUrgency = urgencyScore(for: lhs)
+            let rhsUrgency = urgencyScore(for: rhs)
+            if lhsUrgency == rhsUrgency {
+                return importanceScore(for: lhs) > importanceScore(for: rhs)
+            }
+            return lhsUrgency > rhsUrgency
+        }
+    }
+
     private func statusText(for module: AppModule) -> String {
         switch module {
         case .dashboard:
@@ -140,16 +147,76 @@ struct DashboardView: View {
             "\(swingRecords.count) records"
         }
     }
+
+    private func urgencyScore(for module: AppModule) -> Int {
+        switch module {
+        case .taskProtocol:
+            min(openTasksCount, 10)
+        case .supplyList:
+            min(remainingSupplyCount, 10)
+        case .calendar:
+            max(0, 5 - eventsTodayCount)
+        case .habitStack:
+            max(0, 5 - completedHabitsToday)
+        case .capitalCore, .ironTemple, .bibleStudy, .garage, .dashboard:
+            2
+        }
+    }
+
+    private func importanceScore(for module: AppModule) -> Int {
+        switch module {
+        case .habitStack, .taskProtocol, .calendar, .supplyList:
+            3
+        case .capitalCore, .ironTemple:
+            2
+        case .bibleStudy, .garage:
+            1
+        case .dashboard:
+            0
+        }
+    }
+
+    private func urgencyText(for module: AppModule) -> String {
+        let score = urgencyScore(for: module)
+        if score >= 7 { return "Urgency: High" }
+        if score >= 4 { return "Urgency: Medium" }
+        return "Urgency: Low"
+    }
+
+    private func importanceText(for module: AppModule) -> String {
+        switch importanceScore(for: module) {
+        case 3:
+            "Importance: Core"
+        case 2:
+            "Importance: High"
+        default:
+            "Importance: Support"
+        }
+    }
 }
 
 private struct DashboardHeroCard: View {
+    let keyMetricTitle: String
+    let keyMetricValue: String
+
     var body: some View {
-        ModuleHeroCard(
-            module: .dashboard,
-            eyebrow: "Dashboard",
-            title: "One place to enter every module.",
-            message: "This surface stays intentionally light. It routes you into each module without becoming a second interface for their logic."
-        )
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Today")
+                .font(.headline)
+            Text("Progress-first routing with quiet urgency.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            HStack {
+                Text(keyMetricTitle)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(keyMetricValue)
+                    .font(.title3)
+                    .fontWeight(.bold)
+            }
+        }
+        .padding()
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 
@@ -167,31 +234,39 @@ private struct DashboardSection<Content: View>: View {
     }
 }
 
-private struct DashboardModuleRow: View {
+private struct DashboardModuleEntryCard: View {
     let module: AppModule
-    let status: String
+    let progressSummary: String
+    let urgencyLabel: String
+    let importanceLabel: String
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
                 Image(systemName: module.systemImage)
                     .foregroundStyle(module.theme.primary)
                     .frame(width: 32, height: 32)
                     .background(module.theme.chipBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(module.title)
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.primary)
-                    Text(status)
-                        .font(.caption)
+                Text(module.title)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.primary)
+                Text(progressSummary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Text(urgencyLabel)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(importanceLabel)
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
-                Spacer()
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
             .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
