@@ -139,7 +139,7 @@ Use these sections almost verbatim in your Swift report:
 ## Swift/SwiftUI Implementation Mapping (Suggested)
 
 - `CapitalCoreView.swift`: add predictive summary cards + runway status indicator
-- `Item.swift` (or dedicated finance model): add `liquidAssets`, `burnRateSnapshot`, `syncStatus`
+- `FinancialSnapshot.swift` (Capital Core model, alongside `ExpenseRecord`/`BudgetRecord`): add `liquidAssets`, `burnRateSnapshot`, `syncStatus`
 - new `CapitalCoreViewModel.swift`: compute rolling metrics and intervention triggers
 - shared UI: reusable `StatusMetricCard`, `SuggestionCard`, and `PendingSyncBadge`
 
