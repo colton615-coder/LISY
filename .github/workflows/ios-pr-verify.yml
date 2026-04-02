@@ -1,0 +1,86 @@
+name: iOS PR Verify
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - main
+      - develop
+
+jobs:
+  ios-pr-verify:
+    runs-on: [self-hosted, macOS, ios]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare artifact directories
+        run: |
+          mkdir -p artifacts/logs
+          mkdir -p artifacts/screenshots
+
+      - name: List Xcode project schemes and targets
+        run: |
+          set -o pipefail
+          xcodebuild -list -project LIFE-IN-SYNC.xcodeproj 2>&1 | tee artifacts/logs/xcodebuild-list.log
+
+      - name: Build for testing (Debug, deterministic destination)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project LIFE-IN-SYNC.xcodeproj \
+            -scheme LIFE-IN-SYNC \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -configuration Debug \
+            -derivedDataPath DerivedData \
+            clean build-for-testing 2>&1 | tee artifacts/logs/xcodebuild-build-for-testing.log
+
+      - name: Run UI launch screenshot test
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project LIFE-IN-SYNC.xcodeproj \
+            -scheme LIFE-IN-SYNC \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -derivedDataPath DerivedData \
+            -only-testing:LIFE-IN-SYNCUITests/LIFE_IN_SYNCUITestsLaunchTests 2>&1 | tee artifacts/logs/xcodebuild-ui-launch-test.log
+
+      - name: Collect screenshots
+        if: always()
+        run: |
+          set -euo pipefail
+
+          # XCTest attachments can include screenshots and are commonly stored in DerivedData Logs/Test/Attachments
+          if [ -d "DerivedData/Logs/Test/Attachments" ]; then
+            find "DerivedData/Logs/Test/Attachments" -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' \) \
+              -exec cp -f {} artifacts/screenshots/ \; || true
+          fi
+
+          # Support custom screenshot output directory if tests write there.
+          if [ -d "UITestScreenshots" ]; then
+            find "UITestScreenshots" -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' \) \
+              -exec cp -f {} artifacts/screenshots/ \; || true
+          fi
+
+          # Keep the artifact non-empty for easier debugging when no screenshots are produced.
+          if [ -z "$(find artifacts/screenshots -type f 2>/dev/null)" ]; then
+            echo "No screenshots were collected." > artifacts/screenshots/README.txt
+          fi
+
+      - name: Upload iOS build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-logs
+          path: artifacts/logs
+          if-no-files-found: warn
+
+      - name: Upload iOS screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-screenshots
+          path: artifacts/screenshots
+          if-no-files-found: warn
