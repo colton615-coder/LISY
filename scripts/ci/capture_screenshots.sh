@@ -25,10 +25,20 @@ resolve_xcresult_path() {
     return 0
   fi
 
+  local nullglob_was_set=0
+  local globstar_was_set=0
+  shopt -q nullglob && nullglob_was_set=1
+  shopt -q globstar && globstar_was_set=1
+
   shopt -s nullglob globstar
   local candidates=("$HOME"/Library/Developer/Xcode/DerivedData/**/Logs/Test/*.xcresult)
-  shopt -u globstar
 
+  if (( nullglob_was_set == 0 )); then
+    shopt -u nullglob
+  fi
+  if (( globstar_was_set == 0 )); then
+    shopt -u globstar
+  fi
   if (( ${#candidates[@]} == 0 )); then
     return 1
   fi
