@@ -59,9 +59,9 @@ Why this is valuable:
 - protects data capture under poor connectivity
 
 SwiftUI translation:
-- Persist intent immediately in SwiftData (`pending`, `synced`, `failed`)
-- Background flush via `BackgroundTasks` + reachability checks
-- UI shows pending state badge/icon without blocking user flow
+- **v1 (no cloud/remote sync):** treat this as local intent journaling only. Persist intent immediately in SwiftData with a simple status field (e.g. `pending`, `applied`, `failed`) to support optimistic UI and local reconciliation.
+- **Post‑v1 optional pattern:** if you later add an optional remote backup/sync target, reuse the same status field to drive a background flush (`BackgroundTasks` + reachability checks) to that remote. This is explicitly out of scope for v1.
+- In all cases, UI can show a lightweight “pending” badge/icon for locally queued changes without blocking user flow.
 
 ### 4) Proactive, structured interventions (not just chat)
 A key upstream contribution is shifting from reactive chatbot replies to structured intervention cards (e.g., budget reallocation proposal).
