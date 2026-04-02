@@ -181,3 +181,35 @@ Before changing:
 - shell structure
 
 update this file or the canonical product spec first.
+
+## Product Direction Addendum (2026-04)
+Use `docs/PRODUCT_DIRECTION_BRIEF.md` for direction on:
+- progress-first dashboard composition
+- deep module hub-and-tabs command-center pattern
+- assistant orb and compact panel behavior
+
+This addendum does not override canonical module names or ownership boundaries.
+It also does not override the V1 Module Depth Contract ordering for first full feature depth.
+
+## Sequencing Clarification
+Planning docs may schedule early hub/tab scaffolding for Capital Core, Iron Temple, and Garage.
+
+That scaffolding is structural setup only and must not be interpreted as "first real depth."
+First real depth remains:
+- Habit Stack
+- Task Protocol
+- Calendar
+- Supply List
+
+## Naming Translation Rule
+If planning inputs use alternate labels, map to canonical names in code/docs:
+- Money => Capital Core
+- Workouts => Iron Temple
+
+## Assistant Interaction Contract (Extension)
+When AI surfaces are implemented, default interaction must follow:
+1. guided input
+2. final recommendation
+3. explicit approve/reject
+
+By default, assistant responses should be concise and recommendation-forward; detailed reasoning is optional on user request.
