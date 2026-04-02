@@ -43,6 +43,11 @@ export_from_xcresult() {
   local json_path
   json_path="$(mktemp -t xcresult.json.XXXXXX)"
 
+  cleanup_export_from_xcresult_json() {
+    trap - RETURN
+    rm -f "$json_path"
+  }
+  trap cleanup_export_from_xcresult_json RETURN
   echo "Attempting Option A: export screenshots from xcresult"
   xcrun xcresulttool get --path "$xcresult_path" --format json > "$json_path"
 
