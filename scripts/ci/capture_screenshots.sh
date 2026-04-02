@@ -14,9 +14,18 @@ cleanup() {
 trap cleanup EXIT
 
 echo "Booting simulator: $SIMULATOR_NAME"
-if ! xcrun simctl boot "$SIMULATOR_NAME" >/dev/null 2>&1; then
-  echo "simctl boot returned a non-zero exit code (may already be booted); continuing."
+boot_stderr="$(mktemp)"
+if ! xcrun simctl boot "$SIMULATOR_NAME" 2>"$boot_stderr"; then
+  if xcrun simctl list devices "$SIMULATOR_NAME" | grep -q "(Booted)"; then
+    echo "simctl boot returned a non-zero exit code, but the simulator is already booted; continuing."
+  else
+    echo "Failed to boot simulator: $SIMULATOR_NAME" >&2
+    cat "$boot_stderr" >&2
+    rm -f "$boot_stderr"
+    exit 1
+  fi
 fi
+rm -f "$boot_stderr"
 xcrun simctl bootstatus "$SIMULATOR_NAME" -b
 
 resolve_xcresult_path() {
