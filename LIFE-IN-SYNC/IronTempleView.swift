@@ -72,26 +72,25 @@ private struct IronTempleOverviewTab: View {
     let logSession: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: ModuleSpacing.small) {
             IronTempleOverviewCard(
                 templateCount: templateCount,
                 sessionCount: sessions.count,
                 totalMinutes: sessions.reduce(0) { $0 + $1.durationMinutes }
             )
 
-            Text("Recent Sessions")
-                .font(.headline)
-
-            if sessions.isEmpty {
-                IronTempleEmptyStateView(
-                    title: "No sessions logged",
-                    message: "Record a recent workout to start building your history.",
-                    actionTitle: "Log Session",
-                    action: logSession
-                )
-            } else {
-                ForEach(sessions.prefix(8)) { session in
-                    WorkoutSessionCard(session: session)
+            ModuleActivityFeedSection(title: "Recent Sessions") {
+                if sessions.isEmpty {
+                    IronTempleEmptyStateView(
+                        title: "No sessions logged",
+                        message: "Record a recent workout to start building your history.",
+                        actionTitle: "Log Session",
+                        action: logSession
+                    )
+                } else {
+                    ForEach(sessions.prefix(8)) { session in
+                        WorkoutSessionCard(session: session)
+                    }
                 }
             }
         }
@@ -103,10 +102,8 @@ private struct IronTempleBuilderTab: View {
     let addTemplate: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        ModuleActivityFeedSection(title: "Workout Templates") {
             HStack {
-                Text("Workout Templates")
-                    .font(.headline)
                 Spacer()
                 Button("Add Template", action: addTemplate)
                     .buttonStyle(.bordered)
@@ -134,7 +131,7 @@ private struct IronTempleOverviewCard: View {
     let totalMinutes: Int
 
     var body: some View {
-        ModuleSnapshotCard(title: "Training Snapshot") {
+        ModuleVisualizationContainer(title: "Training Snapshot") {
             HStack(spacing: 12) {
                 ModuleMetricChip(theme: AppModule.ironTemple.theme, title: "Templates", value: "\(templateCount)")
                 ModuleMetricChip(theme: AppModule.ironTemple.theme, title: "Sessions", value: "\(sessionCount)")
@@ -161,7 +158,7 @@ private struct WorkoutTemplateCard: View {
             Spacer()
         }
         .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
     }
 }
 
@@ -186,7 +183,7 @@ private struct WorkoutSessionCard: View {
                 .foregroundStyle(AppModule.ironTemple.theme.primary)
         }
         .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
     }
 }
 

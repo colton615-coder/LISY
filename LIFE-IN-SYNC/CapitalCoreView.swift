@@ -86,31 +86,31 @@ private struct CapitalOverviewTab: View {
     let createBudget: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: ModuleSpacing.small) {
             CapitalOverviewCard(
                 monthlySpend: monthlySpend,
                 expenseCount: expenseCount,
                 budgetCount: budgets.count
             )
 
-            HStack {
-                Text("Current Budgets")
-                    .font(.headline)
-                Spacer()
-                Button("Add Budget", action: createBudget)
-                    .buttonStyle(.bordered)
-            }
+            ModuleActivityFeedSection(title: "Current Budgets") {
+                HStack {
+                    Spacer()
+                    Button("Add Budget", action: createBudget)
+                        .buttonStyle(.bordered)
+                }
 
-            if budgets.isEmpty {
-                CapitalEmptyStateView(
-                    title: "No budgets yet",
-                    message: "Set a simple target to keep spending visible.",
-                    actionTitle: "Create Budget",
-                    action: createBudget
-                )
-            } else {
-                ForEach(budgets) { budget in
-                    BudgetCard(budget: budget, spentAmount: spentAmount(budget))
+                if budgets.isEmpty {
+                    CapitalEmptyStateView(
+                        title: "No budgets yet",
+                        message: "Set a simple target to keep spending visible.",
+                        actionTitle: "Create Budget",
+                        action: createBudget
+                    )
+                } else {
+                    ForEach(budgets) { budget in
+                        BudgetCard(budget: budget, spentAmount: spentAmount(budget))
+                    }
                 }
             }
         }
@@ -122,10 +122,7 @@ private struct CapitalEntriesTab: View {
     let addExpense: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Recent Expenses")
-                .font(.headline)
-
+        ModuleActivityFeedSection(title: "Recent Expenses") {
             if expenses.isEmpty {
                 CapitalEmptyStateView(
                     title: "No expenses logged",
@@ -148,7 +145,7 @@ private struct CapitalOverviewCard: View {
     let budgetCount: Int
 
     var body: some View {
-        ModuleSnapshotCard(title: "Month Snapshot") {
+        ModuleVisualizationContainer(title: "Month Snapshot") {
             HStack(spacing: 12) {
                 CapitalMetricChip(title: "Spent", value: monthlySpend, currency: true)
                 CapitalMetricChip(title: "Expenses", value: Double(expenseCount), currency: false)
@@ -166,15 +163,14 @@ private struct CapitalMetricChip: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(formattedValue)
-                .font(.title3)
-                .fontWeight(.bold)
+                .font(ModuleTypography.metricValue)
             Text(title)
-                .font(.caption)
+                .font(ModuleTypography.supportingLabel)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(AppModule.capitalCore.theme.chipBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(ModuleSpacing.medium)
+        .background(AppModule.capitalCore.theme.chipBackground, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.chip, style: .continuous))
     }
 
     private var formattedValue: String {
@@ -215,7 +211,7 @@ private struct BudgetCard: View {
                 .tint(AppModule.capitalCore.theme.primary)
         }
         .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
     }
 }
 
@@ -243,7 +239,7 @@ private struct ExpenseCard: View {
             }
         }
         .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
     }
 }
 

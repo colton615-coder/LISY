@@ -61,10 +61,7 @@ private struct GarageRecordsTab: View {
     let addRecord: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Swing Records")
-                .font(.headline)
-
+        ModuleActivityFeedSection(title: "Swing Records") {
             if records.isEmpty {
                 GarageEmptyStateView(action: addRecord)
             } else {
@@ -80,7 +77,7 @@ private struct GarageOverviewCard: View {
     let recordCount: Int
 
     var body: some View {
-        ModuleSnapshotCard(title: "Review Snapshot") {
+        ModuleVisualizationContainer(title: "Review Snapshot") {
             HStack(spacing: 12) {
                 ModuleMetricChip(theme: AppModule.garage.theme, title: "Records", value: "\(recordCount)")
                 ModuleMetricChip(theme: AppModule.garage.theme, title: "Mode", value: "Local")
@@ -116,7 +113,7 @@ private struct SwingRecordCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
     }
 }
 
