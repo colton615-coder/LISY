@@ -6,69 +6,42 @@ struct IronTempleView: View {
     @Query(sort: \WorkoutSession.performedAt, order: .reverse) private var sessions: [WorkoutSession]
     @State private var isShowingAddTemplate = false
     @State private var isShowingLogSession = false
+    @State private var selectedTab: ModuleHubTab = .overview
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                ModuleHeroCard(
-                    module: .ironTemple,
-                    eyebrow: "Live Module",
-                    title: "Keep training simple and repeatable.",
-                    message: "Iron Temple starts with named workout templates, quick session logging, and a clear view of recent work."
-                )
-
-                IronTempleOverviewCard(
-                    templateCount: templates.count,
-                    sessionCount: sessions.count,
-                    totalMinutes: sessions.reduce(0) { $0 + $1.durationMinutes }
-                )
-
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text("Workout Templates")
-                            .font(.headline)
-                        Spacer()
-                        Button("Add Template") {
-                            isShowingAddTemplate = true
-                        }
-                        .buttonStyle(.bordered)
-                    }
-
-                    if templates.isEmpty {
-                        IronTempleEmptyStateView(
-                            title: "No templates yet",
-                            message: "Create a workout template so you can log sessions against a repeatable structure.",
-                            actionTitle: "Create Template",
-                            action: { isShowingAddTemplate = true }
-                        )
-                    } else {
-                        ForEach(templates) { template in
-                            WorkoutTemplateCard(template: template)
-                        }
-                    }
+        ModuleHubScaffold(
+            module: .ironTemple,
+            title: "Keep training simple and repeatable.",
+            subtitle: "Separate template building from session execution and keep entries clean.",
+            currentState: "\(sessions.count) sessions logged and \(templates.count) templates available.",
+            nextAttention: templates.isEmpty ? "Build your first template to remove friction." : "Log your next workout session today.",
+            tabs: [.overview, .builder, .advisor],
+            selectedTab: $selectedTab
+        ) {
+            switch selectedTab {
+            case .overview:
+                IronTempleOverviewTab(
+                    sessions: sessions,
+                    templateCount: templates.count
+                ) {
+                    isShowingLogSession = true
                 }
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Recent Sessions")
-                        .font(.headline)
-
-                    if sessions.isEmpty {
-                        IronTempleEmptyStateView(
-                            title: "No sessions logged",
-                            message: "Record a recent workout to start building your history.",
-                            actionTitle: "Log Session",
-                            action: { isShowingLogSession = true }
-                        )
-                    } else {
-                        ForEach(sessions.prefix(8)) { session in
-                            WorkoutSessionCard(session: session)
-                        }
-                    }
+            case .builder:
+                IronTempleBuilderTab(templates: templates) {
+                    isShowingAddTemplate = true
                 }
+            case .advisor:
+                ModuleEmptyStateCard(
+                    theme: AppModule.ironTemple.theme,
+                    title: "Advisor is optional",
+                    message: "Use user-triggered prompts for workout decisions. Any write action requires explicit approval.",
+                    actionTitle: "Log Session",
+                    action: { isShowingLogSession = true }
+                )
+            default:
+                EmptyView()
             }
-            .padding()
         }
-        .background(AppModule.ironTemple.theme.screenGradient)
         .safeAreaInset(edge: .bottom) {
             HStack {
                 Spacer()
@@ -89,6 +62,68 @@ struct IronTempleView: View {
         }
         .sheet(isPresented: $isShowingLogSession) {
             LogWorkoutSessionSheet(templates: templates)
+        }
+    }
+}
+
+private struct IronTempleOverviewTab: View {
+    let sessions: [WorkoutSession]
+    let templateCount: Int
+    let logSession: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            IronTempleOverviewCard(
+                templateCount: templateCount,
+                sessionCount: sessions.count,
+                totalMinutes: sessions.reduce(0) { $0 + $1.durationMinutes }
+            )
+
+            Text("Recent Sessions")
+                .font(.headline)
+
+            if sessions.isEmpty {
+                IronTempleEmptyStateView(
+                    title: "No sessions logged",
+                    message: "Record a recent workout to start building your history.",
+                    actionTitle: "Log Session",
+                    action: logSession
+                )
+            } else {
+                ForEach(sessions.prefix(8)) { session in
+                    WorkoutSessionCard(session: session)
+                }
+            }
+        }
+    }
+}
+
+private struct IronTempleBuilderTab: View {
+    let templates: [WorkoutTemplate]
+    let addTemplate: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Workout Templates")
+                    .font(.headline)
+                Spacer()
+                Button("Add Template", action: addTemplate)
+                    .buttonStyle(.bordered)
+            }
+
+            if templates.isEmpty {
+                IronTempleEmptyStateView(
+                    title: "No templates yet",
+                    message: "Create a workout template so you can log sessions against a repeatable structure.",
+                    actionTitle: "Create Template",
+                    action: addTemplate
+                )
+            } else {
+                ForEach(templates) { template in
+                    WorkoutTemplateCard(template: template)
+                }
+            }
         }
     }
 }

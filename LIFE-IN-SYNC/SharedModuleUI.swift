@@ -1,11 +1,123 @@
 import SwiftUI
 
+enum ModuleHubTab: String, CaseIterable, Identifiable {
+    case overview = "Overview"
+    case entries = "Entries"
+    case advisor = "Advisor"
+    case builder = "Builder"
+    case records = "Records"
+    case review = "Review"
+
+    var id: String { rawValue }
+}
+
+enum HubSectionSpacing {
+    static let outer: CGFloat = 20
+    static let content: CGFloat = 14
+}
+
 struct PreviewScreenContainer<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
         NavigationStack {
             content
+        }
+    }
+}
+
+struct ModuleHubScaffold<Content: View>: View {
+    let module: AppModule
+    let title: String
+    let subtitle: String
+    let currentState: String
+    let nextAttention: String
+    let tabs: [ModuleHubTab]
+    @Binding var selectedTab: ModuleHubTab
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: HubSectionSpacing.outer) {
+                ModuleHeroCard(
+                    module: module,
+                    eyebrow: "Command Center",
+                    title: title,
+                    message: subtitle
+                )
+
+                HubStatusCard(
+                    module: module,
+                    title: "Current State",
+                    bodyText: currentState
+                )
+
+                HubStatusCard(
+                    module: module,
+                    title: "Next Attention",
+                    bodyText: nextAttention
+                )
+
+                HubTabPicker(tabs: tabs, selectedTab: $selectedTab, theme: module.theme)
+
+                content
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+        }
+        .tint(module.theme.primary)
+        .background(module.theme.screenGradient)
+    }
+}
+
+private struct HubStatusCard: View {
+    let module: AppModule
+    let title: String
+    let bodyText: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: HubSectionSpacing.content) {
+            Text(title)
+                .font(.headline)
+            Text(bodyText)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(module.theme.primary.opacity(0.12), lineWidth: 1)
+        )
+    }
+}
+
+private struct HubTabPicker: View {
+    let tabs: [ModuleHubTab]
+    @Binding var selectedTab: ModuleHubTab
+    let theme: ModuleTheme
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(tabs) { tab in
+                    Button {
+                        selectedTab = tab
+                    } label: {
+                        Text(tab.rawValue)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(selectedTab == tab ? Color.white : .primary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(selectedTab == tab ? theme.primary : Color(.secondarySystemBackground))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
     }
 }
