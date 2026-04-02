@@ -41,7 +41,7 @@ resolve_xcresult_path() {
 export_from_xcresult() {
   local xcresult_path="$1"
   local json_path
-  json_path="$(mktemp)"
+  json_path="$(mktemp -t xcresult.json.XXXXXX)"
 
   echo "Attempting Option A: export screenshots from xcresult"
   xcrun xcresulttool get --path "$xcresult_path" --format json > "$json_path"
