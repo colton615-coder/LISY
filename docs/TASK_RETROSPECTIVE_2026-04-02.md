@@ -1,7 +1,7 @@
 # Task Retrospective (2026-04-02)
 
 ## Scope Reviewed
-Previous task: convert the supplied product-direction answer into practical project documentation and add an immediate implementation plan.
+Previous task: Convert the supplied product-direction answer into practical project documentation and add an immediate implementation plan.
 
 ## Self-Rating
 **8.0 / 10**
