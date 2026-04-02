@@ -16,6 +16,27 @@ enum HubSectionSpacing {
     static let content: CGFloat = 14
 }
 
+enum ModuleSpacing {
+    static let xSmall: CGFloat = 8
+    static let small: CGFloat = 12
+    static let medium: CGFloat = 16
+    static let large: CGFloat = 20
+    static let xLarge: CGFloat = 24
+}
+
+enum ModuleCornerRadius {
+    static let card: CGFloat = 20
+    static let chip: CGFloat = 16
+    static let row: CGFloat = 18
+}
+
+enum ModuleTypography {
+    static let sectionTitle: Font = .headline
+    static let cardTitle: Font = .headline
+    static let metricValue: Font = .title3.weight(.bold)
+    static let supportingLabel: Font = .caption
+}
+
 struct PreviewScreenContainer<Content: View>: View {
     @ViewBuilder let content: Content
 
@@ -78,15 +99,15 @@ private struct HubStatusCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: HubSectionSpacing.content) {
             Text(title)
-                .font(.headline)
+                .font(ModuleTypography.cardTitle)
             Text(bodyText)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(ModuleSpacing.medium)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
                 .stroke(module.theme.primary.opacity(0.12), lineWidth: 1)
         )
     }
@@ -109,9 +130,9 @@ private struct HubTabPicker: View {
                             .fontWeight(.semibold)
                             .foregroundStyle(selectedTab == tab ? Color.white : .primary)
                             .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
+                            .padding(.vertical, ModuleSpacing.xSmall)
                             .background(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                RoundedRectangle(cornerRadius: ModuleSpacing.small, style: .continuous)
                                     .fill(selectedTab == tab ? theme.primary : Color(.secondarySystemBackground))
                             )
                     }
@@ -166,10 +187,10 @@ struct ModuleHeroCard: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(module.theme.heroGradient, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(ModuleSpacing.medium)
+        .background(module.theme.heroGradient, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
                 .stroke(module.theme.primary.opacity(0.18), lineWidth: 1)
         )
     }
@@ -182,7 +203,7 @@ struct ModuleFocusCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Current Focus")
-                .font(.headline)
+                .font(ModuleTypography.cardTitle)
 
             ForEach(highlights, id: \.self) { highlight in
                 HStack(spacing: 10) {
@@ -195,8 +216,8 @@ struct ModuleFocusCard: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(ModuleSpacing.medium)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
     }
 }
 
@@ -205,13 +226,13 @@ struct ModuleSnapshotCard<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: ModuleSpacing.medium) {
             Text(title)
-                .font(.headline)
+                .font(ModuleTypography.cardTitle)
             content
         }
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(ModuleSpacing.medium)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
     }
 }
 
@@ -223,15 +244,14 @@ struct ModuleMetricChip: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(value)
-                .font(.title3)
-                .fontWeight(.bold)
+                .font(ModuleTypography.metricValue)
             Text(title)
-                .font(.caption)
+                .font(ModuleTypography.supportingLabel)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(theme.chipBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(ModuleSpacing.medium)
+        .background(theme.chipBackground, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.chip, style: .continuous))
     }
 }
 
@@ -245,7 +265,7 @@ struct ModuleEmptyStateCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title)
-                .font(.headline)
+                .font(ModuleTypography.cardTitle)
             Text(message)
                 .foregroundStyle(.secondary)
             Button(actionTitle, action: action)
@@ -253,7 +273,36 @@ struct ModuleEmptyStateCard: View {
                 .tint(theme.primary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(ModuleSpacing.medium)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
+    }
+}
+
+struct ModuleVisualizationContainer<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ModuleSpacing.small) {
+            Text(title)
+                .font(ModuleTypography.cardTitle)
+            content
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(ModuleSpacing.medium)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
+    }
+}
+
+struct ModuleActivityFeedSection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ModuleSpacing.small) {
+            Text(title)
+                .font(ModuleTypography.sectionTitle)
+            content
+        }
     }
 }
