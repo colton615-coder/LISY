@@ -118,10 +118,20 @@ struct DashboardView: View {
         allModules.sorted { lhs, rhs in
             let lhsUrgency = urgencyScore(for: lhs)
             let rhsUrgency = urgencyScore(for: rhs)
-            if lhsUrgency == rhsUrgency {
-                return importanceScore(for: lhs) > importanceScore(for: rhs)
+            if lhsUrgency != rhsUrgency {
+                return lhsUrgency > rhsUrgency
             }
-            return lhsUrgency > rhsUrgency
+
+            let lhsImportance = importanceScore(for: lhs)
+            let rhsImportance = importanceScore(for: rhs)
+            if lhsImportance != rhsImportance {
+                return lhsImportance > rhsImportance
+            }
+
+            // Final deterministic tie-breaker: fall back to original allModules order
+            let lhsIndex = allModules.firstIndex(of: lhs) ?? Int.max
+            let rhsIndex = allModules.firstIndex(of: rhs) ?? Int.max
+            return lhsIndex < rhsIndex
         }
     }
 
