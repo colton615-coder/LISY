@@ -27,7 +27,9 @@ jobs:
           set -o pipefail
           xcodebuild \
             -project LIFE-IN-SYNC.xcodeproj \
-            -scheme LIFE-IN-SYNC \
+            -target LIFE-IN-SYNC \
+            -configuration Debug \
+            -sdk iphonesimulator \
             -destination "platform=iOS Simulator,name=${SIMULATOR_DEVICE},OS=${SIMULATOR_OS}" \
             clean build | tee ios-build.log
 
