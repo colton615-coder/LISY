@@ -13,7 +13,7 @@ jobs:
     runs-on: macos-latest
     env:
       SIMULATOR_DEVICE: iPhone 15
-      SIMULATOR_OS: iOS 17.5
+      SIMULATOR_OS: 17.5
 
     steps:
       - name: Checkout
