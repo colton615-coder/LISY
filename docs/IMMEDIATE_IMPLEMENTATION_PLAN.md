@@ -47,16 +47,16 @@ Deliverables:
 - design-token baseline for spacing/type/surface/color roles
 - module composition rule: Hero -> Visualization -> Contextual Actions -> Activity Feed
 
-### 1.4 AI orb + compact panel contract
-Define global assistant invocation and panel behavior:
-- orb placement rules
-- module-context payload passed to assistant
-- guided-input flow structure
-- approve/reject checkpoint before any write
+### 1.4 AI orb + compact panel contract (documentation-only)
+Draft a forward-looking contract for global assistant invocation and panel behavior **without** affecting initial architecture or UI sequencing (see `docs/IMPLEMENTATION_CONTRACT.md`):
+- high-level orb placement guidelines (conceptual only; no layout or wiring yet)
+- module-context payload shape passed to assistant (schema notes only)
+- guided-input flow structure patterns
+- approve/reject checkpoint rules before any write
 
-Deliverables:
-- assistant interaction state model
-- module-specific rejection reason taxonomy (initial set)
+Deliverables (non-implementation, to be revisited in a later AI-focused phase):
+- assistant interaction state model sketch
+- initial module-specific rejection reason taxonomy
 
 ## Phase 2: Deepen Highest-Value Modules First
 ### 2.1 Capital Core (Money)
