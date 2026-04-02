@@ -187,9 +187,18 @@ struct DashboardView: View {
     }
 
     private func urgencyText(for module: AppModule) -> String {
-        let score = urgencyScore(for: module)
-        if score >= 7 { return "Urgency: High" }
-        if score >= 4 { return "Urgency: Medium" }
+        let rawScore = urgencyScore(for: module)
+        let normalizedScore: Int
+        switch module {
+        case .calendar, .habitStack:
+            // These modules currently cap urgency at 5; scale to a 0–10 range for text mapping.
+            normalizedScore = rawScore * 2
+        default:
+            normalizedScore = rawScore
+        }
+
+        if normalizedScore >= 7 { return "Urgency: High" }
+        if normalizedScore >= 4 { return "Urgency: Medium" }
         return "Urgency: Low"
     }
 
