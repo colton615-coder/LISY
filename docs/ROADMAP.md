@@ -1,5 +1,9 @@
 # Roadmap
 
+## Active Planning References
+- Strategic direction: `docs/PRODUCT_DIRECTION_BRIEF.md`
+- Immediate execution plan: `docs/IMMEDIATE_IMPLEMENTATION_PLAN.md`
+
 ## Milestone 0: Documentation Alignment
 Goal: resolve scope and architecture before implementation.
 
@@ -8,6 +12,8 @@ Outputs:
 - module map
 - navigation and shell rules
 - data and persistence rules
+- design-system token baseline (spacing/type/surface/color roles)
+- dashboard three-zone blueprint + module composition contract
 - staged roadmap
 
 ## Milestone 1: App Shell And Core Models
