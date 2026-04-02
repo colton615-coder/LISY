@@ -192,8 +192,8 @@ This addendum does not override canonical module names or ownership boundaries.
 
 ## Naming Translation Rule
 If planning inputs use alternate labels, map to canonical names in code/docs:
-- Money => Capital Core
-- Workouts => Iron Temple
+- Money → Capital Core
+- Workouts → Iron Temple
 
 ## Assistant Interaction Contract (Extension)
 When AI surfaces are implemented, default interaction must follow:
