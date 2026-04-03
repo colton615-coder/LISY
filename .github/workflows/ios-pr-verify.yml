@@ -15,8 +15,8 @@ jobs:
   ios-pr-verify:
     runs-on: macos-latest
     env:
-      SIMULATOR_DEVICE: iPhone 15
-      SIMULATOR_OS: 17.5
+      SIMULATOR_DEVICE: iPhone 16
+      SIMULATOR_OS: latest
 
     steps:
       - name: Checkout
