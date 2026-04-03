@@ -4,6 +4,8 @@ set -euo pipefail
 OUT_DIR="artifacts/screenshots"
 SIMULATOR_NAME="${SIMULATOR_NAME:-iPhone 16}"
 XCRESULT_PATH="${XCRESULT_PATH:-}"
+APP_BUNDLE_PATH="${APP_BUNDLE_PATH:-}"
+APP_BUNDLE_ID="${APP_BUNDLE_ID:-}"
 
 mkdir -p "$OUT_DIR"
 
@@ -191,6 +193,15 @@ fi
 
 echo "Running Option B: direct simulator screenshot"
 fallback_path="$OUT_DIR/launch.png"
+
+if [[ -n "$APP_BUNDLE_PATH" && -d "$APP_BUNDLE_PATH" && -n "$APP_BUNDLE_ID" ]]; then
+  echo "Installing app for fallback screenshot: $APP_BUNDLE_ID"
+  xcrun simctl install booted "$APP_BUNDLE_PATH"
+  xcrun simctl terminate booted "$APP_BUNDLE_ID" >/dev/null 2>&1 || true
+  xcrun simctl launch booted "$APP_BUNDLE_ID"
+  sleep 3
+fi
+
 xcrun simctl io booted screenshot "$fallback_path"
 
 echo "Exported screenshot artifacts to:"
