@@ -6,49 +6,48 @@ struct SupplyListView: View {
     @State private var isShowingAddItem = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                ModuleHeroCard(
-                    module: .supplyList,
-                    eyebrow: "Live Module",
-                    title: "Keep the shopping list clean.",
-                    message: "Supply List stays focused on what to buy, how it is grouped, and what has already been picked up."
-                )
+        ModuleScreen(theme: AppModule.supplyList.theme) {
+            ModuleHeader(
+                theme: AppModule.supplyList.theme,
+                title: "Supply List",
+                subtitle: "Keep the shopping list clean and focused on what still needs to be bought."
+            )
 
-                SupplyOverviewCard(
-                    totalCount: items.count,
-                    remainingCount: remainingItems.count,
-                    purchasedCount: purchasedItems.count
-                )
-
-                if groupedRemainingItems.isEmpty {
+            if groupedRemainingItems.isEmpty {
+                if purchasedItems.isEmpty {
                     SupplyEmptyStateView {
                         isShowingAddItem = true
                     }
                 } else {
-                    ModuleActivityFeedSection(title: "Remaining By Category") {
-                        ForEach(groupedRemainingItems.keys.sorted(), id: \.self) { category in
-                            if let categoryItems = groupedRemainingItems[category] {
-                                SupplyCategorySection(
-                                    category: category,
-                                    items: categoryItems
-                                )
-                            }
-                        }
-                    }
+                    ModuleInlineEmptyState(
+                        theme: AppModule.supplyList.theme,
+                        title: "Nothing left to buy",
+                        message: "All current items are marked purchased. Add something new when the list starts building again.",
+                        actionTitle: "Add Item",
+                        action: { isShowingAddItem = true }
+                    )
                 }
-
-                if purchasedItems.isEmpty == false {
-                    ModuleActivityFeedSection(title: "Purchased") {
-                        ForEach(purchasedItems) { item in
-                            SupplyItemRow(item: item)
+            } else {
+                ModuleListSection(title: "To Buy") {
+                    ForEach(groupedRemainingItems.keys.sorted(), id: \.self) { category in
+                        if let categoryItems = groupedRemainingItems[category] {
+                            SupplyCategorySection(
+                                category: category,
+                                items: categoryItems
+                            )
                         }
                     }
                 }
             }
-            .padding()
+
+            if purchasedItems.isEmpty == false {
+                ModuleDisclosureSection(title: "Purchased", theme: AppModule.supplyList.theme) {
+                    ForEach(purchasedItems) { item in
+                        SupplyItemRow(item: item)
+                    }
+                }
+            }
         }
-        .background(AppModule.supplyList.theme.screenGradient)
         .safeAreaInset(edge: .bottom) {
             ModuleBottomActionBar(
                 theme: AppModule.supplyList.theme,
@@ -76,22 +75,6 @@ struct SupplyListView: View {
     }
 }
 
-private struct SupplyOverviewCard: View {
-    let totalCount: Int
-    let remainingCount: Int
-    let purchasedCount: Int
-
-    var body: some View {
-        ModuleVisualizationContainer(title: "List Snapshot") {
-            HStack(spacing: 12) {
-                ModuleMetricChip(theme: AppModule.supplyList.theme, title: "Total", value: "\(totalCount)")
-                ModuleMetricChip(theme: AppModule.supplyList.theme, title: "Remaining", value: "\(remainingCount)")
-                ModuleMetricChip(theme: AppModule.supplyList.theme, title: "Purchased", value: "\(purchasedCount)")
-            }
-        }
-    }
-}
-
 private struct SupplyCategorySection: View {
     let category: String
     let items: [SupplyItem]
@@ -100,6 +83,7 @@ private struct SupplyCategorySection: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(category)
                 .font(.headline)
+                .foregroundStyle(AppModule.supplyList.theme.textPrimary)
 
             ForEach(items) { item in
                 SupplyItemRow(item: item)
@@ -112,29 +96,30 @@ private struct SupplyItemRow: View {
     @Bindable var item: SupplyItem
 
     var body: some View {
-        HStack(spacing: 12) {
-            Button {
-                item.isPurchased.toggle()
-            } label: {
-                Image(systemName: item.isPurchased ? "checkmark.circle.fill" : "circle")
-                    .font(.title2)
-                    .foregroundStyle(item.isPurchased ? AppModule.supplyList.theme.primary : .secondary)
-            }
-            .buttonStyle(.plain)
+        ModuleRowSurface(theme: AppModule.supplyList.theme) {
+            HStack(spacing: 12) {
+                Button {
+                    item.isPurchased.toggle()
+                } label: {
+                    Image(systemName: item.isPurchased ? "checkmark.circle.fill" : "circle")
+                        .font(.title2)
+                        .foregroundStyle(item.isPurchased ? AppModule.supplyList.theme.primary : AppModule.supplyList.theme.textSecondary)
+                }
+                .buttonStyle(.plain)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(item.title)
-                    .font(.headline)
-                    .strikethrough(item.isPurchased, color: .secondary)
-                Text(item.category)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.title)
+                        .font(.headline)
+                        .foregroundStyle(AppModule.supplyList.theme.textPrimary)
+                        .strikethrough(item.isPurchased, color: .secondary)
+                    Text(item.category)
+                        .font(.caption)
+                        .foregroundStyle(AppModule.supplyList.theme.textSecondary)
+                }
 
-            Spacer()
+                Spacer()
+            }
         }
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
     }
 }
 
@@ -208,6 +193,7 @@ private struct AddSupplyItemSheet: View {
         SupplyListView()
     }
     .modelContainer(PreviewCatalog.emptyApp)
+    .preferredColorScheme(.dark)
 }
 
 #Preview("Supply List Grouped") {
@@ -215,4 +201,5 @@ private struct AddSupplyItemSheet: View {
         SupplyListView()
     }
     .modelContainer(PreviewCatalog.populatedApp)
+    .preferredColorScheme(.dark)
 }

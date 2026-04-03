@@ -26,18 +26,30 @@ struct LaunchAffirmationView: View {
 
                     Text(entry.title)
                         .font(.title.weight(.bold))
+                        .foregroundStyle(AppModule.dashboard.theme.textPrimary)
                         .multilineTextAlignment(.center)
 
                     Text(entry.message)
                         .font(.body)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppModule.dashboard.theme.textSecondary)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: 320)
 
                     Text(entry.attribution)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppModule.dashboard.theme.textMuted)
                 }
+                .padding(.horizontal, ModuleSpacing.large)
+                .padding(.vertical, ModuleSpacing.xLarge)
+                .background(
+                    AppModule.dashboard.theme.surfacePrimary,
+                    in: RoundedRectangle(cornerRadius: ModuleCornerRadius.hero, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: ModuleCornerRadius.hero, style: .continuous)
+                        .stroke(AppModule.dashboard.theme.borderSubtle, lineWidth: 1)
+                )
+                .shadow(color: AppModule.dashboard.theme.accentGlow, radius: 24, y: 10)
 
                 ProgressView()
                     .tint(AppModule.dashboard.theme.primary)
@@ -90,6 +102,7 @@ struct LaunchAffirmationEntry {
 
 #Preview("Launch Affirmation") {
     LaunchAffirmationView()
+        .preferredColorScheme(.dark)
 }
 
 #Preview("Launch Affirmation Alternate") {
@@ -100,4 +113,5 @@ struct LaunchAffirmationEntry {
             attribution: "Preview state"
         )
     )
+    .preferredColorScheme(.dark)
 }

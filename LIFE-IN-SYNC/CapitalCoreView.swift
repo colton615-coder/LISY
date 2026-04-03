@@ -13,15 +13,22 @@ struct CapitalCoreView: View {
     }
 
     var body: some View {
-        ModuleHubScaffold(
-            module: .capitalCore,
-            title: "Track money without extra noise.",
-            subtitle: "Simple local capture for expenses and budgets with clear monthly visibility.",
-            currentState: "\(currentMonthExpenses.count) expense entries logged this month.",
-            nextAttention: budgets.isEmpty ? "Create your first budget target." : "Review categories running above target.",
-            tabs: [.overview, .entries, .advisor],
-            selectedTab: $selectedTab
-        ) {
+        ModuleScreen(theme: AppModule.capitalCore.theme) {
+            ModuleHeader(
+                theme: AppModule.capitalCore.theme,
+                title: "Capital Core",
+                subtitle: "Track money without extra noise and keep this month readable."
+            )
+
+            ModuleHeroCard(
+                module: .capitalCore,
+                eyebrow: "Month View",
+                title: monthlySpendTitle,
+                message: budgets.isEmpty ? "Add a budget target when you want tighter guardrails." : "\(currentMonthExpenses.count) expense entries logged this month."
+            )
+
+            HubTabPicker(tabs: [.overview, .entries, .advisor], selectedTab: $selectedTab, theme: AppModule.capitalCore.theme)
+
             switch selectedTab {
             case .overview:
                 CapitalOverviewTab(
@@ -37,13 +44,18 @@ struct CapitalCoreView: View {
                     isShowingAddExpense = true
                 }
             case .advisor:
-                ModuleEmptyStateCard(
-                    theme: AppModule.capitalCore.theme,
-                    title: "Advisor remains user-triggered",
-                    message: "Use this tab for guided prompts only. No autonomous writes happen without explicit confirmation.",
-                    actionTitle: "Add Expense",
-                    action: { isShowingAddExpense = true }
-                )
+                ModuleRowSurface(theme: AppModule.capitalCore.theme) {
+                    Text("Advisor remains user-triggered")
+                        .font(ModuleTypography.cardTitle)
+                        .foregroundStyle(AppModule.capitalCore.theme.textPrimary)
+                    Text("Use this tab for guided prompts only. No autonomous writes happen without explicit confirmation.")
+                        .foregroundStyle(AppModule.capitalCore.theme.textSecondary)
+                    Button("Add Expense") {
+                        isShowingAddExpense = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(AppModule.capitalCore.theme.primary)
+                }
             default:
                 EmptyView()
             }
@@ -65,6 +77,11 @@ struct CapitalCoreView: View {
         }
     }
 
+    private var monthlySpendTitle: String {
+        let total = currentMonthExpenses.reduce(0) { $0 + $1.amount }
+        return total.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))
+    }
+
     private var currentMonthExpenses: [ExpenseRecord] {
         expenses.filter { Calendar.current.isDate($0.recordedAt, equalTo: .now, toGranularity: .month) }
     }
@@ -84,20 +101,14 @@ private struct CapitalOverviewTab: View {
     let createBudget: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ModuleSpacing.small) {
+        VStack(alignment: .leading, spacing: ModuleSpacing.large) {
             CapitalOverviewCard(
                 monthlySpend: monthlySpend,
                 expenseCount: expenseCount,
                 budgetCount: budgets.count
             )
 
-            ModuleActivityFeedSection(title: "Current Budgets") {
-                HStack {
-                    Spacer()
-                    Button("Add Budget", action: createBudget)
-                        .buttonStyle(.bordered)
-                }
-
+            ModuleListSection(title: "Current Budgets") {
                 if budgets.isEmpty {
                     CapitalEmptyStateView(
                         title: "No budgets yet",
@@ -120,7 +131,7 @@ private struct CapitalEntriesTab: View {
     let addExpense: () -> Void
 
     var body: some View {
-        ModuleActivityFeedSection(title: "Recent Expenses") {
+        ModuleListSection(title: "Recent Expenses") {
             if expenses.isEmpty {
                 CapitalEmptyStateView(
                     title: "No expenses logged",
@@ -143,12 +154,10 @@ private struct CapitalOverviewCard: View {
     let budgetCount: Int
 
     var body: some View {
-        ModuleVisualizationContainer(title: "Month Snapshot") {
-            HStack(spacing: 12) {
-                CapitalMetricChip(title: "Spent", value: monthlySpend, currency: true)
-                CapitalMetricChip(title: "Expenses", value: Double(expenseCount), currency: false)
-                CapitalMetricChip(title: "Budgets", value: Double(budgetCount), currency: false)
-            }
+        ModuleMetricStrip(theme: AppModule.capitalCore.theme) {
+            CapitalMetricChip(title: "Spent", value: monthlySpend, currency: true)
+            CapitalMetricChip(title: "Expenses", value: Double(expenseCount), currency: false)
+            CapitalMetricChip(title: "Budgets", value: Double(budgetCount), currency: false)
         }
     }
 }
@@ -159,16 +168,7 @@ private struct CapitalMetricChip: View {
     let currency: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(formattedValue)
-                .font(ModuleTypography.metricValue)
-            Text(title)
-                .font(ModuleTypography.supportingLabel)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(ModuleSpacing.medium)
-        .background(AppModule.capitalCore.theme.chipBackground, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.chip, style: .continuous))
+        ModuleMetricItem(theme: AppModule.capitalCore.theme, title: title, value: formattedValue)
     }
 
     private var formattedValue: String {
@@ -190,26 +190,25 @@ private struct BudgetCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        ModuleRowSurface(theme: AppModule.capitalCore.theme) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(budget.title)
                         .font(.headline)
+                        .foregroundStyle(AppModule.capitalCore.theme.textPrimary)
                     Text(budget.periodLabel)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppModule.capitalCore.theme.textSecondary)
                 }
                 Spacer()
                 Text("\(spentAmount.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))) / \(budget.limitAmount.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD")))")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppModule.capitalCore.theme.textSecondary)
             }
 
             ProgressView(value: progress)
                 .tint(AppModule.capitalCore.theme.primary)
         }
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
     }
 }
 
@@ -217,27 +216,29 @@ private struct ExpenseCard: View {
     let expense: ExpenseRecord
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(expense.title)
-                    .font(.headline)
-                Text(expense.category)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+        ModuleRowSurface(theme: AppModule.capitalCore.theme) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(expense.title)
+                        .font(.headline)
+                        .foregroundStyle(AppModule.capitalCore.theme.textPrimary)
+                    Text(expense.category)
+                        .font(.caption)
+                        .foregroundStyle(AppModule.capitalCore.theme.textSecondary)
+                }
 
-            Spacer()
+                Spacer()
 
-            VStack(alignment: .trailing, spacing: 4) {
-                Text(expense.amount.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD")))
-                    .font(.headline)
-                Text(expense.recordedAt.formatted(date: .abbreviated, time: .omitted))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(expense.amount.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD")))
+                        .font(.headline)
+                        .foregroundStyle(AppModule.capitalCore.theme.textPrimary)
+                    Text(expense.recordedAt.formatted(date: .abbreviated, time: .omitted))
+                        .font(.caption)
+                        .foregroundStyle(AppModule.capitalCore.theme.textSecondary)
+                }
             }
         }
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
     }
 }
 
@@ -381,6 +382,7 @@ private struct AddBudgetSheet: View {
         CapitalCoreView()
     }
     .modelContainer(PreviewCatalog.populatedApp)
+    .preferredColorScheme(.dark)
 }
 
 #Preview("Capital Core Entries") {
@@ -388,6 +390,7 @@ private struct AddBudgetSheet: View {
         CapitalCoreView(initialTab: .entries)
     }
     .modelContainer(PreviewCatalog.populatedApp)
+    .preferredColorScheme(.dark)
 }
 
 #Preview("Capital Core Empty") {
@@ -395,4 +398,5 @@ private struct AddBudgetSheet: View {
         CapitalCoreView(initialTab: .overview)
     }
     .modelContainer(PreviewCatalog.emptyApp)
+    .preferredColorScheme(.dark)
 }

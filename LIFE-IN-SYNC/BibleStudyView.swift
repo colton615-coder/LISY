@@ -11,18 +11,25 @@ struct BibleStudyView: View {
     }
 
     var body: some View {
-        ModuleHubScaffold(
-            module: .bibleStudy,
-            title: "Keep study sessions simple and grounded.",
-            subtitle: "Capture passages, preserve reflections, and keep review surfaces calm and text-first.",
-            currentState: "\(entries.count) study entries recorded locally.",
-            nextAttention: entries.isEmpty ? "Add a first passage and reflection." : "Review recent entries and return to the passages worth deeper meditation.",
-            tabs: [.overview, .entries, .review],
-            selectedTab: $selectedTab
-        ) {
+        ModuleScreen(theme: AppModule.bibleStudy.theme) {
+            ModuleHeader(
+                theme: AppModule.bibleStudy.theme,
+                title: "Bible Study",
+                subtitle: "Keep study sessions grounded, quiet, and text-first."
+            )
+
+            ModuleHeroCard(
+                module: .bibleStudy,
+                eyebrow: "Recent Focus",
+                title: latestPassageTitle,
+                message: entries.isEmpty ? "Add a first passage and short reflection to begin building your study history." : "Review recent entries and return to the passages worth deeper meditation."
+            )
+
+            HubTabPicker(tabs: [.overview, .entries, .review], selectedTab: $selectedTab, theme: AppModule.bibleStudy.theme)
+
             switch selectedTab {
             case .overview:
-                BibleStudyOverviewCard(entryCount: entries.count)
+                BibleStudyOverviewCard(entryCount: entries.count, latestEntry: entries.first)
             case .entries:
                 BibleStudyEntriesTab(entries: entries) {
                     isShowingAddEntry = true
@@ -46,6 +53,10 @@ struct BibleStudyView: View {
             AddStudyEntrySheet()
         }
     }
+
+    private var latestPassageTitle: String {
+        entries.first?.passageReference ?? "Scripture"
+    }
 }
 
 private struct BibleStudyEntriesTab: View {
@@ -53,7 +64,7 @@ private struct BibleStudyEntriesTab: View {
     let addEntry: () -> Void
 
     var body: some View {
-        ModuleActivityFeedSection(title: "Recent Study Entries") {
+        ModuleListSection(title: "Recent Study Entries") {
             if entries.isEmpty {
                 BibleStudyEmptyStateView(action: addEntry)
             } else {
@@ -69,7 +80,7 @@ private struct BibleStudyReviewTab: View {
     let entries: [StudyEntry]
 
     var body: some View {
-        ModuleVisualizationContainer(title: "Review Lane") {
+        ModuleRowSurface(theme: AppModule.bibleStudy.theme) {
             if let latestEntry = entries.first {
                 VStack(alignment: .leading, spacing: ModuleSpacing.small) {
                     Text(latestEntry.passageReference)
@@ -78,13 +89,14 @@ private struct BibleStudyReviewTab: View {
                     Text(latestEntry.title)
                         .font(.subheadline)
                         .fontWeight(.semibold)
+                        .foregroundStyle(AppModule.bibleStudy.theme.textPrimary)
                     Text(latestEntry.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "No notes recorded on the latest entry." : latestEntry.notes)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppModule.bibleStudy.theme.textSecondary)
                         .lineLimit(4)
                 }
             } else {
                 Text("Review surfaces will become more useful once study history exists.")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppModule.bibleStudy.theme.textSecondary)
             }
         }
     }
@@ -92,12 +104,31 @@ private struct BibleStudyReviewTab: View {
 
 private struct BibleStudyOverviewCard: View {
     let entryCount: Int
+    let latestEntry: StudyEntry?
 
     var body: some View {
-        ModuleVisualizationContainer(title: "Study Snapshot") {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: ModuleSpacing.large) {
+            ModuleMetricStrip(theme: AppModule.bibleStudy.theme) {
                 ModuleMetricChip(theme: AppModule.bibleStudy.theme, title: "Entries", value: "\(entryCount)")
-                ModuleMetricChip(theme: AppModule.bibleStudy.theme, title: "Focus", value: "Scripture")
+            }
+
+            ModuleRowSurface(theme: AppModule.bibleStudy.theme) {
+                if let latestEntry {
+                    Text(latestEntry.title)
+                        .font(.headline)
+                        .foregroundStyle(AppModule.bibleStudy.theme.textPrimary)
+                    Text(latestEntry.passageReference)
+                        .font(.subheadline)
+                        .foregroundStyle(AppModule.bibleStudy.theme.primary)
+                    if latestEntry.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                        Text(latestEntry.notes)
+                            .foregroundStyle(AppModule.bibleStudy.theme.textSecondary)
+                            .lineLimit(4)
+                    }
+                } else {
+                    Text("Recent study will appear here once entries exist.")
+                        .foregroundStyle(AppModule.bibleStudy.theme.textSecondary)
+                }
             }
         }
     }
@@ -107,9 +138,10 @@ private struct StudyEntryCard: View {
     let entry: StudyEntry
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        ModuleRowSurface(theme: AppModule.bibleStudy.theme) {
             Text(entry.title)
                 .font(.headline)
+                .foregroundStyle(AppModule.bibleStudy.theme.textPrimary)
 
             Text(entry.passageReference)
                 .font(.subheadline)
@@ -118,17 +150,14 @@ private struct StudyEntryCard: View {
             if entry.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
                 Text(entry.notes)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppModule.bibleStudy.theme.textSecondary)
                     .lineLimit(3)
             }
 
             Text(entry.createdAt.formatted(date: .abbreviated, time: .shortened))
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppModule.bibleStudy.theme.textSecondary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
     }
 }
 
@@ -203,6 +232,7 @@ private struct AddStudyEntrySheet: View {
         BibleStudyView()
     }
     .modelContainer(PreviewCatalog.populatedApp)
+    .preferredColorScheme(.dark)
 }
 
 #Preview("Bible Study Review") {
@@ -210,6 +240,7 @@ private struct AddStudyEntrySheet: View {
         BibleStudyView(initialTab: .review)
     }
     .modelContainer(PreviewCatalog.populatedApp)
+    .preferredColorScheme(.dark)
 }
 
 #Preview("Bible Study Empty") {
@@ -217,4 +248,5 @@ private struct AddStudyEntrySheet: View {
         BibleStudyView(initialTab: .entries)
     }
     .modelContainer(PreviewCatalog.emptyApp)
+    .preferredColorScheme(.dark)
 }

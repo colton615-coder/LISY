@@ -1,6 +1,161 @@
 import Foundation
 import SwiftData
 
+enum SwingPhase: String, Codable, CaseIterable, Identifiable {
+    case address
+    case takeaway
+    case shaftParallel
+    case topOfBackswing
+    case transition
+    case earlyDownswing
+    case impact
+    case followThrough
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .address:
+            "Address"
+        case .takeaway:
+            "Takeaway"
+        case .shaftParallel:
+            "Shaft Parallel"
+        case .topOfBackswing:
+            "Top of Backswing"
+        case .transition:
+            "Transition"
+        case .earlyDownswing:
+            "Early Downswing"
+        case .impact:
+            "Impact"
+        case .followThrough:
+            "Follow Through"
+        }
+    }
+
+    var reviewTitle: String {
+        switch self {
+        case .address:
+            "Setup"
+        case .takeaway:
+            "Takeaway Start"
+        case .shaftParallel:
+            "Lead Arm Parallel"
+        case .topOfBackswing:
+            "Top of Swing"
+        case .transition:
+            "Transition"
+        case .earlyDownswing:
+            "Early Downswing"
+        case .impact:
+            "Impact"
+        case .followThrough:
+            "Finish"
+        }
+    }
+}
+
+enum KeyframeValidationStatus: String, Codable, CaseIterable, Identifiable {
+    case pending
+    case approved
+    case flagged
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .pending:
+            "Pending"
+        case .approved:
+            "Approved"
+        case .flagged:
+            "Flagged"
+        }
+    }
+}
+
+enum SwingJointName: String, Codable, CaseIterable, Identifiable {
+    case nose
+    case leftShoulder
+    case rightShoulder
+    case leftElbow
+    case rightElbow
+    case leftWrist
+    case rightWrist
+    case leftHip
+    case rightHip
+    case leftKnee
+    case rightKnee
+    case leftAnkle
+    case rightAnkle
+
+    var id: String { rawValue }
+}
+
+struct SwingJoint: Codable, Hashable, Identifiable {
+    var name: SwingJointName
+    var x: Double
+    var y: Double
+    var confidence: Double
+
+    var id: SwingJointName { name }
+}
+
+struct SwingFrame: Codable, Hashable, Identifiable {
+    var timestamp: Double
+    var joints: [SwingJoint]
+    var confidence: Double
+
+    var id: Double { timestamp }
+}
+
+struct KeyFrame: Codable, Hashable, Identifiable {
+    var phase: SwingPhase
+    var frameIndex: Int
+    var source: KeyFrameSource = .automatic
+
+    var id: SwingPhase { phase }
+}
+
+enum KeyFrameSource: String, Codable, CaseIterable, Identifiable {
+    case automatic
+    case adjusted
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .automatic:
+            "Auto"
+        case .adjusted:
+            "Adjusted"
+        }
+    }
+}
+
+struct HandAnchor: Codable, Hashable, Identifiable {
+    var phase: SwingPhase
+    var x: Double
+    var y: Double
+
+    var id: SwingPhase { phase }
+}
+
+struct PathPoint: Codable, Hashable, Identifiable {
+    var sequence: Int
+    var x: Double
+    var y: Double
+
+    var id: Int { sequence }
+}
+
+struct AnalysisResult: Codable, Hashable {
+    var issues: [String]
+    var highlights: [String]
+    var summary: String
+}
+
 @Model
 final class CompletionRecord {
     var completedAt: Date
@@ -186,12 +341,41 @@ final class SwingRecord {
     var title: String
     var createdAt: Date
     var mediaFilename: String?
+    var mediaFileBookmark: Data?
     var notes: String
+    var frameRate: Double
+    var swingFrames: [SwingFrame]
+    var keyFrames: [KeyFrame]
+    var keyframeValidationStatus: KeyframeValidationStatus
+    var handAnchors: [HandAnchor]
+    var pathPoints: [PathPoint]
+    var analysisResult: AnalysisResult?
 
-    init(title: String, createdAt: Date = .now, mediaFilename: String? = nil, notes: String = "") {
+    init(
+        title: String,
+        createdAt: Date = .now,
+        mediaFilename: String? = nil,
+        mediaFileBookmark: Data? = nil,
+        notes: String = "",
+        frameRate: Double = 0,
+        swingFrames: [SwingFrame] = [],
+        keyFrames: [KeyFrame] = [],
+        keyframeValidationStatus: KeyframeValidationStatus = .pending,
+        handAnchors: [HandAnchor] = [],
+        pathPoints: [PathPoint] = [],
+        analysisResult: AnalysisResult? = nil
+    ) {
         self.title = title
         self.createdAt = createdAt
         self.mediaFilename = mediaFilename
+        self.mediaFileBookmark = mediaFileBookmark
         self.notes = notes
+        self.frameRate = frameRate
+        self.swingFrames = swingFrames
+        self.keyFrames = keyFrames
+        self.keyframeValidationStatus = keyframeValidationStatus
+        self.handAnchors = handAnchors
+        self.pathPoints = pathPoints
+        self.analysisResult = analysisResult
     }
 }

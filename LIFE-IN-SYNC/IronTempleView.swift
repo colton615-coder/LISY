@@ -13,15 +13,22 @@ struct IronTempleView: View {
     }
 
     var body: some View {
-        ModuleHubScaffold(
-            module: .ironTemple,
-            title: "Keep training simple and repeatable.",
-            subtitle: "Separate template building from session execution and keep entries clean.",
-            currentState: "\(sessions.count) sessions logged and \(templates.count) templates available.",
-            nextAttention: templates.isEmpty ? "Build your first template to remove friction." : "Log your next workout session today.",
-            tabs: [.overview, .builder, .advisor],
-            selectedTab: $selectedTab
-        ) {
+        ModuleScreen(theme: AppModule.ironTemple.theme) {
+            ModuleHeader(
+                theme: AppModule.ironTemple.theme,
+                title: "Iron Temple",
+                subtitle: "Keep training simple, repeatable, and easy to log."
+            )
+
+            ModuleHeroCard(
+                module: .ironTemple,
+                eyebrow: "Training",
+                title: "\(sessions.count) session\(sessions.count == 1 ? "" : "s") logged",
+                message: templates.isEmpty ? "Build your first template to remove friction before the next workout." : "\(templates.count) template\(templates.count == 1 ? "" : "s") ready for repeatable sessions."
+            )
+
+            HubTabPicker(tabs: [.overview, .builder, .advisor], selectedTab: $selectedTab, theme: AppModule.ironTemple.theme)
+
             switch selectedTab {
             case .overview:
                 IronTempleOverviewTab(
@@ -35,13 +42,18 @@ struct IronTempleView: View {
                     isShowingAddTemplate = true
                 }
             case .advisor:
-                ModuleEmptyStateCard(
-                    theme: AppModule.ironTemple.theme,
-                    title: "Advisor is optional",
-                    message: "Use user-triggered prompts for workout decisions. Any write action requires explicit approval.",
-                    actionTitle: "Log Session",
-                    action: { isShowingLogSession = true }
-                )
+                ModuleRowSurface(theme: AppModule.ironTemple.theme) {
+                    Text("Advisor is optional")
+                        .font(ModuleTypography.cardTitle)
+                        .foregroundStyle(AppModule.ironTemple.theme.textPrimary)
+                    Text("Use user-triggered prompts for workout decisions. Any write action requires explicit approval.")
+                        .foregroundStyle(AppModule.ironTemple.theme.textSecondary)
+                    Button("Log Session") {
+                        isShowingLogSession = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(AppModule.ironTemple.theme.primary)
+                }
             default:
                 EmptyView()
             }
@@ -70,14 +82,14 @@ private struct IronTempleOverviewTab: View {
     let logSession: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ModuleSpacing.small) {
+        VStack(alignment: .leading, spacing: ModuleSpacing.large) {
             IronTempleOverviewCard(
                 templateCount: templateCount,
                 sessionCount: sessions.count,
                 totalMinutes: sessions.reduce(0) { $0 + $1.durationMinutes }
             )
 
-            ModuleActivityFeedSection(title: "Recent Sessions") {
+            ModuleListSection(title: "Recent Sessions") {
                 if sessions.isEmpty {
                     IronTempleEmptyStateView(
                         title: "No sessions logged",
@@ -100,13 +112,7 @@ private struct IronTempleBuilderTab: View {
     let addTemplate: () -> Void
 
     var body: some View {
-        ModuleActivityFeedSection(title: "Workout Templates") {
-            HStack {
-                Spacer()
-                Button("Add Template", action: addTemplate)
-                    .buttonStyle(.bordered)
-            }
-
+        ModuleListSection(title: "Workout Templates") {
             if templates.isEmpty {
                 IronTempleEmptyStateView(
                     title: "No templates yet",
@@ -129,12 +135,10 @@ private struct IronTempleOverviewCard: View {
     let totalMinutes: Int
 
     var body: some View {
-        ModuleVisualizationContainer(title: "Training Snapshot") {
-            HStack(spacing: 12) {
-                ModuleMetricChip(theme: AppModule.ironTemple.theme, title: "Templates", value: "\(templateCount)")
-                ModuleMetricChip(theme: AppModule.ironTemple.theme, title: "Sessions", value: "\(sessionCount)")
-                ModuleMetricChip(theme: AppModule.ironTemple.theme, title: "Minutes", value: "\(totalMinutes)")
-            }
+        ModuleMetricStrip(theme: AppModule.ironTemple.theme) {
+            ModuleMetricChip(theme: AppModule.ironTemple.theme, title: "Templates", value: "\(templateCount)")
+            ModuleMetricChip(theme: AppModule.ironTemple.theme, title: "Sessions", value: "\(sessionCount)")
+            ModuleMetricChip(theme: AppModule.ironTemple.theme, title: "Minutes", value: "\(totalMinutes)")
         }
     }
 }
@@ -143,20 +147,21 @@ private struct WorkoutTemplateCard: View {
     let template: WorkoutTemplate
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "dumbbell.fill")
-                .foregroundStyle(AppModule.ironTemple.theme.primary)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(template.name)
-                    .font(.headline)
-                Text(template.createdAt.formatted(date: .abbreviated, time: .omitted))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        ModuleRowSurface(theme: AppModule.ironTemple.theme) {
+            HStack(spacing: 12) {
+                Image(systemName: "dumbbell.fill")
+                    .foregroundStyle(AppModule.ironTemple.theme.primary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(template.name)
+                        .font(.headline)
+                        .foregroundStyle(AppModule.ironTemple.theme.textPrimary)
+                    Text(template.createdAt.formatted(date: .abbreviated, time: .omitted))
+                        .font(.caption)
+                        .foregroundStyle(AppModule.ironTemple.theme.textSecondary)
+                }
+                Spacer()
             }
-            Spacer()
         }
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
     }
 }
 
@@ -164,24 +169,25 @@ private struct WorkoutSessionCard: View {
     let session: WorkoutSession
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(session.templateName)
-                    .font(.headline)
-                Text(session.performedAt.formatted(date: .abbreviated, time: .shortened))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        ModuleRowSurface(theme: AppModule.ironTemple.theme) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(session.templateName)
+                        .font(.headline)
+                        .foregroundStyle(AppModule.ironTemple.theme.textPrimary)
+                    Text(session.performedAt.formatted(date: .abbreviated, time: .shortened))
+                        .font(.caption)
+                        .foregroundStyle(AppModule.ironTemple.theme.textSecondary)
+                }
+
+                Spacer()
+
+                Text("\(session.durationMinutes) min")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(AppModule.ironTemple.theme.primary)
             }
-
-            Spacer()
-
-            Text("\(session.durationMinutes) min")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundStyle(AppModule.ironTemple.theme.primary)
         }
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
     }
 }
 
@@ -304,6 +310,7 @@ private struct LogWorkoutSessionSheet: View {
         IronTempleView()
     }
     .modelContainer(PreviewCatalog.populatedApp)
+    .preferredColorScheme(.dark)
 }
 
 #Preview("Iron Temple Builder") {
@@ -311,6 +318,7 @@ private struct LogWorkoutSessionSheet: View {
         IronTempleView(initialTab: .builder)
     }
     .modelContainer(PreviewCatalog.populatedApp)
+    .preferredColorScheme(.dark)
 }
 
 #Preview("Iron Temple Empty") {
@@ -318,4 +326,5 @@ private struct LogWorkoutSessionSheet: View {
         IronTempleView(initialTab: .builder)
     }
     .modelContainer(PreviewCatalog.emptyApp)
+    .preferredColorScheme(.dark)
 }

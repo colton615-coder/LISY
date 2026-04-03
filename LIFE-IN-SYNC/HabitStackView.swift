@@ -8,54 +8,45 @@ struct HabitStackView: View {
     @State private var isShowingAddHabit = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                ModuleHeroCard(
-                    module: .habitStack,
-                    eyebrow: "First Live Module",
-                    title: "Build recurring momentum with daily habits.",
-                    message: "Create habits, log progress throughout the day, and keep a clear view of streaks and recent completion."
-                )
+        ModuleScreen(theme: AppModule.habitStack.theme) {
+            ModuleHeader(
+                theme: AppModule.habitStack.theme,
+                title: "Habit Stack",
+                subtitle: "Build recurring momentum with daily habits and simple repeatable actions."
+            )
 
-                HabitOverviewCard(
-                    habitCount: habits.count,
-                    completedTodayCount: habits.filter(isHabitCompletedToday).count,
-                    totalTodayProgress: entriesForToday.reduce(0) { $0 + $1.count }
-                )
+            ModuleHeroCard(
+                module: .habitStack,
+                eyebrow: "Today",
+                title: todayHabitSummaryTitle,
+                message: habits.isEmpty ? "Start with one recurring behavior you want to reinforce daily." : "Track progress throughout the day and keep the focus on what still needs a rep."
+            )
 
-                ModuleActivityFeedSection(title: "Today's Habits") {
-                    HStack {
-                        Spacer()
-                        Button {
-                            isShowingAddHabit = true
-                        } label: {
-                            Label("Add Habit", systemImage: "plus")
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(AppModule.habitStack.theme.primary)
+            HabitOverviewCard(
+                habitCount: habits.count,
+                completedTodayCount: habits.filter(isHabitCompletedToday).count,
+                totalTodayProgress: entriesForToday.reduce(0) { $0 + $1.count }
+            )
+
+            ModuleListSection(title: "Today's Habits") {
+                if habits.isEmpty {
+                    HabitEmptyStateView {
+                        isShowingAddHabit = true
                     }
-
-                    if habits.isEmpty {
-                        HabitEmptyStateView {
-                            isShowingAddHabit = true
-                        }
-                    } else {
-                        ForEach(habits) { habit in
-                            HabitCard(
-                                habit: habit,
-                                progressCount: progressCount(for: habit),
-                                streakCount: streakCount(for: habit),
-                                lastLoggedAt: lastLoggedAt(for: habit),
-                                incrementAction: { logProgress(for: habit) },
-                                decrementAction: { removeProgress(for: habit) }
-                            )
-                        }
+                } else {
+                    ForEach(habits) { habit in
+                        HabitCard(
+                            habit: habit,
+                            progressCount: progressCount(for: habit),
+                            streakCount: streakCount(for: habit),
+                            lastLoggedAt: lastLoggedAt(for: habit),
+                            incrementAction: { logProgress(for: habit) },
+                            decrementAction: { removeProgress(for: habit) }
+                        )
                     }
                 }
             }
-            .padding()
         }
-        .background(AppModule.habitStack.theme.screenGradient)
         .safeAreaInset(edge: .bottom) {
             ModuleBottomActionBar(
                 theme: AppModule.habitStack.theme,
@@ -70,6 +61,11 @@ struct HabitStackView: View {
                 addHabit(name: name, targetCount: targetCount)
             }
         }
+    }
+
+    private var todayHabitSummaryTitle: String {
+        let completed = habits.filter(isHabitCompletedToday).count
+        return "\(completed) of \(habits.count) complete"
     }
 
     private var entriesForToday: [HabitEntry] {
@@ -146,12 +142,10 @@ private struct HabitOverviewCard: View {
     let totalTodayProgress: Int
 
     var body: some View {
-        ModuleVisualizationContainer(title: "Today Snapshot") {
-            HStack(spacing: 12) {
-                ModuleMetricChip(theme: AppModule.habitStack.theme, title: "Habits", value: "\(habitCount)")
-                ModuleMetricChip(theme: AppModule.habitStack.theme, title: "Completed", value: "\(completedTodayCount)")
-                ModuleMetricChip(theme: AppModule.habitStack.theme, title: "Logs", value: "\(totalTodayProgress)")
-            }
+        ModuleMetricStrip(theme: AppModule.habitStack.theme) {
+            ModuleMetricChip(theme: AppModule.habitStack.theme, title: "Habits", value: "\(habitCount)")
+            ModuleMetricChip(theme: AppModule.habitStack.theme, title: "Completed", value: "\(completedTodayCount)")
+            ModuleMetricChip(theme: AppModule.habitStack.theme, title: "Logs", value: "\(totalTodayProgress)")
         }
     }
 }
@@ -184,14 +178,15 @@ private struct HabitCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        ModuleRowSurface(theme: AppModule.habitStack.theme) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(habit.name)
                         .font(.headline)
+                        .foregroundStyle(AppModule.habitStack.theme.textPrimary)
                     Text("\(progressCount) of \(habit.targetCount) today")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppModule.habitStack.theme.textSecondary)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 6) {
@@ -201,7 +196,7 @@ private struct HabitCard: View {
                     if let lastLoggedAt {
                         Text(lastLoggedAt.formatted(date: .omitted, time: .shortened))
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(AppModule.habitStack.theme.textSecondary)
                     }
                 }
             }
@@ -229,11 +224,9 @@ private struct HabitCard: View {
                 .tint(AppModule.habitStack.theme.primary)
             }
         }
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
-                .stroke(progressCount >= habit.targetCount ? AppModule.habitStack.theme.primary.opacity(0.4) : .clear, lineWidth: 1.5)
+            RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous)
+                .stroke(progressCount >= habit.targetCount ? AppModule.habitStack.theme.borderStrong : .clear, lineWidth: 1.5)
         )
     }
 }
@@ -280,6 +273,7 @@ private struct AddHabitSheet: View {
         HabitStackView()
     }
     .modelContainer(PreviewCatalog.emptyApp)
+    .preferredColorScheme(.dark)
 }
 
 #Preview("Habit Stack Active") {
@@ -287,4 +281,5 @@ private struct AddHabitSheet: View {
         HabitStackView()
     }
     .modelContainer(PreviewCatalog.populatedApp)
+    .preferredColorScheme(.dark)
 }

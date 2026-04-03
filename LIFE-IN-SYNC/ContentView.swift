@@ -43,9 +43,11 @@ private enum LaunchAffirmationConfiguration {
 #Preview("Content Launch") {
     ContentView(showLaunchAffirmation: true)
         .modelContainer(PreviewCatalog.populatedApp)
+        .preferredColorScheme(.dark)
 }
 
 #Preview("Content Shell") {
     ContentView(showLaunchAffirmation: false)
         .modelContainer(PreviewCatalog.populatedApp)
+        .preferredColorScheme(.dark)
 }

@@ -41,57 +41,59 @@ struct TaskProtocolView: View {
     @State private var isShowingAddTask = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                ModuleHeroCard(
-                    module: .taskProtocol,
-                    eyebrow: "Live Module",
-                    title: "Capture one-off work and keep it moving.",
-                    message: "Task Protocol stays intentionally simple: add tasks, mark them complete, and keep due dates visible."
-                )
+        ModuleScreen(theme: AppModule.taskProtocol.theme) {
+            ModuleHeader(
+                theme: AppModule.taskProtocol.theme,
+                title: "Task Protocol",
+                subtitle: "Capture one-off work and keep the queue moving."
+            )
 
-                TaskOverviewCard(
-                    openCount: openTasks.count,
-                    completedCount: completedTasks.count,
-                    overdueCount: overdueTasks.count
-                )
+            ModuleHeroCard(
+                module: .taskProtocol,
+                eyebrow: "Queue",
+                title: "\(openTasks.count) open task\(openTasks.count == 1 ? "" : "s")",
+                message: overdueTasks.isEmpty ? "Stay focused on the active queue and keep due dates visible." : "\(overdueTasks.count) overdue need attention first."
+            )
 
-                ModuleActivityFeedSection(title: "Open Tasks") {
-                    if openTasks.isEmpty {
-                        TaskEmptyStateView(
-                            title: "No open tasks",
-                            message: "Capture the next one-off action you want to move forward.",
-                            actionTitle: "Add Task",
-                            action: { isShowingAddTask = true }
+            TaskOverviewCard(
+                openCount: openTasks.count,
+                completedCount: completedTasks.count,
+                overdueCount: overdueTasks.count
+            )
+
+            ModuleListSection(title: "Open Tasks") {
+                if openTasks.isEmpty {
+                    TaskEmptyStateView(
+                        title: "No open tasks",
+                        message: "Capture the next one-off action you want to move forward.",
+                        actionTitle: "Add Task",
+                        action: { isShowingAddTask = true }
+                    )
+                } else {
+                    ForEach(openTasks) { task in
+                        TaskCard(
+                            task: task,
+                            priority: priority(for: task),
+                            isOverdue: isOverdue(task),
+                            toggleCompletion: { toggleCompletion(for: task) }
                         )
-                    } else {
-                        ForEach(openTasks) { task in
-                            TaskCard(
-                                task: task,
-                                priority: priority(for: task),
-                                isOverdue: isOverdue(task),
-                                toggleCompletion: { toggleCompletion(for: task) }
-                            )
-                        }
-                    }
-                }
-
-                if completedTasks.isEmpty == false {
-                    ModuleActivityFeedSection(title: "Completed") {
-                        ForEach(completedTasks.prefix(5)) { task in
-                            TaskCard(
-                                task: task,
-                                priority: priority(for: task),
-                                isOverdue: false,
-                                toggleCompletion: { toggleCompletion(for: task) }
-                            )
-                        }
                     }
                 }
             }
-            .padding()
+
+            if completedTasks.isEmpty == false {
+                ModuleDisclosureSection(title: "Completed", theme: AppModule.taskProtocol.theme) {
+                    ForEach(completedTasks.prefix(5)) { task in
+                        TaskCard(
+                            task: task,
+                            priority: priority(for: task),
+                            isOverdue: false,
+                            toggleCompletion: { toggleCompletion(for: task) }
+                        )
+                    }
+                }
+            }
         }
-        .background(AppModule.taskProtocol.theme.screenGradient)
         .safeAreaInset(edge: .bottom) {
             ModuleBottomActionBar(
                 theme: AppModule.taskProtocol.theme,
@@ -158,12 +160,10 @@ private struct TaskOverviewCard: View {
     let overdueCount: Int
 
     var body: some View {
-        ModuleVisualizationContainer(title: "Queue Snapshot") {
-            HStack(spacing: 12) {
-                ModuleMetricChip(theme: AppModule.taskProtocol.theme, title: "Open", value: "\(openCount)")
-                ModuleMetricChip(theme: AppModule.taskProtocol.theme, title: "Completed", value: "\(completedCount)")
-                ModuleMetricChip(theme: AppModule.taskProtocol.theme, title: "Overdue", value: "\(overdueCount)")
-            }
+        ModuleMetricStrip(theme: AppModule.taskProtocol.theme) {
+            ModuleMetricChip(theme: AppModule.taskProtocol.theme, title: "Open", value: "\(openCount)")
+            ModuleMetricChip(theme: AppModule.taskProtocol.theme, title: "Completed", value: "\(completedCount)")
+            ModuleMetricChip(theme: AppModule.taskProtocol.theme, title: "Overdue", value: "\(overdueCount)")
         }
     }
 }
@@ -192,49 +192,50 @@ private struct TaskCard: View {
     let toggleCompletion: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Button(action: toggleCompletion) {
-                Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
-                    .font(.title2)
-                    .foregroundStyle(task.isCompleted ? AppModule.taskProtocol.theme.primary : .secondary)
-            }
-            .buttonStyle(.plain)
+        ModuleRowSurface(theme: AppModule.taskProtocol.theme) {
+            HStack(alignment: .top, spacing: 12) {
+                Button(action: toggleCompletion) {
+                    Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
+                        .font(.title2)
+                        .foregroundStyle(task.isCompleted ? AppModule.taskProtocol.theme.primary : AppModule.taskProtocol.theme.textSecondary)
+                }
+                .buttonStyle(.plain)
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text(task.title)
-                    .font(.headline)
-                    .strikethrough(task.isCompleted, color: .secondary)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(task.title)
+                        .font(.headline)
+                        .foregroundStyle(AppModule.taskProtocol.theme.textPrimary)
+                        .strikethrough(task.isCompleted, color: .secondary)
 
-                HStack(spacing: 8) {
-                    Label(priority.title, systemImage: priority.systemImage)
-                        .font(.caption)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(priority.color.opacity(0.14), in: Capsule())
-
-                    if let dueDate = task.dueDate {
-                        Label(dueDate.formatted(date: .abbreviated, time: .omitted), systemImage: "calendar")
+                    HStack(spacing: 8) {
+                        Label(priority.title, systemImage: priority.systemImage)
                             .font(.caption)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(isOverdue ? Color.red.opacity(0.16) : AppModule.taskProtocol.theme.chipBackground, in: Capsule())
+                            .background(priority.color.opacity(0.14), in: Capsule())
+
+                        if let dueDate = task.dueDate {
+                            Label(dueDate.formatted(date: .abbreviated, time: .omitted), systemImage: "calendar")
+                                .font(.caption)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(isOverdue ? Color.red.opacity(0.16) : AppModule.taskProtocol.theme.chipBackground, in: Capsule())
+                        }
+                    }
+
+                    if isOverdue {
+                        Text("Overdue")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.red)
                     }
                 }
 
-                if isOverdue {
-                    Text("Overdue")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.red)
-                }
+                Spacer()
             }
-
-            Spacer()
         }
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
+            RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous)
                 .stroke(isOverdue ? Color.red.opacity(0.35) : .clear, lineWidth: 1.5)
         )
     }
@@ -292,6 +293,7 @@ private struct AddTaskSheet: View {
         TaskProtocolView()
     }
     .modelContainer(PreviewCatalog.emptyApp)
+    .preferredColorScheme(.dark)
 }
 
 #Preview("Task Protocol Queue") {
@@ -299,4 +301,5 @@ private struct AddTaskSheet: View {
         TaskProtocolView()
     }
     .modelContainer(PreviewCatalog.populatedApp)
+    .preferredColorScheme(.dark)
 }

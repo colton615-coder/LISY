@@ -14,15 +14,22 @@ struct CalendarView: View {
     }
 
     var body: some View {
-        ModuleHubScaffold(
-            module: .calendar,
-            title: "Keep the day visible.",
-            subtitle: "Calendar stays focused on time blocks, due dates, and a readable daily agenda.",
-            currentState: "\(eventsForSelectedDate.count) events and \(dueTasksForSelectedDate.count) due tasks on the selected day.",
-            nextAttention: eventsForSelectedDate.isEmpty ? "Add a time block to shape the day." : "Review the agenda and protect the next priority block.",
-            tabs: [.overview, .entries, .review],
-            selectedTab: $selectedTab
-        ) {
+        ModuleScreen(theme: AppModule.calendar.theme) {
+            ModuleHeader(
+                theme: AppModule.calendar.theme,
+                title: "Calendar",
+                subtitle: "Keep the day visible without turning the screen into a planner dashboard."
+            )
+
+            ModuleHeroCard(
+                module: .calendar,
+                eyebrow: "Selected Day",
+                title: daySectionTitle,
+                message: "\(eventsForSelectedDate.count) event\(eventsForSelectedDate.count == 1 ? "" : "s") and \(dueTasksForSelectedDate.count) due task\(dueTasksForSelectedDate.count == 1 ? "" : "s")."
+            )
+
+            HubTabPicker(tabs: [.overview, .entries, .review], selectedTab: $selectedTab, theme: AppModule.calendar.theme)
+
             switch selectedTab {
             case .overview:
                 CalendarOverviewTab(
@@ -95,7 +102,7 @@ private struct CalendarOverviewTab: View {
     let dueTasksForSelectedDate: [TaskItem]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ModuleSpacing.small) {
+        VStack(alignment: .leading, spacing: ModuleSpacing.large) {
             CalendarOverviewCard(
                 eventCount: eventsForSelectedDate.count,
                 taskCount: dueTasksForSelectedDate.count
@@ -111,7 +118,7 @@ private struct CalendarAgendaTab: View {
     let addEvent: () -> Void
 
     var body: some View {
-        ModuleActivityFeedSection(title: daySectionTitle) {
+        ModuleListSection(title: daySectionTitle) {
             if eventsForSelectedDate.isEmpty {
                 CalendarEmptyStateView(
                     title: "No events on this day",
@@ -133,29 +140,29 @@ private struct CalendarReviewTab: View {
     let upcomingEvents: [CalendarEvent]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ModuleSpacing.small) {
+        VStack(alignment: .leading, spacing: ModuleSpacing.large) {
             if dueTasksForSelectedDate.isEmpty == false {
-                ModuleActivityFeedSection(title: "Tasks Due") {
+                ModuleListSection(title: "Tasks Due") {
                     ForEach(dueTasksForSelectedDate) { task in
                         CalendarTaskCard(task: task)
                     }
                 }
             }
 
-            if upcomingEvents.isEmpty {
-                ModuleEmptyStateCard(
-                    theme: AppModule.calendar.theme,
-                    title: "No upcoming events outside this day",
-                    message: "Future blocks will show here so you can scan beyond the selected date without leaving the module hub.",
-                    actionTitle: "Stay Focused",
-                    action: {}
-                )
-            } else {
-                ModuleActivityFeedSection(title: "Upcoming") {
+            if upcomingEvents.isEmpty == false {
+                ModuleDisclosureSection(title: "Upcoming", theme: AppModule.calendar.theme) {
                     ForEach(upcomingEvents.prefix(5)) { event in
                         CalendarEventCard(event: event)
                     }
                 }
+            } else if dueTasksForSelectedDate.isEmpty {
+                ModuleInlineEmptyState(
+                    theme: AppModule.calendar.theme,
+                    title: "Nothing urgent beyond this day",
+                    message: "Future blocks will appear here when the schedule extends past the selected date.",
+                    actionTitle: "Add Event",
+                    action: {}
+                )
             }
         }
     }
@@ -166,11 +173,9 @@ private struct CalendarOverviewCard: View {
     let taskCount: Int
 
     var body: some View {
-        ModuleVisualizationContainer(title: "Day Snapshot") {
-            HStack(spacing: 12) {
-                ModuleMetricChip(theme: AppModule.calendar.theme, title: "Events", value: "\(eventCount)")
-                ModuleMetricChip(theme: AppModule.calendar.theme, title: "Due Tasks", value: "\(taskCount)")
-            }
+        ModuleMetricStrip(theme: AppModule.calendar.theme) {
+            ModuleMetricChip(theme: AppModule.calendar.theme, title: "Events", value: "\(eventCount)")
+            ModuleMetricChip(theme: AppModule.calendar.theme, title: "Due Tasks", value: "\(taskCount)")
         }
     }
 }
@@ -179,9 +184,10 @@ private struct CalendarDateCard: View {
     @Binding var selectedDate: Date
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        ModuleRowSurface(theme: AppModule.calendar.theme) {
             Text("Selected Day")
                 .font(ModuleTypography.cardTitle)
+                .foregroundStyle(AppModule.calendar.theme.textPrimary)
             DatePicker(
                 "Day",
                 selection: $selectedDate,
@@ -189,9 +195,8 @@ private struct CalendarDateCard: View {
             )
             .datePickerStyle(.graphical)
             .labelsHidden()
+            .colorScheme(.dark)
         }
-        .padding(ModuleSpacing.medium)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
     }
 }
 
@@ -199,29 +204,31 @@ private struct CalendarEventCard: View {
     let event: CalendarEvent
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(spacing: 6) {
-                Text(event.startDate.formatted(.dateTime.hour().minute()))
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                Rectangle()
-                    .fill(AppModule.calendar.theme.primary.opacity(0.4))
-                    .frame(width: 2, height: 36)
-            }
-            .frame(width: 56)
+        ModuleRowSurface(theme: AppModule.calendar.theme) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(spacing: 6) {
+                    Text(event.startDate.formatted(.dateTime.hour().minute()))
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(AppModule.calendar.theme.textPrimary)
+                    Rectangle()
+                        .fill(AppModule.calendar.theme.primary.opacity(0.4))
+                        .frame(width: 2, height: 36)
+                }
+                .frame(width: 56)
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text(event.title)
-                    .font(.headline)
-                Text(timeRangeText)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(event.title)
+                        .font(.headline)
+                        .foregroundStyle(AppModule.calendar.theme.textPrimary)
+                    Text(timeRangeText)
+                        .font(.subheadline)
+                        .foregroundStyle(AppModule.calendar.theme.textSecondary)
+                }
 
-            Spacer()
+                Spacer()
+            }
         }
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
     }
 
     private var timeRangeText: String {
@@ -233,22 +240,23 @@ private struct CalendarTaskCard: View {
     let task: TaskItem
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "checkmark.circle")
-                .foregroundStyle(AppModule.taskProtocol.theme.primary)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(task.title)
-                    .font(.headline)
-                if let dueDate = task.dueDate {
-                    Text(dueDate.formatted(date: .omitted, time: .omitted))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+        ModuleRowSurface(theme: AppModule.calendar.theme) {
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark.circle")
+                    .foregroundStyle(AppModule.taskProtocol.theme.primary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(task.title)
+                        .font(.headline)
+                        .foregroundStyle(AppModule.calendar.theme.textPrimary)
+                    if let dueDate = task.dueDate {
+                        Text(dueDate.formatted(date: .omitted, time: .omitted))
+                            .font(.caption)
+                            .foregroundStyle(AppModule.calendar.theme.textSecondary)
+                    }
                 }
+                Spacer()
             }
-            Spacer()
         }
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
     }
 }
 
@@ -259,18 +267,13 @@ private struct CalendarEmptyStateView: View {
     let action: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.headline)
-            Text(message)
-                .foregroundStyle(.secondary)
-            Button(actionTitle, action: action)
-                .buttonStyle(.borderedProminent)
-                .tint(AppModule.calendar.theme.primary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(ModuleSpacing.medium)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
+        ModuleInlineEmptyState(
+            theme: AppModule.calendar.theme,
+            title: title,
+            message: message,
+            actionTitle: actionTitle,
+            action: action
+        )
     }
 }
 
@@ -333,6 +336,7 @@ private struct AddEventSheet: View {
         CalendarView()
     }
     .modelContainer(PreviewCatalog.populatedApp)
+    .preferredColorScheme(.dark)
 }
 
 #Preview("Calendar Agenda") {
@@ -340,6 +344,7 @@ private struct AddEventSheet: View {
         CalendarView(initialTab: .entries)
     }
     .modelContainer(PreviewCatalog.populatedApp)
+    .preferredColorScheme(.dark)
 }
 
 #Preview("Calendar Empty") {
@@ -347,4 +352,5 @@ private struct AddEventSheet: View {
         CalendarView(initialTab: .entries)
     }
     .modelContainer(PreviewCatalog.emptyApp)
+    .preferredColorScheme(.dark)
 }
