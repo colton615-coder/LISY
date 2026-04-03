@@ -37,7 +37,18 @@ if [[ -n "$APP_BUNDLE_PATH" && -d "$APP_BUNDLE_PATH" && -n "$APP_BUNDLE_ID" ]]; 
   xcrun simctl uninstall booted "$APP_BUNDLE_ID" >/dev/null 2>&1 || true
 
   echo "Installing app bundle from: $APP_BUNDLE_PATH"
-  xcrun simctl install booted "$APP_BUNDLE_PATH"
+  if [[ -f "$APP_BUNDLE_PATH/Info.plist" ]]; then
+    echo "Found app bundle Info.plist at: $APP_BUNDLE_PATH/Info.plist"
+  fi
+
+  install_stderr="$(mktemp)"
+  if ! xcrun simctl install booted "$APP_BUNDLE_PATH" 2>"$install_stderr"; then
+    echo "simctl install failed for app bundle: $APP_BUNDLE_PATH" >&2
+    cat "$install_stderr" >&2
+    rm -f "$install_stderr"
+    exit 1
+  fi
+  rm -f "$install_stderr"
 
   echo "Launching app for screenshot capture: $APP_BUNDLE_ID"
   xcrun simctl terminate booted "$APP_BUNDLE_ID" >/dev/null 2>&1 || true
