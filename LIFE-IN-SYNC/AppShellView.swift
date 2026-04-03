@@ -1,8 +1,13 @@
+import SwiftData
 import SwiftUI
 
 struct AppShellView: View {
     @State private var selectedModule: AppModule = .dashboard
     @State private var isShowingModuleMenu = false
+
+    init(initialModule: AppModule = .dashboard) {
+        _selectedModule = State(initialValue: initialModule)
+    }
 
     var body: some View {
         NavigationStack {
@@ -63,6 +68,12 @@ struct AppShellView: View {
     }
 }
 
-#Preview("Shell") {
+#Preview("Shell Dashboard") {
     AppShellView()
+        .modelContainer(PreviewCatalog.populatedApp)
+}
+
+#Preview("Shell Calendar") {
+    AppShellView(initialModule: .calendar)
+        .modelContainer(PreviewCatalog.populatedApp)
 }

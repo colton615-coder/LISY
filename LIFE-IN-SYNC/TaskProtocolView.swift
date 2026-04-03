@@ -287,9 +287,16 @@ private struct AddTaskSheet: View {
     }
 }
 
-#Preview("Task Protocol") {
+#Preview("Task Protocol Empty") {
     PreviewScreenContainer {
         TaskProtocolView()
     }
-    .modelContainer(for: TaskItem.self, inMemory: true)
+    .modelContainer(PreviewCatalog.emptyApp)
+}
+
+#Preview("Task Protocol Queue") {
+    PreviewScreenContainer {
+        TaskProtocolView()
+    }
+    .modelContainer(PreviewCatalog.populatedApp)
 }

@@ -8,6 +8,10 @@ struct CapitalCoreView: View {
     @State private var isShowingAddBudget = false
     @State private var selectedTab: ModuleHubTab = .overview
 
+    init(initialTab: ModuleHubTab = .overview) {
+        _selectedTab = State(initialValue: initialTab)
+    }
+
     var body: some View {
         ModuleHubScaffold(
             module: .capitalCore,
@@ -372,9 +376,23 @@ private struct AddBudgetSheet: View {
     }
 }
 
-#Preview("Capital Core") {
+#Preview("Capital Core Overview") {
     PreviewScreenContainer {
         CapitalCoreView()
     }
-    .modelContainer(for: [ExpenseRecord.self, BudgetRecord.self], inMemory: true)
+    .modelContainer(PreviewCatalog.populatedApp)
+}
+
+#Preview("Capital Core Entries") {
+    PreviewScreenContainer {
+        CapitalCoreView(initialTab: .entries)
+    }
+    .modelContainer(PreviewCatalog.populatedApp)
+}
+
+#Preview("Capital Core Empty") {
+    PreviewScreenContainer {
+        CapitalCoreView(initialTab: .overview)
+    }
+    .modelContainer(PreviewCatalog.emptyApp)
 }

@@ -6,6 +6,10 @@ struct GarageView: View {
     @State private var isShowingAddRecord = false
     @State private var selectedTab: ModuleHubTab = .overview
 
+    init(initialTab: ModuleHubTab = .overview) {
+        _selectedTab = State(initialValue: initialTab)
+    }
+
     var body: some View {
         ModuleHubScaffold(
             module: .garage,
@@ -173,9 +177,23 @@ private struct AddSwingRecordSheet: View {
     }
 }
 
-#Preview("Garage") {
+#Preview("Garage Overview") {
     PreviewScreenContainer {
         GarageView()
     }
-    .modelContainer(for: SwingRecord.self, inMemory: true)
+    .modelContainer(PreviewCatalog.populatedApp)
+}
+
+#Preview("Garage Records") {
+    PreviewScreenContainer {
+        GarageView(initialTab: .records)
+    }
+    .modelContainer(PreviewCatalog.populatedApp)
+}
+
+#Preview("Garage Empty") {
+    PreviewScreenContainer {
+        GarageView(initialTab: .records)
+    }
+    .modelContainer(PreviewCatalog.emptyApp)
 }

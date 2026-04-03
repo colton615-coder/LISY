@@ -1,7 +1,11 @@
 import SwiftUI
 
 struct LaunchAffirmationView: View {
-    private let entry = LaunchAffirmationEntry.dailySelection
+    private let entry: LaunchAffirmationEntry
+
+    init(entry: LaunchAffirmationEntry = .dailySelection) {
+        self.entry = entry
+    }
 
     var body: some View {
         ZStack {
@@ -46,7 +50,7 @@ struct LaunchAffirmationView: View {
     }
 }
 
-private struct LaunchAffirmationEntry {
+struct LaunchAffirmationEntry {
     let title: String
     let message: String
     let attribution: String
@@ -86,4 +90,14 @@ private struct LaunchAffirmationEntry {
 
 #Preview("Launch Affirmation") {
     LaunchAffirmationView()
+}
+
+#Preview("Launch Affirmation Alternate") {
+    LaunchAffirmationView(
+        entry: LaunchAffirmationEntry(
+            title: "Work the next clear thing.",
+            message: "A good system is strongest when it shortens hesitation without adding noise.",
+            attribution: "Preview state"
+        )
+    )
 }

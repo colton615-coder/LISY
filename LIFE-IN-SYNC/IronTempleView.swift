@@ -8,6 +8,10 @@ struct IronTempleView: View {
     @State private var isShowingLogSession = false
     @State private var selectedTab: ModuleHubTab = .overview
 
+    init(initialTab: ModuleHubTab = .overview) {
+        _selectedTab = State(initialValue: initialTab)
+    }
+
     var body: some View {
         ModuleHubScaffold(
             module: .ironTemple,
@@ -295,9 +299,23 @@ private struct LogWorkoutSessionSheet: View {
     }
 }
 
-#Preview("Iron Temple") {
+#Preview("Iron Temple Overview") {
     PreviewScreenContainer {
         IronTempleView()
     }
-    .modelContainer(for: [WorkoutTemplate.self, WorkoutSession.self], inMemory: true)
+    .modelContainer(PreviewCatalog.populatedApp)
+}
+
+#Preview("Iron Temple Builder") {
+    PreviewScreenContainer {
+        IronTempleView(initialTab: .builder)
+    }
+    .modelContainer(PreviewCatalog.populatedApp)
+}
+
+#Preview("Iron Temple Empty") {
+    PreviewScreenContainer {
+        IronTempleView(initialTab: .builder)
+    }
+    .modelContainer(PreviewCatalog.emptyApp)
 }

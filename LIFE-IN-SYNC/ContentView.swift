@@ -1,7 +1,12 @@
+import SwiftData
 import SwiftUI
 
 struct ContentView: View {
     @State private var isShowingLaunchAffirmation = !LaunchAffirmationConfiguration.shouldSkip
+
+    init(showLaunchAffirmation: Bool = !LaunchAffirmationConfiguration.shouldSkip) {
+        _isShowingLaunchAffirmation = State(initialValue: showLaunchAffirmation)
+    }
 
     var body: some View {
         ZStack {
@@ -35,6 +40,12 @@ private enum LaunchAffirmationConfiguration {
     }
 }
 
-#Preview("App Shell") {
-    ContentView()
+#Preview("Content Launch") {
+    ContentView(showLaunchAffirmation: true)
+        .modelContainer(PreviewCatalog.populatedApp)
+}
+
+#Preview("Content Shell") {
+    ContentView(showLaunchAffirmation: false)
+        .modelContainer(PreviewCatalog.populatedApp)
 }

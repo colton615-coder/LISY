@@ -6,6 +6,10 @@ struct BibleStudyView: View {
     @State private var isShowingAddEntry = false
     @State private var selectedTab: ModuleHubTab = .overview
 
+    init(initialTab: ModuleHubTab = .overview) {
+        _selectedTab = State(initialValue: initialTab)
+    }
+
     var body: some View {
         ModuleHubScaffold(
             module: .bibleStudy,
@@ -194,9 +198,23 @@ private struct AddStudyEntrySheet: View {
     }
 }
 
-#Preview("Bible Study") {
+#Preview("Bible Study Overview") {
     PreviewScreenContainer {
         BibleStudyView()
     }
-    .modelContainer(for: StudyEntry.self, inMemory: true)
+    .modelContainer(PreviewCatalog.populatedApp)
+}
+
+#Preview("Bible Study Review") {
+    PreviewScreenContainer {
+        BibleStudyView(initialTab: .review)
+    }
+    .modelContainer(PreviewCatalog.populatedApp)
+}
+
+#Preview("Bible Study Empty") {
+    PreviewScreenContainer {
+        BibleStudyView(initialTab: .entries)
+    }
+    .modelContainer(PreviewCatalog.emptyApp)
 }

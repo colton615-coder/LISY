@@ -203,9 +203,16 @@ private struct AddSupplyItemSheet: View {
     }
 }
 
-#Preview("Supply List") {
+#Preview("Supply List Empty") {
     PreviewScreenContainer {
         SupplyListView()
     }
-    .modelContainer(for: SupplyItem.self, inMemory: true)
+    .modelContainer(PreviewCatalog.emptyApp)
+}
+
+#Preview("Supply List Grouped") {
+    PreviewScreenContainer {
+        SupplyListView()
+    }
+    .modelContainer(PreviewCatalog.populatedApp)
 }

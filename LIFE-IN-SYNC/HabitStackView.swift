@@ -275,9 +275,16 @@ private struct AddHabitSheet: View {
     }
 }
 
-#Preview("Habit Stack") {
+#Preview("Habit Stack Empty") {
     PreviewScreenContainer {
         HabitStackView()
     }
-    .modelContainer(for: [Habit.self, HabitEntry.self], inMemory: true)
+    .modelContainer(PreviewCatalog.emptyApp)
+}
+
+#Preview("Habit Stack Active") {
+    PreviewScreenContainer {
+        HabitStackView()
+    }
+    .modelContainer(PreviewCatalog.populatedApp)
 }

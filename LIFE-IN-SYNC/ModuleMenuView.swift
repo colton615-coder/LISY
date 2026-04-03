@@ -40,8 +40,14 @@ struct ModuleMenuView: View {
     }
 }
 
-#Preview("Module Menu") {
+#Preview("Module Menu Dashboard") {
     NavigationStack {
         ModuleMenuView(selectedModule: .constant(.dashboard))
+    }
+}
+
+#Preview("Module Menu Calendar Selected") {
+    NavigationStack {
+        ModuleMenuView(selectedModule: .constant(.calendar))
     }
 }

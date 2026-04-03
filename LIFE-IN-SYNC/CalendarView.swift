@@ -8,6 +8,11 @@ struct CalendarView: View {
     @State private var isShowingAddEvent = false
     @State private var selectedTab: ModuleHubTab = .overview
 
+    init(initialSelectedDate: Date = Calendar.current.startOfDay(for: .now), initialTab: ModuleHubTab = .overview) {
+        _selectedDate = State(initialValue: initialSelectedDate)
+        _selectedTab = State(initialValue: initialTab)
+    }
+
     var body: some View {
         ModuleHubScaffold(
             module: .calendar,
@@ -323,9 +328,23 @@ private struct AddEventSheet: View {
     }
 }
 
-#Preview("Calendar") {
+#Preview("Calendar Overview") {
     PreviewScreenContainer {
         CalendarView()
     }
-    .modelContainer(for: [CalendarEvent.self, TaskItem.self], inMemory: true)
+    .modelContainer(PreviewCatalog.populatedApp)
+}
+
+#Preview("Calendar Agenda") {
+    PreviewScreenContainer {
+        CalendarView(initialTab: .entries)
+    }
+    .modelContainer(PreviewCatalog.populatedApp)
+}
+
+#Preview("Calendar Empty") {
+    PreviewScreenContainer {
+        CalendarView(initialTab: .entries)
+    }
+    .modelContainer(PreviewCatalog.emptyApp)
 }

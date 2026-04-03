@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 enum ModuleHubTab: String, CaseIterable, Identifiable {
@@ -44,6 +45,174 @@ struct PreviewScreenContainer<Content: View>: View {
         NavigationStack {
             content
         }
+    }
+}
+
+@MainActor
+enum PreviewCatalog {
+    static let emptyApp = makeContainer()
+    static let populatedApp = makeContainer(seed: .populated)
+
+    private enum SeedStyle {
+        case empty
+        case populated
+    }
+
+    private static func makeContainer(seed: SeedStyle = .empty) -> ModelContainer {
+        do {
+            let container = try ModelContainer(
+                for: Schema([
+                    Habit.self,
+                    HabitEntry.self,
+                    TaskItem.self,
+                    CalendarEvent.self,
+                    SupplyItem.self,
+                    ExpenseRecord.self,
+                    BudgetRecord.self,
+                    WorkoutTemplate.self,
+                    WorkoutSession.self,
+                    StudyEntry.self,
+                    SwingRecord.self
+                ]),
+                configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+            )
+
+            if seed == .populated {
+                seedPopulatedData(into: container.mainContext)
+            }
+
+            return container
+        } catch {
+            fatalError("Unable to create preview container: \(error)")
+        }
+    }
+
+    private static func seedPopulatedData(into context: ModelContext) {
+        let calendar = Calendar.current
+        let now = Date()
+        let startOfToday = calendar.startOfDay(for: now)
+
+        let morningPrayer = Habit(
+            name: "Morning Prayer",
+            targetCount: 1,
+            createdAt: calendar.date(byAdding: .day, value: -21, to: now) ?? now
+        )
+        let walk = Habit(
+            name: "Evening Walk",
+            targetCount: 2,
+            createdAt: calendar.date(byAdding: .day, value: -10, to: now) ?? now
+        )
+
+        let habits = [morningPrayer, walk]
+        habits.forEach(context.insert)
+
+        let habitEntries = [
+            HabitEntry(habitID: morningPrayer.id, habitName: morningPrayer.name, loggedAt: calendar.date(byAdding: .hour, value: 7, to: startOfToday) ?? now),
+            HabitEntry(habitID: walk.id, habitName: walk.name, loggedAt: calendar.date(byAdding: .hour, value: 18, to: startOfToday) ?? now),
+            HabitEntry(habitID: walk.id, habitName: walk.name, loggedAt: calendar.date(byAdding: .day, value: -1, to: calendar.date(byAdding: .hour, value: 18, to: startOfToday) ?? now) ?? now),
+            HabitEntry(habitID: walk.id, habitName: walk.name, loggedAt: calendar.date(byAdding: .day, value: -1, to: calendar.date(byAdding: .hour, value: 19, to: startOfToday) ?? now) ?? now)
+        ]
+        habitEntries.forEach(context.insert)
+
+        let tasks = [
+            TaskItem(
+                title: "Ship preview workflow",
+                priority: TaskPriority.high.rawValue,
+                dueDate: calendar.date(byAdding: .hour, value: 6, to: now),
+                createdAt: calendar.date(byAdding: .day, value: -1, to: now) ?? now
+            ),
+            TaskItem(
+                title: "Refine dashboard module pulse",
+                priority: TaskPriority.medium.rawValue,
+                dueDate: calendar.date(byAdding: .day, value: 1, to: now),
+                createdAt: calendar.date(byAdding: .hour, value: -8, to: now) ?? now
+            ),
+            TaskItem(
+                title: "Review launch affirmation tone",
+                priority: TaskPriority.low.rawValue,
+                dueDate: nil,
+                isCompleted: true,
+                createdAt: calendar.date(byAdding: .day, value: -2, to: now) ?? now
+            )
+        ]
+        tasks.forEach(context.insert)
+
+        let standupStart = calendar.date(byAdding: .hour, value: 9, to: startOfToday) ?? now
+        let workoutStart = calendar.date(byAdding: .hour, value: 17, to: startOfToday) ?? now
+        let events = [
+            CalendarEvent(
+                title: "Project Standup",
+                startDate: standupStart,
+                endDate: calendar.date(byAdding: .minute, value: 30, to: standupStart) ?? standupStart
+            ),
+            CalendarEvent(
+                title: "Gym Block",
+                startDate: workoutStart,
+                endDate: calendar.date(byAdding: .hour, value: 1, to: workoutStart) ?? workoutStart
+            ),
+            CalendarEvent(
+                title: "Budget Review",
+                startDate: calendar.date(byAdding: .day, value: 1, to: calendar.date(byAdding: .hour, value: 11, to: startOfToday) ?? now) ?? now,
+                endDate: calendar.date(byAdding: .day, value: 1, to: calendar.date(byAdding: .hour, value: 12, to: startOfToday) ?? now) ?? now
+            )
+        ]
+        events.forEach(context.insert)
+
+        let supplyItems = [
+            SupplyItem(title: "Greek yogurt", category: "Groceries"),
+            SupplyItem(title: "Trash bags", category: "Household"),
+            SupplyItem(title: "Protein powder", category: "Personal"),
+            SupplyItem(title: "Paper towels", category: "Household", isPurchased: true)
+        ]
+        supplyItems.forEach(context.insert)
+
+        let expenses = [
+            ExpenseRecord(title: "Gas", amount: 48.20, category: "Transport", recordedAt: calendar.date(byAdding: .day, value: -2, to: now) ?? now),
+            ExpenseRecord(title: "Groceries", amount: 86.45, category: "Food", recordedAt: calendar.date(byAdding: .day, value: -1, to: now) ?? now)
+        ]
+        expenses.forEach(context.insert)
+
+        let budgets = [
+            BudgetRecord(title: "Food", limitAmount: 500, periodLabel: "Monthly"),
+            BudgetRecord(title: "Transport", limitAmount: 180, periodLabel: "Monthly")
+        ]
+        budgets.forEach(context.insert)
+
+        let workoutTemplates = [
+            WorkoutTemplate(name: "Upper Body Strength", createdAt: calendar.date(byAdding: .day, value: -14, to: now) ?? now),
+            WorkoutTemplate(name: "Conditioning Circuit", createdAt: calendar.date(byAdding: .day, value: -8, to: now) ?? now)
+        ]
+        workoutTemplates.forEach(context.insert)
+
+        let workouts = [
+            WorkoutSession(templateName: "Upper Body", performedAt: calendar.date(byAdding: .day, value: -1, to: now) ?? now, durationMinutes: 55),
+            WorkoutSession(templateName: "Run", performedAt: calendar.date(byAdding: .day, value: -3, to: now) ?? now, durationMinutes: 32)
+        ]
+        workouts.forEach(context.insert)
+
+        let studyEntries = [
+            StudyEntry(
+                title: "Abide in the Vine",
+                passageReference: "John 15:1-11",
+                notes: "The strongest note is dependence before output.",
+                createdAt: calendar.date(byAdding: .day, value: -1, to: now) ?? now
+            ),
+            StudyEntry(
+                title: "Renewing the Mind",
+                passageReference: "Romans 12:1-2",
+                notes: "Transformation feels more like steady surrender than one dramatic turn.",
+                createdAt: calendar.date(byAdding: .day, value: -4, to: now) ?? now
+            )
+        ]
+        studyEntries.forEach(context.insert)
+
+        let swings = [
+            SwingRecord(title: "7 Iron - Range Session", createdAt: calendar.date(byAdding: .day, value: -2, to: now) ?? now, notes: "Best strikes came with slower tempo."),
+            SwingRecord(title: "Driver - Tee Box Check", createdAt: calendar.date(byAdding: .day, value: -6, to: now) ?? now, notes: "Ball started right when setup drifted open.")
+        ]
+        swings.forEach(context.insert)
+
+        try? context.save()
     }
 }
 

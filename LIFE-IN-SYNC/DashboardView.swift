@@ -324,8 +324,16 @@ private struct DashboardStatCard: View {
     }
 }
 
-#Preview("Dashboard") {
+#Preview("Dashboard Empty") {
     PreviewScreenContainer {
         DashboardView(selectedModule: .constant(.dashboard))
     }
+    .modelContainer(PreviewCatalog.emptyApp)
+}
+
+#Preview("Dashboard Live") {
+    PreviewScreenContainer {
+        DashboardView(selectedModule: .constant(.dashboard))
+    }
+    .modelContainer(PreviewCatalog.populatedApp)
 }
