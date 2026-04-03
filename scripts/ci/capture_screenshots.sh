@@ -3,7 +3,6 @@ set -euo pipefail
 
 OUT_DIR="artifacts/screenshots"
 SIMULATOR_NAME="${SIMULATOR_NAME:-iPhone 16}"
-XCRESULT_PATH="${XCRESULT_PATH:-}"
 APP_BUNDLE_PATH="${APP_BUNDLE_PATH:-}"
 APP_BUNDLE_ID="${APP_BUNDLE_ID:-}"
 
@@ -30,176 +29,17 @@ fi
 rm -f "$boot_stderr"
 xcrun simctl bootstatus "$SIMULATOR_NAME" -b
 
-resolve_xcresult_path() {
-  if [[ -n "$XCRESULT_PATH" && -d "$XCRESULT_PATH" ]]; then
-    printf '%s\n' "$XCRESULT_PATH"
-    return 0
-  fi
-
-  local nullglob_was_set=0
-  local globstar_was_set=0
-  shopt -q nullglob && nullglob_was_set=1
-  shopt -q globstar && globstar_was_set=1
-
-  shopt -s nullglob globstar
-  local candidates=("$HOME"/Library/Developer/Xcode/DerivedData/**/Logs/Test/*.xcresult)
-
-  if (( nullglob_was_set == 0 )); then
-    shopt -u nullglob
-  fi
-  if (( globstar_was_set == 0 )); then
-    shopt -u globstar
-  fi
-  if (( ${#candidates[@]} == 0 )); then
-    return 1
-  fi
-
-  local latest
-  latest=$(ls -td "${candidates[@]}" | head -n 1)
-  printf '%s\n' "$latest"
-}
-
-export_from_xcresult() {
-  local xcresult_path="$1"
-  local json_path
-  json_path="$(mktemp -t xcresult.json.XXXXXX)"
-
-  cleanup_export_from_xcresult_json() {
-    trap - RETURN
-    rm -f "$json_path"
-  }
-  trap cleanup_export_from_xcresult_json RETURN
-  echo "Attempting Option A: export screenshots from xcresult"
-  xcrun xcresulttool get --path "$xcresult_path" --format json > "$json_path"
-
-  python3 - <<'PY' "$json_path" "$OUT_DIR"
-import json
-import os
-import subprocess
-import sys
-
-json_path, out_dir = sys.argv[1], sys.argv[2]
-with open(json_path, "r", encoding="utf-8") as f:
-    data = json.load(f)
-
-seen = set()
-exports = []
-
-
-def unwrap(value):
-    if isinstance(value, dict):
-        if "_value" in value and len(value) == 1:
-            return value["_value"]
-    return value
-
-
-def walk(node):
-    if isinstance(node, dict):
-        filename = unwrap(node.get("filename", ""))
-        uti = unwrap(node.get("uniformTypeIdentifier", ""))
-        name = unwrap(node.get("name", ""))
-        payload = node.get("payloadRef")
-
-        payload_id = None
-        if isinstance(payload, dict):
-            payload_id_obj = payload.get("id")
-            if isinstance(payload_id_obj, dict):
-                payload_id = unwrap(payload_id_obj)
-
-        looks_like_png = (
-            isinstance(filename, str)
-            and filename.lower().endswith(".png")
-        ) or (isinstance(uti, str) and "png" in uti.lower())
-
-        likely_launch = isinstance(name, str) and "launch" in name.lower()
-
-        if payload_id and looks_like_png:
-            safe_name = filename if isinstance(filename, str) and filename else f"attachment_{len(exports)+1}.png"
-            exports.append((payload_id, safe_name, likely_launch))
-
-        for v in node.values():
-            walk(v)
-
-    elif isinstance(node, list):
-        for item in node:
-            walk(item)
-
-
-walk(data)
-
-# Prefer launch-like attachments first, then other PNG attachments.
-exports.sort(key=lambda item: (not item[2], item[1]))
-
-selected = []
-for payload_id, filename, _ in exports:
-    if payload_id in seen:
-        continue
-    seen.add(payload_id)
-
-    base = os.path.basename(filename)
-    if not base.lower().endswith(".png"):
-        base = f"{base}.png"
-
-    output_path = os.path.join(out_dir, base)
-    counter = 1
-    while os.path.exists(output_path):
-        stem, ext = os.path.splitext(base)
-        output_path = os.path.join(out_dir, f"{stem}_{counter}{ext}")
-        counter += 1
-
-    selected.append((payload_id, output_path))
-
-if not selected:
-    print("No PNG attachments found in xcresult.")
-    sys.exit(3)
-
-xcresult_path = os.environ.get("XCRESULT_PATH_RESOLVED")
-if not xcresult_path:
-    print("Missing XCRESULT_PATH_RESOLVED environment variable.")
-    sys.exit(4)
-
-for payload_id, output_path in selected:
-    subprocess.run(
-        [
-            "xcrun",
-            "xcresulttool",
-            "export",
-            "--path",
-            xcresult_path,
-            "--id",
-            payload_id,
-            "--type",
-            "file",
-            "--output-path",
-            output_path,
-        ],
-        check=True,
-    )
-    print(output_path)
-PY
-}
-
-if resolved_xcresult="$(resolve_xcresult_path)"; then
-  echo "Using xcresult at: $resolved_xcresult"
-  if XCRESULT_PATH_RESOLVED="$resolved_xcresult" export_from_xcresult "$resolved_xcresult"; then
-    echo "Exported screenshot artifacts to:"
-    find "$OUT_DIR" -maxdepth 1 -type f -name '*.png' -print | sort
-    exit 0
-  fi
-  echo "Option A failed; falling back to Option B."
-else
-  echo "No xcresult bundle found; falling back to Option B."
-fi
-
-echo "Running Option B: direct simulator screenshot"
 fallback_path="$OUT_DIR/launch.png"
 
 if [[ -n "$APP_BUNDLE_PATH" && -d "$APP_BUNDLE_PATH" && -n "$APP_BUNDLE_ID" ]]; then
-  echo "Installing app for fallback screenshot: $APP_BUNDLE_ID"
+  echo "Installing app for screenshot capture: $APP_BUNDLE_ID"
   xcrun simctl install booted "$APP_BUNDLE_PATH"
   xcrun simctl terminate booted "$APP_BUNDLE_ID" >/dev/null 2>&1 || true
   xcrun simctl launch booted "$APP_BUNDLE_ID"
   sleep 3
+else
+  echo "Missing APP_BUNDLE_PATH or APP_BUNDLE_ID for screenshot capture." >&2
+  exit 1
 fi
 
 xcrun simctl io booted screenshot "$fallback_path"
