@@ -105,7 +105,8 @@ private struct GarageAnalysisWorkflowView: View {
                 pathPoints: record.pathPoints
             )
 
-            GarageTechnicalPanel(record: record, timestampForPhase: timestamp(for:))
+            GarageInsightsSection(report: insightReport)
+            GarageTechnicalPanel(record: record, report: insightReport, timestampForPhase: timestamp(for:))
         }
         .onAppear(perform: configurePlayer)
         .onDisappear {
@@ -126,6 +127,10 @@ private struct GarageAnalysisWorkflowView: View {
 
     private var duration: Double {
         max(record.swingFrames.last?.timestamp ?? 0, 0.1)
+    }
+
+    private var insightReport: GarageInsightReport {
+        GarageInsights.report(for: record)
     }
 
     private func configurePlayer() {
@@ -739,6 +744,7 @@ private struct GaragePathReviewSection: View {
 
 private struct GarageTechnicalPanel: View {
     let record: SwingRecord
+    let report: GarageInsightReport
     let timestampForPhase: (SwingPhase) -> Double
 
     var body: some View {
@@ -754,7 +760,7 @@ private struct GarageTechnicalPanel: View {
                 GarageFieldRow(label: "Validation status", value: record.keyframeValidationStatus.title)
                 GarageFieldRow(label: "Hand anchors", value: "\(record.handAnchors.count)/8")
                 GarageFieldRow(label: "Path generation", value: record.pathPoints.isEmpty ? "Pending" : "Ready")
-                GarageFieldRow(label: "Metrics readiness", value: "Pending")
+                GarageFieldRow(label: "Metrics readiness", value: report.readiness)
                 GarageFieldRow(label: "Adjusted keyframes", value: "\(record.keyFrames.filter { $0.source == .adjusted }.count)")
             }
 
@@ -768,6 +774,72 @@ private struct GarageTechnicalPanel: View {
                         label: keyFrame.phase.reviewTitle,
                         value: "\(keyFrame.source.title) • Frame \(keyFrame.frameIndex + 1) • \(String(format: "%.2fs", timestampForPhase(keyFrame.phase)))"
                     )
+                }
+            }
+        }
+    }
+}
+
+private struct GarageInsightsSection: View {
+    let report: GarageInsightReport
+
+    private let columns = [
+        GridItem(.flexible(), spacing: ModuleSpacing.small),
+        GridItem(.flexible(), spacing: ModuleSpacing.small)
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ModuleSpacing.small) {
+            DashboardLikeSectionTitle(
+                title: "4. Output layer insights",
+                subtitle: "Derived from the saved keyframes, pose frames, and grip path you validated."
+            )
+
+            ModuleRowSurface(theme: AppModule.garage.theme) {
+                Text(report.readiness)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(AppModule.garage.theme.primary)
+                Text(report.summary)
+                    .foregroundStyle(AppModule.garage.theme.textSecondary)
+            }
+
+            LazyVGrid(columns: columns, spacing: ModuleSpacing.small) {
+                ForEach(report.metrics) { metric in
+                    ModuleRowSurface(theme: AppModule.garage.theme) {
+                        Text(metric.title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(AppModule.garage.theme.textSecondary)
+                        Text(metric.value)
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(AppModule.garage.theme.textPrimary)
+                        Text(metric.detail)
+                            .font(.caption)
+                            .foregroundStyle(AppModule.garage.theme.textMuted)
+                    }
+                }
+            }
+
+            if report.highlights.isEmpty == false {
+                ModuleRowSurface(theme: AppModule.garage.theme) {
+                    Text("Highlights")
+                        .font(.headline)
+                        .foregroundStyle(AppModule.garage.theme.textPrimary)
+                    ForEach(report.highlights, id: \.self) { highlight in
+                        Text("• \(highlight)")
+                            .foregroundStyle(AppModule.garage.theme.textSecondary)
+                    }
+                }
+            }
+
+            if report.issues.isEmpty == false {
+                ModuleRowSurface(theme: AppModule.garage.theme) {
+                    Text("Review Notes")
+                        .font(.headline)
+                        .foregroundStyle(AppModule.garage.theme.textPrimary)
+                    ForEach(report.issues, id: \.self) { issue in
+                        Text("• \(issue)")
+                            .foregroundStyle(AppModule.garage.theme.textSecondary)
+                    }
                 }
             }
         }

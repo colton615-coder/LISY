@@ -9,6 +9,272 @@ struct GarageAnalysisOutput {
     let analysisResult: AnalysisResult
 }
 
+struct GarageInsightMetric: Identifiable, Equatable {
+    let title: String
+    let value: String
+    let detail: String
+
+    var id: String { title }
+}
+
+struct GarageInsightReport: Equatable {
+    let readiness: String
+    let summary: String
+    let highlights: [String]
+    let issues: [String]
+    let metrics: [GarageInsightMetric]
+
+    var isReady: Bool {
+        readiness == "Ready"
+    }
+}
+
+enum GarageInsights {
+    static func report(for record: SwingRecord) -> GarageInsightReport {
+        let baseSummary = record.analysisResult?.summary ?? "Swing analysis is in progress."
+        let baseHighlights = record.analysisResult?.highlights ?? []
+        var highlights = baseHighlights
+        var issues = record.analysisResult?.issues ?? []
+
+        let keyframeCount = record.keyFrames.count
+        let anchorCount = record.handAnchors.count
+        let adjustedCount = record.keyFrames.filter { $0.source == .adjusted }.count
+        let pathReady = record.pathPoints.isEmpty == false
+
+        let readiness: String
+        if keyframeCount < SwingPhase.allCases.count {
+            readiness = "Keyframes Incomplete"
+            issues.append("The detected swing phases are incomplete, so timing metrics are partial.")
+        } else if anchorCount < SwingPhase.allCases.count {
+            readiness = "Awaiting Anchors"
+            issues.append("Complete all eight grip anchors to unlock full path-derived measurements.")
+        } else if pathReady == false {
+            readiness = "Path Unavailable"
+            issues.append("All anchors are present, but the path was not generated.")
+        } else if record.keyframeValidationStatus == .flagged {
+            readiness = "Review Flagged"
+            issues.append("Keyframe validation is flagged, so treat the derived metrics as provisional.")
+        } else {
+            readiness = "Ready"
+        }
+
+        if adjustedCount > 0 {
+            highlights.append("\(adjustedCount) keyframe\(adjustedCount == 1 ? "" : "s") manually refined after auto-detection.")
+        }
+
+        let orderedKeyframes = record.keyFrames.sorted { lhs, rhs in
+            (SwingPhase.allCases.firstIndex(of: lhs.phase) ?? 0) < (SwingPhase.allCases.firstIndex(of: rhs.phase) ?? 0)
+        }
+        let frameIndexes = orderedKeyframes.map(\.frameIndex)
+        if frameIndexes != frameIndexes.sorted() {
+            issues.append("The saved keyframe order is no longer strictly increasing. Recheck the swing checkpoints.")
+        }
+
+        let timingMetrics = timingMetrics(for: record)
+        let anchorMetrics = anchorMetrics(for: record)
+        let coverageMetrics = coverageMetrics(for: record)
+        let metrics = timingMetrics + anchorMetrics + coverageMetrics
+
+        if let tempoMetric = metrics.first(where: { $0.title == "Tempo" }) {
+            highlights.append("Current tempo profile is \(tempoMetric.value) with the existing checkpoints.")
+        }
+
+        if let returnMetric = metrics.first(where: { $0.title == "Impact Return" }) {
+            highlights.append("Hands return to \(returnMetric.value) at impact relative to the address position.")
+        }
+
+        let summary: String
+        if readiness == "Ready" {
+            summary = "\(baseSummary) Full anchor coverage and path generation are complete, so the output layer is ready for review."
+        } else if anchorCount > 0 {
+            summary = "\(baseSummary) \(anchorCount) of \(SwingPhase.allCases.count) grip anchors are saved so far."
+        } else {
+            summary = baseSummary
+        }
+
+        return GarageInsightReport(
+            readiness: readiness,
+            summary: summary,
+            highlights: uniqueStrings(highlights),
+            issues: uniqueStrings(issues),
+            metrics: metrics
+        )
+    }
+
+    private static func timingMetrics(for record: SwingRecord) -> [GarageInsightMetric] {
+        let backswing = duration(from: .address, to: .topOfBackswing, in: record)
+        let downswing = duration(from: .topOfBackswing, to: .impact, in: record)
+        let takeaway = duration(from: .address, to: .takeaway, in: record)
+
+        var metrics: [GarageInsightMetric] = []
+        metrics.append(
+            GarageInsightMetric(
+                title: "Takeaway",
+                value: formattedSeconds(takeaway),
+                detail: "Time from setup to takeaway."
+            )
+        )
+        metrics.append(
+            GarageInsightMetric(
+                title: "Backswing",
+                value: formattedSeconds(backswing),
+                detail: "Time from address to the top of the swing."
+            )
+        )
+        metrics.append(
+            GarageInsightMetric(
+                title: "Downswing",
+                value: formattedSeconds(downswing),
+                detail: "Time from the top of the swing to impact."
+            )
+        )
+
+        if downswing > 0 {
+            let tempo = backswing / downswing
+            metrics.append(
+                GarageInsightMetric(
+                    title: "Tempo",
+                    value: String(format: "%.2f:1", tempo),
+                    detail: "Backswing to downswing timing ratio."
+                )
+            )
+        }
+
+        let averageConfidence = record.swingFrames.isEmpty
+            ? 0
+            : record.swingFrames.map(\.confidence).reduce(0, +) / Double(record.swingFrames.count)
+        metrics.append(
+            GarageInsightMetric(
+                title: "Pose Confidence",
+                value: String(format: "%.0f%%", averageConfidence * 100),
+                detail: "Average confidence across sampled pose frames."
+            )
+        )
+        return metrics
+    }
+
+    private static func anchorMetrics(for record: SwingRecord) -> [GarageInsightMetric] {
+        guard record.pathPoints.isEmpty == false else {
+            return []
+        }
+
+        var metrics: [GarageInsightMetric] = []
+        if let span = pathSpan(for: record.pathPoints) {
+            metrics.append(
+                GarageInsightMetric(
+                    title: "Path Window",
+                    value: "\(span.width)% × \(span.height)%",
+                    detail: "Normalized width and height of the traced grip path."
+                )
+            )
+        }
+
+        if let impactReturn = impactReturn(for: record) {
+            metrics.append(
+                GarageInsightMetric(
+                    title: "Impact Return",
+                    value: "\(impactReturn)%",
+                    detail: "Distance between address and impact hand centers, scaled by shoulder width."
+                )
+            )
+        }
+
+        return metrics
+    }
+
+    private static func coverageMetrics(for record: SwingRecord) -> [GarageInsightMetric] {
+        let totalPhases = SwingPhase.allCases.count
+        let anchorCoverage = Int((Double(record.handAnchors.count) / Double(totalPhases)) * 100)
+        let adjustedCount = record.keyFrames.filter { $0.source == .adjusted }.count
+        return [
+            GarageInsightMetric(
+                title: "Anchor Coverage",
+                value: "\(anchorCoverage)%",
+                detail: "\(record.handAnchors.count) of \(totalPhases) grip checkpoints saved."
+            ),
+            GarageInsightMetric(
+                title: "Adjusted Frames",
+                value: "\(adjustedCount)",
+                detail: "Keyframes manually moved after the automatic pass."
+            )
+        ]
+    }
+
+    private static func duration(from start: SwingPhase, to end: SwingPhase, in record: SwingRecord) -> Double {
+        guard
+            let startTime = timestamp(for: start, in: record),
+            let endTime = timestamp(for: end, in: record)
+        else {
+            return 0
+        }
+        return max(endTime - startTime, 0)
+    }
+
+    private static func timestamp(for phase: SwingPhase, in record: SwingRecord) -> Double? {
+        guard
+            let keyFrame = record.keyFrames.first(where: { $0.phase == phase }),
+            record.swingFrames.indices.contains(keyFrame.frameIndex)
+        else {
+            return nil
+        }
+        return record.swingFrames[keyFrame.frameIndex].timestamp
+    }
+
+    private static func pathSpan(for pathPoints: [PathPoint]) -> (width: Int, height: Int)? {
+        guard
+            let minX = pathPoints.map(\.x).min(),
+            let maxX = pathPoints.map(\.x).max(),
+            let minY = pathPoints.map(\.y).min(),
+            let maxY = pathPoints.map(\.y).max()
+        else {
+            return nil
+        }
+
+        return (
+            width: Int(((maxX - minX) * 100).rounded()),
+            height: Int(((maxY - minY) * 100).rounded())
+        )
+    }
+
+    private static func impactReturn(for record: SwingRecord) -> Int? {
+        guard
+            let addressFrame = frame(for: .address, in: record),
+            let impactFrame = frame(for: .impact, in: record)
+        else {
+            return nil
+        }
+
+        let addressHands = GarageAnalysisPipeline.handCenter(in: addressFrame)
+        let impactHands = GarageAnalysisPipeline.handCenter(in: impactFrame)
+        let shoulderWidth = GarageAnalysisPipeline.bodyScale(in: addressFrame)
+        guard shoulderWidth > 0 else {
+            return nil
+        }
+
+        let returnDistance = GarageAnalysisPipeline.distance(from: addressHands, to: impactHands)
+        return Int(((returnDistance / shoulderWidth) * 100).rounded())
+    }
+
+    private static func frame(for phase: SwingPhase, in record: SwingRecord) -> SwingFrame? {
+        guard
+            let keyFrame = record.keyFrames.first(where: { $0.phase == phase }),
+            record.swingFrames.indices.contains(keyFrame.frameIndex)
+        else {
+            return nil
+        }
+        return record.swingFrames[keyFrame.frameIndex]
+    }
+
+    private static func formattedSeconds(_ value: Double) -> String {
+        String(format: "%.2fs", value)
+    }
+
+    private static func uniqueStrings(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.filter { seen.insert($0).inserted }
+    }
+}
+
 enum GarageAnalysisError: LocalizedError {
     case missingVideoTrack
     case insufficientPoseFrames
@@ -234,7 +500,7 @@ enum GarageAnalysisPipeline {
         }
     }
 
-    private static func detectKeyFrames(from frames: [SwingFrame]) -> [KeyFrame] {
+    static func detectKeyFrames(from frames: [SwingFrame]) -> [KeyFrame] {
         let addressIndex = 0
         let topIndex = topOfBackswingIndex(in: frames, fallbackStart: addressIndex + 2)
         let takeawayIndex = takeawayIndex(in: frames, addressIndex: addressIndex, topIndex: topIndex)
@@ -354,13 +620,13 @@ enum GarageAnalysisPipeline {
         return candidate ?? frames.count - 1
     }
 
-    private static func handCenter(in frame: SwingFrame) -> CGPoint {
+    static func handCenter(in frame: SwingFrame) -> CGPoint {
         let left = frame.point(named: .leftWrist)
         let right = frame.point(named: .rightWrist)
         return CGPoint(x: (left.x + right.x) / 2, y: (left.y + right.y) / 2)
     }
 
-    private static func bodyScale(in frame: SwingFrame) -> Double {
+    static func bodyScale(in frame: SwingFrame) -> Double {
         distance(from: frame.point(named: .leftShoulder), to: frame.point(named: .rightShoulder))
     }
 
@@ -374,7 +640,7 @@ enum GarageAnalysisPipeline {
         CGPoint(x: (lhs.x + rhs.x) / 2, y: (lhs.y + rhs.y) / 2)
     }
 
-    private static func distance(from lhs: CGPoint, to rhs: CGPoint) -> Double {
+    static func distance(from lhs: CGPoint, to rhs: CGPoint) -> Double {
         let dx = lhs.x - rhs.x
         let dy = lhs.y - rhs.y
         return sqrt((dx * dx) + (dy * dy))

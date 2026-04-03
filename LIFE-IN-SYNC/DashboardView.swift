@@ -314,6 +314,10 @@ private struct DashboardSignalPill: View {
     let systemImage: String
     let accent: Color
 
+    private var accessibilityID: String {
+        "dashboard-signal-\(title.lowercased())"
+    }
+
     var body: some View {
         VStack(spacing: 8) {
             ZStack {
@@ -351,6 +355,8 @@ private struct DashboardSignalPill: View {
             RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
                 .stroke(AppModule.dashboard.theme.borderSubtle, lineWidth: 1)
         )
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(accessibilityID)
     }
 }
 

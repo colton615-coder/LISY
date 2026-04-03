@@ -18,7 +18,7 @@
   },
   "testTargets" : [
     {
-      "parallelizable" : true,
+      "parallelizable" : false,
       "target" : {
         "containerPath" : "container:LIFE-IN-SYNC.xcodeproj",
         "identifier" : "9CAE3F1E2F7CC8A300AA0414",
@@ -26,7 +26,6 @@
       }
     },
     {
-      "parallelizable" : true,
       "target" : {
         "containerPath" : "container:LIFE-IN-SYNC.xcodeproj",
         "identifier" : "9CAE3F282F7CC8A300AA0414",

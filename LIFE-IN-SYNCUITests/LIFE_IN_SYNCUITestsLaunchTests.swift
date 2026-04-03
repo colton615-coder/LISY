@@ -22,7 +22,6 @@ final class LIFE_IN_SYNCUITestsLaunchTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments.append("SKIP_LAUNCH_AFFIRMATION")
         app.launch()
-
         // Insert steps here to perform after app launch but before taking a screenshot,
         // such as logging into a test account or navigating somewhere in the app
         // XCUIAutomation Documentation

@@ -50,15 +50,14 @@ final class LIFE_IN_SYNCUITests: XCTestCase {
     }
 
     @MainActor
-    func testDashboardShowsTodaySnapshotCards() throws {
+    func testDashboardShowsCurrentSignalStrip() throws {
         let app = XCUIApplication()
         app.launchArguments.append("SKIP_LAUNCH_AFFIRMATION")
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["Habits"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.staticTexts["Tasks"].exists)
-        XCTAssertTrue(app.staticTexts["Events"].exists)
-        XCTAssertTrue(app.staticTexts["Items"].exists)
+        XCTAssertTrue(app.staticTexts["Open"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["Today"].exists)
+        XCTAssertTrue(app.staticTexts["Habits"].exists)
     }
 
     @MainActor
