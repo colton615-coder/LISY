@@ -33,7 +33,13 @@ fallback_path="$OUT_DIR/launch.png"
 
 if [[ -n "$APP_BUNDLE_PATH" && -d "$APP_BUNDLE_PATH" && -n "$APP_BUNDLE_ID" ]]; then
   echo "Installing app for screenshot capture: $APP_BUNDLE_ID"
+  echo "Removing any existing simulator install for: $APP_BUNDLE_ID"
+  xcrun simctl uninstall booted "$APP_BUNDLE_ID" >/dev/null 2>&1 || true
+
+  echo "Installing app bundle from: $APP_BUNDLE_PATH"
   xcrun simctl install booted "$APP_BUNDLE_PATH"
+
+  echo "Launching app for screenshot capture: $APP_BUNDLE_ID"
   xcrun simctl terminate booted "$APP_BUNDLE_ID" >/dev/null 2>&1 || true
   xcrun simctl launch booted "$APP_BUNDLE_ID"
   sleep 3
