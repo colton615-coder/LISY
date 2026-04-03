@@ -26,7 +26,7 @@ struct SupplyListView: View {
                         isShowingAddItem = true
                     }
                 } else {
-                    VStack(alignment: .leading, spacing: 16) {
+                    ModuleActivityFeedSection(title: "Remaining By Category") {
                         ForEach(groupedRemainingItems.keys.sorted(), id: \.self) { category in
                             if let categoryItems = groupedRemainingItems[category] {
                                 SupplyCategorySection(
@@ -39,10 +39,7 @@ struct SupplyListView: View {
                 }
 
                 if purchasedItems.isEmpty == false {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Purchased")
-                            .font(.headline)
-
+                    ModuleActivityFeedSection(title: "Purchased") {
                         ForEach(purchasedItems) { item in
                             SupplyItemRow(item: item)
                         }
@@ -53,19 +50,13 @@ struct SupplyListView: View {
         }
         .background(AppModule.supplyList.theme.screenGradient)
         .safeAreaInset(edge: .bottom) {
-            HStack {
-                Spacer()
-                Button {
-                    isShowingAddItem = true
-                } label: {
-                    Label("Add Item", systemImage: "plus")
-                        .fontWeight(.semibold)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(AppModule.supplyList.theme.primary)
+            ModuleBottomActionBar(
+                theme: AppModule.supplyList.theme,
+                title: "Add Item",
+                systemImage: "plus"
+            ) {
+                isShowingAddItem = true
             }
-            .padding()
-            .background(.ultraThinMaterial)
         }
         .sheet(isPresented: $isShowingAddItem) {
             AddSupplyItemSheet()
@@ -91,7 +82,7 @@ private struct SupplyOverviewCard: View {
     let purchasedCount: Int
 
     var body: some View {
-        ModuleSnapshotCard(title: "List Snapshot") {
+        ModuleVisualizationContainer(title: "List Snapshot") {
             HStack(spacing: 12) {
                 ModuleMetricChip(theme: AppModule.supplyList.theme, title: "Total", value: "\(totalCount)")
                 ModuleMetricChip(theme: AppModule.supplyList.theme, title: "Remaining", value: "\(remainingCount)")
@@ -143,7 +134,7 @@ private struct SupplyItemRow: View {
             Spacer()
         }
         .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
     }
 }
 

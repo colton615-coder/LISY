@@ -25,6 +25,7 @@ final class LIFE_IN_SYNCUITests: XCTestCase {
     @MainActor
     func testModuleMenuShowsCanonicalModules() throws {
         let app = XCUIApplication()
+        app.launchArguments.append("SKIP_LAUNCH_AFFIRMATION")
         app.launch()
 
         app.buttons["open-module-menu"].tap()
@@ -39,6 +40,7 @@ final class LIFE_IN_SYNCUITests: XCTestCase {
     @MainActor
     func testDashboardNavigatesToCalendarFromDashboardRow() throws {
         let app = XCUIApplication()
+        app.launchArguments.append("SKIP_LAUNCH_AFFIRMATION")
         app.launch()
 
         app.buttons["dashboard-module-calendar"].tap()
@@ -50,6 +52,7 @@ final class LIFE_IN_SYNCUITests: XCTestCase {
     @MainActor
     func testDashboardShowsTodaySnapshotCards() throws {
         let app = XCUIApplication()
+        app.launchArguments.append("SKIP_LAUNCH_AFFIRMATION")
         app.launch()
 
         XCTAssertTrue(app.staticTexts["Habits"].waitForExistence(timeout: 2))
@@ -62,7 +65,9 @@ final class LIFE_IN_SYNCUITests: XCTestCase {
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
+            let app = XCUIApplication()
+            app.launchArguments.append("SKIP_LAUNCH_AFFIRMATION")
+            app.launch()
         }
     }
 }

@@ -6,76 +6,49 @@ struct CalendarView: View {
     @Query(sort: \TaskItem.dueDate) private var tasks: [TaskItem]
     @State private var selectedDate = Calendar.current.startOfDay(for: .now)
     @State private var isShowingAddEvent = false
+    @State private var selectedTab: ModuleHubTab = .overview
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                ModuleHeroCard(
-                    module: .calendar,
-                    eyebrow: "Live Module",
-                    title: "Keep the day visible.",
-                    message: "Calendar owns time-based planning. It stays simple here: choose a day, create events, and review tasks with due dates."
+        ModuleHubScaffold(
+            module: .calendar,
+            title: "Keep the day visible.",
+            subtitle: "Calendar stays focused on time blocks, due dates, and a readable daily agenda.",
+            currentState: "\(eventsForSelectedDate.count) events and \(dueTasksForSelectedDate.count) due tasks on the selected day.",
+            nextAttention: eventsForSelectedDate.isEmpty ? "Add a time block to shape the day." : "Review the agenda and protect the next priority block.",
+            tabs: [.overview, .entries, .review],
+            selectedTab: $selectedTab
+        ) {
+            switch selectedTab {
+            case .overview:
+                CalendarOverviewTab(
+                    selectedDate: $selectedDate,
+                    eventsForSelectedDate: eventsForSelectedDate,
+                    dueTasksForSelectedDate: dueTasksForSelectedDate
                 )
-
-                CalendarDateCard(selectedDate: $selectedDate)
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(daySectionTitle)
-                        .font(.headline)
-
-                    if eventsForSelectedDate.isEmpty {
-                        CalendarEmptyStateView(
-                            title: "No events on this day",
-                            message: "Add a time block or appointment to start shaping the agenda.",
-                            actionTitle: "Add Event",
-                            action: { isShowingAddEvent = true }
-                        )
-                    } else {
-                        ForEach(eventsForSelectedDate) { event in
-                            CalendarEventCard(event: event)
-                        }
-                    }
-                }
-
-                if dueTasksForSelectedDate.isEmpty == false {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Tasks Due")
-                            .font(.headline)
-
-                        ForEach(dueTasksForSelectedDate) { task in
-                            CalendarTaskCard(task: task)
-                        }
-                    }
-                }
-
-                if upcomingEvents.isEmpty == false {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Upcoming")
-                            .font(.headline)
-
-                        ForEach(upcomingEvents.prefix(5)) { event in
-                            CalendarEventCard(event: event)
-                        }
-                    }
-                }
-            }
-            .padding()
-        }
-        .background(AppModule.calendar.theme.screenGradient)
-        .safeAreaInset(edge: .bottom) {
-            HStack {
-                Spacer()
-                Button {
+            case .entries:
+                CalendarAgendaTab(
+                    daySectionTitle: daySectionTitle,
+                    eventsForSelectedDate: eventsForSelectedDate
+                ) {
                     isShowingAddEvent = true
-                } label: {
-                    Label("Add Event", systemImage: "plus")
-                        .fontWeight(.semibold)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(AppModule.calendar.theme.primary)
+            case .review:
+                CalendarReviewTab(
+                    dueTasksForSelectedDate: dueTasksForSelectedDate,
+                    upcomingEvents: upcomingEvents
+                )
+            default:
+                EmptyView()
             }
-            .padding()
-            .background(.ultraThinMaterial)
+        }
+        .safeAreaInset(edge: .bottom) {
+            ModuleBottomActionBar(
+                theme: AppModule.calendar.theme,
+                title: "Add Event",
+                systemImage: "plus"
+            ) {
+                isShowingAddEvent = true
+            }
         }
         .sheet(isPresented: $isShowingAddEvent) {
             AddEventSheet(defaultDate: selectedDate)
@@ -111,13 +84,99 @@ struct CalendarView: View {
     }
 }
 
+private struct CalendarOverviewTab: View {
+    @Binding var selectedDate: Date
+    let eventsForSelectedDate: [CalendarEvent]
+    let dueTasksForSelectedDate: [TaskItem]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ModuleSpacing.small) {
+            CalendarOverviewCard(
+                eventCount: eventsForSelectedDate.count,
+                taskCount: dueTasksForSelectedDate.count
+            )
+            CalendarDateCard(selectedDate: $selectedDate)
+        }
+    }
+}
+
+private struct CalendarAgendaTab: View {
+    let daySectionTitle: String
+    let eventsForSelectedDate: [CalendarEvent]
+    let addEvent: () -> Void
+
+    var body: some View {
+        ModuleActivityFeedSection(title: daySectionTitle) {
+            if eventsForSelectedDate.isEmpty {
+                CalendarEmptyStateView(
+                    title: "No events on this day",
+                    message: "Add a time block or appointment to start shaping the agenda.",
+                    actionTitle: "Add Event",
+                    action: addEvent
+                )
+            } else {
+                ForEach(eventsForSelectedDate) { event in
+                    CalendarEventCard(event: event)
+                }
+            }
+        }
+    }
+}
+
+private struct CalendarReviewTab: View {
+    let dueTasksForSelectedDate: [TaskItem]
+    let upcomingEvents: [CalendarEvent]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ModuleSpacing.small) {
+            if dueTasksForSelectedDate.isEmpty == false {
+                ModuleActivityFeedSection(title: "Tasks Due") {
+                    ForEach(dueTasksForSelectedDate) { task in
+                        CalendarTaskCard(task: task)
+                    }
+                }
+            }
+
+            if upcomingEvents.isEmpty {
+                ModuleEmptyStateCard(
+                    theme: AppModule.calendar.theme,
+                    title: "No upcoming events outside this day",
+                    message: "Future blocks will show here so you can scan beyond the selected date without leaving the module hub.",
+                    actionTitle: "Stay Focused",
+                    action: {}
+                )
+            } else {
+                ModuleActivityFeedSection(title: "Upcoming") {
+                    ForEach(upcomingEvents.prefix(5)) { event in
+                        CalendarEventCard(event: event)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct CalendarOverviewCard: View {
+    let eventCount: Int
+    let taskCount: Int
+
+    var body: some View {
+        ModuleVisualizationContainer(title: "Day Snapshot") {
+            HStack(spacing: 12) {
+                ModuleMetricChip(theme: AppModule.calendar.theme, title: "Events", value: "\(eventCount)")
+                ModuleMetricChip(theme: AppModule.calendar.theme, title: "Due Tasks", value: "\(taskCount)")
+            }
+        }
+    }
+}
+
 private struct CalendarDateCard: View {
     @Binding var selectedDate: Date
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Selected Day")
-                .font(.headline)
+                .font(ModuleTypography.cardTitle)
             DatePicker(
                 "Day",
                 selection: $selectedDate,
@@ -126,8 +185,8 @@ private struct CalendarDateCard: View {
             .datePickerStyle(.graphical)
             .labelsHidden()
         }
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(ModuleSpacing.medium)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
     }
 }
 
@@ -157,7 +216,7 @@ private struct CalendarEventCard: View {
             Spacer()
         }
         .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
     }
 
     private var timeRangeText: String {
@@ -184,7 +243,7 @@ private struct CalendarTaskCard: View {
             Spacer()
         }
         .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
     }
 }
 
@@ -205,8 +264,8 @@ private struct CalendarEmptyStateView: View {
                 .tint(AppModule.calendar.theme.primary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(ModuleSpacing.medium)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
     }
 }
 

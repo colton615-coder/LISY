@@ -36,19 +36,13 @@ struct GarageView: View {
             }
         }
         .safeAreaInset(edge: .bottom) {
-            HStack {
-                Spacer()
-                Button {
-                    isShowingAddRecord = true
-                } label: {
-                    Label("Add Swing Record", systemImage: "plus")
-                        .fontWeight(.semibold)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(AppModule.garage.theme.primary)
+            ModuleBottomActionBar(
+                theme: AppModule.garage.theme,
+                title: "Add Swing Record",
+                systemImage: "plus"
+            ) {
+                isShowingAddRecord = true
             }
-            .padding()
-            .background(.ultraThinMaterial)
         }
         .sheet(isPresented: $isShowingAddRecord) {
             AddSwingRecordSheet()

@@ -4,54 +4,84 @@ import SwiftUI
 struct BibleStudyView: View {
     @Query(sort: \StudyEntry.createdAt, order: .reverse) private var entries: [StudyEntry]
     @State private var isShowingAddEntry = false
+    @State private var selectedTab: ModuleHubTab = .overview
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                ModuleHeroCard(
-                    module: .bibleStudy,
-                    eyebrow: "Live Module",
-                    title: "Keep study sessions simple and grounded.",
-                    message: "Bible Study starts with passage references, entry titles, and local notes so you can build a clear history over time."
-                )
-
+        ModuleHubScaffold(
+            module: .bibleStudy,
+            title: "Keep study sessions simple and grounded.",
+            subtitle: "Capture passages, preserve reflections, and keep review surfaces calm and text-first.",
+            currentState: "\(entries.count) study entries recorded locally.",
+            nextAttention: entries.isEmpty ? "Add a first passage and reflection." : "Review recent entries and return to the passages worth deeper meditation.",
+            tabs: [.overview, .entries, .review],
+            selectedTab: $selectedTab
+        ) {
+            switch selectedTab {
+            case .overview:
                 BibleStudyOverviewCard(entryCount: entries.count)
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Recent Study Entries")
-                        .font(.headline)
-
-                    if entries.isEmpty {
-                        BibleStudyEmptyStateView {
-                            isShowingAddEntry = true
-                        }
-                    } else {
-                        ForEach(entries.prefix(8)) { entry in
-                            StudyEntryCard(entry: entry)
-                        }
-                    }
-                }
-            }
-            .padding()
-        }
-        .background(AppModule.bibleStudy.theme.screenGradient)
-        .safeAreaInset(edge: .bottom) {
-            HStack {
-                Spacer()
-                Button {
+            case .entries:
+                BibleStudyEntriesTab(entries: entries) {
                     isShowingAddEntry = true
-                } label: {
-                    Label("Add Study Entry", systemImage: "plus")
-                        .fontWeight(.semibold)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(AppModule.bibleStudy.theme.primary)
+            case .review:
+                BibleStudyReviewTab(entries: entries)
+            default:
+                EmptyView()
             }
-            .padding()
-            .background(.ultraThinMaterial)
+        }
+        .safeAreaInset(edge: .bottom) {
+            ModuleBottomActionBar(
+                theme: AppModule.bibleStudy.theme,
+                title: "Add Study Entry",
+                systemImage: "plus"
+            ) {
+                isShowingAddEntry = true
+            }
         }
         .sheet(isPresented: $isShowingAddEntry) {
             AddStudyEntrySheet()
+        }
+    }
+}
+
+private struct BibleStudyEntriesTab: View {
+    let entries: [StudyEntry]
+    let addEntry: () -> Void
+
+    var body: some View {
+        ModuleActivityFeedSection(title: "Recent Study Entries") {
+            if entries.isEmpty {
+                BibleStudyEmptyStateView(action: addEntry)
+            } else {
+                ForEach(entries.prefix(8)) { entry in
+                    StudyEntryCard(entry: entry)
+                }
+            }
+        }
+    }
+}
+
+private struct BibleStudyReviewTab: View {
+    let entries: [StudyEntry]
+
+    var body: some View {
+        ModuleVisualizationContainer(title: "Review Lane") {
+            if let latestEntry = entries.first {
+                VStack(alignment: .leading, spacing: ModuleSpacing.small) {
+                    Text(latestEntry.passageReference)
+                        .font(.headline)
+                        .foregroundStyle(AppModule.bibleStudy.theme.primary)
+                    Text(latestEntry.title)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Text(latestEntry.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "No notes recorded on the latest entry." : latestEntry.notes)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(4)
+                }
+            } else {
+                Text("Review surfaces will become more useful once study history exists.")
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }
@@ -60,7 +90,7 @@ private struct BibleStudyOverviewCard: View {
     let entryCount: Int
 
     var body: some View {
-        ModuleSnapshotCard(title: "Study Snapshot") {
+        ModuleVisualizationContainer(title: "Study Snapshot") {
             HStack(spacing: 12) {
                 ModuleMetricChip(theme: AppModule.bibleStudy.theme, title: "Entries", value: "\(entryCount)")
                 ModuleMetricChip(theme: AppModule.bibleStudy.theme, title: "Focus", value: "Scripture")
@@ -94,7 +124,7 @@ private struct StudyEntryCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
     }
 }
 

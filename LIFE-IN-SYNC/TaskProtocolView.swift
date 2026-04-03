@@ -56,10 +56,7 @@ struct TaskProtocolView: View {
                     overdueCount: overdueTasks.count
                 )
 
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Open Tasks")
-                        .font(.headline)
-
+                ModuleActivityFeedSection(title: "Open Tasks") {
                     if openTasks.isEmpty {
                         TaskEmptyStateView(
                             title: "No open tasks",
@@ -80,10 +77,7 @@ struct TaskProtocolView: View {
                 }
 
                 if completedTasks.isEmpty == false {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Completed")
-                            .font(.headline)
-
+                    ModuleActivityFeedSection(title: "Completed") {
                         ForEach(completedTasks.prefix(5)) { task in
                             TaskCard(
                                 task: task,
@@ -99,19 +93,13 @@ struct TaskProtocolView: View {
         }
         .background(AppModule.taskProtocol.theme.screenGradient)
         .safeAreaInset(edge: .bottom) {
-            HStack {
-                Spacer()
-                Button {
-                    isShowingAddTask = true
-                } label: {
-                    Label("Add Task", systemImage: "plus")
-                        .fontWeight(.semibold)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(AppModule.taskProtocol.theme.primary)
+            ModuleBottomActionBar(
+                theme: AppModule.taskProtocol.theme,
+                title: "Add Task",
+                systemImage: "plus"
+            ) {
+                isShowingAddTask = true
             }
-            .padding()
-            .background(.ultraThinMaterial)
         }
         .sheet(isPresented: $isShowingAddTask) {
             AddTaskSheet { title, priority, dueDate in
@@ -170,7 +158,7 @@ private struct TaskOverviewCard: View {
     let overdueCount: Int
 
     var body: some View {
-        ModuleSnapshotCard(title: "Queue Snapshot") {
+        ModuleVisualizationContainer(title: "Queue Snapshot") {
             HStack(spacing: 12) {
                 ModuleMetricChip(theme: AppModule.taskProtocol.theme, title: "Open", value: "\(openCount)")
                 ModuleMetricChip(theme: AppModule.taskProtocol.theme, title: "Completed", value: "\(completedCount)")
@@ -244,9 +232,9 @@ private struct TaskCard: View {
             Spacer()
         }
         .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
                 .stroke(isOverdue ? Color.red.opacity(0.35) : .clear, lineWidth: 1.5)
         )
     }

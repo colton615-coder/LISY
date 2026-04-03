@@ -43,19 +43,13 @@ struct IronTempleView: View {
             }
         }
         .safeAreaInset(edge: .bottom) {
-            HStack {
-                Spacer()
-                Button {
-                    isShowingLogSession = true
-                } label: {
-                    Label("Log Session", systemImage: "plus")
-                        .fontWeight(.semibold)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(AppModule.ironTemple.theme.primary)
+            ModuleBottomActionBar(
+                theme: AppModule.ironTemple.theme,
+                title: "Log Session",
+                systemImage: "plus"
+            ) {
+                isShowingLogSession = true
             }
-            .padding()
-            .background(.ultraThinMaterial)
         }
         .sheet(isPresented: $isShowingAddTemplate) {
             AddWorkoutTemplateSheet()

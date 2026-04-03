@@ -23,11 +23,8 @@ struct HabitStackView: View {
                     totalTodayProgress: entriesForToday.reduce(0) { $0 + $1.count }
                 )
 
-                VStack(alignment: .leading, spacing: 12) {
+                ModuleActivityFeedSection(title: "Today's Habits") {
                     HStack {
-                        Text("Today's Habits")
-                            .font(.title3)
-                            .fontWeight(.semibold)
                         Spacer()
                         Button {
                             isShowingAddHabit = true
@@ -59,6 +56,15 @@ struct HabitStackView: View {
             .padding()
         }
         .background(AppModule.habitStack.theme.screenGradient)
+        .safeAreaInset(edge: .bottom) {
+            ModuleBottomActionBar(
+                theme: AppModule.habitStack.theme,
+                title: "Add Habit",
+                systemImage: "plus"
+            ) {
+                isShowingAddHabit = true
+            }
+        }
         .sheet(isPresented: $isShowingAddHabit) {
             AddHabitSheet { name, targetCount in
                 addHabit(name: name, targetCount: targetCount)
@@ -140,7 +146,7 @@ private struct HabitOverviewCard: View {
     let totalTodayProgress: Int
 
     var body: some View {
-        ModuleSnapshotCard(title: "Today Snapshot") {
+        ModuleVisualizationContainer(title: "Today Snapshot") {
             HStack(spacing: 12) {
                 ModuleMetricChip(theme: AppModule.habitStack.theme, title: "Habits", value: "\(habitCount)")
                 ModuleMetricChip(theme: AppModule.habitStack.theme, title: "Completed", value: "\(completedTodayCount)")
@@ -224,9 +230,9 @@ private struct HabitCard: View {
             }
         }
         .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
                 .stroke(progressCount >= habit.targetCount ? AppModule.habitStack.theme.primary.opacity(0.4) : .clear, lineWidth: 1.5)
         )
     }

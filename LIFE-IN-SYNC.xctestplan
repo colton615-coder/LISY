@@ -1,0 +1,38 @@
+{
+  "configurations" : [
+    {
+      "id" : "2C5B7D63-12E6-4E81-B3B7-9C7B0D6D0A11",
+      "name" : "Default",
+      "options" : {
+        "codeCoverage" : false
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "codeCoverage" : false,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:LIFE-IN-SYNC.xcodeproj",
+      "identifier" : "9CAE3F0F2F7CC8A200AA0414",
+      "name" : "LIFE-IN-SYNC"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:LIFE-IN-SYNC.xcodeproj",
+        "identifier" : "9CAE3F1E2F7CC8A300AA0414",
+        "name" : "LIFE-IN-SYNCTests"
+      }
+    },
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:LIFE-IN-SYNC.xcodeproj",
+        "identifier" : "9CAE3F282F7CC8A300AA0414",
+        "name" : "LIFE-IN-SYNCUITests"
+      }
+    }
+  ],
+  "version" : 1
+}

@@ -306,3 +306,24 @@ struct ModuleActivityFeedSection<Content: View>: View {
         }
     }
 }
+
+struct ModuleBottomActionBar: View {
+    let theme: ModuleTheme
+    let title: String
+    let systemImage: String
+    let action: () -> Void
+
+    var body: some View {
+        HStack {
+            Spacer()
+            Button(action: action) {
+                Label(title, systemImage: systemImage)
+                    .fontWeight(.semibold)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(theme.primary)
+        }
+        .padding()
+        .background(.ultraThinMaterial)
+    }
+}

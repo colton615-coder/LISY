@@ -20,6 +20,7 @@ final class LIFE_IN_SYNCUITestsLaunchTests: XCTestCase {
     @MainActor
     func testLaunch() throws {
         let app = XCUIApplication()
+        app.launchArguments.append("SKIP_LAUNCH_AFFIRMATION")
         app.launch()
 
         // Insert steps here to perform after app launch but before taking a screenshot,

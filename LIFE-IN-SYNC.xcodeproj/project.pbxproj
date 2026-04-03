@@ -27,6 +27,7 @@
 		9CAE3F102F7CC8A200AA0414 /* LIFE-IN-SYNC.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "LIFE-IN-SYNC.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9CAE3F1F2F7CC8A300AA0414 /* LIFE-IN-SYNCTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "LIFE-IN-SYNCTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9CAE3F292F7CC8A300AA0414 /* LIFE-IN-SYNCUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "LIFE-IN-SYNCUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		9CAE3F5A2F7F490300AA0414 /* LIFE-IN-SYNC.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = "LIFE-IN-SYNC.xctestplan"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -75,6 +76,7 @@
 		9CAE3F072F7CC8A200AA0414 = {
 			isa = PBXGroup;
 			children = (
+				9CAE3F5A2F7F490300AA0414 /* LIFE-IN-SYNC.xctestplan */,
 				9CAE3F122F7CC8A200AA0414 /* LIFE-IN-SYNC */,
 				9CAE3F222F7CC8A300AA0414 /* LIFE-IN-SYNCTests */,
 				9CAE3F2C2F7CC8A300AA0414 /* LIFE-IN-SYNCUITests */,
@@ -475,6 +477,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9WCDSNG464;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
 				MACOSX_DEPLOYMENT_TARGET = 26.4;
@@ -500,6 +503,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9WCDSNG464;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
 				MACOSX_DEPLOYMENT_TARGET = 26.4;
@@ -524,6 +528,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9WCDSNG464;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
 				MACOSX_DEPLOYMENT_TARGET = 26.4;
@@ -548,6 +553,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9WCDSNG464;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
 				MACOSX_DEPLOYMENT_TARGET = 26.4;

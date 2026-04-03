@@ -45,19 +45,13 @@ struct CapitalCoreView: View {
             }
         }
         .safeAreaInset(edge: .bottom) {
-            HStack {
-                Spacer()
-                Button {
-                    isShowingAddExpense = true
-                } label: {
-                    Label("Add Expense", systemImage: "plus")
-                        .fontWeight(.semibold)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(AppModule.capitalCore.theme.primary)
+            ModuleBottomActionBar(
+                theme: AppModule.capitalCore.theme,
+                title: "Add Expense",
+                systemImage: "plus"
+            ) {
+                isShowingAddExpense = true
             }
-            .padding()
-            .background(.ultraThinMaterial)
         }
         .sheet(isPresented: $isShowingAddExpense) {
             AddExpenseSheet()
