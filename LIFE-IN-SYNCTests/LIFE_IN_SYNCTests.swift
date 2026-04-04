@@ -110,6 +110,77 @@ struct LIFE_IN_SYNCTests {
         #expect(report.metrics.contains(where: { $0.title == "Anchor Coverage" && $0.value == "100%" }))
         #expect(report.highlights.contains(where: { $0.contains("tempo profile") }))
     }
+
+    @Test func garageWorkflowMarksAnchorsIncompleteUntilAllEightArePlaced() async throws {
+        let record = makeWorkflowRecord(
+            keyframeValidationStatus: .approved,
+            anchors: Array(makeFullAnchorSet().prefix(5)),
+            pathPoints: []
+        )
+
+        let progress = GarageWorkflow.progress(for: record)
+
+        #expect(progress.stages.first(where: { $0.stage == .markAnchors })?.status == .incomplete)
+        #expect(progress.nextAction.stage == .markAnchors)
+    }
+
+    @Test func garageWorkflowPrioritizesFlaggedKeyframesAsNeedsAttention() async throws {
+        let record = makeWorkflowRecord(
+            keyframeValidationStatus: .flagged,
+            anchors: makeFullAnchorSet(),
+            pathPoints: GarageAnalysisPipeline.generatePathPoints(from: makeFullAnchorSet(), samplesPerSegment: 4)
+        )
+
+        let progress = GarageWorkflow.progress(for: record)
+
+        #expect(progress.stages.first(where: { $0.stage == .validateKeyframes })?.status == .needsAttention)
+        #expect(progress.nextAction.stage == .validateKeyframes)
+    }
+
+    @Test func garageWorkflowBecomesFullyCompleteWhenAllStagesAreReady() async throws {
+        let anchors = makeFullAnchorSet()
+        let record = makeWorkflowRecord(
+            keyframeValidationStatus: .approved,
+            anchors: anchors,
+            pathPoints: GarageAnalysisPipeline.generatePathPoints(from: anchors, samplesPerSegment: 4)
+        )
+
+        let progress = GarageWorkflow.progress(for: record)
+
+        #expect(progress.completedCount == 4)
+        #expect(progress.stages.allSatisfy { $0.status == .complete })
+        #expect(progress.nextAction.title == "Workflow Complete")
+    }
+
+    @Test func garageReliabilityReportIsTrustedForApprovedCompleteSwing() async throws {
+        let anchors = makeFullAnchorSet()
+        let record = makeWorkflowRecord(
+            keyframeValidationStatus: .approved,
+            anchors: anchors,
+            pathPoints: GarageAnalysisPipeline.generatePathPoints(from: anchors, samplesPerSegment: 4)
+        )
+
+        let report = GarageReliability.report(for: record)
+
+        #expect(report.status == .trusted)
+        #expect(report.score >= 84)
+        #expect(report.checks.allSatisfy(\.passed))
+    }
+
+    @Test func garageReliabilityReportBecomesProvisionalWhenKeySignalsFail() async throws {
+        let record = makeWorkflowRecord(
+            keyframeValidationStatus: .flagged,
+            anchors: [],
+            pathPoints: []
+        )
+
+        let report = GarageReliability.report(for: record)
+
+        #expect(report.status == .provisional)
+        #expect(report.score < 50)
+        #expect(report.checks.contains(where: { $0.title == "Review Status" && $0.passed == false }))
+        #expect(report.checks.contains(where: { $0.title == "Grip Coverage" && $0.passed == false }))
+    }
 }
 
 @MainActor
@@ -147,4 +218,71 @@ private func makeSyntheticSwingFrames() -> [SwingFrame] {
 @MainActor
 private func joint(_ name: SwingJointName, x: Double, y: Double, confidence: Double = 0.9) -> SwingJoint {
     SwingJoint(name: name, x: x, y: y, confidence: confidence)
+}
+
+@MainActor
+private func makeFullAnchorSet() -> [HandAnchor] {
+    [
+        HandAnchor(phase: .address, x: 0.30, y: 0.72),
+        HandAnchor(phase: .takeaway, x: 0.35, y: 0.68),
+        HandAnchor(phase: .shaftParallel, x: 0.42, y: 0.56),
+        HandAnchor(phase: .topOfBackswing, x: 0.52, y: 0.34),
+        HandAnchor(phase: .transition, x: 0.50, y: 0.39),
+        HandAnchor(phase: .earlyDownswing, x: 0.43, y: 0.50),
+        HandAnchor(phase: .impact, x: 0.32, y: 0.70),
+        HandAnchor(phase: .followThrough, x: 0.58, y: 0.26)
+    ]
+}
+
+@MainActor
+private func makeWorkflowRecord(
+    keyframeValidationStatus: KeyframeValidationStatus,
+    anchors: [HandAnchor],
+    pathPoints: [PathPoint]
+) -> SwingRecord {
+    let filename = "workflow.mov"
+    makePersistedGarageVideoFixture(named: filename)
+    let frames = makeSyntheticSwingFrames()
+    let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames)
+
+    return SwingRecord(
+        title: "Workflow Record",
+        mediaFilename: filename,
+        frameRate: 60,
+        swingFrames: frames,
+        keyFrames: keyFrames,
+        keyframeValidationStatus: keyframeValidationStatus,
+        handAnchors: anchors,
+        pathPoints: pathPoints,
+        analysisResult: AnalysisResult(
+            issues: [],
+            highlights: ["Workflow baseline"],
+            summary: "Processed synthetic swing frames."
+        )
+    )
+}
+
+@MainActor
+private func makePersistedGarageVideoFixture(named filename: String) {
+    let fileManager = FileManager.default
+    guard
+        let baseURL = try? fileManager.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+    else {
+        return
+    }
+
+    let garageURL = baseURL.appendingPathComponent("GarageSwingVideos", isDirectory: true)
+    let fileURL = garageURL.appendingPathComponent(filename)
+
+    if fileManager.fileExists(atPath: fileURL.path) {
+        return
+    }
+
+    try? fileManager.createDirectory(at: garageURL, withIntermediateDirectories: true)
+    fileManager.createFile(atPath: fileURL.path, contents: Data())
 }

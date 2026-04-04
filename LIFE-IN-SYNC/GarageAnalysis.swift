@@ -29,6 +29,84 @@ struct GarageInsightReport: Equatable {
     }
 }
 
+enum GarageWorkflowStatus: String, Equatable {
+    case incomplete = "Incomplete"
+    case complete = "Complete"
+    case needsAttention = "Needs Attention"
+}
+
+enum GarageWorkflowStage: String, CaseIterable, Identifiable {
+    case importVideo
+    case validateKeyframes
+    case markAnchors
+    case reviewInsights
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .importVideo:
+            "Import Video"
+        case .validateKeyframes:
+            "Validate Keyframes"
+        case .markAnchors:
+            "Mark 8 Grip Anchors"
+        case .reviewInsights:
+            "Review Insights"
+        }
+    }
+}
+
+struct GarageWorkflowStageState: Identifiable, Equatable {
+    let stage: GarageWorkflowStage
+    let status: GarageWorkflowStatus
+    let summary: String
+    let actionLabel: String
+
+    var id: GarageWorkflowStage { stage }
+}
+
+struct GarageWorkflowNextAction: Equatable {
+    let title: String
+    let body: String
+    let actionLabel: String
+    let stage: GarageWorkflowStage?
+}
+
+struct GarageWorkflowProgress: Equatable {
+    let stages: [GarageWorkflowStageState]
+    let nextAction: GarageWorkflowNextAction
+
+    var completedCount: Int {
+        stages.filter { $0.status == .complete }.count
+    }
+}
+
+enum GarageReliabilityStatus: String, Equatable {
+    case trusted = "Trusted"
+    case review = "Review"
+    case provisional = "Provisional"
+}
+
+struct GarageReliabilityCheck: Identifiable, Equatable {
+    let title: String
+    let passed: Bool
+    let detail: String
+
+    var id: String { title }
+}
+
+struct GarageReliabilityReport: Equatable {
+    let score: Int
+    let status: GarageReliabilityStatus
+    let summary: String
+    let checks: [GarageReliabilityCheck]
+
+    var needsAttention: Bool {
+        status != .trusted
+    }
+}
+
 enum GarageInsights {
     static func report(for record: SwingRecord) -> GarageInsightReport {
         let baseSummary = record.analysisResult?.summary ?? "Swing analysis is in progress."
@@ -272,6 +350,249 @@ enum GarageInsights {
     private static func uniqueStrings(_ values: [String]) -> [String] {
         var seen = Set<String>()
         return values.filter { seen.insert($0).inserted }
+    }
+}
+
+enum GarageReliability {
+    static func report(for record: SwingRecord) -> GarageReliabilityReport {
+        let videoAvailable = GarageMediaStore.persistedVideoURL(for: record.mediaFilename) != nil
+        let hasFrames = record.swingFrames.isEmpty == false
+        let hasAllKeyframes = record.keyFrames.count == SwingPhase.allCases.count
+        let monotonicKeyframes = GarageWorkflow.keyframeSequenceIsMonotonic(record.keyFrames)
+        let validationApproved = record.keyframeValidationStatus == .approved
+        let fullAnchorCoverage = record.handAnchors.count == SwingPhase.allCases.count
+        let pathGenerated = record.pathPoints.isEmpty == false
+        let averageConfidence = record.swingFrames.isEmpty
+            ? 0
+            : record.swingFrames.map(\.confidence).reduce(0, +) / Double(record.swingFrames.count)
+        let confidenceStrong = averageConfidence >= 0.55
+        let adjustedFrames = record.keyFrames.filter { $0.source == .adjusted }.count
+        let limitedManualAdjustment = adjustedFrames <= 2
+
+        let checks = [
+            GarageReliabilityCheck(
+                title: "Video Source",
+                passed: videoAvailable && hasFrames,
+                detail: videoAvailable && hasFrames
+                    ? "Stored video and sampled pose frames are available."
+                    : "Garage cannot fully verify this swing until the stored video and sampled frames are available."
+            ),
+            GarageReliabilityCheck(
+                title: "Keyframe Coverage",
+                passed: hasAllKeyframes && monotonicKeyframes,
+                detail: hasAllKeyframes && monotonicKeyframes
+                    ? "All 8 checkpoints are present in the expected swing order."
+                    : "One or more swing checkpoints are missing or out of order."
+            ),
+            GarageReliabilityCheck(
+                title: "Review Status",
+                passed: validationApproved,
+                detail: validationApproved
+                    ? "The keyframe review is approved."
+                    : "The keyframe review still needs confirmation before this swing should be treated as trustworthy."
+            ),
+            GarageReliabilityCheck(
+                title: "Grip Coverage",
+                passed: fullAnchorCoverage && pathGenerated,
+                detail: fullAnchorCoverage && pathGenerated
+                    ? "All 8 grip anchors are saved and the path is generated."
+                    : "Anchor coverage or path generation is incomplete."
+            ),
+            GarageReliabilityCheck(
+                title: "Pose Confidence",
+                passed: confidenceStrong,
+                detail: confidenceStrong
+                    ? "Average pose confidence is \(String(format: "%.0f%%", averageConfidence * 100))."
+                    : "Average pose confidence is only \(String(format: "%.0f%%", averageConfidence * 100)), so detections may be noisy."
+            ),
+            GarageReliabilityCheck(
+                title: "Manual Adjustments",
+                passed: limitedManualAdjustment,
+                detail: limitedManualAdjustment
+                    ? "Manual keyframe changes are limited."
+                    : "\(adjustedFrames) checkpoints were manually adjusted, which lowers trust in the automatic pass."
+            )
+        ]
+
+        let weightedChecks: [(GarageReliabilityCheck, Int)] = Array(zip(checks, [15, 20, 20, 25, 10, 10]))
+        let score = weightedChecks.reduce(0) { partial, item in
+            partial + (item.0.passed ? item.1 : 0)
+        }
+        let status: GarageReliabilityStatus
+        if score >= 84 {
+            status = .trusted
+        } else if score >= 50 {
+            status = .review
+        } else {
+            status = .provisional
+        }
+
+        let summary: String
+        switch status {
+        case .trusted:
+            summary = "This swing has strong coverage across video, checkpoints, anchors, and path generation."
+        case .review:
+            summary = "This swing is usable, but one or more checks still need review before you trust the output fully."
+        case .provisional:
+            summary = "This swing is still provisional. Fix the failed checks before relying on the analysis."
+        }
+
+        return GarageReliabilityReport(score: score, status: status, summary: summary, checks: checks)
+    }
+}
+
+enum GarageWorkflow {
+    static func progress(for record: SwingRecord) -> GarageWorkflowProgress {
+        let insightReport = GarageInsights.report(for: record)
+        let reliabilityReport = GarageReliability.report(for: record)
+        let stages = [
+            importStage(for: record),
+            keyframeStage(for: record),
+            anchorStage(for: record),
+            insightStage(for: record, insightReport: insightReport, reliabilityReport: reliabilityReport)
+        ]
+
+        let prioritizedStage = stages.first(where: { $0.status == .needsAttention })
+            ?? stages.first(where: { $0.status == .incomplete })
+
+        let nextAction: GarageWorkflowNextAction
+        if let prioritizedStage {
+            nextAction = GarageWorkflowNextAction(
+                title: prioritizedStage.stage.title,
+                body: prioritizedStage.summary,
+                actionLabel: prioritizedStage.actionLabel,
+                stage: prioritizedStage.stage
+            )
+        } else {
+            nextAction = GarageWorkflowNextAction(
+                title: "Workflow Complete",
+                body: "All four Garage stages are complete. Review the current insight output and only revisit earlier stages if reliability issues appear.",
+                actionLabel: "Review insights",
+                stage: .reviewInsights
+            )
+        }
+
+        return GarageWorkflowProgress(stages: stages, nextAction: nextAction)
+    }
+
+    private static func importStage(for record: SwingRecord) -> GarageWorkflowStageState {
+        let hasVideoReference = record.mediaFilename?.isEmpty == false
+        let hasFrames = record.swingFrames.isEmpty == false
+        let resolvedURL = GarageMediaStore.persistedVideoURL(for: record.mediaFilename)
+
+        let status: GarageWorkflowStatus
+        let summary: String
+        let actionLabel: String
+
+        if hasVideoReference == false {
+            status = .incomplete
+            summary = "Import one swing video to initialize Garage."
+            actionLabel = "Import video"
+        } else if resolvedURL == nil || hasFrames == false {
+            status = .needsAttention
+            summary = "The video reference exists, but Garage cannot currently use it for the workflow."
+            actionLabel = "Re-import video"
+        } else {
+            status = .complete
+            summary = "A swing video is available and sampled pose frames were generated."
+            actionLabel = "Video ready"
+        }
+
+        return GarageWorkflowStageState(stage: .importVideo, status: status, summary: summary, actionLabel: actionLabel)
+    }
+
+    private static func keyframeStage(for record: SwingRecord) -> GarageWorkflowStageState {
+        let hasAllKeyframes = record.keyFrames.count == SwingPhase.allCases.count
+        let keyframesMonotonic = keyframeSequenceIsMonotonic(record.keyFrames)
+
+        let status: GarageWorkflowStatus
+        let summary: String
+        let actionLabel: String
+
+        if hasAllKeyframes == false {
+            status = .incomplete
+            summary = "Garage needs all 8 swing checkpoints before the rest of the workflow can be trusted."
+            actionLabel = "Finish keyframes"
+        } else if record.keyframeValidationStatus == .flagged || keyframesMonotonic == false {
+            status = .needsAttention
+            summary = "Review the saved keyframes before trusting anchors or downstream insights."
+            actionLabel = "Review keyframes"
+        } else if record.keyframeValidationStatus == .approved {
+            status = .complete
+            summary = "All 8 keyframes are present and the current checkpoint review is approved."
+            actionLabel = "Keyframes approved"
+        } else {
+            status = .incomplete
+            summary = "All 8 keyframes exist, but they are still pending review."
+            actionLabel = "Approve keyframes"
+        }
+
+        return GarageWorkflowStageState(stage: .validateKeyframes, status: status, summary: summary, actionLabel: actionLabel)
+    }
+
+    private static func anchorStage(for record: SwingRecord) -> GarageWorkflowStageState {
+        let uniquePhases = Set(record.handAnchors.map(\.phase))
+        let hasAllAnchors = record.handAnchors.count == SwingPhase.allCases.count
+        let uniqueCoverage = uniquePhases.count == record.handAnchors.count
+
+        let status: GarageWorkflowStatus
+        let summary: String
+        let actionLabel: String
+
+        if hasAllAnchors == false {
+            let remaining = max(SwingPhase.allCases.count - record.handAnchors.count, 0)
+            status = .incomplete
+            summary = "\(remaining) grip anchor\(remaining == 1 ? "" : "s") still need to be marked."
+            actionLabel = "Place anchors"
+        } else if uniqueCoverage == false || record.pathPoints.isEmpty {
+            status = .needsAttention
+            summary = "Anchor coverage is inconsistent or the path did not generate after all 8 anchors were placed."
+            actionLabel = "Review anchors"
+        } else {
+            status = .complete
+            summary = "All 8 grip anchors are saved and the hand path is ready for review."
+            actionLabel = "Anchors complete"
+        }
+
+        return GarageWorkflowStageState(stage: .markAnchors, status: status, summary: summary, actionLabel: actionLabel)
+    }
+
+    private static func insightStage(
+        for record: SwingRecord,
+        insightReport: GarageInsightReport,
+        reliabilityReport: GarageReliabilityReport
+    ) -> GarageWorkflowStageState {
+        let priorStagesComplete = importStage(for: record).status == .complete
+            && keyframeStage(for: record).status == .complete
+            && anchorStage(for: record).status == .complete
+
+        let status: GarageWorkflowStatus
+        let summary: String
+        let actionLabel: String
+
+        if priorStagesComplete == false {
+            status = .incomplete
+            summary = "Insights unlock after the earlier workflow stages are complete."
+            actionLabel = "Finish earlier steps"
+        } else if insightReport.isReady == false || insightReport.issues.isEmpty == false || reliabilityReport.needsAttention {
+            status = .needsAttention
+            summary = "Insights are available, but reliability checks still need review before you treat them as final."
+            actionLabel = "Review insight notes"
+        } else {
+            status = .complete
+            summary = "The workflow is complete and the current insight output is ready for review."
+            actionLabel = "Review insights"
+        }
+
+        return GarageWorkflowStageState(stage: .reviewInsights, status: status, summary: summary, actionLabel: actionLabel)
+    }
+
+    static func keyframeSequenceIsMonotonic(_ keyFrames: [KeyFrame]) -> Bool {
+        let ordered = keyFrames.sorted { lhs, rhs in
+            (SwingPhase.allCases.firstIndex(of: lhs.phase) ?? 0) < (SwingPhase.allCases.firstIndex(of: rhs.phase) ?? 0)
+        }
+        let frameIndexes = ordered.map(\.frameIndex)
+        return frameIndexes == frameIndexes.sorted()
     }
 }
 

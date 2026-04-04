@@ -58,6 +58,11 @@ private struct GarageAnalysisWorkflowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: ModuleSpacing.large) {
+            GarageWorkflowProgressSection(
+                progress: workflowProgress,
+                nextAction: handleNextAction
+            )
+
             GarageVideoSection(
                 player: player,
                 duration: duration,
@@ -105,8 +110,14 @@ private struct GarageAnalysisWorkflowView: View {
                 pathPoints: record.pathPoints
             )
 
+            GarageReliabilitySection(report: reliabilityReport)
             GarageInsightsSection(report: insightReport)
-            GarageTechnicalPanel(record: record, report: insightReport, timestampForPhase: timestamp(for:))
+            GarageTechnicalPanel(
+                record: record,
+                report: insightReport,
+                reliabilityReport: reliabilityReport,
+                timestampForPhase: timestamp(for:)
+            )
         }
         .onAppear(perform: configurePlayer)
         .onDisappear {
@@ -131,6 +142,14 @@ private struct GarageAnalysisWorkflowView: View {
 
     private var insightReport: GarageInsightReport {
         GarageInsights.report(for: record)
+    }
+
+    private var reliabilityReport: GarageReliabilityReport {
+        GarageReliability.report(for: record)
+    }
+
+    private var workflowProgress: GarageWorkflowProgress {
+        GarageWorkflow.progress(for: record)
     }
 
     private func configurePlayer() {
@@ -215,6 +234,41 @@ private struct GarageAnalysisWorkflowView: View {
 
     private func persistChanges() {
         try? modelContext.save()
+    }
+
+    private func handleNextAction() {
+        guard let stage = workflowProgress.nextAction.stage else { return }
+
+        switch stage {
+        case .importVideo:
+            break
+        case .validateKeyframes:
+            selectedPhase = firstReviewPhaseNeedingAttention ?? .address
+            jumpToPhase(selectedPhase)
+        case .markAnchors:
+            selectedPhase = firstMissingAnchorPhase ?? selectedPhase
+            jumpToPhase(selectedPhase)
+        case .reviewInsights:
+            selectedPhase = .impact
+            jumpToPhase(.impact)
+        }
+    }
+
+    private var firstMissingAnchorPhase: SwingPhase? {
+        let anchored = Set(record.handAnchors.map(\.phase))
+        return SwingPhase.allCases.first(where: { anchored.contains($0) == false })
+    }
+
+    private var firstReviewPhaseNeedingAttention: SwingPhase? {
+        if record.keyframeValidationStatus == .flagged {
+            return record.keyFrames.first(where: { $0.source == .adjusted })?.phase ?? .address
+        }
+
+        if record.keyframeValidationStatus == .pending {
+            return record.keyFrames.first?.phase
+        }
+
+        return nil
     }
 
     private func timestamp(for phase: SwingPhase) -> Double {
@@ -745,6 +799,7 @@ private struct GaragePathReviewSection: View {
 private struct GarageTechnicalPanel: View {
     let record: SwingRecord
     let report: GarageInsightReport
+    let reliabilityReport: GarageReliabilityReport
     let timestampForPhase: (SwingPhase) -> Double
 
     var body: some View {
@@ -761,6 +816,7 @@ private struct GarageTechnicalPanel: View {
                 GarageFieldRow(label: "Hand anchors", value: "\(record.handAnchors.count)/8")
                 GarageFieldRow(label: "Path generation", value: record.pathPoints.isEmpty ? "Pending" : "Ready")
                 GarageFieldRow(label: "Metrics readiness", value: report.readiness)
+                GarageFieldRow(label: "Reliability", value: "\(reliabilityReport.status.rawValue) • \(reliabilityReport.score)%")
                 GarageFieldRow(label: "Adjusted keyframes", value: "\(record.keyFrames.filter { $0.source == .adjusted }.count)")
             }
 
@@ -776,6 +832,66 @@ private struct GarageTechnicalPanel: View {
                     )
                 }
             }
+        }
+    }
+}
+
+private struct GarageReliabilitySection: View {
+    let report: GarageReliabilityReport
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ModuleSpacing.small) {
+            DashboardLikeSectionTitle(
+                title: "Reliability",
+                subtitle: "A trust check for the current swing before you lean on the downstream output."
+            )
+
+            ModuleRowSurface(theme: AppModule.garage.theme) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(report.status.rawValue)
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(statusColor)
+                        Text(report.summary)
+                            .foregroundStyle(AppModule.garage.theme.textSecondary)
+                    }
+                    Spacer()
+                    Text("\(report.score)%")
+                        .font(.title2.weight(.black))
+                        .foregroundStyle(AppModule.garage.theme.textPrimary)
+                }
+
+                ProgressView(value: Double(report.score), total: 100)
+                    .tint(statusColor)
+
+                ForEach(report.checks) { check in
+                    HStack(alignment: .top, spacing: ModuleSpacing.small) {
+                        Image(systemName: check.passed ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                            .foregroundStyle(check.passed ? AppModule.garage.theme.primary : .orange)
+                            .frame(width: 18)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(check.title)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(AppModule.garage.theme.textPrimary)
+                            Text(check.detail)
+                                .font(.caption)
+                                .foregroundStyle(AppModule.garage.theme.textSecondary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var statusColor: Color {
+        switch report.status {
+        case .trusted:
+            AppModule.garage.theme.primary
+        case .review:
+            .orange
+        case .provisional:
+            .red
         }
     }
 }
@@ -842,6 +958,93 @@ private struct GarageInsightsSection: View {
                     }
                 }
             }
+        }
+    }
+}
+
+private struct GarageWorkflowProgressSection: View {
+    let progress: GarageWorkflowProgress
+    let nextAction: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ModuleSpacing.small) {
+            DashboardLikeSectionTitle(
+                title: "Workflow Progress",
+                subtitle: "Finish each Garage stage in order so the downstream output stays readable and trustworthy."
+            )
+
+            ModuleRowSurface(theme: AppModule.garage.theme) {
+                HStack {
+                    Text("\(progress.completedCount)/\(progress.stages.count) complete")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(AppModule.garage.theme.textPrimary)
+                    Spacer()
+                    Text(progress.completedCount == progress.stages.count ? "Ready" : "In Progress")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppModule.garage.theme.primary)
+                }
+
+                ForEach(progress.stages) { stage in
+                    HStack(alignment: .top, spacing: ModuleSpacing.small) {
+                        Image(systemName: iconName(for: stage.status))
+                            .foregroundStyle(color(for: stage.status))
+                            .font(.headline)
+                            .frame(width: 22)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(stage.stage.title)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(AppModule.garage.theme.textPrimary)
+                                Spacer()
+                                Text(stage.status.rawValue)
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(color(for: stage.status))
+                            }
+
+                            Text(stage.summary)
+                                .font(.caption)
+                                .foregroundStyle(AppModule.garage.theme.textSecondary)
+                        }
+                    }
+                }
+            }
+
+            ModuleRowSurface(theme: AppModule.garage.theme) {
+                Text("Next Action")
+                    .font(.headline)
+                    .foregroundStyle(AppModule.garage.theme.textPrimary)
+                Text(progress.nextAction.title)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(AppModule.garage.theme.primary)
+                Text(progress.nextAction.body)
+                    .foregroundStyle(AppModule.garage.theme.textSecondary)
+                Button(progress.nextAction.actionLabel, action: nextAction)
+                    .buttonStyle(.borderedProminent)
+                    .tint(AppModule.garage.theme.primary)
+            }
+        }
+    }
+
+    private func iconName(for status: GarageWorkflowStatus) -> String {
+        switch status {
+        case .incomplete:
+            "circle"
+        case .complete:
+            "checkmark.circle.fill"
+        case .needsAttention:
+            "exclamationmark.triangle.fill"
+        }
+    }
+
+    private func color(for status: GarageWorkflowStatus) -> Color {
+        switch status {
+        case .incomplete:
+            AppModule.garage.theme.textMuted
+        case .complete:
+            AppModule.garage.theme.primary
+        case .needsAttention:
+            .orange
         }
     }
 }
