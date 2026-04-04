@@ -107,6 +107,28 @@ struct GarageReliabilityReport: Equatable {
     }
 }
 
+enum GarageCoachingSeverity: String, Equatable {
+    case positive
+    case info
+    case caution
+}
+
+struct GarageCoachingCue: Identifiable, Equatable {
+    let title: String
+    let message: String
+    let severity: GarageCoachingSeverity
+
+    var id: String { title }
+}
+
+struct GarageCoachingReport: Equatable {
+    let headline: String
+    let confidenceLabel: String
+    let cues: [GarageCoachingCue]
+    let blockers: [String]
+    let nextBestAction: String
+}
+
 enum GarageInsights {
     static func report(for record: SwingRecord) -> GarageInsightReport {
         let baseSummary = record.analysisResult?.summary ?? "Swing analysis is in progress."
@@ -438,6 +460,215 @@ enum GarageReliability {
         }
 
         return GarageReliabilityReport(score: score, status: status, summary: summary, checks: checks)
+    }
+}
+
+enum GarageCoaching {
+    static func report(for record: SwingRecord) -> GarageCoachingReport {
+        let insightReport = GarageInsights.report(for: record)
+        let reliabilityReport = GarageReliability.report(for: record)
+
+        if reliabilityReport.status == .provisional {
+            return GarageCoachingReport(
+                headline: "Hold interpretation until the swing is more complete.",
+                confidenceLabel: reliabilityReport.status.rawValue,
+                cues: [],
+                blockers: provisionalBlockers(from: reliabilityReport, insightReport: insightReport),
+                nextBestAction: "Fix the failed reliability checks before using coaching cues."
+            )
+        }
+
+        var cues: [GarageCoachingCue] = []
+
+        if let tempo = metricValue(named: "Tempo", in: insightReport),
+           let tempoValue = Double(tempo.replacingOccurrences(of: ":1", with: "")) {
+            if tempoValue >= 2.7 && tempoValue <= 3.3 {
+                cues.append(
+                    GarageCoachingCue(
+                        title: "Tempo Is Balanced",
+                        message: "Backswing-to-downswing timing is staying in a stable range. Preserve this rhythm as you refine the rest of the motion.",
+                        severity: .positive
+                    )
+                )
+            } else if tempoValue > 3.3 {
+                cues.append(
+                    GarageCoachingCue(
+                        title: "Backswing Is Running Long",
+                        message: "The current tempo suggests the backswing is taking too long relative to the downswing. Shorten the top slightly before adding more speed.",
+                        severity: .caution
+                    )
+                )
+            } else {
+                cues.append(
+                    GarageCoachingCue(
+                        title: "Transition Looks Rushed",
+                        message: "The current tempo is compressed. Give the backswing more time so the downswing does not feel abrupt.",
+                        severity: .caution
+                    )
+                )
+            }
+        }
+
+        if let impactReturn = metricPercentValue(named: "Impact Return", in: insightReport) {
+            if impactReturn <= 25 {
+                cues.append(
+                    GarageCoachingCue(
+                        title: "Impact Return Is Tight",
+                        message: "Your hands are returning close to the address position at impact. Keep that repeatable reference while refining other pieces.",
+                        severity: .positive
+                    )
+                )
+            } else if impactReturn >= 45 {
+                cues.append(
+                    GarageCoachingCue(
+                        title: "Impact Return Is Drifting",
+                        message: "Hand return at impact is far from address. Recheck setup and transition control before trusting strike-direction feedback.",
+                        severity: .caution
+                    )
+                )
+            } else {
+                cues.append(
+                    GarageCoachingCue(
+                        title: "Impact Return Is Usable",
+                        message: "The current return distance is workable, but it still leaves room for a tighter delivery into impact.",
+                        severity: .info
+                    )
+                )
+            }
+        }
+
+        if let pathWindow = metricWindow(named: "Path Window", in: insightReport) {
+            if pathWindow.width >= 35 || pathWindow.height >= 55 {
+                cues.append(
+                    GarageCoachingCue(
+                        title: "Hand Path Is Expanding",
+                        message: "The current grip path window is relatively large. Keep the motion simpler before layering in more speed or shape changes.",
+                        severity: .caution
+                    )
+                )
+            } else if pathWindow.width <= 18 && pathWindow.height <= 28 {
+                cues.append(
+                    GarageCoachingCue(
+                        title: "Hand Path Looks Compact",
+                        message: "The current path stays fairly compact through the measured checkpoints. That gives you a clean baseline to repeat.",
+                        severity: .positive
+                    )
+                )
+            } else {
+                cues.append(
+                    GarageCoachingCue(
+                        title: "Hand Path Needs Monitoring",
+                        message: "The current path shape is readable, but keep comparing it against future swings before making a bigger change from this alone.",
+                        severity: .info
+                    )
+                )
+            }
+        }
+
+        if let adjustedFrames = metricIntegerValue(named: "Adjusted Frames", in: insightReport), adjustedFrames >= 3 {
+            cues.append(
+                GarageCoachingCue(
+                    title: "Heavy Manual Review",
+                    message: "\(adjustedFrames) keyframes were manually adjusted. Treat this coaching as directional until the automatic pass becomes more stable.",
+                    severity: .caution
+                )
+            )
+        }
+
+        let blockers = reliabilityReport.status == .review
+            ? reviewBlockers(from: reliabilityReport, insightReport: insightReport)
+            : []
+
+        let sortedCues = cues.sorted { lhs, rhs in
+            severityPriority(lhs.severity) > severityPriority(rhs.severity)
+        }
+
+        let headline: String
+        if let topCue = sortedCues.first {
+            headline = topCue.title
+        } else {
+            headline = "The swing has usable data, but no strong coaching cue stands out yet."
+        }
+
+        let nextBestAction: String
+        if reliabilityReport.status == .review {
+            nextBestAction = "Use the cues directionally, but resolve the review notes before treating them as final."
+        } else if let cautionCue = sortedCues.first(where: { $0.severity == .caution }) {
+            nextBestAction = cautionCue.message
+        } else {
+            nextBestAction = "Keep building comparable swings so the strongest patterns become easier to trust."
+        }
+
+        return GarageCoachingReport(
+            headline: headline,
+            confidenceLabel: reliabilityReport.status.rawValue,
+            cues: Array(sortedCues.prefix(3)),
+            blockers: blockers,
+            nextBestAction: nextBestAction
+        )
+    }
+
+    private static func provisionalBlockers(
+        from reliabilityReport: GarageReliabilityReport,
+        insightReport: GarageInsightReport
+    ) -> [String] {
+        let failedChecks = reliabilityReport.checks
+            .filter { $0.passed == false }
+            .map(\.detail)
+        return Array((failedChecks + insightReport.issues).prefix(3))
+    }
+
+    private static func reviewBlockers(
+        from reliabilityReport: GarageReliabilityReport,
+        insightReport: GarageInsightReport
+    ) -> [String] {
+        let failedChecks = reliabilityReport.checks
+            .filter { $0.passed == false }
+            .map(\.detail)
+        return Array((failedChecks + insightReport.issues).prefix(2))
+    }
+
+    private static func metricValue(named title: String, in report: GarageInsightReport) -> String? {
+        report.metrics.first(where: { $0.title == title })?.value
+    }
+
+    private static func metricPercentValue(named title: String, in report: GarageInsightReport) -> Int? {
+        guard let value = metricValue(named: title, in: report)?
+            .replacingOccurrences(of: "%", with: "") else {
+            return nil
+        }
+        return Int(value)
+    }
+
+    private static func metricIntegerValue(named title: String, in report: GarageInsightReport) -> Int? {
+        guard let value = metricValue(named: title, in: report) else {
+            return nil
+        }
+        return Int(value)
+    }
+
+    private static func metricWindow(named title: String, in report: GarageInsightReport) -> (width: Int, height: Int)? {
+        guard let value = metricValue(named: title, in: report) else {
+            return nil
+        }
+        let pieces = value.components(separatedBy: "×").map {
+            $0.replacingOccurrences(of: "%", with: "").trimmingCharacters(in: .whitespaces)
+        }
+        guard pieces.count == 2, let width = Int(pieces[0]), let height = Int(pieces[1]) else {
+            return nil
+        }
+        return (width, height)
+    }
+
+    private static func severityPriority(_ severity: GarageCoachingSeverity) -> Int {
+        switch severity {
+        case .caution:
+            3
+        case .positive:
+            2
+        case .info:
+            1
+        }
     }
 }
 

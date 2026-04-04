@@ -111,6 +111,7 @@ private struct GarageAnalysisWorkflowView: View {
             )
 
             GarageReliabilitySection(report: reliabilityReport)
+            GarageCoachingSection(report: coachingReport)
             GarageInsightsSection(report: insightReport)
             GarageTechnicalPanel(
                 record: record,
@@ -146,6 +147,10 @@ private struct GarageAnalysisWorkflowView: View {
 
     private var reliabilityReport: GarageReliabilityReport {
         GarageReliability.report(for: record)
+    }
+
+    private var coachingReport: GarageCoachingReport {
+        GarageCoaching.report(for: record)
     }
 
     private var workflowProgress: GarageWorkflowProgress {
@@ -958,6 +963,99 @@ private struct GarageInsightsSection: View {
                     }
                 }
             }
+        }
+    }
+}
+
+private struct GarageCoachingSection: View {
+    let report: GarageCoachingReport
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ModuleSpacing.small) {
+            DashboardLikeSectionTitle(
+                title: "Coaching",
+                subtitle: "Actionable interpretation built on the current metrics and reliability state."
+            )
+
+            ModuleRowSurface(theme: AppModule.garage.theme) {
+                Text(report.confidenceLabel)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(confidenceColor)
+                Text(report.headline)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(AppModule.garage.theme.textPrimary)
+                Text(report.nextBestAction)
+                    .foregroundStyle(AppModule.garage.theme.textSecondary)
+            }
+
+            if report.cues.isEmpty == false {
+                ModuleRowSurface(theme: AppModule.garage.theme) {
+                    Text("Coaching Cues")
+                        .font(.headline)
+                        .foregroundStyle(AppModule.garage.theme.textPrimary)
+
+                    ForEach(report.cues) { cue in
+                        HStack(alignment: .top, spacing: ModuleSpacing.small) {
+                            Image(systemName: iconName(for: cue.severity))
+                                .foregroundStyle(color(for: cue.severity))
+                                .frame(width: 18)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(cue.title)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(AppModule.garage.theme.textPrimary)
+                                Text(cue.message)
+                                    .font(.caption)
+                                    .foregroundStyle(AppModule.garage.theme.textSecondary)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if report.blockers.isEmpty == false {
+                ModuleRowSurface(theme: AppModule.garage.theme) {
+                    Text("Blockers")
+                        .font(.headline)
+                        .foregroundStyle(AppModule.garage.theme.textPrimary)
+                    ForEach(report.blockers, id: \.self) { blocker in
+                        Text("• \(blocker)")
+                            .foregroundStyle(AppModule.garage.theme.textSecondary)
+                    }
+                }
+            }
+        }
+    }
+
+    private var confidenceColor: Color {
+        switch report.confidenceLabel {
+        case GarageReliabilityStatus.trusted.rawValue:
+            AppModule.garage.theme.primary
+        case GarageReliabilityStatus.review.rawValue:
+            .orange
+        default:
+            .red
+        }
+    }
+
+    private func iconName(for severity: GarageCoachingSeverity) -> String {
+        switch severity {
+        case .positive:
+            "checkmark.circle.fill"
+        case .info:
+            "info.circle.fill"
+        case .caution:
+            "exclamationmark.triangle.fill"
+        }
+    }
+
+    private func color(for severity: GarageCoachingSeverity) -> Color {
+        switch severity {
+        case .positive:
+            AppModule.garage.theme.primary
+        case .info:
+            AppModule.garage.theme.textSecondary
+        case .caution:
+            .orange
         }
     }
 }

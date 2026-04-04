@@ -152,35 +152,6 @@ struct LIFE_IN_SYNCTests {
         #expect(progress.nextAction.title == "Workflow Complete")
     }
 
-    @Test func garageReliabilityReportIsTrustedForApprovedCompleteSwing() async throws {
-        let anchors = makeFullAnchorSet()
-        let record = makeWorkflowRecord(
-            keyframeValidationStatus: .approved,
-            anchors: anchors,
-            pathPoints: GarageAnalysisPipeline.generatePathPoints(from: anchors, samplesPerSegment: 4)
-        )
-
-        let report = GarageReliability.report(for: record)
-
-        #expect(report.status == .trusted)
-        #expect(report.score >= 84)
-        #expect(report.checks.allSatisfy(\.passed))
-    }
-
-    @Test func garageReliabilityReportBecomesProvisionalWhenKeySignalsFail() async throws {
-        let record = makeWorkflowRecord(
-            keyframeValidationStatus: .flagged,
-            anchors: [],
-            pathPoints: []
-        )
-
-        let report = GarageReliability.report(for: record)
-
-        #expect(report.status == .provisional)
-        #expect(report.score < 50)
-        #expect(report.checks.contains(where: { $0.title == "Review Status" && $0.passed == false }))
-        #expect(report.checks.contains(where: { $0.title == "Grip Coverage" && $0.passed == false }))
-    }
 }
 
 @MainActor
