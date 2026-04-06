@@ -1,41 +1,125 @@
 import AVKit
 import Combine
+import OSLog
+import PhotosUI
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 
 struct GarageView: View {
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \SwingRecord.createdAt, order: .reverse) private var swingRecords: [SwingRecord]
-    @State private var isShowingAddRecord = false
+    @State private var isShowingVideoPicker = false
+    @State private var selectedVideoItem: PhotosPickerItem?
+    @State private var isAnalyzingVideo = false
+    @State private var importErrorMessage: String?
 
     var body: some View {
         ModuleScreen(theme: AppModule.garage.theme) {
             ModuleHeader(
                 theme: AppModule.garage.theme,
                 title: "Garage",
-                subtitle: "Upload one swing, verify 8 keyframes, mark the grip midpoint, and validate the path before insights."
+                subtitle: "Upload a swing, verify the 8 positions, place the grip midpoint on a large review canvas, then read the output once trust is earned."
             )
 
             if let latestRecord = swingRecords.first {
                 GarageAnalysisWorkflowView(record: latestRecord)
             } else {
                 GarageAnalyzerEmptyState {
-                    isShowingAddRecord = true
+                    isShowingVideoPicker = true
                 }
             }
         }
         .safeAreaInset(edge: .bottom) {
-            ModuleBottomActionBar(
-                theme: AppModule.garage.theme,
-                title: swingRecords.isEmpty ? "Import Swing Video" : "Add Swing Record",
-                systemImage: "plus"
-            ) {
-                isShowingAddRecord = true
+            if swingRecords.isEmpty {
+                ModuleBottomActionBar(
+                    theme: AppModule.garage.theme,
+                    title: "Analyze Swing Video",
+                    systemImage: "video.badge.plus"
+                ) {
+                    isShowingVideoPicker = true
+                }
+                .disabled(isAnalyzingVideo)
             }
         }
-        .sheet(isPresented: $isShowingAddRecord) {
-            AddSwingRecordSheet()
+        .overlay {
+            if isAnalyzingVideo {
+                GarageAnalyzingOverlay()
+            }
         }
+        .overlay(alignment: .top) {
+            if let importErrorMessage {
+                GarageImportErrorBanner(message: importErrorMessage)
+                    .padding(.horizontal, ModuleSpacing.medium)
+                    .padding(.top, ModuleSpacing.medium)
+            }
+        }
+        .photosPicker(
+            isPresented: $isShowingVideoPicker,
+            selection: $selectedVideoItem,
+            matching: nil,
+            preferredItemEncoding: .current
+        )
+        .onChange(of: selectedVideoItem) { _, newItem in
+            guard let newItem else { return }
+            importErrorMessage = nil
+            analyzeVideoSelection(newItem)
+        }
+    }
+
+    @MainActor
+    private func analyzeVideoSelection(_ item: PhotosPickerItem) {
+        isAnalyzingVideo = true
+
+        Task {
+            do {
+                guard let movie = try await item.loadTransferable(type: GaragePickedMovie.self) else {
+                    throw GarageImportError.unableToLoadSelection
+                }
+
+                try await processImportedVideo(at: movie.url)
+            } catch {
+                await MainActor.run {
+                    selectedVideoItem = nil
+                    isAnalyzingVideo = false
+                    importErrorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func processImportedVideo(at url: URL) async throws {
+        let persistedVideoURL = try GarageMediaStore.persistVideo(from: url)
+        let output = try await GarageAnalysisPipeline.analyzeVideo(at: persistedVideoURL)
+        let record = SwingRecord(
+            title: recordTitle(for: persistedVideoURL),
+            mediaFilename: persistedVideoURL.lastPathComponent,
+            frameRate: output.frameRate,
+            decodedFrames: output.decodedFrames,
+            decodedFrameTimestamps: output.decodedFrameTimestamps,
+            swingFrames: output.swingFrames,
+            keyFrames: output.keyFrames,
+            analysisResult: output.analysisResult
+        )
+
+        await MainActor.run {
+            modelContext.insert(record)
+            try? modelContext.save()
+            selectedVideoItem = nil
+            isAnalyzingVideo = false
+        }
+    }
+
+    private func recordTitle(for videoURL: URL) -> String {
+        let stem = videoURL.deletingPathExtension().lastPathComponent
+            .replacingOccurrences(of: "_", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if stem.isEmpty == false {
+            return stem
+        }
+
+        return "Swing \(Date.now.formatted(date: .abbreviated, time: .shortened))"
     }
 }
 
@@ -47,78 +131,104 @@ private struct GarageAnalysisWorkflowView: View {
     @State private var selectedPhase: SwingPhase
     @State private var scrubPosition: Double
     @State private var isScrubbing = false
+    @State private var evaluationDocument: GarageEvaluationDocument?
+    @State private var isShowingEvaluationExporter = false
+    @State private var isShowingPathPlayback = false
 
     private let playbackTimer = Timer.publish(every: 0.2, on: .main, in: .common).autoconnect()
 
     init(record: SwingRecord) {
         self.record = record
         _selectedPhase = State(initialValue: record.keyFrames.first?.phase ?? .address)
-        _scrubPosition = State(initialValue: record.swingFrames.first?.timestamp ?? 0)
+        _scrubPosition = State(initialValue: record.decodedFrames.first?.presentationTimestamp ?? record.swingFrames.first?.timestamp ?? 0)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: ModuleSpacing.large) {
-            GarageWorkflowProgressSection(
-                progress: workflowProgress,
-                nextAction: handleNextAction
-            )
+            if reviewFramesAvailable {
+                GaragePrimaryReviewSection(
+                    selectedPhase: $selectedPhase,
+                    recordIdentifier: recordIdentifier,
+                    keyFrames: record.keyFrames,
+                    videoURL: videoURL,
+                    handAnchors: record.handAnchors,
+                    timestampForPhase: timestamp(for:),
+                    videoFrameIndexForPhase: videoFrameIndex(for:),
+                    canonicalPoseExistsForPhase: canonicalPoseExists(for:),
+                    stepFrame: stepKeyFrame(phase:direction:),
+                    setAnchor: saveAnchor(phase:point:),
+                    confirmPhase: confirmCurrentPhase,
+                    jumpToPhase: jumpToPhase(_:),
+                    pathPoints: record.pathPoints
+                )
 
-            GarageVideoSection(
-                player: player,
-                duration: duration,
-                scrubPosition: $scrubPosition,
-                isScrubbing: $isScrubbing,
-                keyFrames: record.keyFrames,
-                timestampForPhase: timestamp(for:),
-                onTogglePlayback: togglePlayback,
-                onSeekToPhase: jumpToPhase(_:),
-                isVideoAvailable: videoURL != nil,
-                selectedPhase: selectedPhase
-            )
+            } else {
+                GarageLegacyReviewUnavailableSection()
+            }
 
-            GarageValidationSection(
-                status: record.keyframeValidationStatus,
-                selectedPhase: $selectedPhase,
-                keyFrames: record.keyFrames,
-                videoURL: videoURL,
-                timestampForPhase: timestamp(for:),
-                setStatus: updateValidationStatus(_:),
-                stepFrame: stepKeyFrame(phase:direction:)
-            )
-
-            if record.keyframeValidationStatus == .flagged {
-                GarageWarningCard(
-                    title: "Validation flagged",
-                    message: "Continue to hand marking if needed, but treat downstream results as less reliable until the keyframes are corrected."
+            if workflowProgress.nextAction.stage == .reviewInsights || workflowProgress.completedCount == workflowProgress.stages.count {
+                GarageCoachingSection(report: coachingReport)
+                GarageInsightsSection(report: insightReport)
+            } else {
+                GarageOutputHoldSection(
+                    nextAction: workflowProgress.nextAction,
+                    reliabilityReport: reliabilityReport,
+                    captureQualityReport: captureQualityReport
                 )
             }
 
-            GarageHandAnchorSection(
-                videoURL: videoURL,
-                keyFrames: record.keyFrames,
-                handAnchors: record.handAnchors,
-                selectedPhase: $selectedPhase,
-                timestampForPhase: timestamp(for:),
-                setAnchor: saveAnchor(phase:point:)
-            )
+            ModuleDisclosureSection(
+                title: "Full Swing Video",
+                theme: AppModule.garage.theme,
+                initiallyExpanded: false
+            ) {
+                GarageVideoSection(
+                    player: player,
+                    duration: duration,
+                    scrubPosition: $scrubPosition,
+                    isScrubbing: $isScrubbing,
+                    keyFrames: record.keyFrames,
+                    timestampForPhase: timestamp(for:),
+                    onTogglePlayback: togglePlayback,
+                    onSeekToPhase: jumpToPhase(_:),
+                    isVideoAvailable: videoURL != nil,
+                    selectedPhase: selectedPhase
+                )
+            }
 
-            GaragePathReviewSection(
-                selectedPhase: selectedPhase,
-                videoURL: videoURL,
-                timestamp: timestamp(for: selectedPhase),
-                handAnchors: record.handAnchors,
-                pathPoints: record.pathPoints
-            )
+            ModuleDisclosureSection(
+                title: "Analyzer Details",
+                theme: AppModule.garage.theme,
+                initiallyExpanded: false
+            ) {
+                GarageTechnicalPanel(
+                    record: record,
+                    report: insightReport,
+                    reliabilityReport: reliabilityReport,
+                    timestampForPhase: timestamp(for:),
+                    videoFrameIndexForPhase: videoFrameIndex(for:)
+                )
+            }
 
-            GarageReliabilitySection(report: reliabilityReport)
-            GarageCoachingSection(report: coachingReport)
-            GarageInsightsSection(report: insightReport)
-            GarageTechnicalPanel(
-                record: record,
-                report: insightReport,
-                reliabilityReport: reliabilityReport,
-                timestampForPhase: timestamp(for:)
-            )
+            ModuleDisclosureSection(
+                title: "Evaluation Harness",
+                theme: AppModule.garage.theme,
+                initiallyExpanded: false
+            ) {
+                if reviewFramesAvailable {
+                    GarageEvaluationHarnessSection(
+                        record: record,
+                        snapshot: evaluationSnapshot,
+                        recordIdentifier: recordIdentifier,
+                        videoURL: videoURL,
+                        timestampForPhase: timestamp(for:),
+                        canonicalPoseExistsForPhase: canonicalPoseExists(for:),
+                        exportSnapshot: exportEvaluationSnapshot
+                    )
+                } else {
+                    GarageLegacyReviewUnavailableSection()
+                }
+            }
         }
         .onAppear(perform: configurePlayer)
         .onDisappear {
@@ -131,14 +241,39 @@ private struct GarageAnalysisWorkflowView: View {
                 scrubPosition = max(0, min(currentSeconds, duration))
             }
         }
+        .fileExporter(
+            isPresented: $isShowingEvaluationExporter,
+            document: evaluationDocument,
+            contentType: .json,
+            defaultFilename: evaluationFilename
+        ) { _ in }
+        .fullScreenCover(isPresented: $isShowingPathPlayback) {
+            GaragePathPlaybackView(
+                player: player,
+                videoURL: videoURL,
+                duration: duration,
+                pathPoints: record.pathPoints,
+                dismiss: { isShowingPathPlayback = false }
+            )
+        }
     }
 
     private var videoURL: URL? {
         GarageMediaStore.persistedVideoURL(for: record.mediaFilename)
     }
 
+    private var recordIdentifier: String {
+        [record.mediaFilename, record.title, ISO8601DateFormatter().string(from: record.createdAt)]
+            .compactMap { $0 }
+            .joined(separator: "|")
+    }
+
+    private var reviewFramesAvailable: Bool {
+        record.decodedFrames.isEmpty == false && videoURL != nil
+    }
+
     private var duration: Double {
-        max(record.swingFrames.last?.timestamp ?? 0, 0.1)
+        max(record.decodedFrames.last?.presentationTimestamp ?? record.swingFrames.last?.timestamp ?? 0, 0.1)
     }
 
     private var insightReport: GarageInsightReport {
@@ -149,8 +284,16 @@ private struct GarageAnalysisWorkflowView: View {
         GarageReliability.report(for: record)
     }
 
+    private var captureQualityReport: GarageCaptureQualityReport {
+        GarageCaptureQuality.report(for: record)
+    }
+
     private var coachingReport: GarageCoachingReport {
         GarageCoaching.report(for: record)
+    }
+
+    private var evaluationSnapshot: GarageEvaluationSnapshot {
+        GarageEvaluationHarness.snapshot(for: record)
     }
 
     private var workflowProgress: GarageWorkflowProgress {
@@ -197,15 +340,26 @@ private struct GarageAnalysisWorkflowView: View {
             return
         }
 
-        let currentIndex = record.keyFrames[keyFrameIndex].frameIndex
-        let updatedIndex = max(0, min(currentIndex + direction, record.swingFrames.count - 1))
-        guard updatedIndex != currentIndex else { return }
+        let currentFrameNumber = resolvedVideoFrameIndex(for: record.keyFrames[keyFrameIndex])
+        let maximumFrameNumber = max(decodedFrameCount - 1, 0)
+        let updatedFrameNumber = max(0, min(currentFrameNumber + direction, maximumFrameNumber))
+        guard updatedFrameNumber != currentFrameNumber else { return }
 
-        record.keyFrames[keyFrameIndex].frameIndex = updatedIndex
+        let currentTimestamp = timestamp(for: phase)
+        let updatedTimestamp = decodedTimestamp(for: updatedFrameNumber)
+        record.keyFrames[keyFrameIndex].decodedFrameIndex = updatedFrameNumber
         record.keyFrames[keyFrameIndex].source = .adjusted
 
+        logFrameNavigation(
+            phase: phase,
+            previousDecodedFrameIndex: currentFrameNumber,
+            updatedDecodedFrameIndex: updatedFrameNumber,
+            previousTimestamp: currentTimestamp,
+            updatedTimestamp: updatedTimestamp
+        )
+
         if selectedPhase == phase {
-            scrubPosition = record.swingFrames[updatedIndex].timestamp
+            scrubPosition = updatedTimestamp
             seek(to: scrubPosition)
         }
 
@@ -265,26 +419,224 @@ private struct GarageAnalysisWorkflowView: View {
     }
 
     private var firstReviewPhaseNeedingAttention: SwingPhase? {
-        if record.keyframeValidationStatus == .flagged {
-            return record.keyFrames.first(where: { $0.source == .adjusted })?.phase ?? .address
-        }
-
-        if record.keyframeValidationStatus == .pending {
-            return record.keyFrames.first?.phase
-        }
-
-        return nil
+        firstMissingAnchorPhase ?? record.keyFrames.first?.phase
     }
 
     private func timestamp(for phase: SwingPhase) -> Double {
-        guard
-            let keyFrame = record.keyFrames.first(where: { $0.phase == phase }),
-            record.swingFrames.indices.contains(keyFrame.frameIndex)
-        else {
+        guard let keyFrame = record.keyFrames.first(where: { $0.phase == phase }) else {
             return 0
         }
 
-        return record.swingFrames[keyFrame.frameIndex].timestamp
+        if record.decodedFrames.indices.contains(keyFrame.decodedFrameIndex) {
+            return record.decodedFrames[keyFrame.decodedFrameIndex].presentationTimestamp
+        }
+
+        if canonicalDecodedFrameTimestamps.indices.contains(keyFrame.decodedFrameIndex) {
+            return canonicalDecodedFrameTimestamps[keyFrame.decodedFrameIndex]
+        }
+
+        guard record.swingFrames.indices.contains(keyFrame.decodedFrameIndex) else {
+            return 0
+        }
+
+        return record.swingFrames[keyFrame.decodedFrameIndex].timestamp
+    }
+
+    private func resolvedVideoFrameIndex(for keyFrame: KeyFrame) -> Int {
+        if record.decodedFrames.indices.contains(keyFrame.decodedFrameIndex) {
+            return record.decodedFrames[keyFrame.decodedFrameIndex].decodedFrameIndex
+        }
+
+        if record.decodedFrameTimestamps.isEmpty == false {
+            let targetTimestamp = timestamp(for: keyFrame.phase)
+            return GarageDecodedFrameNavigation.nearestDecodedFrameIndex(
+                to: targetTimestamp,
+                timestamps: canonicalDecodedFrameTimestamps,
+                fallbackFrameRate: record.frameRate
+            )
+        }
+
+        return max(Int(round(timestamp(for: keyFrame.phase) * max(record.frameRate, 1))), keyFrame.decodedFrameIndex)
+    }
+
+    private func videoFrameIndex(for phase: SwingPhase) -> Int {
+        guard let keyFrame = record.keyFrames.first(where: { $0.phase == phase }) else {
+            return 0
+        }
+
+        return resolvedVideoFrameIndex(for: keyFrame)
+    }
+
+    private func canonicalPoseExists(for phase: SwingPhase) -> Bool {
+        guard let keyFrame = record.keyFrames.first(where: { $0.phase == phase }) else {
+            return false
+        }
+
+        return record.decodedFrames.indices.contains(keyFrame.decodedFrameIndex)
+            && record.decodedFrames[keyFrame.decodedFrameIndex].poseSample != nil
+    }
+
+    private var decodedFrameCount: Int {
+        GarageDecodedFrameNavigation.decodedFrameCount(
+            timestamps: canonicalDecodedFrameTimestamps,
+            fallbackDuration: duration,
+            fallbackFrameRate: record.frameRate
+        )
+    }
+
+    private func decodedTimestamp(for decodedFrameIndex: Int) -> Double {
+        GarageDecodedFrameNavigation.timestamp(
+            for: decodedFrameIndex,
+            timestamps: canonicalDecodedFrameTimestamps,
+            fallbackFrameRate: record.frameRate,
+            fallbackDuration: duration
+        )
+    }
+
+    private var canonicalDecodedFrameTimestamps: [Double] {
+        if record.decodedFrames.isEmpty == false {
+            return record.decodedFrames.map(\.presentationTimestamp)
+        }
+
+        return record.decodedFrameTimestamps
+    }
+
+    private func logFrameNavigation(
+        phase: SwingPhase,
+        previousDecodedFrameIndex: Int,
+        updatedDecodedFrameIndex: Int,
+        previousTimestamp: Double,
+        updatedTimestamp: Double
+    ) {
+        let timestampDelta = abs(updatedTimestamp - previousTimestamp)
+        let landmarkDisplacement = landmarkDisplacementBetweenNearestPoseFrames(
+            previousTimestamp: previousTimestamp,
+            updatedTimestamp: updatedTimestamp
+        )
+        let continuityError = continuityError(
+            timestampDelta: timestampDelta,
+            landmarkDisplacement: landmarkDisplacement
+        )
+
+        garageFrameLogger.log(
+            """
+            frame-step phase=\(phase.rawValue) requestedFrameIndex=\(updatedDecodedFrameIndex) requestedTimestamp=\(updatedTimestamp, format: .fixed(precision: 6)) actualReturnedTimestamp=pending decodedFrameIndex=\(updatedDecodedFrameIndex) exactDecode=pending roi=(0.0,0.0,1.0,1.0) landmarkDisplacement=\(landmarkDisplacement, format: .fixed(precision: 6)) continuityError=\(String(continuityError))
+            """
+        )
+
+        #if DEBUG
+        if continuityError {
+            assertionFailure("Garage continuity error: adjacent UI frames diverged unexpectedly.")
+        }
+        #endif
+    }
+
+    private func landmarkDisplacementBetweenNearestPoseFrames(previousTimestamp: Double, updatedTimestamp: Double) -> Double {
+        if
+            let previousPoseSample = nearestPoseSample(to: previousTimestamp),
+            let updatedPoseSample = nearestPoseSample(to: updatedTimestamp)
+        {
+            let previousFrame = SwingFrame(
+                timestamp: previousTimestamp,
+                joints: previousPoseSample.joints,
+                confidence: previousPoseSample.confidence
+            )
+            let updatedFrame = SwingFrame(
+                timestamp: updatedTimestamp,
+                joints: updatedPoseSample.joints,
+                confidence: updatedPoseSample.confidence
+            )
+            return GarageAnalysisPipeline.distance(
+                from: GarageAnalysisPipeline.handCenter(in: previousFrame),
+                to: GarageAnalysisPipeline.handCenter(in: updatedFrame)
+            )
+        }
+
+        guard
+            let previousFrame = record.swingFrames.min(by: { abs($0.timestamp - previousTimestamp) < abs($1.timestamp - previousTimestamp) }),
+            let updatedFrame = record.swingFrames.min(by: { abs($0.timestamp - updatedTimestamp) < abs($1.timestamp - updatedTimestamp) })
+        else {
+            garageFrameLogger.log(
+                "fallback-trace path=continuitySparseFrameFallback record=\(recordIdentifier, privacy: .public) previousTimestamp=\(previousTimestamp, format: .fixed(precision: 6)) updatedTimestamp=\(updatedTimestamp, format: .fixed(precision: 6)) result=none"
+            )
+            return 0
+        }
+
+        garageFrameLogger.log(
+            "fallback-trace path=continuitySparseFrameFallback record=\(recordIdentifier, privacy: .public) previousTimestamp=\(previousTimestamp, format: .fixed(precision: 6)) previousSparseTimestamp=\(previousFrame.timestamp, format: .fixed(precision: 6)) updatedTimestamp=\(updatedTimestamp, format: .fixed(precision: 6)) updatedSparseTimestamp=\(updatedFrame.timestamp, format: .fixed(precision: 6)) reason=nearestSparseTimestamp"
+        )
+        return GarageAnalysisPipeline.distance(
+            from: GarageAnalysisPipeline.handCenter(in: previousFrame),
+            to: GarageAnalysisPipeline.handCenter(in: updatedFrame)
+        )
+    }
+
+    private func nearestPoseSample(to timestamp: Double) -> PoseSampleAttachment? {
+        record.decodedFrames
+            .compactMap { frame -> (timestampDelta: Double, poseSample: PoseSampleAttachment)? in
+                guard let poseSample = frame.poseSample else {
+                    return nil
+                }
+                return (timestampDelta: abs(frame.presentationTimestamp - timestamp), poseSample: poseSample)
+            }
+            .min(by: { $0.timestampDelta < $1.timestampDelta })?
+            .poseSample
+    }
+
+    private func continuityError(timestampDelta: Double, landmarkDisplacement: Double) -> Bool {
+        GarageDecodedFrameNavigation.continuityError(
+            timestampDelta: timestampDelta,
+            landmarkDisplacement: landmarkDisplacement,
+            decodedFrameTimestamps: canonicalDecodedFrameTimestamps,
+            fallbackFrameRate: record.frameRate
+        )
+    }
+
+    private func confirmCurrentPhase() {
+        guard record.handAnchors.contains(where: { $0.phase == selectedPhase }) else {
+            return
+        }
+
+        if let nextPhase = nextPhase(after: selectedPhase) {
+            selectedPhase = nextPhase
+            jumpToPhase(nextPhase)
+        } else {
+            record.keyframeValidationStatus = .approved
+            player.pause()
+            seek(to: 0)
+            scrubPosition = 0
+            isShowingPathPlayback = true
+        }
+
+        persistChanges()
+    }
+
+    private func nextPhase(after phase: SwingPhase) -> SwingPhase? {
+        guard let index = SwingPhase.allCases.firstIndex(of: phase) else {
+            return nil
+        }
+
+        let nextIndex = SwingPhase.allCases.index(after: index)
+        guard SwingPhase.allCases.indices.contains(nextIndex) else {
+            return nil
+        }
+
+        return SwingPhase.allCases[nextIndex]
+    }
+
+    private func exportEvaluationSnapshot() {
+        if let document = try? GarageEvaluationDocument(snapshot: evaluationSnapshot) {
+            evaluationDocument = document
+            isShowingEvaluationExporter = true
+        }
+    }
+
+    private var evaluationFilename: String {
+        let sanitizedTitle = record.title
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+            .replacingOccurrences(of: "/", with: "-")
+        return "\(sanitizedTitle.isEmpty ? "garage-evaluation" : sanitizedTitle)-evaluation"
     }
 }
 
@@ -425,276 +777,255 @@ private struct GarageTimelineMarkersView: View {
     }
 }
 
-private struct GarageValidationSection: View {
-    let status: KeyframeValidationStatus
-    @Binding var selectedPhase: SwingPhase
-    let keyFrames: [KeyFrame]
-    let videoURL: URL?
-    let timestampForPhase: (SwingPhase) -> Double
-    let setStatus: (KeyframeValidationStatus) -> Void
-    let stepFrame: (SwingPhase, Int) -> Void
-
-    private let columns = [
-        GridItem(.flexible(), spacing: ModuleSpacing.small),
-        GridItem(.flexible(), spacing: ModuleSpacing.small)
-    ]
+private struct GarageWorkflowSummarySection: View {
+    let progress: GarageWorkflowProgress
+    let reliabilityReport: GarageReliabilityReport
+    let captureQualityReport: GarageCaptureQualityReport
+    let selectedPhase: SwingPhase
+    let confirmedCount: Int
+    let nextAction: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ModuleSpacing.small) {
-            DashboardLikeSectionTitle(
-                title: "1. Review the 8 keyframes",
-                subtitle: "Confirm the checkpoints look right before deeper analysis."
-            )
+        ModuleRowSurface(theme: AppModule.garage.theme) {
+            HStack(alignment: .top, spacing: ModuleSpacing.medium) {
+                VStack(alignment: .leading, spacing: ModuleSpacing.xSmall) {
+                    Text("8-Frame Review")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppModule.garage.theme.textMuted)
+                    Text(selectedPhase.reviewTitle)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(AppModule.garage.theme.textPrimary)
+                    Text("Work through one dominant frame at a time. Place the grip point, confirm it, then move to the next checkpoint.")
+                        .foregroundStyle(AppModule.garage.theme.textSecondary)
+                }
 
-            if status == .flagged {
-                GarageWarningCard(
-                    title: "Keyframes flagged for review",
-                    message: "You can continue in V1, but review and correct any wrong checkpoints before trusting the anchor path."
-                )
-            }
+                Spacer()
 
-            if let selectedKeyFrame {
-                ModuleRowSurface(theme: AppModule.garage.theme) {
-                    HStack(alignment: .top, spacing: ModuleSpacing.medium) {
-                        GarageFrameCanvas(
-                            videoURL: videoURL,
-                            timestamp: timestampForPhase(selectedKeyFrame.phase),
-                            anchor: nil,
-                            pathPoints: [],
-                            interactive: false,
-                            onPlaceAnchor: nil
-                        )
-                        .frame(width: 132, height: 132)
-
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                GarageStatusPill(title: selectedKeyFrame.source.title)
-                                Spacer()
-                                Text(selectedKeyFrame.phase.title)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(AppModule.garage.theme.textSecondary)
-                            }
-
-                            Text(selectedKeyFrame.phase.reviewTitle)
-                                .font(.title3.weight(.bold))
-                                .foregroundStyle(AppModule.garage.theme.textPrimary)
-
-                            Text("Frame \(selectedKeyFrame.frameIndex + 1)")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(AppModule.garage.theme.textSecondary)
-
-                            Text(String(format: "%.2fs", timestampForPhase(selectedKeyFrame.phase)))
-                                .font(.caption)
-                                .foregroundStyle(AppModule.garage.theme.textMuted)
-
-                            HStack(spacing: 10) {
-                                Button {
-                                    stepFrame(selectedKeyFrame.phase, -1)
-                                } label: {
-                                    Label("Earlier", systemImage: "chevron.left")
-                                        .font(.subheadline.weight(.semibold))
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 10)
-                                        .background(AppModule.garage.theme.surfaceSecondary, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.chip, style: .continuous))
-                                }
-                                .buttonStyle(.plain)
-
-                                Button {
-                                    stepFrame(selectedKeyFrame.phase, 1)
-                                } label: {
-                                    Label("Later", systemImage: "chevron.right")
-                                        .font(.subheadline.weight(.semibold))
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 10)
-                                        .background(AppModule.garage.theme.surfaceSecondary, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.chip, style: .continuous))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
+                VStack(alignment: .trailing, spacing: ModuleSpacing.xSmall) {
+                    GarageStatusPill(title: "\(confirmedCount)/8 confirmed")
+                    Text(captureQualityReport.benchmark)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppModule.garage.theme.textMuted)
+                    Text(reliabilityReport.status.rawValue)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(summaryColor)
                 }
             }
 
-            HStack(spacing: 8) {
-                ForEach(KeyframeValidationStatus.allCases) { candidate in
-                    Button(candidate.title) {
-                        setStatus(candidate)
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(status == candidate ? AppModule.garage.theme.textPrimary : AppModule.garage.theme.textSecondary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: ModuleCornerRadius.chip, style: .continuous)
-                            .fill(status == candidate ? AppModule.garage.theme.surfaceInteractive : AppModule.garage.theme.surfaceSecondary)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: ModuleCornerRadius.chip, style: .continuous)
-                            .stroke(status == candidate ? AppModule.garage.theme.borderStrong : AppModule.garage.theme.borderSubtle, lineWidth: 1)
-                    )
-                    .buttonStyle(.plain)
+            ProgressView(value: Double(confirmedCount), total: 8)
+                .tint(AppModule.garage.theme.primary)
+
+            Button(progress.nextAction.actionLabel, action: nextAction)
+                .buttonStyle(.borderedProminent)
+                .tint(AppModule.garage.theme.primary)
+        }
+    }
+
+    private var summaryColor: Color {
+        switch reliabilityReport.status {
+        case .trusted:
+            AppModule.garage.theme.primary
+        case .review:
+            .orange
+        case .provisional:
+            .red
+        }
+    }
+}
+
+private struct GarageCaptureQualitySection: View {
+    let report: GarageCaptureQualityReport
+
+    var body: some View {
+        ModuleRowSurface(theme: AppModule.garage.theme) {
+            HStack(alignment: .top, spacing: ModuleSpacing.medium) {
+                VStack(alignment: .leading, spacing: ModuleSpacing.xxSmall) {
+                    Text("Capture And Sequence Audit")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppModule.garage.theme.textMuted)
+                    Text(report.headline)
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(AppModule.garage.theme.textPrimary)
+                    Text(report.summary)
+                        .foregroundStyle(AppModule.garage.theme.textSecondary)
                 }
+                Spacer()
+                Text(report.status.rawValue)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(statusColor)
             }
 
-            LazyVGrid(columns: columns, spacing: ModuleSpacing.small) {
-                ForEach(keyFrames) { keyFrame in
-                    Button {
-                        selectedPhase = keyFrame.phase
-                    } label: {
-                        VStack(alignment: .leading, spacing: 10) {
-                            GarageFrameCanvas(
-                                videoURL: videoURL,
-                                timestamp: timestampForPhase(keyFrame.phase),
-                                anchor: nil,
-                                pathPoints: [],
-                                interactive: false,
-                                onPlaceAnchor: nil
-                            )
-                            .frame(height: 120)
+            Text(report.benchmark)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(statusColor)
 
-                            Text(keyFrame.phase.reviewTitle)
-                                .font(.subheadline.weight(.bold))
-                                .foregroundStyle(AppModule.garage.theme.textPrimary)
-                            Text(keyFrame.phase.title)
-                                .font(.caption)
-                                .foregroundStyle(AppModule.garage.theme.textSecondary)
-                            HStack {
-                                GarageStatusPill(title: keyFrame.source.title)
-                                Spacer()
-                                Text("Select to adjust")
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(AppModule.garage.theme.textMuted)
-                            }
-                        }
-                        .padding(12)
-                        .background(
-                            RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
-                                .fill(selectedPhase == keyFrame.phase ? AppModule.garage.theme.surfaceInteractive : AppModule.garage.theme.surfacePrimary)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
-                                .stroke(selectedPhase == keyFrame.phase ? AppModule.garage.theme.borderStrong : AppModule.garage.theme.borderSubtle, lineWidth: 1)
-                        )
+            ForEach(report.findings.prefix(3)) { finding in
+                HStack(alignment: .top, spacing: ModuleSpacing.small) {
+                    Image(systemName: iconName(for: finding.severity))
+                        .foregroundStyle(color(for: finding.severity))
+                        .frame(width: 18)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(finding.title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(AppModule.garage.theme.textPrimary)
+                        Text(finding.detail)
+                            .font(.caption)
+                            .foregroundStyle(AppModule.garage.theme.textSecondary)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
     }
 
-    private var selectedKeyFrame: KeyFrame? {
-        keyFrames.first(where: { $0.phase == selectedPhase })
+    private var statusColor: Color {
+        color(for: report.status)
+    }
+
+    private func iconName(for severity: GarageCaptureSeverity) -> String {
+        switch severity {
+        case .good:
+            "checkmark.circle.fill"
+        case .review:
+            "exclamationmark.triangle.fill"
+        case .poor:
+            "xmark.octagon.fill"
+        }
+    }
+
+    private func color(for severity: GarageCaptureSeverity) -> Color {
+        switch severity {
+        case .good:
+            AppModule.garage.theme.primary
+        case .review:
+            .orange
+        case .poor:
+            .red
+        }
     }
 }
 
-private struct GarageHandAnchorSection: View {
-    let videoURL: URL?
-    let keyFrames: [KeyFrame]
-    let handAnchors: [HandAnchor]
+private struct GaragePrimaryReviewSection: View {
     @Binding var selectedPhase: SwingPhase
+    let recordIdentifier: String
+    let keyFrames: [KeyFrame]
+    let videoURL: URL?
+    let handAnchors: [HandAnchor]
     let timestampForPhase: (SwingPhase) -> Double
+    let videoFrameIndexForPhase: (SwingPhase) -> Int
+    let canonicalPoseExistsForPhase: (SwingPhase) -> Bool
+    let stepFrame: (SwingPhase, Int) -> Void
     let setAnchor: (SwingPhase, CGPoint) -> Void
-
-    private let columns = [
-        GridItem(.flexible(), spacing: ModuleSpacing.small),
-        GridItem(.flexible(), spacing: ModuleSpacing.small)
-    ]
+    let confirmPhase: () -> Void
+    let jumpToPhase: (SwingPhase) -> Void
+    let pathPoints: [PathPoint]
 
     var body: some View {
         VStack(alignment: .leading, spacing: ModuleSpacing.small) {
-            HStack {
-                DashboardLikeSectionTitle(
-                    title: "2. Mark the grip midpoint",
-                    subtitle: "Tap the middle of both hands where they connect on the grip in each image. Tap again anytime to replace."
-                )
-                Spacer()
-                GarageStatusPill(title: "\(handAnchors.count)/8")
-            }
+            DashboardLikeSectionTitle(
+                title: "Primary Frame Workspace",
+                subtitle: "The analyzer should show one frame at a time. Adjust the checkpoint if needed, place the grip point, confirm, and move to the next phase."
+            )
 
             if let selectedKeyFrame {
                 ModuleRowSurface(theme: AppModule.garage.theme) {
+                    GarageFrameCanvas(
+                        recordIdentifier: recordIdentifier,
+                        phaseLabel: selectedKeyFrame.phase.rawValue,
+                        videoURL: videoURL,
+                        decodedFrameIndex: videoFrameIndexForPhase(selectedKeyFrame.phase),
+                        canonicalPoseExists: canonicalPoseExistsForPhase(selectedKeyFrame.phase),
+                        anchor: handAnchors.first(where: { $0.phase == selectedKeyFrame.phase }),
+                        pathPoints: [],
+                        interactive: true
+                    ) { point in
+                        setAnchor(selectedKeyFrame.phase, point)
+                        selectedPhase = selectedKeyFrame.phase
+                    }
+                    .frame(height: 430)
+
                     HStack(alignment: .top, spacing: ModuleSpacing.medium) {
-                        GarageFrameCanvas(
-                            videoURL: videoURL,
-                            timestamp: timestampForPhase(selectedKeyFrame.phase),
-                            anchor: handAnchors.first(where: { $0.phase == selectedKeyFrame.phase }),
-                            pathPoints: [],
-                            interactive: true
-                        ) { point in
-                            setAnchor(selectedKeyFrame.phase, point)
-                            selectedPhase = selectedKeyFrame.phase
-                        }
-                        .frame(width: 132, height: 132)
-
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: ModuleSpacing.xSmall) {
                             HStack {
-                                Text(selectedKeyFrame.phase.reviewTitle)
-                                    .font(.title3.weight(.bold))
-                                    .foregroundStyle(AppModule.garage.theme.textPrimary)
-                                Spacer()
-                                GarageStatusPill(title: anchorExists(for: selectedKeyFrame.phase) ? "Placed" : "Needed")
+                                GarageStatusPill(title: "\(phaseNumber(for: selectedKeyFrame.phase))/8")
+                                GarageStatusPill(title: selectedKeyFrame.phase.reviewTitle)
+                                GarageStatusPill(title: "Frame \(videoFrameIndexForPhase(selectedKeyFrame.phase) + 1)")
                             }
-
-                            Text("Frame \(selectedKeyFrame.frameIndex + 1)")
-                                .font(.subheadline.weight(.semibold))
+                            Text(selectedKeyFrame.phase.title)
+                                .font(.title3.weight(.bold))
+                                .foregroundStyle(AppModule.garage.theme.textPrimary)
+                            Text(anchorGuidance(for: selectedKeyFrame.phase))
                                 .foregroundStyle(AppModule.garage.theme.textSecondary)
+                        }
 
-                            Text(anchorExists(for: selectedKeyFrame.phase) ? "Tap the image to replace the saved grip midpoint." : "Tap the image to place the grip midpoint.")
-                                .font(.caption)
-                                .foregroundStyle(AppModule.garage.theme.textSecondary)
+                        Spacer()
 
-                            ProgressView(value: Double(handAnchors.count), total: 8)
-                                .tint(AppModule.garage.theme.primary)
-
-                            Text("\(handAnchors.count) of 8 anchors complete")
+                        VStack(alignment: .trailing, spacing: ModuleSpacing.xSmall) {
+                            Text(String(format: "%.2fs", timestampForPhase(selectedKeyFrame.phase)))
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(AppModule.garage.theme.textMuted)
+                            GarageStatusPill(title: anchorExists(for: selectedKeyFrame.phase) ? "Placed" : "Needed")
                         }
                     }
-                }
-            }
 
-            LazyVGrid(columns: columns, spacing: ModuleSpacing.small) {
-                ForEach(keyFrames) { keyFrame in
-                    VStack(alignment: .leading, spacing: 10) {
-                        GarageFrameCanvas(
-                            videoURL: videoURL,
-                            timestamp: timestampForPhase(keyFrame.phase),
-                            anchor: handAnchors.first(where: { $0.phase == keyFrame.phase }),
-                            pathPoints: [],
-                            interactive: true
-                        ) { point in
-                            setAnchor(keyFrame.phase, point)
-                            selectedPhase = keyFrame.phase
+                    HStack(spacing: 10) {
+                        Button {
+                            stepFrame(selectedKeyFrame.phase, -1)
+                        } label: {
+                            Label("Earlier", systemImage: "chevron.left")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(AppModule.garage.theme.surfaceSecondary, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.chip, style: .continuous))
                         }
-                        .frame(height: 118)
+                        .buttonStyle(.plain)
 
-                        HStack {
-                            Text(keyFrame.phase.reviewTitle)
+                        Button {
+                            stepFrame(selectedKeyFrame.phase, 1)
+                        } label: {
+                            Label("Later", systemImage: "chevron.right")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(AppModule.garage.theme.surfaceSecondary, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.chip, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    HStack(spacing: 10) {
+                        Button {
+                            if let previousPhase {
+                                jumpToPhase(previousPhase)
+                            }
+                        } label: {
+                            Label("Previous", systemImage: "arrow.left")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(AppModule.garage.theme.surfaceSecondary, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.chip, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(previousPhase == nil)
+
+                        Button(action: confirmPhase) {
+                            Text(nextPhase == nil ? "Finish 8 Frames" : "Confirm \(selectedKeyFrame.phase.reviewTitle)")
                                 .font(.subheadline.weight(.bold))
-                                .foregroundStyle(AppModule.garage.theme.textPrimary)
-                            Spacer()
-                            Image(systemName: handAnchors.contains(where: { $0.phase == keyFrame.phase }) ? "checkmark.circle.fill" : "circle")
-                                .foregroundStyle(handAnchors.contains(where: { $0.phase == keyFrame.phase }) ? AppModule.garage.theme.primary : AppModule.garage.theme.textMuted)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(AppModule.garage.theme.primary, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.chip, style: .continuous))
+                                .foregroundStyle(Color.black.opacity(0.8))
                         }
-
-                        HStack {
-                            GarageStatusPill(title: handAnchors.contains(where: { $0.phase == keyFrame.phase }) ? "Placed" : "Needed")
-                            Spacer()
-                            Text("Tap to \(handAnchors.contains(where: { $0.phase == keyFrame.phase }) ? "replace" : "place")")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(AppModule.garage.theme.textMuted)
-                        }
+                        .buttonStyle(.plain)
+                        .disabled(anchorExists(for: selectedKeyFrame.phase) == false)
                     }
-                    .padding(12)
-                    .background(
-                        RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
-                            .fill(selectedPhase == keyFrame.phase ? AppModule.garage.theme.surfaceInteractive : AppModule.garage.theme.surfacePrimary)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
-                            .stroke(selectedPhase == keyFrame.phase ? AppModule.garage.theme.borderStrong : AppModule.garage.theme.borderSubtle, lineWidth: 1)
-                    )
+
+                    ProgressView(value: Double(handAnchors.count), total: Double(SwingPhase.allCases.count))
+                        .tint(AppModule.garage.theme.primary)
+
+                    Text(pathPoints.isEmpty
+                        ? "\(handAnchors.count) of \(SwingPhase.allCases.count) grip points confirmed. The hand path appears after all 8 frames are done."
+                        : "All 8 grip points are confirmed. The analyzer can now draw the hand path back to you.")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppModule.garage.theme.textMuted)
                 }
             }
         }
@@ -707,97 +1038,224 @@ private struct GarageHandAnchorSection: View {
     private func anchorExists(for phase: SwingPhase) -> Bool {
         handAnchors.contains(where: { $0.phase == phase })
     }
+
+    private func anchorGuidance(for phase: SwingPhase) -> String {
+        anchorExists(for: phase)
+            ? "Tap the image to replace the saved grip midpoint, then confirm this frame and move on."
+            : "Tap the middle of the hands on the grip. This frame should dominate the screen until you confirm it."
+    }
+
+    private func phaseNumber(for phase: SwingPhase) -> Int {
+        (SwingPhase.allCases.firstIndex(of: phase) ?? 0) + 1
+    }
+
+    private var previousPhase: SwingPhase? {
+        guard let index = SwingPhase.allCases.firstIndex(of: selectedPhase), index > 0 else {
+            return nil
+        }
+
+        return SwingPhase.allCases[index - 1]
+    }
+
+    private var nextPhase: SwingPhase? {
+        guard let index = SwingPhase.allCases.firstIndex(of: selectedPhase) else {
+            return nil
+        }
+
+        let nextIndex = index + 1
+        guard SwingPhase.allCases.indices.contains(nextIndex) else {
+            return nil
+        }
+
+        return SwingPhase.allCases[nextIndex]
+    }
 }
 
-private struct GaragePathReviewSection: View {
-    let selectedPhase: SwingPhase
+private struct GaragePathPlaybackView: View {
+    let player: AVPlayer
     let videoURL: URL?
-    let timestamp: Double
-    let handAnchors: [HandAnchor]
+    let duration: Double
     let pathPoints: [PathPoint]
+    let dismiss: () -> Void
+
+    @State private var pathTrim: CGFloat = 0
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                ZStack {
+                    if let videoURL {
+                        VideoPlayer(player: player)
+                            .ignoresSafeArea()
+                            .onAppear {
+                                player.replaceCurrentItem(with: AVPlayerItem(url: videoURL))
+                                player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
+                                player.playImmediately(atRate: 0.35)
+                                pathTrim = 0
+                                withAnimation(.linear(duration: max(duration / 0.35, 1.2))) {
+                                    pathTrim = 1
+                                }
+                            }
+                            .onDisappear {
+                                player.pause()
+                            }
+                    } else {
+                        ContentUnavailableView(
+                            "Video Missing",
+                            systemImage: "video.slash",
+                            description: Text("The slow-motion hand-path playback needs the original swing video.")
+                        )
+                        .foregroundStyle(.white.opacity(0.7))
+                    }
+
+                    GeometryReader { proxy in
+                        Path { path in
+                            for (index, point) in pathPoints.enumerated() {
+                                let resolved = CGPoint(x: proxy.size.width * point.x, y: proxy.size.height * point.y)
+                                if index == 0 {
+                                    path.move(to: resolved)
+                                } else {
+                                    path.addLine(to: resolved)
+                                }
+                            }
+                        }
+                        .trim(from: 0, to: pathTrim)
+                        .stroke(
+                            AppModule.garage.theme.primary,
+                            style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round)
+                        )
+                        .shadow(color: AppModule.garage.theme.accentGlow, radius: 8)
+                    }
+                    .allowsHitTesting(false)
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Swing Playback Result")
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(.white)
+                    Text("Garage replays the full swing in slow motion and draws the confirmed hand path across the motion, not on a static screenshot.")
+                        .foregroundStyle(.white.opacity(0.78))
+                    Button("Replay") {
+                        player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
+                        player.playImmediately(atRate: 0.35)
+                        pathTrim = 0
+                        withAnimation(.linear(duration: max(duration / 0.35, 1.2))) {
+                            pathTrim = 1
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(AppModule.garage.theme.primary)
+                    .foregroundStyle(Color.black.opacity(0.85))
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.black.opacity(0.75))
+            }
+
+            Button(action: dismiss) {
+                Image(systemName: "xmark")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 42, height: 42)
+                    .background(.black.opacity(0.45), in: Circle())
+            }
+            .padding()
+        }
+    }
+}
+
+private struct GarageEvaluationHarnessSection: View {
+    let record: SwingRecord
+    let snapshot: GarageEvaluationSnapshot
+    let recordIdentifier: String
+    let videoURL: URL?
+    let timestampForPhase: (SwingPhase) -> Double
+    let canonicalPoseExistsForPhase: (SwingPhase) -> Bool
+    let exportSnapshot: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: ModuleSpacing.small) {
-            DashboardLikeSectionTitle(
-                title: "3. Review the hand path",
-                subtitle: pathPoints.isEmpty ? "Complete all 8 grip anchors to generate the simple V1 interpolation path." : "The current path is a simple 8-point interpolation through your verified grip anchors."
-            )
-
             ModuleRowSurface(theme: AppModule.garage.theme) {
-                GarageFrameCanvas(
-                    videoURL: videoURL,
-                    timestamp: timestamp,
-                    anchor: handAnchors.first(where: { $0.phase == selectedPhase }),
-                    pathPoints: pathPoints,
-                    interactive: false,
-                    onPlaceAnchor: nil
-                )
-                .frame(height: 220)
-
-                Text(selectedPhase.reviewTitle)
+                Text("Real-Swing Evaluation")
                     .font(.headline)
                     .foregroundStyle(AppModule.garage.theme.textPrimary)
-
-                Text(pathPoints.isEmpty ? "Path status: pending" : "Path status: ready")
-                    .font(.subheadline)
+                Text("Use this debug layer to compare Garage's actual 8 selected frames against a known-good benchmark grid.")
                     .foregroundStyle(AppModule.garage.theme.textSecondary)
-
-                if pathPoints.isEmpty {
-                    Text(missingAnchorsText)
-                        .font(.caption)
-                        .foregroundStyle(AppModule.garage.theme.textMuted)
-                } else {
-                    Text("The selected frame shows the current interpolated path alongside the saved grip anchor for that checkpoint.")
-                        .font(.caption)
-                        .foregroundStyle(AppModule.garage.theme.textMuted)
+                GarageFieldRow(label: "Capture status", value: snapshot.captureStatus)
+                GarageFieldRow(label: "Primary cause", value: snapshot.capturePrimaryCause)
+                GarageFieldRow(label: "Reliability", value: "\(snapshot.reliabilityStatus) • \(snapshot.reliabilityScore)%")
+                if snapshot.weakestPhases.isEmpty == false {
+                    GarageFieldRow(label: "Weakest phases", value: snapshot.weakestPhases.prefix(3).joined(separator: ", "))
                 }
+                Button("Export Evaluation JSON", action: exportSnapshot)
+                    .buttonStyle(.borderedProminent)
+                    .tint(AppModule.garage.theme.primary)
             }
 
-            if pathPoints.isEmpty {
-                ModuleRowSurface(theme: AppModule.garage.theme) {
-                    Text("Resume Progress")
-                        .font(.headline)
-                        .foregroundStyle(AppModule.garage.theme.textPrimary)
-                    Text("You can stop and resume later. The analyzer keeps your saved anchors and continues from the remaining checkpoints.")
-                        .foregroundStyle(AppModule.garage.theme.textSecondary)
-                    Text(missingAnchorsTitle)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(AppModule.garage.theme.primary)
-                }
-            } else {
-                ModuleRowSurface(theme: AppModule.garage.theme) {
-                    Text("Path Ready")
-                        .font(.headline)
-                        .foregroundStyle(AppModule.garage.theme.textPrimary)
-                    Text("All 8 anchors are saved, so the V1 interpolated hand path is now ready for review.")
-                        .foregroundStyle(AppModule.garage.theme.textSecondary)
-                    Text("\(pathPoints.count) generated path points")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppModule.garage.theme.primary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: ModuleSpacing.small) {
+                    ForEach(record.keyFrames.sorted { lhs, rhs in
+                        (SwingPhase.allCases.firstIndex(of: lhs.phase) ?? 0) < (SwingPhase.allCases.firstIndex(of: rhs.phase) ?? 0)
+                    }) { keyFrame in
+                        ModuleRowSurface(theme: AppModule.garage.theme) {
+                            GarageFrameCanvas(
+                                recordIdentifier: recordIdentifier,
+                                phaseLabel: keyFrame.phase.rawValue,
+                                videoURL: videoURL,
+                                decodedFrameIndex: videoFrameIndex(for: keyFrame),
+                                canonicalPoseExists: canonicalPoseExistsForPhase(keyFrame.phase),
+                                anchor: nil,
+                                pathPoints: [],
+                                interactive: false,
+                                onPlaceAnchor: nil
+                            )
+                            .frame(width: 154, height: 180)
+
+                            Text(keyFrame.phase.reviewTitle)
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(AppModule.garage.theme.textPrimary)
+                            Text(phaseSnapshot(for: keyFrame.phase)?.health ?? "Review")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(phaseHealthColor(for: phaseSnapshot(for: keyFrame.phase)?.health))
+                            Text("Frame \(videoFrameIndex(for: keyFrame) + 1)")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(AppModule.garage.theme.textSecondary)
+                            Text(String(format: "%.2fs", timestampForPhase(keyFrame.phase)))
+                                .font(.caption)
+                                .foregroundStyle(AppModule.garage.theme.textMuted)
+                            if let phaseSnapshot = phaseSnapshot(for: keyFrame.phase),
+                               let firstNote = phaseSnapshot.notes.first {
+                                Text(firstNote)
+                                    .font(.caption2)
+                                    .foregroundStyle(AppModule.garage.theme.textMuted)
+                            }
+                        }
+                        .frame(width: 182)
+                    }
                 }
             }
         }
     }
 
-    private var missingPhases: [SwingPhase] {
-        let anchoredPhases = Set(handAnchors.map(\.phase))
-        return SwingPhase.allCases.filter { anchoredPhases.contains($0) == false }
+    private func phaseSnapshot(for phase: SwingPhase) -> GarageEvaluationPhaseSnapshot? {
+        snapshot.phases.first(where: { $0.phase == phase.rawValue })
     }
 
-    private var missingAnchorsTitle: String {
-        if missingPhases.isEmpty {
-            return "All anchors complete"
-        }
-
-        return "Remaining: \(missingPhases.map(\.reviewTitle).joined(separator: ", "))"
+    private func videoFrameIndex(for keyFrame: KeyFrame) -> Int {
+        phaseSnapshot(for: keyFrame.phase)?.frameIndex ?? keyFrame.decodedFrameIndex
     }
 
-    private var missingAnchorsText: String {
-        if missingPhases.isEmpty {
-            return "All 8 anchors are complete."
+    private func phaseHealthColor(for health: String?) -> Color {
+        switch health {
+        case GaragePhaseHealth.strong.rawValue:
+            AppModule.garage.theme.primary
+        case GaragePhaseHealth.weak.rawValue:
+            .red
+        default:
+            .orange
         }
-
-        return "\(missingPhases.count) anchor\(missingPhases.count == 1 ? "" : "s") still needed: \(missingPhases.map(\.reviewTitle).joined(separator: ", "))."
     }
 }
 
@@ -806,6 +1264,7 @@ private struct GarageTechnicalPanel: View {
     let report: GarageInsightReport
     let reliabilityReport: GarageReliabilityReport
     let timestampForPhase: (SwingPhase) -> Double
+    let videoFrameIndexForPhase: (SwingPhase) -> Int
 
     var body: some View {
         VStack(alignment: .leading, spacing: ModuleSpacing.small) {
@@ -833,10 +1292,65 @@ private struct GarageTechnicalPanel: View {
                 ForEach(record.keyFrames) { keyFrame in
                     GarageFieldRow(
                         label: keyFrame.phase.reviewTitle,
-                        value: "\(keyFrame.source.title) • Frame \(keyFrame.frameIndex + 1) • \(String(format: "%.2fs", timestampForPhase(keyFrame.phase)))"
+                        value: "\(keyFrame.source.title) • Frame \(videoFrameIndexForPhase(keyFrame.phase) + 1) • \(String(format: "%.2fs", timestampForPhase(keyFrame.phase)))"
                     )
                 }
             }
+        }
+    }
+}
+
+private struct GarageOutputHoldSection: View {
+    let nextAction: GarageWorkflowNextAction
+    let reliabilityReport: GarageReliabilityReport
+    let captureQualityReport: GarageCaptureQualityReport
+
+    var body: some View {
+        ModuleRowSurface(theme: AppModule.garage.theme) {
+            Text("Outputs Are Held Back")
+                .font(.headline)
+                .foregroundStyle(AppModule.garage.theme.textPrimary)
+            Text("Garage should not ask you to interpret coaching while the 8-frame result still needs work. Finish the current review task first.")
+                .foregroundStyle(AppModule.garage.theme.textSecondary)
+            HStack {
+                GarageStatusPill(title: nextAction.title)
+                Spacer()
+                Text(reliabilityReport.status.rawValue)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(outputColor)
+            }
+            Text(nextAction.body)
+                .font(.caption)
+                .foregroundStyle(AppModule.garage.theme.textMuted)
+            Text("Primary cause: \(captureQualityReport.primaryCause)")
+                .font(.caption)
+                .foregroundStyle(AppModule.garage.theme.textMuted)
+        }
+    }
+
+    private var outputColor: Color {
+        switch reliabilityReport.status {
+        case .trusted:
+            AppModule.garage.theme.primary
+        case .review:
+            .orange
+        case .provisional:
+            .red
+        }
+    }
+}
+
+private struct GarageLegacyReviewUnavailableSection: View {
+    var body: some View {
+        ModuleRowSurface(theme: AppModule.garage.theme) {
+            Text("Frame Review Unavailable")
+                .font(.headline)
+                .foregroundStyle(AppModule.garage.theme.textPrimary)
+            Text("This swing record does not contain canonical decoded frames. Re-analyze the source video to unlock exact frame-by-frame review.")
+                .foregroundStyle(AppModule.garage.theme.textSecondary)
+            Text("Garage no longer reconstructs review identity from timestamps or sparse pose samples.")
+                .font(.caption)
+                .foregroundStyle(AppModule.garage.theme.textMuted)
         }
     }
 }
@@ -1170,6 +1684,56 @@ private struct GarageAnalyzerEmptyState: View {
     }
 }
 
+private struct GarageAnalyzingOverlay: View {
+    var body: some View {
+        ZStack {
+            AppModule.garage.theme.canvasBase.opacity(0.92)
+                .ignoresSafeArea()
+
+            ModuleRowSurface(theme: AppModule.garage.theme) {
+                VStack(alignment: .leading, spacing: ModuleSpacing.medium) {
+                    HStack(alignment: .center, spacing: ModuleSpacing.medium) {
+                        ProgressView()
+                            .controlSize(.large)
+                            .tint(AppModule.garage.theme.primary)
+
+                        VStack(alignment: .leading, spacing: ModuleSpacing.xxSmall) {
+                            Text("Analyzing Swing Video")
+                                .font(.title3.weight(.bold))
+                                .foregroundStyle(AppModule.garage.theme.textPrimary)
+                            Text("Pulling the swing from Photos, extracting 8 keyframes, and preparing the review canvas.")
+                                .foregroundStyle(AppModule.garage.theme.textSecondary)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        GarageStatusPill(title: "Buffering")
+                        Text("The keyframe confirmation view will appear here automatically as soon as analysis is ready.")
+                            .font(.subheadline)
+                            .foregroundStyle(AppModule.garage.theme.textSecondary)
+                    }
+                }
+                .frame(maxWidth: 520, alignment: .leading)
+            }
+            .padding(.horizontal, ModuleSpacing.large)
+        }
+    }
+}
+
+private struct GarageImportErrorBanner: View {
+    let message: String
+
+    var body: some View {
+        Text(message)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.red.opacity(0.9), in: RoundedRectangle(cornerRadius: ModuleCornerRadius.medium, style: .continuous))
+    }
+}
+
 private struct DashboardLikeSectionTitle: View {
     let title: String
     let subtitle: String
@@ -1232,14 +1796,17 @@ private struct GarageWarningCard: View {
 }
 
 private struct GarageFrameCanvas: View {
+    let recordIdentifier: String
+    let phaseLabel: String
     let videoURL: URL?
-    let timestamp: Double
+    let decodedFrameIndex: Int
+    let canonicalPoseExists: Bool
     let anchor: HandAnchor?
     let pathPoints: [PathPoint]
     let interactive: Bool
     let onPlaceAnchor: ((CGPoint) -> Void)?
 
-    @State private var thumbnail: CGImage?
+    @State private var renderedFrame: GarageRenderedFrameResult?
 
     var body: some View {
         GeometryReader { proxy in
@@ -1247,8 +1814,8 @@ private struct GarageFrameCanvas: View {
                 RoundedRectangle(cornerRadius: ModuleCornerRadius.medium, style: .continuous)
                     .fill(AppModule.garage.theme.surfaceSecondary)
 
-                if let thumbnail {
-                    Image(decorative: thumbnail, scale: 1)
+                if let renderedFrame {
+                    Image(decorative: renderedFrame.image, scale: 1)
                         .resizable()
                         .scaledToFill()
                         .frame(width: proxy.size.width, height: proxy.size.height)
@@ -1263,6 +1830,22 @@ private struct GarageFrameCanvas: View {
                             .foregroundStyle(AppModule.garage.theme.textSecondary)
                     }
                 }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Req \(decodedFrameIndex) -> Rend \(renderedFrame?.renderedDecodedFrameIndex ?? -1)")
+                    Text("Src \(renderedFrame?.imageSource ?? "unavailable")")
+                    Text("Pose \(canonicalPoseExists ? "yes" : "no")")
+                    Text("Fallback \(renderedFrame?.fallbackUsed == true ? "yes" : "no")")
+                    if let fallbackReason = renderedFrame?.fallbackReason {
+                        Text(fallbackReason)
+                    }
+                }
+                .font(.caption2.monospaced())
+                .foregroundStyle(.white)
+                .padding(8)
+                .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
                 if pathPoints.isEmpty == false {
                     Path { path in
@@ -1311,143 +1894,73 @@ private struct GarageFrameCanvas: View {
         }
         .task(id: thumbnailTaskKey) {
             guard let videoURL else {
-                thumbnail = nil
+                renderedFrame = nil
                 return
             }
 
-            thumbnail = await GarageMediaStore.thumbnail(for: videoURL, at: timestamp)
+            garageFrameLogger.log(
+                "frame-request record=\(recordIdentifier, privacy: .public) phase=\(phaseLabel, privacy: .public) requestedDecodedFrameIndex=\(decodedFrameIndex) canonicalPoseAttached=\(canonicalPoseExists, privacy: .public) fallbackUsed=false fallbackReason=none"
+            )
+            renderedFrame = await GarageMediaStore.thumbnail(for: videoURL, decodedFrameIndex: decodedFrameIndex)
+            garageFrameLogger.log(
+                "frame-response record=\(recordIdentifier, privacy: .public) phase=\(phaseLabel, privacy: .public) requestedDecodedFrameIndex=\(decodedFrameIndex) renderedDecodedFrameIndex=\(renderedFrame?.renderedDecodedFrameIndex ?? -1) canonicalPoseAttached=\(canonicalPoseExists, privacy: .public) fallbackUsed=\(renderedFrame?.fallbackUsed ?? true, privacy: .public) fallbackReason=\(renderedFrame?.fallbackReason ?? "renderUnavailable", privacy: .public)"
+            )
         }
     }
 
     private var thumbnailTaskKey: String {
-        "\(videoURL?.absoluteString ?? "none")-\(timestamp)"
+        "\(videoURL?.absoluteString ?? "none")-\(decodedFrameIndex)"
     }
 }
 
-private struct AddSwingRecordSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
-    @State private var title = ""
-    @State private var notes = ""
-    @State private var selectedVideoURL: URL?
-    @State private var isShowingImporter = false
-    @State private var isSaving = false
-    @State private var errorMessage: String?
+private struct GaragePickedMovie: Transferable {
+    let url: URL
 
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Swing Record") {
-                    TextField("Title", text: $title)
-                    TextField("Notes", text: $notes, axis: .vertical)
-                        .lineLimit(4, reservesSpace: true)
-                }
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(importedContentType: .movie) { received in
+            let destinationURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension(received.file.pathExtension)
 
-                Section("Video Import") {
-                    Button(selectedVideoURL == nil ? "Choose Swing Video" : "Replace Swing Video") {
-                        isShowingImporter = true
-                    }
-
-                    if let selectedVideoURL {
-                        Text(selectedVideoURL.lastPathComponent)
-                            .font(.caption)
-                            .foregroundStyle(AppModule.garage.theme.primary)
-                    }
-
-                    Text("Save runs the current 2D pipeline, stores 8 deterministic keyframes, and prepares the swing for validation and hand-anchor review.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                if isSaving {
-                    Section {
-                        ProgressView("Analyzing swing video…")
-                    }
-                }
-
-                if let errorMessage {
-                    Section {
-                        Text(errorMessage)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
-                }
+            if FileManager.default.fileExists(atPath: destinationURL.path()) {
+                try FileManager.default.removeItem(at: destinationURL)
             }
-            .navigationTitle("New Swing Record")
-            .fileImporter(
-                isPresented: $isShowingImporter,
-                allowedContentTypes: [.movie, .mpeg4Movie, .quickTimeMovie],
-                allowsMultipleSelection: false
-            ) { result in
-                switch result {
-                case .success(let urls):
-                    selectedVideoURL = urls.first
-                    errorMessage = nil
-                case .failure(let error):
-                    errorMessage = error.localizedDescription
-                }
-            }
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
 
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        saveRecord()
-                    }
-                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedVideoURL == nil || isSaving)
-                }
-            }
+            try FileManager.default.copyItem(at: received.file, to: destinationURL)
+            return GaragePickedMovie(url: destinationURL)
         }
     }
+}
 
-    private func saveRecord() {
-        guard let selectedVideoURL else { return }
+private enum GarageImportError: LocalizedError {
+    case unableToLoadSelection
 
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmedTitle.isEmpty == false else { return }
-
-        errorMessage = nil
-        isSaving = true
-
-        Task {
-            do {
-                let hasAccess = selectedVideoURL.startAccessingSecurityScopedResource()
-                defer {
-                    if hasAccess {
-                        selectedVideoURL.stopAccessingSecurityScopedResource()
-                    }
-                }
-
-                let persistedVideoURL = try GarageMediaStore.persistVideo(from: selectedVideoURL)
-                let output = try await GarageAnalysisPipeline.analyzeVideo(at: persistedVideoURL)
-
-                let record = SwingRecord(
-                    title: trimmedTitle,
-                    mediaFilename: persistedVideoURL.lastPathComponent,
-                    notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
-                    frameRate: output.frameRate,
-                    swingFrames: output.swingFrames,
-                    keyFrames: output.keyFrames,
-                    analysisResult: output.analysisResult
-                )
-
-                modelContext.insert(record)
-                try? modelContext.save()
-                await MainActor.run {
-                    isSaving = false
-                    dismiss()
-                }
-            } catch {
-                await MainActor.run {
-                    isSaving = false
-                    errorMessage = error.localizedDescription
-                }
-            }
+    var errorDescription: String? {
+        switch self {
+        case .unableToLoadSelection:
+            "The selected video could not be loaded from Photos."
         }
+    }
+}
+
+private struct GarageEvaluationDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+
+    let data: Data
+
+    @MainActor
+    init(snapshot: GarageEvaluationSnapshot) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        data = try encoder.encode(snapshot)
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        data = configuration.file.regularFileContents ?? Data()
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        return FileWrapper(regularFileWithContents: data)
     }
 }
 

@@ -110,9 +110,40 @@ struct SwingFrame: Codable, Hashable, Identifiable {
     var id: Double { timestamp }
 }
 
+struct NormalizedRect: Codable, Hashable {
+    var x: Double
+    var y: Double
+    var width: Double
+    var height: Double
+}
+
+struct PoseSampleAttachment: Codable, Hashable {
+    var analysisSampleIndex: Int
+    var confidence: Double
+    var joints: [SwingJoint]
+}
+
+struct FrameContinuityMetadata: Codable, Hashable {
+    var roi: NormalizedRect
+    var landmarkDisplacement: Double?
+    var continuityError: Bool
+    var exactDecode: Bool
+}
+
+struct DecodedFrameRecord: Codable, Hashable, Identifiable {
+    var decodedFrameIndex: Int
+    var presentationTimestamp: Double
+    var renderAssetKey: String?
+    var poseSample: PoseSampleAttachment?
+    var assignedPhase: SwingPhase?
+    var continuity: FrameContinuityMetadata?
+
+    var id: Int { decodedFrameIndex }
+}
+
 struct KeyFrame: Codable, Hashable, Identifiable {
     var phase: SwingPhase
-    var frameIndex: Int
+    var decodedFrameIndex: Int
     var source: KeyFrameSource = .automatic
 
     var id: SwingPhase { phase }
@@ -344,6 +375,8 @@ final class SwingRecord {
     var mediaFileBookmark: Data?
     var notes: String
     var frameRate: Double
+    var decodedFrames: [DecodedFrameRecord]
+    var decodedFrameTimestamps: [Double]
     var swingFrames: [SwingFrame]
     var keyFrames: [KeyFrame]
     var keyframeValidationStatus: KeyframeValidationStatus
@@ -358,6 +391,8 @@ final class SwingRecord {
         mediaFileBookmark: Data? = nil,
         notes: String = "",
         frameRate: Double = 0,
+        decodedFrames: [DecodedFrameRecord] = [],
+        decodedFrameTimestamps: [Double] = [],
         swingFrames: [SwingFrame] = [],
         keyFrames: [KeyFrame] = [],
         keyframeValidationStatus: KeyframeValidationStatus = .pending,
@@ -371,6 +406,8 @@ final class SwingRecord {
         self.mediaFileBookmark = mediaFileBookmark
         self.notes = notes
         self.frameRate = frameRate
+        self.decodedFrames = decodedFrames
+        self.decodedFrameTimestamps = decodedFrameTimestamps
         self.swingFrames = swingFrames
         self.keyFrames = keyFrames
         self.keyframeValidationStatus = keyframeValidationStatus
