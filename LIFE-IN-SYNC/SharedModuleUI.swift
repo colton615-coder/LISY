@@ -362,7 +362,7 @@ private struct HubTabPicker: View {
                             .padding(.vertical, ModuleSpacing.xSmall)
                             .background(
                                 RoundedRectangle(cornerRadius: ModuleSpacing.small, style: .continuous)
-                                    .fill(selectedTab == tab ? theme.primary : Color(.secondarySystemBackground))
+                                    .fill(selectedTab == tab ? theme.primary : theme.surfaceSecondary)
                             )
                     }
                     .buttonStyle(.plain)

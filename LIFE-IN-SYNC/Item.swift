@@ -350,6 +350,10 @@ final class SwingRecord {
     var createdAt: Date
     var mediaFilename: String?
     var mediaFileBookmark: Data?
+    var reviewMasterFilename: String?
+    var reviewMasterBookmark: Data?
+    var exportAssetFilename: String?
+    var exportAssetBookmark: Data?
     var notes: String
     var frameRate: Double
     var swingFrames: [SwingFrame]
@@ -364,6 +368,10 @@ final class SwingRecord {
         createdAt: Date = .now,
         mediaFilename: String? = nil,
         mediaFileBookmark: Data? = nil,
+        reviewMasterFilename: String? = nil,
+        reviewMasterBookmark: Data? = nil,
+        exportAssetFilename: String? = nil,
+        exportAssetBookmark: Data? = nil,
         notes: String = "",
         frameRate: Double = 0,
         swingFrames: [SwingFrame] = [],
@@ -377,6 +385,10 @@ final class SwingRecord {
         self.createdAt = createdAt
         self.mediaFilename = mediaFilename
         self.mediaFileBookmark = mediaFileBookmark
+        self.reviewMasterFilename = reviewMasterFilename
+        self.reviewMasterBookmark = reviewMasterBookmark
+        self.exportAssetFilename = exportAssetFilename
+        self.exportAssetBookmark = exportAssetBookmark
         self.notes = notes
         self.frameRate = frameRate
         self.swingFrames = swingFrames
@@ -385,5 +397,23 @@ final class SwingRecord {
         self.handAnchors = handAnchors
         self.pathPoints = pathPoints
         self.analysisResult = analysisResult
+    }
+
+    var preferredReviewFilename: String? {
+        normalizedFilename(reviewMasterFilename) ?? normalizedFilename(mediaFilename)
+    }
+
+    var preferredExportFilename: String? {
+        normalizedFilename(exportAssetFilename)
+    }
+
+    var isUsingLegacySingleAsset: Bool {
+        normalizedFilename(reviewMasterFilename) == nil && normalizedFilename(mediaFilename) != nil
+    }
+
+    private func normalizedFilename(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

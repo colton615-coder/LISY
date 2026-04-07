@@ -6,7 +6,15 @@ struct GarageAnalysisOutput {
     let frameRate: Double
     let swingFrames: [SwingFrame]
     let keyFrames: [KeyFrame]
+    let handAnchors: [HandAnchor]
+    let pathPoints: [PathPoint]
     let analysisResult: AnalysisResult
+}
+
+struct GarageVideoAssetMetadata: Equatable {
+    let duration: Double
+    let frameRate: Double
+    let naturalSize: CGSize
 }
 
 struct GarageInsightMetric: Identifiable, Equatable {
@@ -377,7 +385,7 @@ enum GarageInsights {
 
 enum GarageReliability {
     static func report(for record: SwingRecord) -> GarageReliabilityReport {
-        let videoAvailable = GarageMediaStore.persistedVideoURL(for: record.mediaFilename) != nil
+        let videoAvailable = GarageMediaStore.resolvedReviewVideoURL(for: record) != nil
         let hasFrames = record.swingFrames.isEmpty == false
         let hasAllKeyframes = record.keyFrames.count == SwingPhase.allCases.count
         let monotonicKeyframes = GarageWorkflow.keyframeSequenceIsMonotonic(record.keyFrames)
@@ -707,9 +715,9 @@ enum GarageWorkflow {
     }
 
     private static func importStage(for record: SwingRecord) -> GarageWorkflowStageState {
-        let hasVideoReference = record.mediaFilename?.isEmpty == false
+        let hasVideoReference = record.preferredReviewFilename != nil
         let hasFrames = record.swingFrames.isEmpty == false
-        let resolvedURL = GarageMediaStore.persistedVideoURL(for: record.mediaFilename)
+        let resolvedURL = GarageMediaStore.resolvedReviewVideoURL(for: record)
 
         let status: GarageWorkflowStatus
         let summary: String
@@ -846,7 +854,11 @@ enum GarageAnalysisError: LocalizedError {
 
 enum GarageMediaStore {
     static func persistVideo(from sourceURL: URL) throws -> URL {
-        let directoryURL = try garageDirectoryURL()
+        try persistReviewMaster(from: sourceURL)
+    }
+
+    static func persistReviewMaster(from sourceURL: URL) throws -> URL {
+        let directoryURL = try garageDirectoryURL(for: .reviewMaster)
         let ext = sourceURL.pathExtension.isEmpty ? "mov" : sourceURL.pathExtension
         let destinationURL = directoryURL.appendingPathComponent("\(UUID().uuidString).\(ext)")
 
@@ -862,17 +874,77 @@ enum GarageMediaStore {
         }
     }
 
+    static func createExportDerivative(from reviewMasterURL: URL) async -> URL? {
+        let asset = AVURLAsset(url: reviewMasterURL)
+        guard
+            let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetMediumQuality),
+            exportSession.supportedFileTypes.contains(.mp4)
+        else {
+            return nil
+        }
+
+        guard let directoryURL = try? garageDirectoryURL(for: .exportAsset) else {
+            return nil
+        }
+
+        let destinationURL = directoryURL.appendingPathComponent("\(UUID().uuidString).mp4")
+        if FileManager.default.fileExists(atPath: destinationURL.path) {
+            try? FileManager.default.removeItem(at: destinationURL)
+        }
+
+        exportSession.outputURL = destinationURL
+        exportSession.outputFileType = .mp4
+        exportSession.shouldOptimizeForNetworkUse = true
+
+        await withCheckedContinuation { continuation in
+            exportSession.exportAsynchronously {
+                continuation.resume()
+            }
+        }
+
+        switch exportSession.status {
+        case .completed:
+            return destinationURL
+        default:
+            try? FileManager.default.removeItem(at: destinationURL)
+            return nil
+        }
+    }
+
     static func persistedVideoURL(for filename: String?) -> URL? {
         guard let filename, filename.isEmpty == false else {
             return nil
         }
 
-        guard let directoryURL = try? garageDirectoryURL() else {
+        for kind in [GarageStoredAssetKind.reviewMaster, .legacyRoot, .exportAsset] {
+            if let url = persistedAssetURL(for: filename, kind: kind) {
+                return url
+            }
+        }
+
+        return nil
+    }
+
+    static func resolvedReviewVideoURL(for record: SwingRecord) -> URL? {
+        if let reviewFilename = record.reviewMasterFilename,
+           let url = persistedAssetURL(for: reviewFilename, kind: .reviewMaster) {
+            return url
+        }
+
+        if let legacyFilename = record.mediaFilename,
+           let url = persistedAssetURL(for: legacyFilename, kind: .legacyRoot) {
+            return url
+        }
+
+        return nil
+    }
+
+    static func resolvedExportVideoURL(for record: SwingRecord) -> URL? {
+        guard let exportFilename = record.preferredExportFilename else {
             return nil
         }
 
-        let url = directoryURL.appendingPathComponent(filename)
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        return persistedAssetURL(for: exportFilename, kind: .exportAsset)
     }
 
     static func thumbnail(for videoURL: URL, at timestamp: Double, maximumSize: CGSize = CGSize(width: 480, height: 480)) async -> CGImage? {
@@ -889,19 +961,67 @@ enum GarageMediaStore {
         }
     }
 
-    private static func garageDirectoryURL() throws -> URL {
+    static func assetMetadata(for videoURL: URL) async -> GarageVideoAssetMetadata? {
+        do {
+            let asset = AVURLAsset(url: videoURL)
+            let duration = try await asset.load(.duration)
+            let tracks = try await asset.loadTracks(withMediaType: .video)
+            guard let track = tracks.first else {
+                return nil
+            }
+
+            let naturalSize = try await track.load(.naturalSize)
+            let transform = try await track.load(.preferredTransform)
+            let transformedSize = naturalSize.applying(transform)
+            let nominalFrameRate = try await track.load(.nominalFrameRate)
+
+            return GarageVideoAssetMetadata(
+                duration: max(CMTimeGetSeconds(duration), 0),
+                frameRate: nominalFrameRate > 0 ? Double(nominalFrameRate) : 0,
+                naturalSize: CGSize(width: abs(transformedSize.width), height: abs(transformedSize.height))
+            )
+        } catch {
+            return nil
+        }
+    }
+
+    private static func persistedAssetURL(for filename: String, kind: GarageStoredAssetKind) -> URL? {
+        guard let directoryURL = try? garageDirectoryURL(for: kind) else {
+            return nil
+        }
+
+        let url = directoryURL.appendingPathComponent(filename)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    private static func garageDirectoryURL(for kind: GarageStoredAssetKind) throws -> URL {
         let baseURL = try FileManager.default.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
             appropriateFor: nil,
             create: true
         )
-        let garageURL = baseURL.appendingPathComponent("GarageSwingVideos", isDirectory: true)
+        let rootURL = baseURL.appendingPathComponent("GarageSwingVideos", isDirectory: true)
+        let garageURL: URL
+        switch kind {
+        case .legacyRoot:
+            garageURL = rootURL
+        case .reviewMaster:
+            garageURL = rootURL.appendingPathComponent("ReviewMasters", isDirectory: true)
+        case .exportAsset:
+            garageURL = rootURL.appendingPathComponent("Exports", isDirectory: true)
+        }
         if FileManager.default.fileExists(atPath: garageURL.path) == false {
             try FileManager.default.createDirectory(at: garageURL, withIntermediateDirectories: true)
         }
         return garageURL
     }
+}
+
+private enum GarageStoredAssetKind {
+    case legacyRoot
+    case reviewMaster
+    case exportAsset
 }
 
 enum GarageAnalysisPipeline {
@@ -924,16 +1044,23 @@ enum GarageAnalysisPipeline {
         }
 
         let keyFrames = detectKeyFrames(from: smoothedFrames)
+        let handAnchors = deriveHandAnchors(from: smoothedFrames, keyFrames: keyFrames)
+        let pathPoints = generatePathPoints(from: handAnchors, samplesPerSegment: 8)
         let analysisResult = AnalysisResult(
             issues: [],
-            highlights: ["Eight deterministic keyframes detected from normalized pose frames."],
-            summary: "Processed \(smoothedFrames.count) frames at \(Int(samplingFrameRate.rounded())) FPS and mapped all eight swing phases."
+            highlights: [
+                "Eight deterministic keyframes detected from normalized pose frames.",
+                "\(handAnchors.count) hand checkpoints are aligned to the saved review phases."
+            ],
+            summary: "Processed \(smoothedFrames.count) frames at \(Int(samplingFrameRate.rounded())) FPS, mapped all eight swing phases, and prepared a review-ready hand path."
         )
 
         return GarageAnalysisOutput(
             frameRate: samplingFrameRate,
             swingFrames: smoothedFrames,
             keyFrames: keyFrames,
+            handAnchors: handAnchors,
+            pathPoints: pathPoints,
             analysisResult: analysisResult
         )
     }
@@ -1072,6 +1199,21 @@ enum GarageAnalysisPipeline {
             KeyFrame(phase: .impact, frameIndex: impactIndex),
             KeyFrame(phase: .followThrough, frameIndex: followThroughIndex)
         ]
+    }
+
+    static func deriveHandAnchors(from frames: [SwingFrame], keyFrames: [KeyFrame]) -> [HandAnchor] {
+        let orderedKeyFrames = keyFrames.sorted { lhs, rhs in
+            (SwingPhase.allCases.firstIndex(of: lhs.phase) ?? 0) < (SwingPhase.allCases.firstIndex(of: rhs.phase) ?? 0)
+        }
+
+        return orderedKeyFrames.compactMap { keyFrame in
+            guard frames.indices.contains(keyFrame.frameIndex) else {
+                return nil
+            }
+
+            let center = handCenter(in: frames[keyFrame.frameIndex])
+            return HandAnchor(phase: keyFrame.phase, x: center.x, y: center.y)
+        }
     }
 
     private static func topOfBackswingIndex(in frames: [SwingFrame], fallbackStart: Int) -> Int {
@@ -1265,7 +1407,7 @@ private extension SwingJointName {
     }
 }
 
-private extension SwingFrame {
+extension SwingFrame {
     func point(named name: SwingJointName) -> CGPoint {
         guard let joint = joints.first(where: { $0.name == name }) else {
             return .zero
