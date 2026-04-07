@@ -953,10 +953,12 @@ enum GarageMediaStore {
             let generator = AVAssetImageGenerator(asset: asset)
             generator.appliesPreferredTrackTransform = true
             generator.maximumSize = maximumSize
+            generator.requestedTimeToleranceAfter = .zero
+            generator.requestedTimeToleranceBefore = .zero
 
             let time = CMTime(seconds: timestamp, preferredTimescale: 600)
             generator.generateCGImageAsynchronously(for: time) { image, _, _ in
-                continuation.resume(returning: image)
+                continuation.resume(returning: image.flatMap(normalizedDisplayImage(from:)))
             }
         }
     }
@@ -1015,6 +1017,26 @@ enum GarageMediaStore {
             try FileManager.default.createDirectory(at: garageURL, withIntermediateDirectories: true)
         }
         return garageURL
+    }
+
+    nonisolated private static func normalizedDisplayImage(from image: CGImage) -> CGImage? {
+        let colorSpace = image.colorSpace ?? CGColorSpaceCreateDeviceRGB()
+        guard
+            let context = CGContext(
+                data: nil,
+                width: image.width,
+                height: image.height,
+                bitsPerComponent: image.bitsPerComponent,
+                bytesPerRow: 0,
+                space: colorSpace,
+                bitmapInfo: image.bitmapInfo.rawValue
+            )
+        else {
+            return image
+        }
+
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        return context.makeImage() ?? image
     }
 }
 
