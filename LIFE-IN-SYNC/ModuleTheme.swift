@@ -9,7 +9,7 @@ struct ModuleTheme {
 
     var heroGradient: LinearGradient {
         LinearGradient(
-            colors: [primary.opacity(0.30), secondary.opacity(0.18)],
+            colors: [primary.opacity(0.32), secondary.opacity(0.18)],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
@@ -17,9 +17,9 @@ struct ModuleTheme {
 
     var screenGradient: LinearGradient {
         LinearGradient(
-            colors: [canvasTop, backgroundTop.opacity(0.78), canvasBase],
+            colors: [backgroundTop, backgroundBottom],
             startPoint: .topLeading,
-            endPoint: .bottom
+            endPoint: .bottomTrailing
         )
     }
 
@@ -27,59 +27,31 @@ struct ModuleTheme {
         primary.opacity(0.14)
     }
 
-    var canvasBase: Color {
-        Color(red: 0.02, green: 0.06, blue: 0.11)
-    }
-
-    var canvasTop: Color {
-        Color(red: 0.06, green: 0.16, blue: 0.28)
-    }
-
-    var surfacePrimary: Color {
-        Color.white.opacity(0.11)
-    }
-
     var surfaceSecondary: Color {
-        Color.white.opacity(0.07)
+        primary.opacity(0.08)
     }
 
     var surfaceInteractive: Color {
-        Color.white.opacity(0.15)
+        primary.opacity(0.14)
     }
 
     var borderSubtle: Color {
-        Color.white.opacity(0.08)
+        primary.opacity(0.18)
     }
 
     var borderStrong: Color {
-        primary.opacity(0.24)
+        primary.opacity(0.4)
     }
 
     var textPrimary: Color {
-        Color.white.opacity(0.96)
+        .primary
     }
 
     var textSecondary: Color {
-        Color.white.opacity(0.68)
+        .secondary
     }
 
     var textMuted: Color {
-        Color.white.opacity(0.46)
-    }
-
-    var accent: Color {
-        primary
-    }
-
-    var accentSoft: Color {
-        primary.opacity(0.16)
-    }
-
-    var accentGlow: Color {
-        secondary.opacity(0.22)
-    }
-
-    var progressTrack: Color {
-        Color.white.opacity(0.10)
+        .secondary.opacity(0.85)
     }
 }

@@ -15,8 +15,8 @@ jobs:
   ios-pr-verify:
     runs-on: macos-latest
     env:
-      SIMULATOR_DEVICE: iPhone 16
-      SIMULATOR_OS: latest
+      SIMULATOR_DEVICE: iPhone 15
+      SIMULATOR_OS: 17.5
 
     steps:
       - name: Checkout
@@ -26,7 +26,6 @@ jobs:
         id: ios_build
         continue-on-error: true
         run: |
-          mkdir -p artifacts
           set -o pipefail
           xcodebuild \
             -project LIFE-IN-SYNC.xcodeproj \
@@ -34,20 +33,33 @@ jobs:
             -configuration Debug \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,name=${SIMULATOR_DEVICE},OS=${SIMULATOR_OS}" \
-            -resultBundlePath artifacts/LIFE-IN-SYNC-Build.xcresult \
             clean build | tee ios-build.log
 
-      - name: Capture app screenshots
+      - name: Run launch screenshot test
         id: ios_screenshots
+        if: always() && steps.ios_build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          mkdir -p artifacts
+          set -o pipefail
+          xcodebuild \
+            -project LIFE-IN-SYNC.xcodeproj \
+            -scheme LIFE-IN-SYNC \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,name=${SIMULATOR_DEVICE},OS=${SIMULATOR_OS}" \
+            -only-testing:LIFE-IN-SYNCUITests/LIFE_IN_SYNCUITestsLaunchTests/testLaunch \
+            -resultBundlePath artifacts/LIFE-IN-SYNC-LaunchTests.xcresult \
+            test | tee ios-screenshot-test.log
+
+      - name: Export screenshots
         if: always() && steps.ios_build.outcome == 'success'
         continue-on-error: true
         env:
           SIMULATOR_NAME: ${{ env.SIMULATOR_DEVICE }}
-          APP_BUNDLE_PATH: build/Debug-iphonesimulator/LIFE-IN-SYNC.app
-          APP_BUNDLE_ID: LIS.LIFE-IN-SYNC
+          XCRESULT_PATH: artifacts/LIFE-IN-SYNC-LaunchTests.xcresult
         run: |
-          set -o pipefail
-          bash scripts/ci/capture_screenshots.sh | tee ios-screenshot-capture.log
+          bash scripts/ci/capture_screenshots.sh
 
       - name: Set build result
         id: build_result
@@ -85,8 +97,8 @@ jobs:
           name: ios-build-logs
           path: |
             ios-build.log
-            ios-screenshot-capture.log
-            artifacts/LIFE-IN-SYNC-Build.xcresult
+            ios-screenshot-test.log
+            artifacts/LIFE-IN-SYNC-LaunchTests.xcresult
           if-no-files-found: ignore
 
       - name: Post sticky PR summary comment

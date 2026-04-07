@@ -3,7 +3,6 @@ import SwiftUI
 
 struct DashboardView: View {
     @Binding var selectedModule: AppModule
-    @State private var hasAnimatedIn = false
     @Query private var habits: [Habit]
     @Query private var habitEntries: [HabitEntry]
     @Query private var tasks: [TaskItem]
@@ -15,61 +14,71 @@ struct DashboardView: View {
     @Query private var swingRecords: [SwingRecord]
 
     private let allModules: [AppModule] = [.habitStack, .taskProtocol, .calendar, .supplyList, .capitalCore, .ironTemple, .bibleStudy, .garage]
-    private let moduleColumns = [
-        GridItem(.flexible(), spacing: ModuleSpacing.small),
-        GridItem(.flexible(), spacing: ModuleSpacing.small)
-    ]
 
     var body: some View {
-        ModuleScreen(theme: AppModule.dashboard.theme) {
-            DashboardPanel {
-                DashboardHeader(summary: dailyFocusSummary)
-                    .opacity(hasAnimatedIn ? 1 : 0)
-                    .offset(y: hasAnimatedIn ? 0 : 10)
-
-                VStack(alignment: .leading, spacing: ModuleSpacing.small) {
-                    DashboardSectionHeading(
-                        eyebrow: "Daily Pulse",
-                        title: nil,
-                        subtitle: nil
-                    )
-                    DashboardSignalStrip(
-                        openTasksCount: openTasksCount,
-                        eventsTodayCount: eventsTodayCount,
-                        completedHabitsToday: completedHabitsToday
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                DashboardSection(title: "Daily Focus") {
+                    DashboardHeroCard(
+                        keyMetricTitle: "Open Tasks",
+                        keyMetricValue: "\(openTasksCount)"
                     )
                 }
-                .opacity(hasAnimatedIn ? 1 : 0)
-                .offset(y: hasAnimatedIn ? 0 : 14)
 
-                VStack(alignment: .leading, spacing: ModuleSpacing.small) {
-                    DashboardSectionHeading(
-                        eyebrow: nil,
-                        title: "Module Grid",
-                        subtitle: "Command cards for what matters today."
-                    )
-                    LazyVGrid(columns: moduleColumns, spacing: ModuleSpacing.small) {
-                        ForEach(Array(rankedModules.enumerated()), id: \.element.id) { index, module in
-                            DashboardModuleWidgetCard(
-                                module: module,
-                                progressSummary: statusText(for: module)
-                            ) {
-                                selectedModule = module
+                DashboardSection(title: "Module Pulse") {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(rankedModules) { module in
+                                DashboardModuleEntryCard(
+                                    module: module,
+                                    progressSummary: statusText(for: module),
+                                    urgencyLabel: urgencyText(for: module),
+                                    importanceLabel: importanceText(for: module)
+                                ) {
+                                    selectedModule = module
+                                }
+                                .frame(width: 230)
                             }
-                            .opacity(hasAnimatedIn ? 1 : 0)
-                            .offset(y: hasAnimatedIn ? 0 : CGFloat(14 + (index * 4)))
                         }
                     }
                 }
+
+                DashboardSection(title: "Timeline + Quiet Alerts") {
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                        DashboardStatCard(
+                            module: .habitStack,
+                            title: "Habits",
+                            value: "\(completedHabitsToday)",
+                            detail: "completed today",
+                            accessibilityID: "dashboard-stat-habits"
+                        )
+                        DashboardStatCard(
+                            module: .taskProtocol,
+                            title: "Tasks",
+                            value: "\(openTasksCount)",
+                            detail: "open",
+                            accessibilityID: "dashboard-stat-tasks"
+                        )
+                        DashboardStatCard(
+                            module: .calendar,
+                            title: "Events",
+                            value: "\(eventsTodayCount)",
+                            detail: "scheduled today",
+                            accessibilityID: "dashboard-stat-events"
+                        )
+                        DashboardStatCard(
+                            module: .supplyList,
+                            title: "Items",
+                            value: "\(remainingSupplyCount)",
+                            detail: "remaining to buy",
+                            accessibilityID: "dashboard-stat-items"
+                        )
+                    }
+                }
             }
-            .padding(.top, -44)
+            .padding()
         }
-        .task {
-            guard hasAnimatedIn == false else { return }
-            withAnimation(.easeOut(duration: 0.45)) {
-                hasAnimatedIn = true
-            }
-        }
+        .background(AppModule.dashboard.theme.screenGradient)
     }
 
     private var completedHabitsToday: Int {
@@ -177,257 +186,141 @@ struct DashboardView: View {
         }
     }
 
-    private var dailyFocusSummary: String {
-        if openTasksCount > 0 {
-            return "\(openTasksCount) open task\(openTasksCount == 1 ? "" : "s") with \(eventsTodayCount) event\(eventsTodayCount == 1 ? "" : "s") on the calendar."
+    private func urgencyText(for module: AppModule) -> String {
+        let rawScore = urgencyScore(for: module)
+        let normalizedScore: Int
+        switch module {
+        case .calendar, .habitStack:
+            // These modules currently cap urgency at 5; scale to a 0–10 range for text mapping.
+            normalizedScore = rawScore * 2
+        default:
+            normalizedScore = rawScore
         }
 
-        if completedHabitsToday > 0 {
-            return "\(completedHabitsToday) habit\(completedHabitsToday == 1 ? "" : "s") already completed today."
-        }
+        if normalizedScore >= 7 { return "Urgency: High" }
+        if normalizedScore >= 4 { return "Urgency: Medium" }
+        return "Urgency: Low"
+    }
 
-        if remainingSupplyCount > 0 {
-            return "\(remainingSupplyCount) supply item\(remainingSupplyCount == 1 ? "" : "s") still pending."
+    private func importanceText(for module: AppModule) -> String {
+        switch importanceScore(for: module) {
+        case 3:
+            "Importance: Core"
+        case 2:
+            "Importance: High"
+        default:
+            "Importance: Support"
         }
-
-        return "Quiet routing across your modules with only the signals that matter."
     }
 }
 
-private struct DashboardPanel<Content: View>: View {
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            content
-        }
-        .padding(.top, 4)
-    }
-}
-
-private struct DashboardHeader: View {
-    let summary: String
+private struct DashboardHeroCard: View {
+    let keyMetricTitle: String
+    let keyMetricValue: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label {
-                Text("TODAY'S COMMAND")
-                    .font(.caption.weight(.bold))
-                    .tracking(1.6)
-            } icon: {
-                Image(systemName: "bolt.fill")
-                    .font(.caption.weight(.bold))
+            Text("Today")
+                .font(.headline)
+            Text("Progress-first routing with quiet urgency.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            HStack {
+                Text(keyMetricTitle)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(keyMetricValue)
+                    .font(.title3)
+                    .fontWeight(.bold)
             }
-            .foregroundStyle(AppModule.dashboard.theme.primary)
-
-            DashboardWordmark()
-
-            Text(summary)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(AppModule.dashboard.theme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
+        .padding()
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 
-private struct DashboardWordmark: View {
-    var body: some View {
-        HStack(spacing: 0) {
-            Text("Life In ")
-                .foregroundStyle(AppModule.dashboard.theme.textPrimary)
-            Text("Sync")
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [.cyan, .blue, .indigo],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-        }
-        .font(.system(size: 34, weight: .black, design: .rounded))
-        .lineLimit(1)
-        .minimumScaleFactor(0.8)
-    }
-}
-
-private struct DashboardSectionHeading: View {
-    let eyebrow: String?
-    let title: String?
-    let subtitle: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if let eyebrow {
-                Text(eyebrow.uppercased())
-                    .font(.caption.weight(.bold))
-                    .tracking(1.2)
-                    .foregroundStyle(AppModule.dashboard.theme.textMuted)
-            }
-
-            if let title {
-                Text(title)
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(AppModule.dashboard.theme.textPrimary)
-            }
-
-            if let subtitle {
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(AppModule.dashboard.theme.textSecondary)
-            }
-        }
-    }
-}
-
-private struct DashboardSignalStrip: View {
-    let openTasksCount: Int
-    let eventsTodayCount: Int
-    let completedHabitsToday: Int
-
-    var body: some View {
-        HStack(spacing: ModuleSpacing.small) {
-            DashboardSignalPill(
-                title: "Open",
-                value: "\(openTasksCount)",
-                systemImage: "sparkles",
-                accent: .teal
-            )
-            DashboardSignalPill(
-                title: "Today",
-                value: "\(eventsTodayCount)",
-                systemImage: "calendar",
-                accent: .red
-            )
-            DashboardSignalPill(
-                title: "Habits",
-                value: "\(completedHabitsToday)",
-                systemImage: "checklist",
-                accent: .indigo
-            )
-        }
-    }
-}
-
-private struct DashboardSignalPill: View {
+private struct DashboardSection<Content: View>: View {
     let title: String
-    let value: String
-    let systemImage: String
-    let accent: Color
-
-    private var accessibilityID: String {
-        "dashboard-signal-\(title.lowercased())"
-    }
+    @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(spacing: 8) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(accent.opacity(0.16))
-                    .frame(width: 28, height: 28)
-
-                Image(systemName: systemImage)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(accent)
-            }
-
-            Text(value)
-                .font(.title3.weight(.black))
-                .foregroundStyle(AppModule.dashboard.theme.textPrimary)
-
+        VStack(alignment: .leading, spacing: 10) {
             Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(AppModule.dashboard.theme.textSecondary)
+                .font(.headline)
+                .fontWeight(.semibold)
+            content
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .background(
-            LinearGradient(
-                colors: [
-                    AppModule.dashboard.theme.surfaceSecondary.opacity(0.95),
-                    accent.opacity(0.06)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
-                .stroke(AppModule.dashboard.theme.borderSubtle, lineWidth: 1)
-        )
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier(accessibilityID)
     }
 }
 
-private struct DashboardModuleWidgetCard: View {
+private struct DashboardModuleEntryCard: View {
     let module: AppModule
     let progressSummary: String
+    let urgencyLabel: String
+    let importanceLabel: String
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(module.theme.primary.opacity(0.18))
-                        .frame(width: 54, height: 54)
-                        .blur(radius: 8)
-
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    module.theme.accentSoft.opacity(0.95),
-                                    module.theme.primary.opacity(0.28)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 54, height: 54)
-
-                    Image(systemName: module.systemImage)
-                        .font(.title2.weight(.bold))
-                        .foregroundStyle(module.theme.primary)
-                }
-
-                VStack(spacing: 4) {
-                    Text(module.title)
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(AppModule.dashboard.theme.textPrimary)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                    Text(progressSummary)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(AppModule.dashboard.theme.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
+            VStack(alignment: .leading, spacing: 10) {
+                Image(systemName: module.systemImage)
+                    .foregroundStyle(module.theme.primary)
+                    .frame(width: 32, height: 32)
+                    .background(module.theme.chipBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                Text(module.title)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.primary)
+                Text(progressSummary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Text(urgencyLabel)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(importanceLabel)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 138)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 16)
-            .background(
-                LinearGradient(
-                    colors: [
-                        AppModule.dashboard.theme.surfacePrimary.opacity(0.9),
-                        module.theme.surfaceSecondary.opacity(0.78),
-                        module.theme.accentSoft.opacity(0.14)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
-                    .stroke(module.theme.primary.opacity(0.18), lineWidth: 1)
-            )
-            .shadow(color: module.theme.accentGlow.opacity(0.16), radius: 14, y: 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("dashboard-module-\(module.rawValue)")
+    }
+}
+
+private struct DashboardStatCard: View {
+    let module: AppModule
+    let title: String
+    let value: String
+    let detail: String
+    let accessibilityID: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(value)
+                .font(.title2)
+                .fontWeight(.bold)
+            Text(title)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(module.theme.primary.opacity(0.2), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(accessibilityID)
     }
 }
 
@@ -436,7 +329,6 @@ private struct DashboardModuleWidgetCard: View {
         DashboardView(selectedModule: .constant(.dashboard))
     }
     .modelContainer(PreviewCatalog.emptyApp)
-    .preferredColorScheme(.dark)
 }
 
 #Preview("Dashboard Live") {
@@ -444,5 +336,4 @@ private struct DashboardModuleWidgetCard: View {
         DashboardView(selectedModule: .constant(.dashboard))
     }
     .modelContainer(PreviewCatalog.populatedApp)
-    .preferredColorScheme(.dark)
 }

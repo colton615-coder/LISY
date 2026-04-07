@@ -18,31 +18,36 @@ enum HubSectionSpacing {
 }
 
 enum ModuleSpacing {
-    static let xxSmall: CGFloat = 6
     static let xSmall: CGFloat = 8
     static let small: CGFloat = 12
     static let medium: CGFloat = 16
     static let large: CGFloat = 20
     static let xLarge: CGFloat = 24
-    static let xxLarge: CGFloat = 32
 }
 
 enum ModuleCornerRadius {
-    static let small: CGFloat = 12
-    static let medium: CGFloat = 16
     static let card: CGFloat = 20
-    static let hero: CGFloat = 28
     static let chip: CGFloat = 16
     static let row: CGFloat = 18
+    static let medium: CGFloat = 18
+    static let hero: CGFloat = 24
 }
 
 enum ModuleTypography {
-    static let screenTitle: Font = .largeTitle.weight(.bold)
-    static let screenSubtitle: Font = .subheadline
     static let sectionTitle: Font = .headline
     static let cardTitle: Font = .headline
     static let metricValue: Font = .title3.weight(.bold)
     static let supportingLabel: Font = .caption
+}
+
+struct PreviewScreenContainer<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        NavigationStack {
+            content
+        }
+    }
 }
 
 struct ModuleScreen<Content: View>: View {
@@ -51,85 +56,37 @@ struct ModuleScreen<Content: View>: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: ModuleSpacing.large) {
+            VStack(alignment: .leading, spacing: HubSectionSpacing.outer) {
                 content
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, ModuleSpacing.medium)
-            .padding(.top, ModuleSpacing.small)
-            .padding(.bottom, ModuleSpacing.xxLarge)
+            .padding()
         }
-        .background(theme.screenGradient.ignoresSafeArea())
+        .tint(theme.primary)
+        .background(theme.screenGradient)
     }
 }
 
 struct ModuleHeader: View {
     let theme: ModuleTheme
     let title: String
-    let subtitle: String?
+    let subtitle: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ModuleSpacing.xSmall) {
+        VStack(alignment: .leading, spacing: 12) {
             Text(title)
-                .font(ModuleTypography.screenTitle)
+                .font(.title2.weight(.bold))
                 .foregroundStyle(theme.textPrimary)
-
-            if let subtitle, subtitle.isEmpty == false {
-                Text(subtitle)
-                    .font(ModuleTypography.screenSubtitle)
-                    .foregroundStyle(theme.textSecondary)
-                    .lineLimit(2)
-            }
+            Text(subtitle)
+                .foregroundStyle(theme.textSecondary)
         }
-    }
-}
-
-struct ModuleSection<Content: View>: View {
-    let title: String
-    let subtitle: String?
-    @ViewBuilder let content: Content
-
-    init(title: String, subtitle: String? = nil, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.subtitle = subtitle
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: ModuleSpacing.small) {
-            VStack(alignment: .leading, spacing: ModuleSpacing.xxSmall) {
-                Text(title)
-                    .font(ModuleTypography.sectionTitle)
-
-                if let subtitle, subtitle.isEmpty == false {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            content
-        }
-    }
-}
-
-struct ModuleListSection<Content: View>: View {
-    let title: String
-    let subtitle: String?
-    @ViewBuilder let content: Content
-
-    init(title: String, subtitle: String? = nil, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.subtitle = subtitle
-        self.content = content()
-    }
-
-    var body: some View {
-        ModuleSection(title: title, subtitle: subtitle) {
-            VStack(alignment: .leading, spacing: ModuleSpacing.small) {
-                content
-            }
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(ModuleSpacing.medium)
+        .background(theme.heroGradient, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.hero, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: ModuleCornerRadius.hero, style: .continuous)
+                .stroke(theme.borderSubtle, lineWidth: 1)
+        )
     }
 }
 
@@ -143,125 +100,11 @@ struct ModuleRowSurface<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(ModuleSpacing.medium)
-        .background(theme.surfacePrimary, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
+        .background(theme.surfaceSecondary, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous)
                 .stroke(theme.borderSubtle, lineWidth: 1)
         )
-    }
-}
-
-struct ModuleMetricStrip<Content: View>: View {
-    let theme: ModuleTheme
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        HStack(spacing: ModuleSpacing.small) {
-            content
-        }
-        .padding(ModuleSpacing.small)
-        .background(theme.surfaceSecondary, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
-                .stroke(theme.borderSubtle, lineWidth: 1)
-        )
-    }
-}
-
-struct ModuleMetricItem: View {
-    let theme: ModuleTheme
-    let title: String
-    let value: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: ModuleSpacing.xxSmall) {
-            Text(value)
-                .font(ModuleTypography.metricValue)
-                .foregroundStyle(theme.textPrimary)
-            Text(title)
-                .font(ModuleTypography.supportingLabel)
-                .foregroundStyle(theme.textSecondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, ModuleSpacing.xSmall)
-        .padding(.horizontal, ModuleSpacing.small)
-        .background(theme.accentSoft, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.chip, style: .continuous))
-    }
-}
-
-struct ModuleInlineEmptyState: View {
-    let theme: ModuleTheme
-    let title: String
-    let message: String
-    let actionTitle: String
-    let action: () -> Void
-
-    var body: some View {
-        ModuleRowSurface(theme: theme) {
-            Text(title)
-                .font(ModuleTypography.cardTitle)
-                .foregroundStyle(theme.textPrimary)
-            Text(message)
-                .foregroundStyle(theme.textSecondary)
-            Button(actionTitle, action: action)
-                .buttonStyle(.borderedProminent)
-                .tint(theme.primary)
-        }
-    }
-}
-
-struct ModuleDisclosureSection<Content: View>: View {
-    let title: String
-    let theme: ModuleTheme
-    @State private var isExpanded: Bool
-    @ViewBuilder let content: Content
-
-    init(
-        title: String,
-        theme: ModuleTheme,
-        initiallyExpanded: Bool = false,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.title = title
-        self.theme = theme
-        _isExpanded = State(initialValue: initiallyExpanded)
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: ModuleSpacing.small) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isExpanded.toggle()
-                }
-            } label: {
-                HStack {
-                    Text(title)
-                        .font(ModuleTypography.sectionTitle)
-                        .foregroundStyle(theme.textPrimary)
-                    Spacer()
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .foregroundStyle(theme.textSecondary)
-                }
-            }
-            .buttonStyle(.plain)
-
-            if isExpanded {
-                VStack(alignment: .leading, spacing: ModuleSpacing.small) {
-                    content
-                }
-            }
-        }
-    }
-}
-
-struct PreviewScreenContainer<Content: View>: View {
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        NavigationStack {
-            content
-        }
     }
 }
 
@@ -444,7 +287,7 @@ struct ModuleHubScaffold<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        ModuleScreen(theme: module.theme) {
+        ScrollView {
             VStack(alignment: .leading, spacing: HubSectionSpacing.outer) {
                 ModuleHeroCard(
                     module: module,
@@ -469,8 +312,11 @@ struct ModuleHubScaffold<Content: View>: View {
 
                 content
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
         }
         .tint(module.theme.primary)
+        .background(module.theme.screenGradient)
     }
 }
 
@@ -480,17 +326,23 @@ private struct HubStatusCard: View {
     let bodyText: String
 
     var body: some View {
-        ModuleRowSurface(theme: module.theme) {
+        VStack(alignment: .leading, spacing: HubSectionSpacing.content) {
             Text(title)
                 .font(ModuleTypography.cardTitle)
-                .foregroundStyle(module.theme.textPrimary)
             Text(bodyText)
-                .foregroundStyle(module.theme.textSecondary)
+                .foregroundStyle(.secondary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(ModuleSpacing.medium)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
+                .stroke(module.theme.primary.opacity(0.12), lineWidth: 1)
+        )
     }
 }
 
-struct HubTabPicker: View {
+private struct HubTabPicker: View {
     let tabs: [ModuleHubTab]
     @Binding var selectedTab: ModuleHubTab
     let theme: ModuleTheme
@@ -505,12 +357,12 @@ struct HubTabPicker: View {
                         Text(tab.rawValue)
                             .font(.subheadline)
                             .fontWeight(.semibold)
-                            .foregroundStyle(selectedTab == tab ? theme.textPrimary : theme.textSecondary)
+                            .foregroundStyle(selectedTab == tab ? Color.white : .primary)
                             .padding(.horizontal, 12)
                             .padding(.vertical, ModuleSpacing.xSmall)
                             .background(
                                 RoundedRectangle(cornerRadius: ModuleSpacing.small, style: .continuous)
-                                    .fill(selectedTab == tab ? theme.surfaceInteractive : theme.surfaceSecondary)
+                                    .fill(selectedTab == tab ? theme.primary : Color(.secondarySystemBackground))
                             )
                     }
                     .buttonStyle(.plain)
@@ -526,17 +378,22 @@ struct ModuleRootPlaceholderView: View {
     let highlights: [String]
 
     var body: some View {
-        ModuleScreen(theme: module.theme) {
-            ModuleHeroCard(
-                module: module,
-                eyebrow: "Module Root",
-                title: module.title,
-                message: description
-            )
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                ModuleHeroCard(
+                    module: module,
+                    eyebrow: "Module Root",
+                    title: module.title,
+                    message: description
+                )
 
-            ModuleFocusCard(module: module, highlights: highlights)
+                ModuleFocusCard(module: module, highlights: highlights)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
         }
         .tint(module.theme.primary)
+        .background(module.theme.screenGradient)
     }
 }
 
@@ -555,21 +412,16 @@ struct ModuleHeroCard: View {
             Text(title)
                 .font(.title2)
                 .fontWeight(.bold)
-                .foregroundStyle(module.theme.textPrimary)
             Text(message)
-                .foregroundStyle(module.theme.textSecondary)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(ModuleSpacing.medium)
-        .background(
-            module.theme.heroGradient.opacity(0.9),
-            in: RoundedRectangle(cornerRadius: ModuleCornerRadius.hero, style: .continuous)
-        )
+        .background(module.theme.heroGradient, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: ModuleCornerRadius.hero, style: .continuous)
-                .stroke(module.theme.borderStrong, lineWidth: 1)
+            RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
+                .stroke(module.theme.primary.opacity(0.18), lineWidth: 1)
         )
-        .shadow(color: module.theme.accentGlow, radius: 20, y: 8)
     }
 }
 
@@ -578,10 +430,9 @@ struct ModuleFocusCard: View {
     let highlights: [String]
 
     var body: some View {
-        ModuleRowSurface(theme: module.theme) {
+        VStack(alignment: .leading, spacing: 14) {
             Text("Current Focus")
                 .font(ModuleTypography.cardTitle)
-                .foregroundStyle(module.theme.textPrimary)
 
             ForEach(highlights, id: \.self) { highlight in
                 HStack(spacing: 10) {
@@ -589,10 +440,13 @@ struct ModuleFocusCard: View {
                         .fill(module.theme.primary)
                         .frame(width: 8, height: 8)
                     Text(highlight)
-                        .foregroundStyle(module.theme.textPrimary)
+                        .foregroundStyle(.primary)
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(ModuleSpacing.medium)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
     }
 }
 
@@ -601,17 +455,13 @@ struct ModuleSnapshotCard<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        ModuleRowSurface(theme: ModuleTheme(
-            primary: .white,
-            secondary: .white,
-            backgroundTop: .clear,
-            backgroundBottom: .clear,
-            accentText: .white
-        )) {
+        VStack(alignment: .leading, spacing: ModuleSpacing.medium) {
             Text(title)
                 .font(ModuleTypography.cardTitle)
             content
         }
+        .padding(ModuleSpacing.medium)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
     }
 }
 
@@ -621,7 +471,16 @@ struct ModuleMetricChip: View {
     let value: String
 
     var body: some View {
-        ModuleMetricItem(theme: theme, title: title, value: value)
+        VStack(alignment: .leading, spacing: 6) {
+            Text(value)
+                .font(ModuleTypography.metricValue)
+            Text(title)
+                .font(ModuleTypography.supportingLabel)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(ModuleSpacing.medium)
+        .background(theme.chipBackground, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.chip, style: .continuous))
     }
 }
 
@@ -633,13 +492,18 @@ struct ModuleEmptyStateCard: View {
     let action: () -> Void
 
     var body: some View {
-        ModuleInlineEmptyState(
-            theme: theme,
-            title: title,
-            message: message,
-            actionTitle: actionTitle,
-            action: action
-        )
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(ModuleTypography.cardTitle)
+            Text(message)
+                .foregroundStyle(.secondary)
+            Button(actionTitle, action: action)
+                .buttonStyle(.borderedProminent)
+                .tint(theme.primary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(ModuleSpacing.medium)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
     }
 }
 
@@ -648,17 +512,14 @@ struct ModuleVisualizationContainer<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        ModuleRowSurface(theme: ModuleTheme(
-            primary: .white,
-            secondary: .white,
-            backgroundTop: .clear,
-            backgroundBottom: .clear,
-            accentText: .white
-        )) {
+        VStack(alignment: .leading, spacing: ModuleSpacing.small) {
             Text(title)
                 .font(ModuleTypography.cardTitle)
             content
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(ModuleSpacing.medium)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
     }
 }
 
@@ -691,13 +552,7 @@ struct ModuleBottomActionBar: View {
             .buttonStyle(.borderedProminent)
             .tint(theme.primary)
         }
-        .padding(.horizontal, ModuleSpacing.medium)
-        .padding(.vertical, ModuleSpacing.small)
-        .background(theme.canvasBase.opacity(0.94))
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(theme.borderSubtle)
-                .frame(height: 1)
-        }
+        .padding()
+        .background(.ultraThinMaterial)
     }
 }
