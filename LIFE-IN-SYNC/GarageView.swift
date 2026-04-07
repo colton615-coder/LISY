@@ -20,11 +20,33 @@ private struct GarageTimelineMarker: Identifiable {
 }
 
 private struct GarageHandPathSample: Identifiable {
+    let id: Int
     let timestamp: Double
     let x: Double
     let y: Double
+    let speed: Double
 
-    var id: Double { timestamp }
+    private static var nextGeneratedID: Int = 0
+
+    private static func generateID() -> Int {
+        let id = nextGeneratedID
+        nextGeneratedID += 1
+        return id
+    }
+
+    init(
+        timestamp: Double,
+        x: Double,
+        y: Double,
+        speed: Double,
+        id: Int? = nil
+    ) {
+        self.id = id ?? Self.generateID()
+        self.timestamp = timestamp
+        self.x = x
+        self.y = y
+        self.speed = speed
+    }
 }
 
 private extension KeyframeValidationStatus {
@@ -59,28 +81,30 @@ private func garageRecordSelectionKey(for record: SwingRecord) -> String {
     ].joined(separator: "::")
 }
 
-private func garageHandPathSamples(from frames: [SwingFrame], alpha: Double = 0.24) -> [GarageHandPathSample] {
-    guard frames.isEmpty == false else {
+private func garageHandPathSamples(from frames: [SwingFrame]) -> [GarageHandPathSample] {
+    guard frames.count >= 2 else {
         return []
     }
 
-    var smoothedX = 0.0
-    var smoothedY = 0.0
+    let smoothedCenters = GarageAnalysisPipeline.generatePathPoints(from: frames, samplesPerSegment: 6).map {
+        CGPoint(x: $0.x, y: $0.y)
+    }
+    guard smoothedCenters.count >= 2 else { return [] }
 
-    return frames.enumerated().map { index, frame in
-        let center = GarageAnalysisPipeline.handCenter(in: frame)
-        if index == 0 {
-            smoothedX = center.x
-            smoothedY = center.y
-        } else {
-            smoothedX += alpha * (center.x - smoothedX)
-            smoothedY += alpha * (center.y - smoothedY)
-        }
+    return smoothedCenters.enumerated().map { index, point in
+        let priorIndex = max(index - 1, 0)
+        let nextIndex = min(index + 1, smoothedCenters.count - 1)
+        let previousPoint = smoothedCenters[priorIndex]
+        let nextPoint = smoothedCenters[nextIndex]
+        let speed = GarageAnalysisPipeline.distance(from: previousPoint, to: nextPoint)
+        let normalizedT = Double(index) / Double(max(smoothedCenters.count - 1, 1))
+        let sourceFrame = min(Int((Double(frames.count - 1) * normalizedT).rounded()), frames.count - 1)
 
         return GarageHandPathSample(
-            timestamp: frame.timestamp,
-            x: smoothedX,
-            y: smoothedY
+            timestamp: frames[sourceFrame].timestamp,
+            x: point.x,
+            y: point.y,
+            speed: speed
         )
     }
 }
@@ -606,7 +630,7 @@ private struct GarageFocusedReviewWorkspace: View {
             (SwingPhase.allCases.firstIndex(of: lhs.phase) ?? 0) < (SwingPhase.allCases.firstIndex(of: rhs.phase) ?? 0)
         }
         record.handAnchors = GarageAnalysisPipeline.deriveHandAnchors(from: record.swingFrames, keyFrames: record.keyFrames)
-        record.pathPoints = GarageAnalysisPipeline.generatePathPoints(from: record.handAnchors, samplesPerSegment: 16)
+        record.pathPoints = GarageAnalysisPipeline.generatePathPoints(from: record.swingFrames, samplesPerSegment: 16)
         record.refreshKeyframeValidationStatus()
         try? modelContext.save()
         didAutoPresentCompletionPlayback = false
@@ -1128,26 +1152,28 @@ private struct GarageSlowMotionPathOverlay: View {
                     return
                 }
 
-                var trail = Path()
-                for (index, sample) in visibleSamples.enumerated() {
-                    let point = mappedPoint(x: sample.x, y: sample.y, in: videoRect)
-                    if index == 0 {
-                        trail.move(to: point)
-                    } else {
-                        trail.addLine(to: point)
-                    }
-                }
+                let maxSpeed = max(visibleSamples.map(\.speed).max() ?? 0.001, 0.001)
+                for segmentIndex in 1..<visibleSamples.count {
+                    let previous = visibleSamples[segmentIndex - 1]
+                    let current = visibleSamples[segmentIndex]
+                    let normalizedSpeed = min(max(current.speed / maxSpeed, 0), 1)
+                    let baseWidth = 2.4 + (normalizedSpeed * 2.2)
 
-                context.stroke(
-                    trail,
-                    with: .color(Color.white.opacity(0.92)),
-                    style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round)
-                )
-                context.stroke(
-                    trail,
-                    with: .color(AppModule.garage.theme.primary),
-                    style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
-                )
+                    var segmentPath = Path()
+                    segmentPath.move(to: mappedPoint(x: previous.x, y: previous.y, in: videoRect))
+                    segmentPath.addLine(to: mappedPoint(x: current.x, y: current.y, in: videoRect))
+
+                    context.stroke(
+                        segmentPath,
+                        with: .color(Color.white.opacity(0.78)),
+                        style: StrokeStyle(lineWidth: baseWidth + 2.0, lineCap: .round, lineJoin: .round)
+                    )
+                    context.stroke(
+                        segmentPath,
+                        with: .color(AppModule.garage.theme.primary.opacity(0.45 + (normalizedSpeed * 0.45))),
+                        style: StrokeStyle(lineWidth: baseWidth, lineCap: .round, lineJoin: .round)
+                    )
+                }
 
                 if let lastSample = visibleSamples.last {
                     let point = mappedPoint(x: lastSample.x, y: lastSample.y, in: videoRect)
