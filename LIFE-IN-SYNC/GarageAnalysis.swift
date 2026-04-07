@@ -1470,7 +1470,7 @@ enum GarageAnalysisPipeline {
         } ?? min(transitionIndex + 1, impactIndex)
     }
 
-    private static func impactIndex(in frames: [SwingFrame], addressIndex: Int, transitionIndex: Int) -> Int {
+    private static func impactIndex(in frames: [SwingFrame], addressIndex _: Int, transitionIndex: Int) -> Int {
         let samples = handKinematics(from: frames)
         guard samples.count >= 4 else { return frames.count - 1 }
 
