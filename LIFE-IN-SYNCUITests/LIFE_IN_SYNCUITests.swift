@@ -30,11 +30,18 @@ final class LIFE_IN_SYNCUITests: XCTestCase {
 
         app.buttons["open-module-menu"].tap()
 
+        let habitStackEntry = app.descendants(matching: .any)["module-menu-habitStack"]
+        let taskProtocolEntry = app.descendants(matching: .any)["module-menu-taskProtocol"]
+        let calendarEntry = app.descendants(matching: .any)["module-menu-calendar"]
+        let supplyListEntry = app.descendants(matching: .any)["module-menu-supplyList"]
+
         XCTAssertTrue(app.navigationBars["Modules"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["module-menu-habitStack"].exists)
-        XCTAssertTrue(app.buttons["module-menu-taskProtocol"].exists)
-        XCTAssertTrue(app.buttons["module-menu-calendar"].exists)
-        XCTAssertTrue(app.buttons["module-menu-supplyList"].exists)
+        scrollToElementIfNeeded(supplyListEntry, in: app)
+
+        XCTAssertTrue(habitStackEntry.waitForExistence(timeout: 2))
+        XCTAssertTrue(taskProtocolEntry.exists)
+        XCTAssertTrue(calendarEntry.exists)
+        XCTAssertTrue(supplyListEntry.exists)
     }
 
     @MainActor
@@ -55,10 +62,17 @@ final class LIFE_IN_SYNCUITests: XCTestCase {
         app.launchArguments.append("SKIP_LAUNCH_AFFIRMATION")
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["Habits"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.staticTexts["Tasks"].exists)
-        XCTAssertTrue(app.staticTexts["Events"].exists)
-        XCTAssertTrue(app.staticTexts["Items"].exists)
+        let habitsCard = app.descendants(matching: .any)["dashboard-stat-habits"]
+        let tasksCard = app.descendants(matching: .any)["dashboard-stat-tasks"]
+        let eventsCard = app.descendants(matching: .any)["dashboard-stat-events"]
+        let itemsCard = app.descendants(matching: .any)["dashboard-stat-items"]
+
+        scrollToElementIfNeeded(habitsCard, in: app)
+
+        XCTAssertTrue(habitsCard.waitForExistence(timeout: 2))
+        XCTAssertTrue(tasksCard.exists)
+        XCTAssertTrue(eventsCard.exists)
+        XCTAssertTrue(itemsCard.exists)
     }
 
     @MainActor
@@ -68,6 +82,20 @@ final class LIFE_IN_SYNCUITests: XCTestCase {
             let app = XCUIApplication()
             app.launchArguments.append("SKIP_LAUNCH_AFFIRMATION")
             app.launch()
+        }
+    }
+}
+
+private extension LIFE_IN_SYNCUITests {
+    func scrollToElementIfNeeded(_ element: XCUIElement, in app: XCUIApplication, maxScrolls: Int = 6) {
+        guard element.exists == false else { return }
+
+        for _ in 0..<maxScrolls {
+            app.swipeUp()
+
+            if element.waitForExistence(timeout: 0.5) {
+                return
+            }
         }
     }
 }

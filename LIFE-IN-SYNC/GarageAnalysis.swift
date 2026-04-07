@@ -1479,7 +1479,7 @@ enum GarageAnalysisPipeline {
 
         let candidateSamples = Array(samples[searchStart..<samples.count])
         let speeds = candidateSamples.map(\.speed).sorted()
-        let yValues = candidateSamples.map { $0.position.y }.sorted()
+        let yValues = candidateSamples.map { Double($0.position.y) }.sorted()
         guard
             let speedThreshold = quantile(fromSortedValues: speeds, quantile: KinematicThresholds.impactSpeedQuantile),
             let lowerPathY = quantile(fromSortedValues: yValues, quantile: KinematicThresholds.impactLowerPathQuantile)
