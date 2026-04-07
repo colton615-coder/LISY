@@ -122,8 +122,44 @@ struct KeyFrame: Codable, Hashable, Identifiable {
     var phase: SwingPhase
     var frameIndex: Int
     var source: KeyFrameSource = .automatic
+    var reviewStatus: KeyframeValidationStatus = .pending
 
     var id: SwingPhase { phase }
+
+    init(
+        phase: SwingPhase,
+        frameIndex: Int,
+        source: KeyFrameSource = .automatic,
+        reviewStatus: KeyframeValidationStatus = .pending
+    ) {
+        self.phase = phase
+        self.frameIndex = frameIndex
+        self.source = source
+        self.reviewStatus = reviewStatus
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case phase
+        case frameIndex
+        case source
+        case reviewStatus
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        phase = try container.decode(SwingPhase.self, forKey: .phase)
+        frameIndex = try container.decode(Int.self, forKey: .frameIndex)
+        source = try container.decodeIfPresent(KeyFrameSource.self, forKey: .source) ?? .automatic
+        reviewStatus = try container.decodeIfPresent(KeyframeValidationStatus.self, forKey: .reviewStatus) ?? .pending
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(phase, forKey: .phase)
+        try container.encode(frameIndex, forKey: .frameIndex)
+        try container.encode(source, forKey: .source)
+        try container.encode(reviewStatus, forKey: .reviewStatus)
+    }
 }
 
 enum KeyFrameSource: String, Codable, CaseIterable, Identifiable {
@@ -415,5 +451,49 @@ final class SwingRecord {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    func reviewStatus(for phase: SwingPhase) -> KeyframeValidationStatus {
+        keyFrames.first(where: { $0.phase == phase })?.reviewStatus ?? .pending
+    }
+
+    var approvedCheckpointCount: Int {
+        SwingPhase.allCases.filter { reviewStatus(for: $0) == .approved }.count
+    }
+
+    var flaggedCheckpointCount: Int {
+        SwingPhase.allCases.filter { reviewStatus(for: $0) == .flagged }.count
+    }
+
+    var pendingCheckpointCount: Int {
+        max(SwingPhase.allCases.count - approvedCheckpointCount - flaggedCheckpointCount, 0)
+    }
+
+    var allCheckpointsApproved: Bool {
+        keyFrames.count == SwingPhase.allCases.count && SwingPhase.allCases.allSatisfy { reviewStatus(for: $0) == .approved }
+    }
+
+    func refreshKeyframeValidationStatus() {
+        if allCheckpointsApproved {
+            keyframeValidationStatus = .approved
+        } else if flaggedCheckpointCount > 0 {
+            keyframeValidationStatus = .flagged
+        } else {
+            keyframeValidationStatus = .pending
+        }
+    }
+
+    func hydrateCheckpointStatusesFromAggregateIfNeeded() {
+        guard
+            keyFrames.isEmpty == false,
+            keyframeValidationStatus != .pending,
+            keyFrames.allSatisfy({ $0.reviewStatus == .pending })
+        else {
+            return
+        }
+
+        for index in keyFrames.indices {
+            keyFrames[index].reviewStatus = keyframeValidationStatus
+        }
     }
 }
