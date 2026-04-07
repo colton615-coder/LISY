@@ -20,12 +20,33 @@ private struct GarageTimelineMarker: Identifiable {
 }
 
 private struct GarageHandPathSample: Identifiable {
+    let id: Int
     let timestamp: Double
     let x: Double
     let y: Double
     let speed: Double
 
-    var id: Double { timestamp }
+    private static var nextGeneratedID: Int = 0
+
+    private static func generateID() -> Int {
+        let id = nextGeneratedID
+        nextGeneratedID += 1
+        return id
+    }
+
+    init(
+        timestamp: Double,
+        x: Double,
+        y: Double,
+        speed: Double,
+        id: Int? = nil
+    ) {
+        self.id = id ?? Self.generateID()
+        self.timestamp = timestamp
+        self.x = x
+        self.y = y
+        self.speed = speed
+    }
 }
 
 private extension KeyframeValidationStatus {
