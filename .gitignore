@@ -1,3 +1,5 @@
 DerivedData/
 .derived-data-log-*
 *.xcuserdatad/
+
+.DS_Store
