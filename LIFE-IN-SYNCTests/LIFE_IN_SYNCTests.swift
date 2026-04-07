@@ -64,6 +64,20 @@ struct LIFE_IN_SYNCTests {
         #expect(points[5].x != 0.3675)
     }
 
+    @Test func garageDeterministicHandPathSampleIDIsStableAcrossRepeatedGeneration() async throws {
+        let timestamps: [Double] = [0.0, 0.016667, 0.033333, 0.1, 0.5, 1.25]
+
+        let firstPass = timestamps.enumerated().map { index, timestamp in
+            garageDeterministicHandPathSampleID(index: index, timestamp: timestamp)
+        }
+        let secondPass = timestamps.enumerated().map { index, timestamp in
+            garageDeterministicHandPathSampleID(index: index, timestamp: timestamp)
+        }
+
+        #expect(firstPass == secondPass)
+        #expect(Set(firstPass).count == firstPass.count)
+    }
+
     @Test func garageKeyframeDetectionReturnsCanonicalPhaseOrder() async throws {
         let frames = makeSyntheticSwingFrames()
 
