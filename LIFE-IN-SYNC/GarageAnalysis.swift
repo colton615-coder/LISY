@@ -2,6 +2,153 @@ import AVFoundation
 import Foundation
 import Vision
 
+private struct GaragePoseCoordinateMapper {
+    let isMirrored: Bool
+    let invertY: Bool
+
+    init(isMirrored: Bool = false, invertY: Bool = true) {
+        self.isMirrored = isMirrored
+        self.invertY = invertY
+    }
+
+    func map(_ location: CGPoint) -> CGPoint {
+        let clampedX = min(max(location.x, 0), 1)
+        let clampedY = min(max(location.y, 0), 1)
+        let mappedX = isMirrored ? (1 - clampedX) : clampedX
+        let mappedY = invertY ? (1 - clampedY) : clampedY
+        return CGPoint(x: mappedX, y: mappedY)
+    }
+}
+
+private struct GarageWeightedPointSmoother {
+    private let weights: [Double]
+    private let lowConfidencePenalty: Double
+    private var history: [SwingJointName: [SwingJoint]] = [:]
+
+    init(weights: [Double] = [1, 2, 3, 2, 1], lowConfidencePenalty: Double = 0.35) {
+        self.weights = weights
+        self.lowConfidencePenalty = lowConfidencePenalty
+    }
+
+    mutating func smooth(frame: SwingFrame) -> SwingFrame {
+        var smoothedJoints: [SwingJoint] = []
+        smoothedJoints.reserveCapacity(frame.joints.count)
+
+        for joint in frame.joints {
+            var samples = history[joint.name, default: []]
+            samples.append(joint)
+            if samples.count > weights.count {
+                samples.removeFirst(samples.count - weights.count)
+            }
+
+            history[joint.name] = samples
+            smoothedJoints.append(weightedAverage(for: joint.name, with: samples))
+        }
+
+        return SwingFrame(timestamp: frame.timestamp, joints: smoothedJoints, confidence: frame.confidence)
+    }
+
+    private func weightedAverage(for name: SwingJointName, with samples: [SwingJoint]) -> SwingJoint {
+        var x = 0.0
+        var y = 0.0
+        var confidence = 0.0
+        var totalWeight = 0.0
+        let weightSlice = Array(weights.suffix(samples.count))
+
+        for (sample, baseWeight) in zip(samples, weightSlice) {
+            let confidenceScale = max(lowConfidencePenalty, sample.confidence)
+            let weight = baseWeight * confidenceScale
+            x += sample.x * weight
+            y += sample.y * weight
+            confidence += sample.confidence * weight
+            totalWeight += weight
+        }
+
+        guard totalWeight > 0 else {
+            return samples.last ?? SwingJoint(name: name, x: 0, y: 0, confidence: 0)
+        }
+
+        return SwingJoint(
+            name: name,
+            x: x / totalWeight,
+            y: y / totalWeight,
+            confidence: confidence / totalWeight
+        )
+    }
+}
+
+private struct GarageHandKinematicSample {
+    let index: Int
+    let position: CGPoint
+    let velocity: CGVector
+    let speed: Double
+}
+
+private enum GaragePathBuilder {
+    static func centripetalCatmullRom(points: [CGPoint], samplesPerSegment: Int = 10) -> [CGPoint] {
+        guard points.count >= 2 else { return points }
+        guard points.count > 2 else { return points }
+
+        var output: [CGPoint] = []
+        output.reserveCapacity((points.count - 1) * samplesPerSegment)
+
+        for i in 0..<(points.count - 1) {
+            let p0 = points[max(i - 1, 0)]
+            let p1 = points[i]
+            let p2 = points[i + 1]
+            let p3 = points[min(i + 2, points.count - 1)]
+            let segment = centripetalSegment(p0: p0, p1: p1, p2: p2, p3: p3, samples: max(samplesPerSegment, 2))
+            if i > 0 {
+                output.append(contentsOf: segment.dropFirst())
+            } else {
+                output.append(contentsOf: segment)
+            }
+        }
+
+        return output
+    }
+
+    private static func centripetalSegment(
+        p0: CGPoint,
+        p1: CGPoint,
+        p2: CGPoint,
+        p3: CGPoint,
+        samples: Int
+    ) -> [CGPoint] {
+        let alpha = 0.5
+        let t0 = 0.0
+        let t1 = t0 + parameterDistance(from: p0, to: p1, alpha: alpha)
+        let t2 = t1 + parameterDistance(from: p1, to: p2, alpha: alpha)
+        let t3 = t2 + parameterDistance(from: p2, to: p3, alpha: alpha)
+        guard t1 < t2, t0 < t1, t2 < t3 else { return [p1, p2] }
+
+        var points: [CGPoint] = []
+        points.reserveCapacity(samples + 1)
+        for step in 0...samples {
+            let tau = Double(step) / Double(samples)
+            let t = t1 + ((t2 - t1) * tau)
+            let a1 = lerp(from: p0, to: p1, t0: t0, t1: t1, t: t)
+            let a2 = lerp(from: p1, to: p2, t0: t1, t1: t2, t: t)
+            let a3 = lerp(from: p2, to: p3, t0: t2, t1: t3, t: t)
+            let b1 = lerp(from: a1, to: a2, t0: t0, t1: t2, t: t)
+            let b2 = lerp(from: a2, to: a3, t0: t1, t1: t3, t: t)
+            points.append(lerp(from: b1, to: b2, t0: t1, t1: t2, t: t))
+        }
+        return points
+    }
+
+    private static func parameterDistance(from start: CGPoint, to end: CGPoint, alpha: Double) -> Double {
+        let distance = max(GarageAnalysisPipeline.distance(from: start, to: end), 1e-6)
+        return pow(distance, alpha)
+    }
+
+    private static func lerp(from start: CGPoint, to end: CGPoint, t0: Double, t1: Double, t: Double) -> CGPoint {
+        guard abs(t1 - t0) > 1e-9 else { return start }
+        let weight = (t - t0) / (t1 - t0)
+        return CGPoint(x: start.x + (end.x - start.x) * weight, y: start.y + (end.y - start.y) * weight)
+    }
+}
+
 struct GarageAnalysisOutput {
     let frameRate: Double
     let swingFrames: [SwingFrame]
@@ -1047,6 +1194,13 @@ private enum GarageStoredAssetKind {
 }
 
 enum GarageAnalysisPipeline {
+    private enum KinematicThresholds {
+        static let reversalVelocityEpsilon = 0.015
+        static let impactSpeedQuantile = 0.82
+        static let impactLowerPathQuantile = 0.62
+        static let impactWindow = 2
+    }
+
     static func analyzeVideo(at videoURL: URL) async throws -> GarageAnalysisOutput {
         let asset = AVURLAsset(url: videoURL)
         let tracks = try await asset.loadTracks(withMediaType: .video)
@@ -1067,7 +1221,7 @@ enum GarageAnalysisPipeline {
 
         let keyFrames = detectKeyFrames(from: smoothedFrames)
         let handAnchors = deriveHandAnchors(from: smoothedFrames, keyFrames: keyFrames)
-        let pathPoints = generatePathPoints(from: handAnchors, samplesPerSegment: 8)
+        let pathPoints = generatePathPoints(from: smoothedFrames, samplesPerSegment: 8)
         let analysisResult = AnalysisResult(
             issues: [],
             highlights: [
@@ -1145,6 +1299,7 @@ enum GarageAnalysisPipeline {
         let recognizedPoints = try observation.recognizedPoints(.all)
         var joints: [SwingJoint] = []
 
+        let mapper = GaragePoseCoordinateMapper(isMirrored: false, invertY: true)
         for jointName in SwingJointName.allCases {
             guard
                 let visionName = jointName.visionName,
@@ -1153,12 +1308,13 @@ enum GarageAnalysisPipeline {
             else {
                 continue
             }
+            let mappedPoint = mapper.map(recognizedPoint.location)
 
             joints.append(
                 SwingJoint(
                     name: jointName,
-                    x: Double(recognizedPoint.location.x),
-                    y: Double(1 - recognizedPoint.location.y),
+                    x: Double(mappedPoint.x),
+                    y: Double(mappedPoint.y),
                     confidence: Double(recognizedPoint.confidence)
                 )
             )
@@ -1178,27 +1334,9 @@ enum GarageAnalysisPipeline {
         return required.isSubset(of: names)
     }
 
-    private static func smooth(frames: [SwingFrame], alpha: Double = 0.35) -> [SwingFrame] {
-        var previousPoints: [SwingJointName: SwingJoint] = [:]
-        return frames.map { frame in
-            let smoothedJoints = frame.joints.map { joint -> SwingJoint in
-                guard let previous = previousPoints[joint.name] else {
-                    previousPoints[joint.name] = joint
-                    return joint
-                }
-
-                let smoothed = SwingJoint(
-                    name: joint.name,
-                    x: previous.x + alpha * (joint.x - previous.x),
-                    y: previous.y + alpha * (joint.y - previous.y),
-                    confidence: previous.confidence + alpha * (joint.confidence - previous.confidence)
-                )
-                previousPoints[joint.name] = smoothed
-                return smoothed
-            }
-
-            return SwingFrame(timestamp: frame.timestamp, joints: smoothedJoints, confidence: frame.confidence)
-        }
+    private static func smooth(frames: [SwingFrame]) -> [SwingFrame] {
+        var smoother = GarageWeightedPointSmoother()
+        return frames.map { smoother.smooth(frame: $0) }
     }
 
     static func detectKeyFrames(from frames: [SwingFrame]) -> [KeyFrame] {
@@ -1239,11 +1377,33 @@ enum GarageAnalysisPipeline {
     }
 
     private static func topOfBackswingIndex(in frames: [SwingFrame], fallbackStart: Int) -> Int {
-        let searchRange = fallbackStart..<max(frames.count - 2, fallbackStart + 1)
-        let candidate = searchRange.min { lhs, rhs in
-            handCenter(in: frames[lhs]).y < handCenter(in: frames[rhs]).y
+        let samples = handKinematics(from: frames)
+        guard samples.count >= 4 else {
+            return min(max(fallbackStart, frames.count / 3), max(frames.count - 3, 0))
         }
-        return candidate ?? min(max(fallbackStart, frames.count / 3), max(frames.count - 3, 0))
+
+        let searchStart = min(max(fallbackStart, 1), samples.count - 2)
+        let searchEnd = max(searchStart + 1, samples.count - 1)
+        let range = searchStart..<searchEnd
+
+        let candidate = range.first { index in
+            let previous = samples[index - 1].velocity.dx
+            let current = samples[index].velocity.dx
+            let vertical = abs(samples[index].velocity.dy)
+            return previous > KinematicThresholds.reversalVelocityEpsilon
+                && current < -KinematicThresholds.reversalVelocityEpsilon
+                && vertical < KinematicThresholds.reversalVelocityEpsilon * 2
+        }
+
+        if let candidate {
+            return samples[candidate].index
+        }
+
+        let fallback = range.min { lhs, rhs in
+            abs(samples[lhs].velocity.dy) < abs(samples[rhs].velocity.dy)
+        }
+
+        return fallback.map { samples[$0].index } ?? min(max(fallbackStart, frames.count / 3), max(frames.count - 3, 0))
     }
 
     private static func takeawayIndex(in frames: [SwingFrame], addressIndex: Int, topIndex: Int) -> Int {
@@ -1311,16 +1471,31 @@ enum GarageAnalysisPipeline {
     }
 
     private static func impactIndex(in frames: [SwingFrame], addressIndex: Int, transitionIndex: Int) -> Int {
-        let addressHands = handCenter(in: frames[addressIndex])
-        let searchStart = min(transitionIndex + 1, frames.count - 1)
-        let range = searchStart..<frames.count
+        let samples = handKinematics(from: frames)
+        guard samples.count >= 4 else { return frames.count - 1 }
 
-        // In phase-one 2D-only analysis, the address hand center is the deterministic ball proxy.
-        let candidate = range.min { lhs, rhs in
-            distance(from: handCenter(in: frames[lhs]), to: addressHands) < distance(from: handCenter(in: frames[rhs]), to: addressHands)
+        let searchStart = max(transitionIndex + 1, 1)
+        guard searchStart < samples.count else { return frames.count - 1 }
+
+        let candidateSamples = Array(samples[searchStart..<samples.count])
+        let speeds = candidateSamples.map(\.speed).sorted()
+        let yValues = candidateSamples.map { $0.position.y }.sorted()
+        guard
+            let speedThreshold = quantile(fromSortedValues: speeds, quantile: KinematicThresholds.impactSpeedQuantile),
+            let lowerPathY = quantile(fromSortedValues: yValues, quantile: KinematicThresholds.impactLowerPathQuantile)
+        else {
+            return frames.count - 1
         }
 
-        return candidate ?? frames.count - 1
+        let validCandidates = candidateSamples.filter { sample in
+            sample.speed >= speedThreshold && sample.position.y >= lowerPathY
+        }
+
+        if let best = validCandidates.max(by: { smoothedSpeed(at: $0.index, in: samples) < smoothedSpeed(at: $1.index, in: samples) }) {
+            return best.index
+        }
+
+        return candidateSamples.max(by: { $0.speed < $1.speed })?.index ?? frames.count - 1
     }
 
     private static func followThroughIndex(in frames: [SwingFrame], impactIndex: Int) -> Int {
@@ -1362,37 +1537,66 @@ enum GarageAnalysisPipeline {
         return sqrt((dx * dx) + (dy * dy))
     }
 
-    static func generatePathPoints(from anchors: [HandAnchor], samplesPerSegment: Int = 16) -> [PathPoint] {
-        let orderedAnchors = SwingPhase.allCases.compactMap { phase in
-            anchors.first(where: { $0.phase == phase })
-        }
-
-        guard orderedAnchors.count >= 2 else {
+    static func generatePathPoints(from frames: [SwingFrame], samplesPerSegment: Int = 16) -> [PathPoint] {
+        let stabilizedPoints = frames.map { handCenter(in: $0) }
+        guard stabilizedPoints.count >= 2 else {
             return []
         }
 
-        var points: [PathPoint] = []
-        var sequence = 0
+        let splinePoints = GaragePathBuilder.centripetalCatmullRom(
+            points: stabilizedPoints,
+            samplesPerSegment: samplesPerSegment
+        )
 
-        for index in 0..<(orderedAnchors.count - 1) {
-            let start = orderedAnchors[index]
-            let end = orderedAnchors[index + 1]
-            let sampleCount = max(samplesPerSegment, 2)
+        return splinePoints.enumerated().map { sequence, point in
+            PathPoint(sequence: sequence, x: point.x, y: point.y)
+        }
+    }
 
-            for sample in 0..<sampleCount {
-                let t = Double(sample) / Double(sampleCount)
-                let x = start.x + ((end.x - start.x) * t)
-                let y = start.y + ((end.y - start.y) * t)
-                points.append(PathPoint(sequence: sequence, x: x, y: y))
-                sequence += 1
-            }
+    private static func handKinematics(from frames: [SwingFrame]) -> [GarageHandKinematicSample] {
+        guard frames.count >= 2 else { return [] }
+
+        var samples: [GarageHandKinematicSample] = []
+        samples.reserveCapacity(frames.count - 1)
+        var previousCenter = handCenter(in: frames[0])
+        var previousTime = frames[0].timestamp
+
+        for index in 1..<frames.count {
+            let currentCenter = handCenter(in: frames[index])
+            let currentTime = frames[index].timestamp
+            let dt = max(currentTime - previousTime, 1.0 / 240.0)
+            let vx = (currentCenter.x - previousCenter.x) / dt
+            let vy = (currentCenter.y - previousCenter.y) / dt
+            let speed = sqrt((vx * vx) + (vy * vy))
+            samples.append(
+                GarageHandKinematicSample(
+                    index: index,
+                    position: currentCenter,
+                    velocity: CGVector(dx: vx, dy: vy),
+                    speed: speed
+                )
+            )
+            previousCenter = currentCenter
+            previousTime = currentTime
         }
 
-        if let finalAnchor = orderedAnchors.last {
-            points.append(PathPoint(sequence: sequence, x: finalAnchor.x, y: finalAnchor.y))
-        }
+        return samples
+    }
 
-        return points
+    private static func quantile(fromSortedValues values: [Double], quantile: Double) -> Double? {
+        guard values.isEmpty == false else { return nil }
+        let q = min(max(quantile, 0), 1)
+        let index = Int((Double(values.count - 1) * q).rounded(.down))
+        return values[index]
+    }
+
+    private static func smoothedSpeed(at index: Int, in samples: [GarageHandKinematicSample]) -> Double {
+        guard let position = samples.firstIndex(where: { $0.index == index }) else { return 0 }
+        let start = max(0, position - KinematicThresholds.impactWindow)
+        let end = min(samples.count - 1, position + KinematicThresholds.impactWindow)
+        let window = samples[start...end]
+        let total = window.reduce(0) { $0 + $1.speed }
+        return total / Double(window.count)
     }
 }
 
