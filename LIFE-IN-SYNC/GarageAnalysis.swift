@@ -1553,6 +1553,72 @@ enum GarageAnalysisPipeline {
         }
     }
 
+    static func generatePathPoints(from anchors: [HandAnchor], samplesPerSegment: Int = 16) -> [PathPoint] {
+        let stabilizedPoints = anchors.compactMap { point(from: $0) }
+        guard stabilizedPoints.count >= 2 else {
+            return []
+        }
+
+        let splinePoints = GaragePathBuilder.centripetalCatmullRom(
+            points: stabilizedPoints,
+            samplesPerSegment: samplesPerSegment
+        )
+
+        return splinePoints.enumerated().map { sequence, point in
+            PathPoint(sequence: sequence, x: point.x, y: point.y)
+        }
+    }
+
+    private static func point(from anchor: HandAnchor) -> CGPoint? {
+        point(fromValue: anchor)
+    }
+
+    private static func point(fromValue value: Any) -> CGPoint? {
+        if let point = value as? CGPoint {
+            return point
+        }
+
+        let mirror = Mirror(reflecting: value)
+        var xValue: CGFloat?
+        var yValue: CGFloat?
+
+        for child in mirror.children {
+            if let point = point(fromValue: child.value) {
+                return point
+            }
+
+            switch child.label {
+            case "x":
+                xValue = cgFloat(from: child.value)
+            case "y":
+                yValue = cgFloat(from: child.value)
+            default:
+                continue
+            }
+        }
+
+        if let xValue, let yValue {
+            return CGPoint(x: xValue, y: yValue)
+        }
+
+        return nil
+    }
+
+    private static func cgFloat(from value: Any) -> CGFloat? {
+        if let value = value as? CGFloat {
+            return value
+        }
+        if let value = value as? Double {
+            return CGFloat(value)
+        }
+        if let value = value as? Float {
+            return CGFloat(value)
+        }
+        if let value = value as? Int {
+            return CGFloat(value)
+        }
+        return nil
+    }
     private static func handKinematics(from frames: [SwingFrame]) -> [GarageHandKinematicSample] {
         guard frames.count >= 2 else { return [] }
 
