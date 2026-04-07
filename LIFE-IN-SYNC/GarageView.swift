@@ -26,27 +26,51 @@ private struct GarageHandPathSample: Identifiable {
     let y: Double
     let speed: Double
 
-    private static var nextGeneratedID: Int = 0
-
-    private static func generateID() -> Int {
-        let id = nextGeneratedID
-        nextGeneratedID += 1
-        return id
-    }
-
     init(
+        id: Int,
         timestamp: Double,
         x: Double,
         y: Double,
-        speed: Double,
-        id: Int? = nil
+        speed: Double
     ) {
-        self.id = id ?? Self.generateID()
+        self.id = id
         self.timestamp = timestamp
         self.x = x
         self.y = y
         self.speed = speed
     }
+}
+
+func garageDeterministicHandPathSampleID(index: Int, timestamp: Double) -> Int {
+    let quantizedTimestamp = Int64((timestamp * 1_000_000).rounded())
+    let indexBits = UInt64(bitPattern: Int64(index))
+    let timestampBits = UInt64(bitPattern: quantizedTimestamp)
+    let bytes: [UInt8] = [
+        UInt8(truncatingIfNeeded: indexBits),
+        UInt8(truncatingIfNeeded: indexBits >> 8),
+        UInt8(truncatingIfNeeded: indexBits >> 16),
+        UInt8(truncatingIfNeeded: indexBits >> 24),
+        UInt8(truncatingIfNeeded: indexBits >> 32),
+        UInt8(truncatingIfNeeded: indexBits >> 40),
+        UInt8(truncatingIfNeeded: indexBits >> 48),
+        UInt8(truncatingIfNeeded: indexBits >> 56),
+        UInt8(truncatingIfNeeded: timestampBits),
+        UInt8(truncatingIfNeeded: timestampBits >> 8),
+        UInt8(truncatingIfNeeded: timestampBits >> 16),
+        UInt8(truncatingIfNeeded: timestampBits >> 24),
+        UInt8(truncatingIfNeeded: timestampBits >> 32),
+        UInt8(truncatingIfNeeded: timestampBits >> 40),
+        UInt8(truncatingIfNeeded: timestampBits >> 48),
+        UInt8(truncatingIfNeeded: timestampBits >> 56)
+    ]
+
+    var hash: UInt64 = 14_695_981_039_346_656_037
+    for byte in bytes {
+        hash ^= UInt64(byte)
+        hash &*= 1_099_511_628_211
+    }
+
+    return Int(truncatingIfNeeded: hash)
 }
 
 private extension KeyframeValidationStatus {
@@ -101,6 +125,7 @@ private func garageHandPathSamples(from frames: [SwingFrame]) -> [GarageHandPath
         let sourceFrame = min(Int((Double(frames.count - 1) * normalizedT).rounded()), frames.count - 1)
 
         return GarageHandPathSample(
+            id: garageDeterministicHandPathSampleID(index: index, timestamp: frames[sourceFrame].timestamp),
             timestamp: frames[sourceFrame].timestamp,
             x: point.x,
             y: point.y,
