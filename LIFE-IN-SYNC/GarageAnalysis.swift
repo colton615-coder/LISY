@@ -1396,7 +1396,7 @@ enum GarageAnalysisPipeline {
         }
 
         if let candidate {
-            return samples[candidate].index
+            return samples[candidate - 1].index
         }
 
         let fallback = range.min { lhs, rhs in
