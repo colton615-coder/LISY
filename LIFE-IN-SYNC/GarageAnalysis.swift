@@ -1601,7 +1601,7 @@ enum GarageAnalysisPipeline {
 
     private static func earlyDownswingIndex(in frames: [SwingFrame], transitionIndex: Int, impactIndex: Int) -> Int {
         guard transitionIndex + 1 < impactIndex else {
-            return min(transitionIndex + 1, impactIndex)
+            return max(transitionIndex, impactIndex - 1)
         }
 
         let latestAllowed = max(transitionIndex + 1, impactIndex - 1)
