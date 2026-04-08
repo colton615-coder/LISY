@@ -1604,7 +1604,7 @@ enum GarageAnalysisPipeline {
             return max(transitionIndex, impactIndex - 1)
         }
 
-        let latestAllowed = max(transitionIndex + 1, impactIndex - 1)
+        let latestAllowed = impactIndex - 1
         let transitionHands = handCenter(in: frames[transitionIndex])
         let impactHands = handCenter(in: frames[impactIndex])
         let transitionToImpactDistance = distance(from: transitionHands, to: impactHands)
