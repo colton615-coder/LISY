@@ -1292,7 +1292,7 @@ enum GarageAnalysisPipeline {
         let nominalFrameRate = try await videoTrack.load(.nominalFrameRate)
         let samplingFrameRate = resolvedSamplingFrameRate(from: nominalFrameRate)
         let timestamps = sampledTimestamps(duration: duration, frameRate: samplingFrameRate)
-        let extractedFrames = try extractPoseFrames(from: asset, timestamps: timestamps)
+        let extractedFrames = try await extractPoseFrames(from: asset, timestamps: timestamps)
         let smoothedFrames = smooth(frames: extractedFrames)
 
         guard smoothedFrames.count >= SwingPhase.allCases.count else {
@@ -1345,7 +1345,7 @@ enum GarageAnalysisPipeline {
         return timestamps
     }
 
-    private static func extractPoseFrames(from asset: AVAsset, timestamps: [Double]) throws -> [SwingFrame] {
+    private static func extractPoseFrames(from asset: AVAsset, timestamps: [Double]) async throws -> [SwingFrame] {
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 960, height: 960)
@@ -1354,14 +1354,17 @@ enum GarageAnalysisPipeline {
 
         var frames: [SwingFrame] = []
         for timestamp in timestamps {
+            try Task.checkCancellation()
             let time = CMTime(seconds: timestamp, preferredTimescale: 600)
             guard let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) else {
+                await Task.yield()
                 continue
             }
 
             if let frame = try detectPoseFrame(from: cgImage, timestamp: timestamp) {
                 frames.append(frame)
             }
+            await Task.yield()
         }
 
         return frames
