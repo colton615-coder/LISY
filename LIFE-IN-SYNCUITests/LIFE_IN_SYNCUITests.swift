@@ -88,14 +88,22 @@ final class LIFE_IN_SYNCUITests: XCTestCase {
 
 private extension LIFE_IN_SYNCUITests {
     func scrollToElementIfNeeded(_ element: XCUIElement, in app: XCUIApplication, maxScrolls: Int = 6) {
-        guard element.exists == false else { return }
+        guard element.isHittable == false else { return }
 
         for _ in 0..<maxScrolls {
             app.swipeUp()
 
-            if element.waitForExistence(timeout: 0.5) {
+            if element.isHittable {
+                return
+            }
+
+            _ = element.waitForExistence(timeout: 0.5)
+
+            if element.isHittable {
                 return
             }
         }
+
+        XCTFail("Failed to scroll to a hittable element after \(maxScrolls) scrolls: \(element)")
     }
 }
