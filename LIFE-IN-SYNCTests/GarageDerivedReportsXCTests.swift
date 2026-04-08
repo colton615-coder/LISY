@@ -82,22 +82,20 @@ final class GarageDerivedReportsXCTests: XCTestCase {
     func testGarageCoachingReportFlagsLongTempoAsCaution() {
         let frames = makeSyntheticSwingFrames()
         let keyFrames = [
-            KeyFrame(phase: .address, decodedFrameIndex: 0),
-            KeyFrame(phase: .takeaway, decodedFrameIndex: 1),
-            KeyFrame(phase: .shaftParallel, decodedFrameIndex: 2),
-            KeyFrame(phase: .topOfBackswing, decodedFrameIndex: 8),
-            KeyFrame(phase: .transition, decodedFrameIndex: 9),
-            KeyFrame(phase: .earlyDownswing, decodedFrameIndex: 9),
-            KeyFrame(phase: .impact, decodedFrameIndex: 9),
-            KeyFrame(phase: .followThrough, decodedFrameIndex: 9)
+            KeyFrame(phase: .address, frameIndex: 0),
+            KeyFrame(phase: .takeaway, frameIndex: 1),
+            KeyFrame(phase: .shaftParallel, frameIndex: 2),
+            KeyFrame(phase: .topOfBackswing, frameIndex: 8),
+            KeyFrame(phase: .transition, frameIndex: 9),
+            KeyFrame(phase: .earlyDownswing, frameIndex: 9),
+            KeyFrame(phase: .impact, frameIndex: 9),
+            KeyFrame(phase: .followThrough, frameIndex: 9)
         ]
         let anchors = makeFullAnchorSet()
         let record = SwingRecord(
             title: "Tempo Caution",
             mediaFilename: "workflow.mov",
             frameRate: 60,
-            decodedFrames: makeDecodedFrames(from: frames),
-            decodedFrameTimestamps: frames.map(\.timestamp),
             swingFrames: frames,
             keyFrames: keyFrames,
             keyframeValidationStatus: .approved,
@@ -108,7 +106,7 @@ final class GarageDerivedReportsXCTests: XCTestCase {
 
         let report = GarageCoaching.report(for: record)
 
-        XCTAssertTrue(report.cues.contains(where: { $0.title == "Backswing Is Running Long" && $0.severity == .caution }))
+        XCTAssertTrue(report.cues.contains(where: { $0.title == "Backswing Is Running Long" && $0.severity == GarageCoachingSeverity.caution }))
     }
 }
 
@@ -178,8 +176,6 @@ private func makeWorkflowRecord(
         title: "Workflow Record",
         mediaFilename: filename,
         frameRate: 60,
-        decodedFrames: makeDecodedFrames(from: frames),
-        decodedFrameTimestamps: frames.map(\.timestamp),
         swingFrames: frames,
         keyFrames: keyFrames,
         keyframeValidationStatus: keyframeValidationStatus,
@@ -216,22 +212,4 @@ private func makePersistedGarageVideoFixture(named filename: String) {
 
     try? fileManager.createDirectory(at: garageURL, withIntermediateDirectories: true)
     fileManager.createFile(atPath: fileURL.path, contents: Data())
-}
-
-@MainActor
-private func makeDecodedFrames(from frames: [SwingFrame]) -> [DecodedFrameRecord] {
-    frames.enumerated().map { index, frame in
-        DecodedFrameRecord(
-            decodedFrameIndex: index,
-            presentationTimestamp: frame.timestamp,
-            renderAssetKey: nil,
-            poseSample: PoseSampleAttachment(
-                analysisSampleIndex: index,
-                confidence: frame.confidence,
-                joints: frame.joints
-            ),
-            assignedPhase: nil,
-            continuity: nil
-        )
-    }
 }

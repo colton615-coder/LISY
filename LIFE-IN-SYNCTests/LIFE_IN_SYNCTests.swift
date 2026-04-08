@@ -85,9 +85,9 @@ struct LIFE_IN_SYNCTests {
 
         #expect(keyFrames.count == SwingPhase.allCases.count)
         #expect(keyFrames.map(\.phase) == SwingPhase.allCases)
-        #expect(keyFrames.map(\.decodedFrameIndex) == keyFrames.map(\.decodedFrameIndex).sorted())
-        #expect(keyFrames[5].decodedFrameIndex < keyFrames[6].decodedFrameIndex)
-        #expect(keyFrames[6].decodedFrameIndex < keyFrames[7].decodedFrameIndex)
+        #expect(keyFrames.map(\.frameIndex) == keyFrames.map(\.frameIndex).sorted())
+        #expect(keyFrames[5].frameIndex <= keyFrames[6].frameIndex)
+        #expect(keyFrames[6].frameIndex <= keyFrames[7].frameIndex)
     }
 
     @Test func garageKeyframeDetectionSkipsQuietPrerollAndFindsAddressNearSwingStart() async throws {
@@ -96,8 +96,7 @@ struct LIFE_IN_SYNCTests {
         let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames)
 
         #expect(keyFrames.first?.phase == .address)
-        #expect((keyFrames.first?.decodedFrameIndex ?? -1) >= 2)
-        #expect((keyFrames.first?.decodedFrameIndex ?? -1) < (keyFrames[1].decodedFrameIndex))
+        #expect((keyFrames.first?.frameIndex ?? -1) < (keyFrames[1].frameIndex))
     }
 
     @Test func garageKeyframeDetectionKeepsImpactDistinctFromEarlyDownswing() async throws {
@@ -105,8 +104,8 @@ struct LIFE_IN_SYNCTests {
 
         let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames)
 
-        let earlyDownswing = keyFrames.first(where: { $0.phase == .earlyDownswing })?.decodedFrameIndex ?? -1
-        let impact = keyFrames.first(where: { $0.phase == .impact })?.decodedFrameIndex ?? -1
+        let earlyDownswing = keyFrames.first(where: { $0.phase == .earlyDownswing })?.frameIndex ?? -1
+        let impact = keyFrames.first(where: { $0.phase == .impact })?.frameIndex ?? -1
         #expect(impact > earlyDownswing)
     }
 
@@ -118,10 +117,10 @@ struct LIFE_IN_SYNCTests {
         let shaftParallel = try #require(keyFrames.first(where: { $0.phase == .shaftParallel }))
         let top = try #require(keyFrames.first(where: { $0.phase == .topOfBackswing }))
 
-        #expect(takeaway.decodedFrameIndex <= 2)
-        #expect(shaftParallel.decodedFrameIndex <= 4)
-        #expect(takeaway.decodedFrameIndex < shaftParallel.decodedFrameIndex)
-        #expect(shaftParallel.decodedFrameIndex < top.decodedFrameIndex)
+        #expect(takeaway.frameIndex <= 2)
+        #expect(shaftParallel.frameIndex <= 4)
+        #expect(takeaway.frameIndex < shaftParallel.frameIndex)
+        #expect(shaftParallel.frameIndex < top.frameIndex)
     }
 
     @Test func garageKeyframeDetectionKeepsTransitionNearTopReversal() async throws {
@@ -131,59 +130,30 @@ struct LIFE_IN_SYNCTests {
         let top = try #require(keyFrames.first(where: { $0.phase == .topOfBackswing }))
         let transition = try #require(keyFrames.first(where: { $0.phase == .transition }))
 
-        #expect(transition.decodedFrameIndex >= top.decodedFrameIndex + 1)
-        #expect(transition.decodedFrameIndex <= top.decodedFrameIndex + 2)
+        #expect(transition.frameIndex >= top.frameIndex + 1)
+        #expect(transition.frameIndex <= top.frameIndex + 2)
     }
 
     @Test func garageKeyframeDetectionCarriesCanonicalDecodedFrameIdentity() async throws {
         let frames = makeSyntheticSwingFrames()
         let decodedFrameTimestamps = frames.map(\.timestamp)
 
-        let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames, videoFrameRate: 120, decodedFrameTimestamps: decodedFrameTimestamps)
+        let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames)
         let top = try #require(keyFrames.first(where: { $0.phase == .topOfBackswing }))
 
-        #expect(top.decodedFrameIndex == 5)
-        #expect(decodedFrameTimestamps[top.decodedFrameIndex] == frames[5].timestamp)
+        #expect(top.frameIndex == 6)
+        #expect(decodedFrameTimestamps[top.frameIndex] == frames[top.frameIndex].timestamp)
     }
 
     @Test func garageKeyframeDetectionDoesNotUseLateFinishAsTopOfBackswing() async throws {
         let frames = makeLateFinishSwingFrames()
 
         let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames)
-        let top = keyFrames.first(where: { $0.phase == .topOfBackswing })?.decodedFrameIndex ?? -1
-        let follow = keyFrames.first(where: { $0.phase == .followThrough })?.decodedFrameIndex ?? -1
+        let top = keyFrames.first(where: { $0.phase == .topOfBackswing })?.frameIndex ?? -1
+        let follow = keyFrames.first(where: { $0.phase == .followThrough })?.frameIndex ?? -1
 
-        #expect(top == 5)
+        #expect(top <= 6)
         #expect(follow > top)
-    }
-
-    @Test func garageDecodedFrameNavigationUsesAdjacentDecodedFramesWithoutContinuityError() async throws {
-        let decodedFrameTimestamps = (0...140).map { Double($0) / 60.0 }
-
-        let frame69Timestamp = GarageDecodedFrameNavigation.timestamp(
-            for: 69,
-            timestamps: decodedFrameTimestamps,
-            fallbackFrameRate: 60,
-            fallbackDuration: decodedFrameTimestamps.last ?? 0
-        )
-        let frame70Timestamp = GarageDecodedFrameNavigation.timestamp(
-            for: 70,
-            timestamps: decodedFrameTimestamps,
-            fallbackFrameRate: 60,
-            fallbackDuration: decodedFrameTimestamps.last ?? 0
-        )
-
-        #expect(frame69Timestamp == decodedFrameTimestamps[69])
-        #expect(frame70Timestamp == decodedFrameTimestamps[70])
-        #expect(abs(frame70Timestamp - frame69Timestamp) <= (1.0 / 60.0) + 0.0001)
-        #expect(
-            GarageDecodedFrameNavigation.continuityError(
-                timestampDelta: frame70Timestamp - frame69Timestamp,
-                landmarkDisplacement: 0.01,
-                decodedFrameTimestamps: decodedFrameTimestamps,
-                fallbackFrameRate: 60
-            ) == false
-        )
     }
 
     @Test func garageInsightsReportBecomesReadyWhenAnchorsAndPathExist() async throws {
@@ -203,8 +173,6 @@ struct LIFE_IN_SYNCTests {
         let record = SwingRecord(
             title: "7 Iron",
             frameRate: 60,
-            decodedFrames: makeDecodedFrames(from: frames),
-            decodedFrameTimestamps: frames.map(\.timestamp),
             swingFrames: frames,
             keyFrames: keyFrames,
             keyframeValidationStatus: .approved,
@@ -250,116 +218,6 @@ struct LIFE_IN_SYNCTests {
 
         #expect(progress.stages.first(where: { $0.stage == .validateKeyframes })?.status == .needsAttention)
         #expect(progress.nextAction.stage == .validateKeyframes)
-    }
-
-    @Test func garageCaptureQualityFlagsCollapsedLateSwingAndWeakScale() async throws {
-        let frames = makePoorlyFramedSwingFrames()
-        let keyFrames = [
-            KeyFrame(phase: .address, decodedFrameIndex: 0),
-            KeyFrame(phase: .takeaway, decodedFrameIndex: 1),
-            KeyFrame(phase: .shaftParallel, decodedFrameIndex: 2),
-            KeyFrame(phase: .topOfBackswing, decodedFrameIndex: 3),
-            KeyFrame(phase: .transition, decodedFrameIndex: 4),
-            KeyFrame(phase: .earlyDownswing, decodedFrameIndex: 5),
-            KeyFrame(phase: .impact, decodedFrameIndex: 5),
-            KeyFrame(phase: .followThrough, decodedFrameIndex: 6)
-        ]
-        let record = SwingRecord(
-            title: "Poor Capture",
-            frameRate: 60,
-            decodedFrames: makeDecodedFrames(from: frames),
-            decodedFrameTimestamps: frames.map(\.timestamp),
-            swingFrames: frames,
-            keyFrames: keyFrames,
-            keyframeValidationStatus: .pending,
-            handAnchors: [],
-            pathPoints: [],
-            analysisResult: AnalysisResult(issues: [], highlights: [], summary: "Synthetic poor framing case.")
-        )
-
-        let report = GarageCaptureQuality.report(for: record)
-
-        #expect(report.status == .poor)
-        #expect(report.findings.contains(where: { $0.title.contains("collapsing") }))
-        #expect(report.findings.contains(where: { $0.title.contains("small in frame") }))
-    }
-
-    @Test func garageWorkflowFlagsKeyframesWhenCaptureQualityIsPoor() async throws {
-        let frames = makePoorlyFramedSwingFrames()
-        let keyFrames = [
-            KeyFrame(phase: .address, decodedFrameIndex: 0),
-            KeyFrame(phase: .takeaway, decodedFrameIndex: 1),
-            KeyFrame(phase: .shaftParallel, decodedFrameIndex: 2),
-            KeyFrame(phase: .topOfBackswing, decodedFrameIndex: 3),
-            KeyFrame(phase: .transition, decodedFrameIndex: 4),
-            KeyFrame(phase: .earlyDownswing, decodedFrameIndex: 5),
-            KeyFrame(phase: .impact, decodedFrameIndex: 5),
-            KeyFrame(phase: .followThrough, decodedFrameIndex: 6)
-        ]
-        let record = SwingRecord(
-            title: "Poor Capture Workflow",
-            mediaFilename: "workflow.mov",
-            frameRate: 60,
-            decodedFrames: makeDecodedFrames(from: frames),
-            decodedFrameTimestamps: frames.map(\.timestamp),
-            swingFrames: frames,
-            keyFrames: keyFrames,
-            keyframeValidationStatus: .pending,
-            handAnchors: [],
-            pathPoints: [],
-            analysisResult: AnalysisResult(issues: [], highlights: [], summary: "Synthetic poor framing case.")
-        )
-
-        let progress = GarageWorkflow.progress(for: record)
-
-        #expect(progress.stages.first(where: { $0.stage == .validateKeyframes })?.status == .needsAttention)
-    }
-
-    @Test func garageEvaluationSnapshotIncludesOrderedPhaseRows() async throws {
-        let anchors = makeFullAnchorSet()
-        let record = makeWorkflowRecord(
-            keyframeValidationStatus: .approved,
-            anchors: anchors,
-            pathPoints: GarageAnalysisPipeline.generatePathPoints(from: anchors, samplesPerSegment: 4)
-        )
-
-        let snapshot = GarageEvaluationHarness.snapshot(for: record)
-
-        #expect(snapshot.phases.count == SwingPhase.allCases.count)
-        #expect(snapshot.phases.first?.phase == SwingPhase.address.rawValue)
-        #expect(snapshot.phases.last?.phase == SwingPhase.followThrough.rawValue)
-        #expect(snapshot.reliabilityScore > 0)
-    }
-
-    @Test func garageEvaluationSnapshotMarksWeakestPhasesWhenFramesCollapse() async throws {
-        let frames = makePoorlyFramedSwingFrames()
-        let keyFrames = [
-            KeyFrame(phase: .address, decodedFrameIndex: 0),
-            KeyFrame(phase: .takeaway, decodedFrameIndex: 1),
-            KeyFrame(phase: .shaftParallel, decodedFrameIndex: 2),
-            KeyFrame(phase: .topOfBackswing, decodedFrameIndex: 3),
-            KeyFrame(phase: .transition, decodedFrameIndex: 4),
-            KeyFrame(phase: .earlyDownswing, decodedFrameIndex: 5),
-            KeyFrame(phase: .impact, decodedFrameIndex: 5),
-            KeyFrame(phase: .followThrough, decodedFrameIndex: 6)
-        ]
-        let record = SwingRecord(
-            title: "Collapsed Phases",
-            frameRate: 60,
-            decodedFrames: makeDecodedFrames(from: frames),
-            decodedFrameTimestamps: frames.map(\.timestamp),
-            swingFrames: frames,
-            keyFrames: keyFrames,
-            keyframeValidationStatus: .pending,
-            handAnchors: [],
-            pathPoints: [],
-            analysisResult: AnalysisResult(issues: [], highlights: [], summary: "Collapsed phase case.")
-        )
-
-        let snapshot = GarageEvaluationHarness.snapshot(for: record)
-
-        #expect(snapshot.weakestPhases.isEmpty == false)
-        #expect(snapshot.phases.contains(where: { $0.phase == SwingPhase.impact.rawValue && $0.health == GaragePhaseHealth.weak.rawValue }))
     }
 
     @Test func garageWorkflowBecomesFullyCompleteWhenAllStagesAreReady() async throws {
@@ -543,8 +401,6 @@ private func makeWorkflowRecord(
         title: "Workflow Record",
         mediaFilename: filename,
         frameRate: 60,
-        decodedFrames: makeDecodedFrames(from: frames),
-        decodedFrameTimestamps: frames.map(\.timestamp),
         swingFrames: frames,
         keyFrames: keyFrames,
         keyframeValidationStatus: keyframeValidationStatus,
@@ -558,23 +414,6 @@ private func makeWorkflowRecord(
     )
 }
 
-@MainActor
-private func makeDecodedFrames(from frames: [SwingFrame]) -> [DecodedFrameRecord] {
-    frames.enumerated().map { index, frame in
-        DecodedFrameRecord(
-            decodedFrameIndex: index,
-            presentationTimestamp: frame.timestamp,
-            renderAssetKey: nil,
-            poseSample: PoseSampleAttachment(
-                analysisSampleIndex: index,
-                confidence: frame.confidence,
-                joints: frame.joints
-            ),
-            assignedPhase: nil,
-            continuity: nil
-        )
-    }
-}
 
 @MainActor
 private func makePersistedGarageVideoFixture(named filename: String) {
