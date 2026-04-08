@@ -110,6 +110,47 @@ final class GarageDerivedReportsXCTests: XCTestCase {
 
         XCTAssertTrue(report.cues.contains(where: { $0.title == "Backswing Is Running Long" && $0.severity == GarageCoachingSeverity.caution }))
     }
+
+    func testDetectKeyFramesMaintainsStrictPhaseOrdering() {
+        let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: makeSyntheticSwingFrames())
+        let byPhase = Dictionary(uniqueKeysWithValues: keyFrames.map { ($0.phase, $0.frameIndex) })
+
+        let orderedPairs: [(SwingPhase, SwingPhase)] = [
+            (.address, .takeaway),
+            (.takeaway, .shaftParallel),
+            (.shaftParallel, .topOfBackswing),
+            (.topOfBackswing, .transition),
+            (.transition, .earlyDownswing),
+            (.earlyDownswing, .impact),
+            (.impact, .followThrough)
+        ]
+
+        for (lhs, rhs) in orderedPairs {
+            guard let lhsIndex = byPhase[lhs], let rhsIndex = byPhase[rhs] else {
+                XCTFail("Missing expected phases: \(lhs) or \(rhs)")
+                return
+            }
+
+            XCTAssertLessThanOrEqual(lhsIndex, rhsIndex, "Expected \(lhs) to be at or before \(rhs)")
+        }
+    }
+
+    func testEarlyDownswingStaysBeforeImpactForLateDownswingProfile() {
+        let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: makeLateDownswingDriftFrames())
+        let byPhase = Dictionary(uniqueKeysWithValues: keyFrames.map { ($0.phase, $0.frameIndex) })
+
+        guard
+            let transition = byPhase[.transition],
+            let earlyDownswing = byPhase[.earlyDownswing],
+            let impact = byPhase[.impact]
+        else {
+            XCTFail("Missing key phases for late-downswing profile")
+            return
+        }
+
+        XCTAssertGreaterThan(earlyDownswing, transition)
+        XCTAssertLessThan(earlyDownswing, impact)
+    }
 }
 
 @MainActor
@@ -125,6 +166,38 @@ private func makeSyntheticSwingFrames() -> [SwingFrame] {
         (0.46, 0.50, 0.50, 0.50),
         (0.34, 0.70, 0.38, 0.70),
         (0.56, 0.28, 0.60, 0.28)
+    ]
+
+    return wristPairs.enumerated().map { index, wrists in
+        let (leftWristX, leftWristY, rightWristX, rightWristY) = wrists
+        return SwingFrame(
+            timestamp: Double(index) * 0.1,
+            joints: [
+                joint(.leftShoulder, x: 0.40, y: 0.34),
+                joint(.rightShoulder, x: 0.60, y: 0.34),
+                joint(.leftHip, x: 0.44, y: 0.60),
+                joint(.rightHip, x: 0.58, y: 0.60),
+                joint(.leftWrist, x: leftWristX, y: leftWristY),
+                joint(.rightWrist, x: rightWristX, y: rightWristY)
+            ],
+            confidence: 0.9
+        )
+    }
+}
+
+@MainActor
+private func makeLateDownswingDriftFrames() -> [SwingFrame] {
+    let wristPairs: [(Double, Double, Double, Double)] = [
+        (0.30, 0.72, 0.34, 0.72),
+        (0.33, 0.68, 0.37, 0.68),
+        (0.38, 0.60, 0.42, 0.60),
+        (0.45, 0.49, 0.49, 0.49),
+        (0.52, 0.36, 0.56, 0.36), // top
+        (0.50, 0.40, 0.54, 0.40), // transition
+        (0.48, 0.46, 0.52, 0.46),
+        (0.44, 0.56, 0.48, 0.56), // early downswing candidate
+        (0.39, 0.66, 0.43, 0.66), // impact neighborhood
+        (0.56, 0.30, 0.60, 0.30)  // follow through
     ]
 
     return wristPairs.enumerated().map { index, wrists in

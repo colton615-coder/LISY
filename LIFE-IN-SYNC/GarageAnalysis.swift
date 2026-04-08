@@ -1601,19 +1601,55 @@ enum GarageAnalysisPipeline {
 
     private static func earlyDownswingIndex(in frames: [SwingFrame], transitionIndex: Int, impactIndex: Int) -> Int {
         guard transitionIndex + 1 < impactIndex else {
-            return min(transitionIndex + 1, impactIndex)
+            return max(transitionIndex, impactIndex - 1)
         }
 
+        let latestAllowed = impactIndex - 1
         let transitionHands = handCenter(in: frames[transitionIndex])
         let impactHands = handCenter(in: frames[impactIndex])
-        let targetDistance = distance(from: transitionHands, to: impactHands) * 0.35
+        let transitionToImpactDistance = distance(from: transitionHands, to: impactHands)
+        let targetDistance = transitionToImpactDistance * 0.35
+        let maxDistanceBeforeImpact = transitionToImpactDistance * 0.90
+        let impactHandY = impactHands.y
+        let kinematicByIndex = Dictionary(uniqueKeysWithValues: handKinematics(from: frames).map { ($0.index, $0) })
 
-        let range = (transitionIndex + 1)..<impactIndex
-        return range.min { lhs, rhs in
+        let candidateRange = (transitionIndex + 1)...latestAllowed
+        let constrainedCandidates = candidateRange.filter { index in
+            let point = handCenter(in: frames[index])
+            let traveledDistance = distance(from: transitionHands, to: point)
+            guard traveledDistance > 0, traveledDistance <= maxDistanceBeforeImpact else {
+                return false
+            }
+
+            // Keep early-downswing prior to the near-impact region.
+            if point.y > impactHandY * 0.98 {
+                return false
+            }
+
+            // Require directional commitment into downswing.
+            if let sample = kinematicByIndex[index], sample.velocity.dy <= 0 {
+                return false
+            }
+
+            return true
+        }
+
+        if let bestCandidate = constrainedCandidates.min(by: { lhs, rhs in
+            let lhsPoint = handCenter(in: frames[lhs])
+            let rhsPoint = handCenter(in: frames[rhs])
+            let lhsDelta = abs(distance(from: transitionHands, to: lhsPoint) - targetDistance)
+            let rhsDelta = abs(distance(from: transitionHands, to: rhsPoint) - targetDistance)
+            return lhsDelta < rhsDelta
+        }) {
+            return bestCandidate
+        }
+
+        let fallbackRange = (transitionIndex + 1)...latestAllowed
+        return fallbackRange.min { lhs, rhs in
             let lhsDelta = abs(distance(from: transitionHands, to: handCenter(in: frames[lhs])) - targetDistance)
             let rhsDelta = abs(distance(from: transitionHands, to: handCenter(in: frames[rhs])) - targetDistance)
             return lhsDelta < rhsDelta
-        } ?? min(transitionIndex + 1, impactIndex)
+        } ?? min(transitionIndex + 1, latestAllowed)
     }
 
     private static func impactIndex(in frames: [SwingFrame], addressIndex _: Int, transitionIndex: Int) -> Int {
