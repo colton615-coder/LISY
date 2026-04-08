@@ -2,7 +2,6 @@ import SwiftUI
 import PhotosUI
 import AVFoundation
 import SwiftData
-import UniformTypeIdentifiers
 
 struct AddSwingRecordSheet: View {
     @Environment(\.dismiss) private var dismiss
