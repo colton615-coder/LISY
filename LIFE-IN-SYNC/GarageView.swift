@@ -7,11 +7,6 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-private enum GarageAddFlowLaunchMode {
-    case standard
-    case autoPresentPicker
-}
-
 private struct GarageTimelineMarker: Identifiable {
     let keyFrame: KeyFrame
     let timestamp: Double
@@ -138,8 +133,7 @@ private func garageHandPathSamples(from frames: [SwingFrame]) -> [GarageHandPath
 struct GarageView: View {
     @Query(sort: \SwingRecord.createdAt, order: .reverse) private var swingRecords: [SwingRecord]
     @State private var isShowingAddRecord = false
-    @State private var addFlowLaunchMode: GarageAddFlowLaunchMode = .standard
-    @State private var selectedTab: ModuleHubTab = .overview
+    @State private var selectedTab: ModuleHubTab = .records
     @State private var selectedReviewRecordKey: String?
 
     var body: some View {
@@ -149,17 +143,14 @@ struct GarageView: View {
             subtitle: "Review swing checkpoints with a calmer, accuracy-first workflow.",
             currentState: "\(swingRecords.count) swing records currently stored.",
             nextAttention: swingRecords.isEmpty ? "Import your first swing video to begin review." : "Use Review to validate checkpoints and refine the current swing.",
-            tabs: [.overview, .records, .review],
+            showsCommandCenterChrome: false,
+            tabs: [.records, .review],
             selectedTab: $selectedTab
         ) {
             switch selectedTab {
-            case .overview:
-                GarageOverviewCard(recordCount: swingRecords.count) {
-                    presentAddRecord(autoPresentPicker: true)
-                }
             case .records:
                 GarageRecordsTab(records: swingRecords) {
-                    presentAddRecord(autoPresentPicker: true)
+                    presentAddRecord()
                 }
             case .review:
                 GarageReviewTab(records: swingRecords, selectedRecordKey: $selectedReviewRecordKey)
@@ -181,43 +172,25 @@ struct GarageView: View {
             }
         }
         .sheet(isPresented: $isShowingAddRecord) {
-            AddSwingRecordSheet(autoPresentPicker: addFlowLaunchMode == .autoPresentPicker) { record in
+            AddSwingRecordSheet(autoPresentPicker: true, autoImportOnSelection: true) { record in
                 selectedReviewRecordKey = garageRecordSelectionKey(for: record)
+                selectedTab = .review
+            }
+        }
+        .onChange(of: swingRecords.map(garageRecordSelectionKey)) { _, keys in
+            guard keys.isEmpty == false else {
+                selectedTab = .records
+                return
+            }
+
+            if selectedTab == .records, selectedReviewRecordKey != nil {
                 selectedTab = .review
             }
         }
     }
 
-    private func presentAddRecord(autoPresentPicker: Bool = false) {
-        addFlowLaunchMode = autoPresentPicker ? .autoPresentPicker : .standard
+    private func presentAddRecord() {
         isShowingAddRecord = true
-    }
-}
-
-private struct GarageOverviewCard: View {
-    let recordCount: Int
-    let importVideo: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: ModuleSpacing.medium) {
-            ModuleRowSurface(theme: AppModule.garage.theme) {
-                Text("Swing Capture")
-                    .font(.headline)
-                    .foregroundStyle(AppModule.garage.theme.textPrimary)
-                Text("Choose a swing video, save it locally, then move directly into checkpoint review.")
-                    .foregroundStyle(AppModule.garage.theme.textSecondary)
-                Button("Select Video", action: importVideo)
-                    .buttonStyle(.borderedProminent)
-                    .tint(AppModule.garage.theme.primary)
-            }
-
-            ModuleVisualizationContainer(title: "Garage") {
-                HStack(spacing: 12) {
-                    ModuleMetricChip(theme: AppModule.garage.theme, title: "Records", value: "\(recordCount)")
-                    ModuleMetricChip(theme: AppModule.garage.theme, title: "Mode", value: "Review")
-                }
-            }
-        }
     }
 }
 
@@ -298,7 +271,6 @@ private struct SwingRecordCard: View {
 private struct GarageReviewTab: View {
     let records: [SwingRecord]
     @Binding var selectedRecordKey: String?
-    @State private var isShowingDetails = false
 
     private var selectedRecord: SwingRecord? {
         if let selectedRecordKey {
@@ -338,17 +310,9 @@ private struct GarageReviewTab: View {
                         }
 
                         Spacer(minLength: 0)
-
-                        Button("Details") {
-                            isShowingDetails = true
-                        }
-                        .buttonStyle(.bordered)
                     }
 
                     GarageFocusedReviewWorkspace(record: selectedRecord)
-                }
-                .sheet(isPresented: $isShowingDetails) {
-                    GarageReviewDetailsSheet(record: selectedRecord)
                 }
             } else {
                 ModuleEmptyStateCard(
@@ -384,6 +348,11 @@ private struct GarageReviewTab: View {
 private struct GarageManualAnchorDraft: Equatable {
     let frameIndex: Int
     var point: CGPoint
+}
+
+private enum GarageOverlayPresentationMode {
+    case anchorOnly
+    case diagnosticPose
 }
 
 private func garageAspectFitRect(contentSize: CGSize, in container: CGRect) -> CGRect {
@@ -442,6 +411,7 @@ private struct GarageFocusedReviewWorkspace: View {
     @State private var didAutoPresentCompletionPlayback = false
     @State private var isEditingAnchor = false
     @State private var manualAnchorDraft: GarageManualAnchorDraft?
+    @State private var overlayPresentationMode: GarageOverlayPresentationMode = .anchorOnly
 
     private var resolvedReviewVideo: GarageResolvedReviewVideo? {
         GarageMediaStore.resolvedReviewVideo(for: record)
@@ -570,6 +540,7 @@ private struct GarageFocusedReviewWorkspace: View {
                 selectedAnchor: displayedAnchor,
                 highlightedStatus: selectedCheckpointStatus,
                 isEditingAnchor: isEditingAnchor,
+                overlayMode: overlayPresentationMode,
                 onSetAnchor: updateDraftAnchor
             )
 
@@ -882,6 +853,7 @@ private struct GarageFocusedReviewFrame: View {
     let selectedAnchor: HandAnchor?
     let highlightedStatus: KeyframeValidationStatus
     let isEditingAnchor: Bool
+    let overlayMode: GarageOverlayPresentationMode
     let onSetAnchor: (CGPoint) -> Void
 
     var body: some View {
@@ -905,6 +877,7 @@ private struct GarageFocusedReviewFrame: View {
                     selectedAnchor: selectedAnchor,
                     highlightedStatus: highlightedStatus,
                     isEditingAnchor: isEditingAnchor,
+                    overlayMode: overlayMode,
                     onSetAnchor: onSetAnchor
                 )
                 .clipShape(RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
@@ -914,6 +887,7 @@ private struct GarageFocusedReviewFrame: View {
                     selectedAnchor: selectedAnchor,
                     highlightedStatus: highlightedStatus,
                     isEditingAnchor: isEditingAnchor,
+                    overlayMode: overlayMode,
                     onSetAnchor: onSetAnchor
                 )
                 .clipShape(RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
@@ -950,7 +924,8 @@ private struct GarageFocusedReviewFrame: View {
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
             }
         }
-        .frame(minHeight: 420)
+        .frame(minHeight: 560)
+        .frame(maxWidth: .infinity)
         .overlay(
             RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
                 .stroke(AppModule.garage.theme.borderSubtle, lineWidth: 1)
@@ -964,6 +939,7 @@ private struct GarageReviewImageOverlay: View {
     let selectedAnchor: HandAnchor?
     let highlightedStatus: KeyframeValidationStatus
     let isEditingAnchor: Bool
+    let overlayMode: GarageOverlayPresentationMode
     let onSetAnchor: (CGPoint) -> Void
 
     var body: some View {
@@ -985,7 +961,8 @@ private struct GarageReviewImageOverlay: View {
                     currentFrame: currentFrame,
                     selectedAnchor: selectedAnchor,
                     highlightedStatus: highlightedStatus,
-                    isEditingAnchor: isEditingAnchor
+                    isEditingAnchor: isEditingAnchor,
+                    overlayMode: overlayMode
                 )
             }
             .contentShape(Rectangle())
@@ -1007,6 +984,7 @@ private struct GaragePoseFallbackOverlay: View {
     let selectedAnchor: HandAnchor?
     let highlightedStatus: KeyframeValidationStatus
     let isEditingAnchor: Bool
+    let overlayMode: GarageOverlayPresentationMode
     let onSetAnchor: (CGPoint) -> Void
 
     var body: some View {
@@ -1044,7 +1022,8 @@ private struct GaragePoseFallbackOverlay: View {
                     currentFrame: currentFrame,
                     selectedAnchor: selectedAnchor,
                     highlightedStatus: highlightedStatus,
-                    isEditingAnchor: isEditingAnchor
+                    isEditingAnchor: isEditingAnchor,
+                    overlayMode: overlayMode
                 )
 
                 VStack(spacing: 6) {
@@ -1078,6 +1057,7 @@ private struct GarageReviewFrameOverlayCanvas: View {
     let selectedAnchor: HandAnchor?
     let highlightedStatus: KeyframeValidationStatus
     let isEditingAnchor: Bool
+    let overlayMode: GarageOverlayPresentationMode
 
     var body: some View {
         Canvas { context, _ in
@@ -1085,7 +1065,7 @@ private struct GarageReviewFrameOverlayCanvas: View {
                 return
             }
 
-            if let currentFrame {
+            if let currentFrame, overlayMode == .diagnosticPose {
                 let skeletonSegments: [(SwingJointName, SwingJointName)] = [
                     (.leftShoulder, .rightShoulder),
                     (.leftShoulder, .leftElbow),
@@ -1305,6 +1285,8 @@ private struct GarageCheckpointStatusBadge: View {
     var body: some View {
         Label(status.title, systemImage: iconName)
             .font(.caption.weight(.semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
             .foregroundStyle(status.reviewTint)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
@@ -1343,6 +1325,8 @@ private struct GarageCheckpointProgressSummary: View {
     private func summaryPill(title: String, value: Int, tint: Color) -> some View {
         Text("\(title) \(value)")
             .font(.caption2.weight(.semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
             .foregroundStyle(tint)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
@@ -1567,6 +1551,8 @@ private struct GarageReviewStatusPill: View {
     var body: some View {
         Text(status.title)
             .font(.caption.weight(.semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
             .foregroundStyle(status.reviewTint)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
@@ -1827,49 +1813,6 @@ private final class GarageSlowMotionPlaybackController: ObservableObject {
     }
 }
 
-private struct GarageReviewDetailsSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    let record: SwingRecord
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section("Session") {
-                    LabeledContent("Title", value: record.title)
-                    LabeledContent("Recorded", value: record.createdAt.formatted(date: .abbreviated, time: .shortened))
-                    LabeledContent("Status", value: record.keyframeValidationStatus.title)
-                    LabeledContent("Approved", value: "\(record.approvedCheckpointCount)")
-                    LabeledContent("Flagged", value: "\(record.flaggedCheckpointCount)")
-                    LabeledContent("Pending", value: "\(record.pendingCheckpointCount)")
-                }
-
-                if record.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-                    Section("Notes") {
-                        Text(record.notes)
-                    }
-                }
-
-                Section("Stored Assets") {
-                    if let reviewFilename = record.preferredReviewFilename {
-                        LabeledContent("Review Video", value: reviewFilename)
-                    }
-                    if let exportFilename = record.preferredExportFilename {
-                        LabeledContent("Export Video", value: exportFilename)
-                    }
-                }
-            }
-            .navigationTitle("Swing Details")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                }
-            }
-        }
-    }
-}
-
 private struct GarageEmptyStateView: View {
     let action: () -> Void
 
@@ -1889,6 +1832,7 @@ private struct AddSwingRecordSheet: View {
     @Environment(\.modelContext) private var modelContext
 
     let autoPresentPicker: Bool
+    let autoImportOnSelection: Bool
     let onSaved: (SwingRecord) -> Void
 
     @State private var title = ""
@@ -1929,20 +1873,22 @@ private struct AddSwingRecordSheet: View {
                         }
                     }
 
-                    ModuleRowSurface(theme: AppModule.garage.theme) {
-                        Text("Save Details")
-                            .font(.headline)
-                            .foregroundStyle(AppModule.garage.theme.textPrimary)
+                    if autoImportOnSelection == false {
+                        ModuleRowSurface(theme: AppModule.garage.theme) {
+                            Text("Save Details")
+                                .font(.headline)
+                                .foregroundStyle(AppModule.garage.theme.textPrimary)
 
-                        TextField("Title (optional)", text: $title)
-                        TextField("Notes (optional)", text: $notes, axis: .vertical)
-                            .lineLimit(4, reservesSpace: true)
+                            TextField("Title (optional)", text: $title)
+                            TextField("Notes (optional)", text: $notes, axis: .vertical)
+                                .lineLimit(4, reservesSpace: true)
+                        }
                     }
                 }
                 .padding(.horizontal, ModuleSpacing.large)
                 .padding(.vertical, ModuleSpacing.medium)
             }
-            .navigationTitle("New Swing Record")
+            .navigationTitle(autoImportOnSelection ? "Import Swing Video" : "New Swing Record")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -1950,11 +1896,13 @@ private struct AddSwingRecordSheet: View {
                     }
                 }
 
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(isSaving ? "Saving..." : "Save") {
-                        saveRecord()
+                if autoImportOnSelection == false {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(isSaving ? "Saving..." : "Save") {
+                            saveRecord()
+                        }
+                        .disabled(selectedVideoURL == nil || isPreparingSelection || isSaving)
                     }
-                    .disabled(selectedVideoURL == nil || isPreparingSelection || isSaving)
                 }
             }
             .photosPicker(
@@ -2012,6 +1960,9 @@ private struct AddSwingRecordSheet: View {
                         title = suggestedTitle(for: movie.displayName)
                     }
                     isPreparingSelection = false
+                    if autoImportOnSelection {
+                        saveRecord()
+                    }
                 }
             } catch {
                 await MainActor.run {
@@ -2033,6 +1984,7 @@ private struct AddSwingRecordSheet: View {
 
     private func saveRecord() {
         guard let selectedVideoURL else { return }
+        guard isSaving == false else { return }
 
         isSaving = true
         errorMessage = nil

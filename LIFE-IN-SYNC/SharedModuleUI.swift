@@ -282,6 +282,7 @@ struct ModuleHubScaffold<Content: View>: View {
     let subtitle: String
     let currentState: String
     let nextAttention: String
+    var showsCommandCenterChrome = true
     let tabs: [ModuleHubTab]
     @Binding var selectedTab: ModuleHubTab
     @ViewBuilder let content: Content
@@ -289,24 +290,26 @@ struct ModuleHubScaffold<Content: View>: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: HubSectionSpacing.outer) {
-                ModuleHeroCard(
-                    module: module,
-                    eyebrow: "Command Center",
-                    title: title,
-                    message: subtitle
-                )
+                if showsCommandCenterChrome {
+                    ModuleHeroCard(
+                        module: module,
+                        eyebrow: "Command Center",
+                        title: title,
+                        message: subtitle
+                    )
 
-                HubStatusCard(
-                    module: module,
-                    title: "Current State",
-                    bodyText: currentState
-                )
+                    HubStatusCard(
+                        module: module,
+                        title: "Current State",
+                        bodyText: currentState
+                    )
 
-                HubStatusCard(
-                    module: module,
-                    title: "Next Attention",
-                    bodyText: nextAttention
-                )
+                    HubStatusCard(
+                        module: module,
+                        title: "Next Attention",
+                        bodyText: nextAttention
+                    )
+                }
 
                 HubTabPicker(tabs: tabs, selectedTab: $selectedTab, theme: module.theme)
 
