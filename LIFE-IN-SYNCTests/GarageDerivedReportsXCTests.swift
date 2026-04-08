@@ -19,7 +19,7 @@ final class GarageDerivedReportsXCTests: XCTestCase {
         XCTAssertTrue(report.checks.allSatisfy(\.passed))
     }
 
-    func testGarageReliabilityReportBecomesProvisionalWhenKeySignalsFail() {
+    func testGarageReliabilityReportStaysReviewableWhenPoseFallbackKeepsCoverageAlive() {
         let frames = makeSyntheticSwingFrames()
         let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames)
         let record = SwingRecord(
@@ -36,10 +36,12 @@ final class GarageDerivedReportsXCTests: XCTestCase {
 
         let report = GarageReliability.report(for: record)
 
-        XCTAssertEqual(report.status, .provisional)
-        XCTAssertLessThan(report.score, 50)
+        XCTAssertEqual(report.status, .review)
+        XCTAssertGreaterThanOrEqual(report.score, 50)
+        XCTAssertLessThan(report.score, 84)
         XCTAssertTrue(report.checks.contains(where: { $0.title == "Review Status" && $0.passed == false }))
         XCTAssertTrue(report.checks.contains(where: { $0.title == "Grip Coverage" && $0.passed == false }))
+        XCTAssertTrue(report.checks.contains(where: { $0.title == "Video Source" && $0.passed == true }))
     }
 
     func testGarageCoachingReportProvidesActionableCueForTrustedSwing() {
@@ -57,7 +59,7 @@ final class GarageDerivedReportsXCTests: XCTestCase {
         XCTAssertTrue(report.blockers.isEmpty)
     }
 
-    func testGarageCoachingReportUsesBlockersWhenSwingIsProvisional() {
+    func testGarageCoachingReportUsesReviewBlockersWhenPoseFallbackLeavesSwingInReview() {
         let frames = makeSyntheticSwingFrames()
         let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames)
         let record = SwingRecord(
@@ -74,8 +76,8 @@ final class GarageDerivedReportsXCTests: XCTestCase {
 
         let report = GarageCoaching.report(for: record)
 
-        XCTAssertEqual(report.confidenceLabel, GarageReliabilityStatus.provisional.rawValue)
-        XCTAssertTrue(report.cues.isEmpty)
+        XCTAssertEqual(report.confidenceLabel, GarageReliabilityStatus.review.rawValue)
+        XCTAssertFalse(report.cues.isEmpty)
         XCTAssertFalse(report.blockers.isEmpty)
     }
 

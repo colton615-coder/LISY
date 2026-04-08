@@ -101,7 +101,8 @@ private func garageRecordSelectionKey(for record: SwingRecord) -> String {
     [
         record.createdAt.ISO8601Format(),
         record.title,
-        record.preferredReviewFilename ?? "no-review-asset"
+        record.preferredReviewFilename ?? "no-review-asset",
+        record.preferredExportFilename ?? "no-export-asset"
     ].joined(separator: "::")
 }
 
@@ -380,6 +381,53 @@ private struct GarageReviewTab: View {
     }
 }
 
+private struct GarageManualAnchorDraft: Equatable {
+    let frameIndex: Int
+    var point: CGPoint
+}
+
+private func garageAspectFitRect(contentSize: CGSize, in container: CGRect) -> CGRect {
+    guard contentSize.width > 0, contentSize.height > 0, container.width > 0, container.height > 0 else {
+        return .zero
+    }
+
+    let scale = min(container.width / contentSize.width, container.height / contentSize.height)
+    let scaledSize = CGSize(width: contentSize.width * scale, height: contentSize.height * scale)
+    let origin = CGPoint(
+        x: container.midX - (scaledSize.width / 2),
+        y: container.midY - (scaledSize.height / 2)
+    )
+    return CGRect(origin: origin, size: scaledSize)
+}
+
+private func garageMappedPoint(x: Double, y: Double, in rect: CGRect) -> CGPoint {
+    CGPoint(
+        x: rect.minX + (rect.width * x),
+        y: rect.minY + (rect.height * y)
+    )
+}
+
+private func garageMappedPoint(_ point: CGPoint, in rect: CGRect) -> CGPoint {
+    garageMappedPoint(x: point.x, y: point.y, in: rect)
+}
+
+private func garageNormalizedPoint(from location: CGPoint, in rect: CGRect) -> CGPoint? {
+    guard rect.contains(location), rect.width > 0, rect.height > 0 else {
+        return nil
+    }
+
+    let normalizedX = min(max((location.x - rect.minX) / rect.width, 0), 1)
+    let normalizedY = min(max((location.y - rect.minY) / rect.height, 0), 1)
+    return CGPoint(x: normalizedX, y: normalizedY)
+}
+
+private func garageClampedNormalizedPoint(_ point: CGPoint) -> CGPoint {
+    CGPoint(
+        x: min(max(point.x, 0), 1),
+        y: min(max(point.y, 0), 1)
+    )
+}
+
 private struct GarageFocusedReviewWorkspace: View {
     @Environment(\.modelContext) private var modelContext
 
@@ -392,9 +440,19 @@ private struct GarageFocusedReviewWorkspace: View {
     @State private var selectedPhase: SwingPhase = .address
     @State private var isShowingCompletionPlayback = false
     @State private var didAutoPresentCompletionPlayback = false
+    @State private var isEditingAnchor = false
+    @State private var manualAnchorDraft: GarageManualAnchorDraft?
+
+    private var resolvedReviewVideo: GarageResolvedReviewVideo? {
+        GarageMediaStore.resolvedReviewVideo(for: record)
+    }
 
     private var reviewVideoURL: URL? {
-        GarageMediaStore.resolvedReviewVideoURL(for: record)
+        resolvedReviewVideo?.url
+    }
+
+    private var reviewFrameSource: GarageReviewFrameSourceState {
+        GarageMediaStore.reviewFrameSource(for: record)
     }
 
     private var orderedKeyframes: [GarageTimelineMarker] {
@@ -430,6 +488,19 @@ private struct GarageFocusedReviewWorkspace: View {
         record.handAnchors.first(where: { $0.phase == selectedPhase })
     }
 
+    private var displayedAnchor: HandAnchor? {
+        if let manualAnchorDraft {
+            return HandAnchor(
+                phase: selectedPhase,
+                x: manualAnchorDraft.point.x,
+                y: manualAnchorDraft.point.y,
+                source: .manual
+            )
+        }
+
+        return selectedAnchor
+    }
+
     private var currentFrameIndex: Int? {
         guard record.swingFrames.isEmpty == false else {
             return nil
@@ -453,21 +524,53 @@ private struct GarageFocusedReviewWorkspace: View {
     }
 
     private var frameRequestID: String {
-        "\(garageRecordSelectionKey(for: record))::\(String(format: "%.4f", currentTime))"
+        [
+            garageRecordSelectionKey(for: record),
+            reviewVideoURL?.absoluteString ?? "no-video",
+            String(format: "%.4f", currentTime)
+        ].joined(separator: "::")
     }
 
     private var fullHandPathSamples: [GarageHandPathSample] {
         garageHandPathSamples(from: record.swingFrames)
     }
 
+    private var reviewRecoveryTitle: String {
+        switch reviewFrameSource {
+        case .video:
+            "Stored video recovered"
+        case .poseFallback:
+            "Pose fallback active"
+        case .recoveryNeeded:
+            "Review media needs recovery"
+        }
+    }
+
+    private var reviewRecoveryBody: String {
+        switch reviewFrameSource {
+        case .video:
+            if let origin = resolvedReviewVideo?.origin {
+                return "Garage is rendering this checkpoint from the recovered \(origin.rawValue.replacingOccurrences(of: "Storage", with: " storage").replacingOccurrences(of: "Bookmark", with: " bookmark")) source."
+            }
+            return "Garage found a stored review video for this checkpoint."
+        case .poseFallback:
+            return "Stored footage is missing, so Garage is showing sampled pose data instead. Re-import this swing if you need the original video visuals."
+        case .recoveryNeeded:
+            return "Neither stored footage nor fallback-ready pose frames are available yet. Re-import this swing to restore full checkpoint review."
+        }
+    }
+
     var body: some View {
         ModuleRowSurface(theme: AppModule.garage.theme) {
             GarageFocusedReviewFrame(
+                source: reviewFrameSource,
                 image: reviewImage,
                 isLoadingFrame: isLoadingFrame,
                 currentFrame: currentFrame,
-                selectedAnchor: selectedAnchor,
-                highlightedStatus: selectedCheckpointStatus
+                selectedAnchor: displayedAnchor,
+                highlightedStatus: selectedCheckpointStatus,
+                isEditingAnchor: isEditingAnchor,
+                onSetAnchor: updateDraftAnchor
             )
 
             VStack(alignment: .leading, spacing: ModuleSpacing.medium) {
@@ -481,9 +584,15 @@ private struct GarageFocusedReviewWorkspace: View {
                             GarageCheckpointStatusBadge(status: selectedCheckpointStatus)
 
                             if selectedKeyFrame?.source == .adjusted {
-                                Label("Manual import", systemImage: "hand.draw")
+                                Label("Frame adjusted", systemImage: "timeline.selection")
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(.orange)
+                            }
+
+                            if displayedAnchor?.source == .manual {
+                                Label("Manual anchor", systemImage: "hand.draw.fill")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.cyan)
                             }
                         }
                     }
@@ -498,29 +607,56 @@ private struct GarageFocusedReviewWorkspace: View {
                     markers: orderedKeyframes,
                     statusProvider: { record.reviewStatus(for: $0) }
                 ) { phase in
+                    cancelAnchorEditing()
                     selectedPhase = phase
                     seekToSelectedCheckpoint()
                 }
 
-                GarageTimelineScrubber(
-                    range: 0...effectiveDuration,
-                    currentTime: $currentTime,
-                    markers: orderedKeyframes,
-                    selectedPhase: selectedPhase,
-                    statusProvider: { record.reviewStatus(for: $0) }
-                )
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text(isEditingAnchor ? "Scrub to the exact frame, then drag the hand marker into place." : "Scrub to pinpoint the checkpoint frame.")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(AppModule.garage.theme.textSecondary)
+
+                        Spacer(minLength: 0)
+
+                        if let currentFrameIndex {
+                            Text("Frame \(currentFrameIndex + 1)")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(AppModule.garage.theme.textPrimary)
+                        }
+                    }
+
+                    GarageTimelineScrubber(
+                        range: 0...effectiveDuration,
+                        currentTime: $currentTime,
+                        markers: orderedKeyframes,
+                        selectedPhase: selectedPhase,
+                        statusProvider: { record.reviewStatus(for: $0) }
+                    )
+                }
 
                 GarageReviewToolRail(
                     selectedStatus: selectedCheckpointStatus,
-                    importIsManual: selectedKeyFrame?.source == .adjusted,
-                    canImportCurrentFrame: currentFrameIndex != nil,
+                    isEditingAnchor: isEditingAnchor,
+                    canAdjustCurrentFrame: currentFrameIndex != nil,
                     canMoveBetweenCheckpoints: orderedKeyframes.isEmpty == false,
                     onPrevious: previousCheckpoint,
-                    onImportCurrentFrame: importCurrentFrame,
+                    onBeginAdjust: beginAnchorEditing,
+                    onCancelAdjust: cancelAnchorEditing,
+                    onSaveAdjust: saveAnchorAdjustment,
                     onApprove: approveCheckpoint,
                     onFlag: flagCheckpoint,
                     onNext: nextCheckpoint
                 )
+
+                if reviewFrameSource != .video {
+                    GarageReviewRecoveryCallout(
+                        title: reviewRecoveryTitle,
+                        message: reviewRecoveryBody,
+                        state: reviewFrameSource
+                    )
+                }
 
                 if record.allCheckpointsApproved, let reviewVideoURL {
                     GarageCompletionPlaybackCallout {
@@ -546,6 +682,9 @@ private struct GarageFocusedReviewWorkspace: View {
         }
         .task(id: frameRequestID) {
             await loadFrameImage()
+        }
+        .onChange(of: currentFrameIndex) { _, _ in
+            syncDraftAnchorWithCurrentFrame()
         }
     }
 
@@ -607,10 +746,12 @@ private struct GarageFocusedReviewWorkspace: View {
     }
 
     private func previousCheckpoint() {
+        cancelAnchorEditing()
         moveCheckpointSelection(by: -1)
     }
 
     private func nextCheckpoint() {
+        cancelAnchorEditing()
         moveCheckpointSelection(by: 1)
     }
 
@@ -623,6 +764,7 @@ private struct GarageFocusedReviewWorkspace: View {
     }
 
     private func approveCheckpoint() {
+        cancelAnchorEditing()
         guard let keyframeIndex = record.keyFrames.firstIndex(where: { $0.phase == selectedPhase }) else { return }
         record.keyFrames[keyframeIndex].reviewStatus = .approved
         record.refreshKeyframeValidationStatus()
@@ -631,6 +773,7 @@ private struct GarageFocusedReviewWorkspace: View {
     }
 
     private func flagCheckpoint() {
+        cancelAnchorEditing()
         guard let keyframeIndex = record.keyFrames.firstIndex(where: { $0.phase == selectedPhase }) else { return }
         record.keyFrames[keyframeIndex].reviewStatus = .flagged
         record.refreshKeyframeValidationStatus()
@@ -638,55 +781,140 @@ private struct GarageFocusedReviewWorkspace: View {
         didAutoPresentCompletionPlayback = false
     }
 
-    private func importCurrentFrame() {
-        guard let currentFrameIndex else { return }
+    private func beginAnchorEditing() {
+        guard currentFrameIndex != nil else { return }
+        isEditingAnchor = true
+        syncDraftAnchorWithCurrentFrame()
+    }
+
+    private func cancelAnchorEditing() {
+        isEditingAnchor = false
+        manualAnchorDraft = nil
+    }
+
+    private func syncDraftAnchorWithCurrentFrame() {
+        guard isEditingAnchor, let currentFrameIndex, let currentFrame else {
+            return
+        }
+
+        let initialPoint: CGPoint
+        if selectedKeyFrame?.frameIndex == currentFrameIndex, let selectedAnchor {
+            initialPoint = CGPoint(x: selectedAnchor.x, y: selectedAnchor.y)
+        } else {
+            initialPoint = GarageAnalysisPipeline.handCenter(in: currentFrame)
+        }
+
+        manualAnchorDraft = GarageManualAnchorDraft(
+            frameIndex: currentFrameIndex,
+            point: garageClampedNormalizedPoint(initialPoint)
+        )
+    }
+
+    private func updateDraftAnchor(_ point: CGPoint) {
+        guard isEditingAnchor, let currentFrameIndex else {
+            return
+        }
+
+        manualAnchorDraft = GarageManualAnchorDraft(
+            frameIndex: currentFrameIndex,
+            point: garageClampedNormalizedPoint(point)
+        )
+    }
+
+    private func saveAnchorAdjustment() {
+        guard let manualAnchorDraft else { return }
 
         if let keyframeIndex = record.keyFrames.firstIndex(where: { $0.phase == selectedPhase }) {
-            record.keyFrames[keyframeIndex].frameIndex = currentFrameIndex
+            record.keyFrames[keyframeIndex].frameIndex = manualAnchorDraft.frameIndex
             record.keyFrames[keyframeIndex].source = .adjusted
             record.keyFrames[keyframeIndex].reviewStatus = .pending
         } else {
             record.keyFrames.append(
-                KeyFrame(phase: selectedPhase, frameIndex: currentFrameIndex, source: .adjusted, reviewStatus: .pending)
+                KeyFrame(
+                    phase: selectedPhase,
+                    frameIndex: manualAnchorDraft.frameIndex,
+                    source: .adjusted,
+                    reviewStatus: .pending
+                )
             )
         }
 
         record.keyFrames.sort { lhs, rhs in
             (SwingPhase.allCases.firstIndex(of: lhs.phase) ?? 0) < (SwingPhase.allCases.firstIndex(of: rhs.phase) ?? 0)
         }
-        record.handAnchors = GarageAnalysisPipeline.deriveHandAnchors(from: record.swingFrames, keyFrames: record.keyFrames)
-        record.pathPoints = GarageAnalysisPipeline.generatePathPoints(from: record.swingFrames, samplesPerSegment: 16)
+
+        var mergedAnchors = GarageAnalysisPipeline.mergedHandAnchors(
+            preserving: record.handAnchors,
+            from: record.swingFrames,
+            keyFrames: record.keyFrames
+        )
+        mergedAnchors = GarageAnalysisPipeline.upsertingHandAnchor(
+            HandAnchor(
+                phase: selectedPhase,
+                x: manualAnchorDraft.point.x,
+                y: manualAnchorDraft.point.y,
+                source: .manual
+            ),
+            into: mergedAnchors
+        )
+
+        record.handAnchors = mergedAnchors
+        record.pathPoints = GarageAnalysisPipeline.generatePathPoints(from: record.handAnchors, samplesPerSegment: 16)
         record.refreshKeyframeValidationStatus()
         try? modelContext.save()
         didAutoPresentCompletionPlayback = false
+        cancelAnchorEditing()
         seekToSelectedCheckpoint()
     }
 
     private func autoPresentCompletionPlaybackIfNeeded() {
-        guard record.allCheckpointsApproved, didAutoPresentCompletionPlayback == false else { return }
+        guard record.allCheckpointsApproved, didAutoPresentCompletionPlayback == false, reviewVideoURL != nil else { return }
         didAutoPresentCompletionPlayback = true
         isShowingCompletionPlayback = true
     }
 }
 
 private struct GarageFocusedReviewFrame: View {
+    let source: GarageReviewFrameSourceState
     let image: CGImage?
     let isLoadingFrame: Bool
     let currentFrame: SwingFrame?
     let selectedAnchor: HandAnchor?
     let highlightedStatus: KeyframeValidationStatus
+    let isEditingAnchor: Bool
+    let onSetAnchor: (CGPoint) -> Void
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
-                .fill(AppModule.garage.theme.surfaceSecondary)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            AppModule.garage.theme.surfaceSecondary,
+                            AppModule.garage.theme.surfaceSecondary.opacity(0.65)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
 
             if let image {
                 GarageReviewImageOverlay(
                     image: image,
                     currentFrame: currentFrame,
                     selectedAnchor: selectedAnchor,
-                    highlightedStatus: highlightedStatus
+                    highlightedStatus: highlightedStatus,
+                    isEditingAnchor: isEditingAnchor,
+                    onSetAnchor: onSetAnchor
+                )
+                .clipShape(RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
+            } else if let currentFrame {
+                GaragePoseFallbackOverlay(
+                    currentFrame: currentFrame,
+                    selectedAnchor: selectedAnchor,
+                    highlightedStatus: highlightedStatus,
+                    isEditingAnchor: isEditingAnchor,
+                    onSetAnchor: onSetAnchor
                 )
                 .clipShape(RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
             } else {
@@ -697,11 +925,21 @@ private struct GarageFocusedReviewFrame: View {
                     Text("Review frame unavailable")
                         .font(.headline)
                         .foregroundStyle(AppModule.garage.theme.textPrimary)
-                    Text("Garage needs the stored review video to render this checkpoint.")
+                    Text("Re-import the swing to restore video review for this checkpoint.")
                         .multilineTextAlignment(.center)
                         .foregroundStyle(AppModule.garage.theme.textSecondary)
                 }
                 .padding()
+            }
+
+            if source != .recoveryNeeded {
+                Text(source == .poseFallback ? "Pose Fallback" : "Video Review")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(source == .poseFallback ? .orange : AppModule.garage.theme.textPrimary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(14)
             }
 
             if isLoadingFrame {
@@ -725,12 +963,14 @@ private struct GarageReviewImageOverlay: View {
     let currentFrame: SwingFrame?
     let selectedAnchor: HandAnchor?
     let highlightedStatus: KeyframeValidationStatus
+    let isEditingAnchor: Bool
+    let onSetAnchor: (CGPoint) -> Void
 
     var body: some View {
         GeometryReader { proxy in
             let containerRect = CGRect(origin: .zero, size: proxy.size)
-            let imageRect = aspectFitRect(
-                imageSize: CGSize(width: image.width, height: image.height),
+            let imageRect = garageAspectFitRect(
+                contentSize: CGSize(width: image.width, height: image.height),
                 in: containerRect
             )
 
@@ -740,62 +980,186 @@ private struct GarageReviewImageOverlay: View {
                     .scaledToFit()
                     .frame(width: proxy.size.width, height: proxy.size.height)
 
+                GarageReviewFrameOverlayCanvas(
+                    drawRect: imageRect,
+                    currentFrame: currentFrame,
+                    selectedAnchor: selectedAnchor,
+                    highlightedStatus: highlightedStatus,
+                    isEditingAnchor: isEditingAnchor
+                )
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        guard isEditingAnchor, let point = garageNormalizedPoint(from: value.location, in: imageRect) else {
+                            return
+                        }
+                        onSetAnchor(point)
+                    }
+            )
+        }
+    }
+}
+
+private struct GaragePoseFallbackOverlay: View {
+    let currentFrame: SwingFrame
+    let selectedAnchor: HandAnchor?
+    let highlightedStatus: KeyframeValidationStatus
+    let isEditingAnchor: Bool
+    let onSetAnchor: (CGPoint) -> Void
+
+    var body: some View {
+        GeometryReader { proxy in
+            let containerRect = CGRect(origin: .zero, size: proxy.size)
+
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        AppModule.garage.theme.primary.opacity(0.18),
+                        AppModule.garage.theme.surfaceSecondary.opacity(0.85),
+                        Color.black.opacity(0.15)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
                 Canvas { context, _ in
-                    guard imageRect.isEmpty == false else {
-                        return
+                    let insetRect = containerRect.insetBy(dx: 24, dy: 24)
+
+                    let glowRect = insetRect.insetBy(dx: insetRect.width * 0.22, dy: insetRect.height * 0.14)
+                    context.fill(
+                        Ellipse().path(in: glowRect),
+                        with: .radialGradient(
+                            Gradient(colors: [AppModule.garage.theme.primary.opacity(0.22), .clear]),
+                            center: CGPoint(x: glowRect.midX, y: glowRect.midY),
+                            startRadius: 4,
+                            endRadius: max(glowRect.width, glowRect.height) * 0.55
+                        )
+                    )
+                }
+
+                GarageReviewFrameOverlayCanvas(
+                    drawRect: containerRect.insetBy(dx: 20, dy: 20),
+                    currentFrame: currentFrame,
+                    selectedAnchor: selectedAnchor,
+                    highlightedStatus: highlightedStatus,
+                    isEditingAnchor: isEditingAnchor
+                )
+
+                VStack(spacing: 6) {
+                    Image(systemName: "figure.golf")
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(AppModule.garage.theme.textPrimary.opacity(0.82))
+                    Text("Sampled pose reconstruction")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppModule.garage.theme.textSecondary)
+                }
+                .padding(.top, 18)
+                .frame(maxHeight: .infinity, alignment: .top)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        guard isEditingAnchor, let point = garageNormalizedPoint(from: value.location, in: containerRect.insetBy(dx: 20, dy: 20)) else {
+                            return
+                        }
+                        onSetAnchor(point)
+                    }
+            )
+        }
+    }
+}
+
+private struct GarageReviewFrameOverlayCanvas: View {
+    let drawRect: CGRect
+    let currentFrame: SwingFrame?
+    let selectedAnchor: HandAnchor?
+    let highlightedStatus: KeyframeValidationStatus
+    let isEditingAnchor: Bool
+
+    var body: some View {
+        Canvas { context, _ in
+            guard drawRect.isEmpty == false else {
+                return
+            }
+
+            if let currentFrame {
+                let skeletonSegments: [(SwingJointName, SwingJointName)] = [
+                    (.leftShoulder, .rightShoulder),
+                    (.leftShoulder, .leftElbow),
+                    (.leftElbow, .leftWrist),
+                    (.rightShoulder, .rightElbow),
+                    (.rightElbow, .rightWrist),
+                    (.leftShoulder, .leftHip),
+                    (.rightShoulder, .rightHip),
+                    (.leftHip, .rightHip)
+                ]
+
+                for segment in skeletonSegments {
+                    guard
+                        let start = currentFrame.availablePoint(named: segment.0),
+                        let end = currentFrame.availablePoint(named: segment.1)
+                    else {
+                        continue
                     }
 
-                    if let selectedAnchor {
-                        let anchorPoint = mappedPoint(x: selectedAnchor.x, y: selectedAnchor.y, in: imageRect)
-                        let anchorRect = CGRect(x: anchorPoint.x - 8, y: anchorPoint.y - 8, width: 16, height: 16)
-                        context.fill(Ellipse().path(in: anchorRect), with: .color(highlightedStatus.reviewTint))
-                    }
+                    var path = Path()
+                    path.move(to: garageMappedPoint(start, in: drawRect))
+                    path.addLine(to: garageMappedPoint(end, in: drawRect))
+                    context.stroke(path, with: .color(Color.white.opacity(0.22)), style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round))
+                }
 
-                    guard let currentFrame else {
-                        return
-                    }
+                let leftWrist = garageMappedPoint(currentFrame.point(named: .leftWrist), in: drawRect)
+                let rightWrist = garageMappedPoint(currentFrame.point(named: .rightWrist), in: drawRect)
+                let handCenter = CGPoint(x: (leftWrist.x + rightWrist.x) / 2, y: (leftWrist.y + rightWrist.y) / 2)
 
-                    let leftWrist = mappedPoint(point: currentFrame.point(named: .leftWrist), in: imageRect)
-                    let rightWrist = mappedPoint(point: currentFrame.point(named: .rightWrist), in: imageRect)
-                    let handCenter = CGPoint(x: (leftWrist.x + rightWrist.x) / 2, y: (leftWrist.y + rightWrist.y) / 2)
+                var wristLine = Path()
+                wristLine.move(to: leftWrist)
+                wristLine.addLine(to: rightWrist)
+                context.stroke(wristLine, with: .color(.cyan.opacity(0.92)), style: StrokeStyle(lineWidth: 3.2, lineCap: .round))
 
-                    var wristLine = Path()
-                    wristLine.move(to: leftWrist)
-                    wristLine.addLine(to: rightWrist)
-                    context.stroke(wristLine, with: .color(.cyan.opacity(0.95)), lineWidth: 3)
+                for point in [leftWrist, rightWrist] {
+                    let rect = CGRect(x: point.x - 4.5, y: point.y - 4.5, width: 9, height: 9)
+                    context.fill(Ellipse().path(in: rect), with: .color(.cyan))
+                }
 
-                    for point in [leftWrist, rightWrist, handCenter] {
-                        let rect = CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10)
-                        context.fill(Ellipse().path(in: rect), with: .color(.cyan))
-                    }
+                let autoCenterRect = CGRect(x: handCenter.x - 6, y: handCenter.y - 6, width: 12, height: 12)
+                context.fill(Ellipse().path(in: autoCenterRect), with: .color(Color.white.opacity(0.72)))
+            }
+
+            if let selectedAnchor {
+                let anchorPoint = garageMappedPoint(x: selectedAnchor.x, y: selectedAnchor.y, in: drawRect)
+                let outerRect = CGRect(x: anchorPoint.x - 11, y: anchorPoint.y - 11, width: 22, height: 22)
+                let innerRect = CGRect(x: anchorPoint.x - 6, y: anchorPoint.y - 6, width: 12, height: 12)
+                context.fill(Ellipse().path(in: outerRect), with: .color(highlightedStatus.reviewTint.opacity(0.24)))
+                context.stroke(Ellipse().path(in: outerRect), with: .color(highlightedStatus.reviewTint), lineWidth: isEditingAnchor ? 2.4 : 1.6)
+                context.fill(Ellipse().path(in: innerRect), with: .color(highlightedStatus.reviewTint))
+
+                if isEditingAnchor {
+                    var horizontalGuide = Path()
+                    horizontalGuide.move(to: CGPoint(x: drawRect.minX, y: anchorPoint.y))
+                    horizontalGuide.addLine(to: CGPoint(x: drawRect.maxX, y: anchorPoint.y))
+                    context.stroke(horizontalGuide, with: .color(highlightedStatus.reviewTint.opacity(0.35)), style: StrokeStyle(lineWidth: 1, dash: [6, 6]))
+
+                    var verticalGuide = Path()
+                    verticalGuide.move(to: CGPoint(x: anchorPoint.x, y: drawRect.minY))
+                    verticalGuide.addLine(to: CGPoint(x: anchorPoint.x, y: drawRect.maxY))
+                    context.stroke(verticalGuide, with: .color(highlightedStatus.reviewTint.opacity(0.35)), style: StrokeStyle(lineWidth: 1, dash: [6, 6]))
                 }
             }
         }
     }
+}
 
-    private func aspectFitRect(imageSize: CGSize, in container: CGRect) -> CGRect {
-        guard imageSize.width > 0, imageSize.height > 0, container.width > 0, container.height > 0 else {
-            return .zero
+private extension SwingFrame {
+    func availablePoint(named name: SwingJointName) -> CGPoint? {
+        guard let joint = joints.first(where: { $0.name == name }) else {
+            return nil
         }
 
-        let scale = min(container.width / imageSize.width, container.height / imageSize.height)
-        let scaledSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
-        let origin = CGPoint(
-            x: container.midX - (scaledSize.width / 2),
-            y: container.midY - (scaledSize.height / 2)
-        )
-        return CGRect(origin: origin, size: scaledSize)
-    }
-
-    private func mappedPoint(point: CGPoint, in rect: CGRect) -> CGPoint {
-        mappedPoint(x: point.x, y: point.y, in: rect)
-    }
-
-    private func mappedPoint(x: Double, y: Double, in rect: CGRect) -> CGPoint {
-        CGPoint(
-            x: rect.minX + (rect.width * x),
-            y: rect.minY + (rect.height * y)
-        )
+        return CGPoint(x: joint.x, y: joint.y)
     }
 }
 
@@ -988,30 +1352,109 @@ private struct GarageCheckpointProgressSummary: View {
 
 private struct GarageReviewToolRail: View {
     let selectedStatus: KeyframeValidationStatus
-    let importIsManual: Bool
-    let canImportCurrentFrame: Bool
+    let isEditingAnchor: Bool
+    let canAdjustCurrentFrame: Bool
     let canMoveBetweenCheckpoints: Bool
     let onPrevious: () -> Void
-    let onImportCurrentFrame: () -> Void
+    let onBeginAdjust: () -> Void
+    let onCancelAdjust: () -> Void
+    let onSaveAdjust: () -> Void
     let onApprove: () -> Void
     let onFlag: () -> Void
     let onNext: () -> Void
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                toolButton(title: "Previous", systemImage: "chevron.left", tint: AppModule.garage.theme.textSecondary, filled: false, disabled: canMoveBetweenCheckpoints == false, action: onPrevious)
-                toolButton(title: importIsManual ? "Reimport Frame" : "Import Frame", systemImage: "hand.draw", tint: .orange, filled: importIsManual, disabled: canImportCurrentFrame == false, action: onImportCurrentFrame)
-                toolButton(title: "Approve", systemImage: "checkmark.circle.fill", tint: .green, filled: selectedStatus == .approved, disabled: false, action: onApprove)
-                toolButton(title: "Flag", systemImage: "flag.fill", tint: .red, filled: selectedStatus == .flagged, disabled: false, action: onFlag)
-                toolButton(title: "Next", systemImage: "chevron.right", tint: AppModule.garage.theme.textSecondary, filled: false, disabled: canMoveBetweenCheckpoints == false, action: onNext)
+        HStack(spacing: 12) {
+            HStack(spacing: 4) {
+                iconButton(
+                    systemImage: "chevron.left",
+                    tint: AppModule.garage.theme.textPrimary,
+                    filled: false,
+                    disabled: canMoveBetweenCheckpoints == false,
+                    action: onPrevious
+                )
+                iconButton(
+                    systemImage: "chevron.right",
+                    tint: AppModule.garage.theme.textPrimary,
+                    filled: false,
+                    disabled: canMoveBetweenCheckpoints == false,
+                    action: onNext
+                )
             }
-            .padding(.vertical, 2)
+            .padding(4)
+            .background(AppModule.garage.theme.surfaceSecondary, in: Capsule())
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 8) {
+                if isEditingAnchor {
+                    iconButton(
+                        systemImage: "xmark",
+                        tint: AppModule.garage.theme.textSecondary,
+                        filled: false,
+                        disabled: false,
+                        action: onCancelAdjust
+                    )
+                }
+
+                Button(action: isEditingAnchor ? onSaveAdjust : onBeginAdjust) {
+                    HStack(spacing: 8) {
+                        Image(systemName: isEditingAnchor ? "checkmark.circle.fill" : "hand.point.up.left.fill")
+                        Text(isEditingAnchor ? "Save Anchor" : "Adjust")
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(isEditingAnchor ? Color.white : AppModule.garage.theme.textPrimary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(
+                        Capsule()
+                            .fill(isEditingAnchor ? AppModule.garage.theme.primary : AppModule.garage.theme.surfaceSecondary.opacity(0.95))
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(AppModule.garage.theme.borderStrong.opacity(isEditingAnchor ? 0 : 0.5), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(canAdjustCurrentFrame == false)
+                .opacity(canAdjustCurrentFrame ? 1 : 0.45)
+                .accessibilityLabel(isEditingAnchor ? "Save manual hand anchor" : "Adjust keyframe and hand anchor")
+            }
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 6) {
+                iconButton(
+                    systemImage: "checkmark.circle.fill",
+                    tint: .green,
+                    filled: selectedStatus == .approved,
+                    disabled: false,
+                    action: onApprove
+                )
+                .accessibilityLabel("Approve checkpoint")
+
+                iconButton(
+                    systemImage: "flag.fill",
+                    tint: .red,
+                    filled: selectedStatus == .flagged,
+                    disabled: false,
+                    action: onFlag
+                )
+                .accessibilityLabel("Flag checkpoint")
+            }
         }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(.ultraThinMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(AppModule.garage.theme.borderSubtle, lineWidth: 1)
+        )
     }
 
-    private func toolButton(
-        title: String,
+    private func iconButton(
         systemImage: String,
         tint: Color,
         filled: Bool,
@@ -1019,23 +1462,77 @@ private struct GarageReviewToolRail: View {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Label(title, systemImage: systemImage)
+            Image(systemName: systemImage)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(filled ? Color.white : tint)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
+                .frame(width: 36, height: 36)
                 .background(
-                    Capsule()
+                    Circle()
                         .fill(filled ? tint : tint.opacity(0.12))
                 )
                 .overlay(
-                    Capsule()
+                    Circle()
                         .stroke(tint.opacity(filled ? 0 : 0.28), lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
         .disabled(disabled)
         .opacity(disabled ? 0.45 : 1)
+    }
+}
+
+private struct GarageReviewRecoveryCallout: View {
+    let title: String
+    let message: String
+    let state: GarageReviewFrameSourceState
+
+    var body: some View {
+        HStack(alignment: .top, spacing: ModuleSpacing.medium) {
+            Image(systemName: iconName)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(iconTint)
+                .frame(width: 34, height: 34)
+                .background(iconTint.opacity(0.14), in: Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(AppModule.garage.theme.textPrimary)
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundStyle(AppModule.garage.theme.textSecondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding()
+        .background(AppModule.garage.theme.surfaceSecondary, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous)
+                .stroke(iconTint.opacity(0.24), lineWidth: 1)
+        )
+    }
+
+    private var iconName: String {
+        switch state {
+        case .video:
+            "play.rectangle.fill"
+        case .poseFallback:
+            "figure.golf"
+        case .recoveryNeeded:
+            "arrow.triangle.2.circlepath.circle"
+        }
+    }
+
+    private var iconTint: Color {
+        switch state {
+        case .video:
+            AppModule.garage.theme.primary
+        case .poseFallback:
+            .orange
+        case .recoveryNeeded:
+            .red
+        }
     }
 }
 
@@ -1550,12 +2047,17 @@ private struct AddSwingRecordSheet: View {
                 let exportURL = await exportTask
                 let resolvedTitle = resolvedRecordTitle(fallbackURL: reviewMasterURL)
                 let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+                let reviewMasterBookmark = GarageMediaStore.bookmarkData(for: reviewMasterURL)
+                let exportBookmark = exportURL.flatMap { GarageMediaStore.bookmarkData(for: $0) }
 
                 let record = SwingRecord(
                     title: resolvedTitle,
                     mediaFilename: reviewMasterURL.lastPathComponent,
+                    mediaFileBookmark: reviewMasterBookmark,
                     reviewMasterFilename: reviewMasterURL.lastPathComponent,
+                    reviewMasterBookmark: reviewMasterBookmark,
                     exportAssetFilename: exportURL?.lastPathComponent,
+                    exportAssetBookmark: exportBookmark,
                     notes: trimmedNotes,
                     frameRate: output.frameRate,
                     swingFrames: output.swingFrames,

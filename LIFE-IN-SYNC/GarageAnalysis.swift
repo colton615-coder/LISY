@@ -164,6 +164,26 @@ struct GarageVideoAssetMetadata: Equatable {
     let naturalSize: CGSize
 }
 
+enum GarageReviewFrameSourceState: Equatable {
+    case video
+    case poseFallback
+    case recoveryNeeded
+}
+
+enum GarageResolvedReviewVideoOrigin: String, Equatable {
+    case reviewMasterStorage
+    case reviewMasterBookmark
+    case legacyMediaStorage
+    case legacyMediaBookmark
+    case exportStorage
+    case exportBookmark
+}
+
+struct GarageResolvedReviewVideo: Equatable {
+    let url: URL
+    let origin: GarageResolvedReviewVideoOrigin
+}
+
 struct GarageInsightMetric: Identifiable, Equatable {
     let title: String
     let value: String
@@ -532,8 +552,9 @@ enum GarageInsights {
 
 enum GarageReliability {
     static func report(for record: SwingRecord) -> GarageReliabilityReport {
-        let videoAvailable = GarageMediaStore.resolvedReviewVideoURL(for: record) != nil
+        let reviewSource = GarageMediaStore.reviewFrameSource(for: record)
         let hasFrames = record.swingFrames.isEmpty == false
+        let reviewReady = reviewSource != .recoveryNeeded && hasFrames
         let hasAllKeyframes = record.keyFrames.count == SwingPhase.allCases.count
         let monotonicKeyframes = GarageWorkflow.keyframeSequenceIsMonotonic(record.keyFrames)
         let validationApproved = record.keyframeValidationStatus == .approved
@@ -545,14 +566,22 @@ enum GarageReliability {
         let confidenceStrong = averageConfidence >= 0.55
         let adjustedFrames = record.keyFrames.filter { $0.source == .adjusted }.count
         let limitedManualAdjustment = adjustedFrames <= 2
+        let videoSourceDetail: String
+
+        switch reviewSource {
+        case .video:
+            videoSourceDetail = "Stored video and sampled pose frames are available."
+        case .poseFallback:
+            videoSourceDetail = "Stored video is missing, but sampled pose frames can still power checkpoint review."
+        case .recoveryNeeded:
+            videoSourceDetail = "Garage cannot fully verify this swing until either the stored video or fallback-ready pose frames are available."
+        }
 
         let checks = [
             GarageReliabilityCheck(
                 title: "Video Source",
-                passed: videoAvailable && hasFrames,
-                detail: videoAvailable && hasFrames
-                    ? "Stored video and sampled pose frames are available."
-                    : "Garage cannot fully verify this swing until the stored video and sampled frames are available."
+                passed: reviewReady,
+                detail: videoSourceDetail
             ),
             GarageReliabilityCheck(
                 title: "Keyframe Coverage",
@@ -863,21 +892,28 @@ enum GarageWorkflow {
 
     private static func importStage(for record: SwingRecord) -> GarageWorkflowStageState {
         let hasVideoReference = record.preferredReviewFilename != nil
+            || record.reviewMasterBookmark != nil
+            || record.mediaFileBookmark != nil
+            || record.exportAssetBookmark != nil
         let hasFrames = record.swingFrames.isEmpty == false
-        let resolvedURL = GarageMediaStore.resolvedReviewVideoURL(for: record)
+        let reviewSource = GarageMediaStore.reviewFrameSource(for: record)
 
         let status: GarageWorkflowStatus
         let summary: String
         let actionLabel: String
 
-        if hasVideoReference == false {
+        if hasVideoReference == false, hasFrames == false {
             status = .incomplete
             summary = "Import one swing video to initialize Garage."
             actionLabel = "Import video"
-        } else if resolvedURL == nil || hasFrames == false {
+        } else if hasFrames == false {
             status = .needsAttention
             summary = "The video reference exists, but Garage cannot currently use it for the workflow."
             actionLabel = "Re-import video"
+        } else if reviewSource == .recoveryNeeded {
+            status = .complete
+            summary = "Sampled pose frames are still available, so Garage can review checkpoints with a fallback pose view while the stored video is recovered."
+            actionLabel = "Pose fallback ready"
         } else {
             status = .complete
             summary = "A swing video is available and sampled pose frames were generated."
@@ -1072,26 +1108,52 @@ enum GarageMediaStore {
         return nil
     }
 
-    static func resolvedReviewVideoURL(for record: SwingRecord) -> URL? {
-        if let reviewFilename = record.reviewMasterFilename,
-           let url = persistedAssetURL(for: reviewFilename, kind: .reviewMaster) {
-            return url
-        }
+    static func bookmarkData(for url: URL) -> Data? {
+        try? url.bookmarkData()
+    }
 
-        if let legacyFilename = record.mediaFilename,
-           let url = persistedAssetURL(for: legacyFilename, kind: .legacyRoot) {
-            return url
+    static func resolvedReviewVideo(for record: SwingRecord) -> GarageResolvedReviewVideo? {
+        let candidates: [(GarageResolvedReviewVideoOrigin, URL?)] = [
+            (.reviewMasterStorage, record.reviewMasterFilename.flatMap { persistedAssetURL(for: $0, kind: .reviewMaster) }),
+            (.reviewMasterBookmark, resolvedBookmarkURL(from: record.reviewMasterBookmark)),
+            (.legacyMediaStorage, record.mediaFilename.flatMap { persistedAssetURL(for: $0, kind: .legacyRoot) }),
+            (.legacyMediaBookmark, resolvedBookmarkURL(from: record.mediaFileBookmark)),
+            (.exportStorage, record.preferredExportFilename.flatMap { persistedAssetURL(for: $0, kind: .exportAsset) }),
+            (.exportBookmark, resolvedBookmarkURL(from: record.exportAssetBookmark))
+        ]
+
+        for (origin, url) in candidates {
+            if let url {
+                return GarageResolvedReviewVideo(url: url, origin: origin)
+            }
         }
 
         return nil
     }
 
-    static func resolvedExportVideoURL(for record: SwingRecord) -> URL? {
-        guard let exportFilename = record.preferredExportFilename else {
-            return nil
+    static func resolvedReviewVideoURL(for record: SwingRecord) -> URL? {
+        resolvedReviewVideo(for: record)?.url
+    }
+
+    static func reviewFrameSource(for record: SwingRecord) -> GarageReviewFrameSourceState {
+        if resolvedReviewVideo(for: record) != nil {
+            return .video
         }
 
-        return persistedAssetURL(for: exportFilename, kind: .exportAsset)
+        if record.swingFrames.isEmpty == false {
+            return .poseFallback
+        }
+
+        return .recoveryNeeded
+    }
+
+    static func resolvedExportVideoURL(for record: SwingRecord) -> URL? {
+        if let exportFilename = record.preferredExportFilename,
+           let persistedURL = persistedAssetURL(for: exportFilename, kind: .exportAsset) {
+            return persistedURL
+        }
+
+        return resolvedBookmarkURL(from: record.exportAssetBookmark)
     }
 
     static func thumbnail(for videoURL: URL, at timestamp: Double, maximumSize: CGSize = CGSize(width: 480, height: 480)) async -> CGImage? {
@@ -1141,6 +1203,24 @@ enum GarageMediaStore {
 
         let url = directoryURL.appendingPathComponent(filename)
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    private static func resolvedBookmarkURL(from bookmarkData: Data?) -> URL? {
+        guard let bookmarkData else {
+            return nil
+        }
+
+        var isStale = false
+        guard let resolvedURL = try? URL(
+            resolvingBookmarkData: bookmarkData,
+            options: [.withoutUI, .withoutMounting],
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        ) else {
+            return nil
+        }
+
+        return FileManager.default.fileExists(atPath: resolvedURL.path) ? resolvedURL : nil
     }
 
     private static func garageDirectoryURL(for kind: GarageStoredAssetKind) throws -> URL {
@@ -1340,7 +1420,7 @@ enum GarageAnalysisPipeline {
     }
 
     static func detectKeyFrames(from frames: [SwingFrame]) -> [KeyFrame] {
-        let addressIndex = 0
+        let addressIndex = addressIndex(in: frames)
         let topIndex = topOfBackswingIndex(in: frames, fallbackStart: addressIndex + 2)
         let takeawayIndex = takeawayIndex(in: frames, addressIndex: addressIndex, topIndex: topIndex)
         let shaftParallelIndex = shaftParallelIndex(in: frames, addressIndex: addressIndex, takeawayIndex: takeawayIndex, topIndex: topIndex)
@@ -1374,6 +1454,72 @@ enum GarageAnalysisPipeline {
             let center = handCenter(in: frames[keyFrame.frameIndex])
             return HandAnchor(phase: keyFrame.phase, x: center.x, y: center.y)
         }
+    }
+
+    static func mergedHandAnchors(
+        preserving existingAnchors: [HandAnchor],
+        from frames: [SwingFrame],
+        keyFrames: [KeyFrame]
+    ) -> [HandAnchor] {
+        let derivedAnchors = Dictionary(uniqueKeysWithValues: deriveHandAnchors(from: frames, keyFrames: keyFrames).map { ($0.phase, $0) })
+        let existingAnchorsByPhase = Dictionary(uniqueKeysWithValues: existingAnchors.map { ($0.phase, $0) })
+
+        return SwingPhase.allCases.compactMap { phase in
+            if let existingAnchor = existingAnchorsByPhase[phase], existingAnchor.source == .manual {
+                return existingAnchor
+            }
+
+            return derivedAnchors[phase] ?? existingAnchorsByPhase[phase]
+        }
+    }
+
+    static func upsertingHandAnchor(_ anchor: HandAnchor, into anchors: [HandAnchor]) -> [HandAnchor] {
+        var updatedAnchors = anchors.filter { $0.phase != anchor.phase }
+        updatedAnchors.append(anchor)
+        updatedAnchors.sort { lhs, rhs in
+            (SwingPhase.allCases.firstIndex(of: lhs.phase) ?? 0) < (SwingPhase.allCases.firstIndex(of: rhs.phase) ?? 0)
+        }
+        return updatedAnchors
+    }
+
+    private static func addressIndex(in frames: [SwingFrame]) -> Int {
+        guard frames.count > 1 else {
+            return 0
+        }
+
+        let searchEnd = min(max(6, frames.count / 4), frames.count - 1)
+        let openingFrames = Array(frames[0...searchEnd])
+        let kinematicSamples = handKinematics(from: openingFrames)
+        let speedByIndex = Dictionary(uniqueKeysWithValues: kinematicSamples.map { ($0.index, $0.speed) })
+        let maxSpeed = max(kinematicSamples.map(\.speed).max() ?? 0.001, 0.001)
+        let handYs = openingFrames.map { handCenter(in: $0).y }
+        let maxHandY = handYs.max() ?? 0
+        let minHandY = handYs.min() ?? 0
+        let handYSpan = max(maxHandY - minHandY, 0.0001)
+        let maxConfidence = max(openingFrames.map(\.confidence).max() ?? 1, 0.0001)
+
+        var bestIndex = 0
+        var bestScore = Double.greatestFiniteMagnitude
+
+        for index in 0...searchEnd {
+            let frame = frames[index]
+            let handCenterPoint = handCenter(in: frame)
+            let normalizedSpeed = min((speedByIndex[index] ?? 0) / maxSpeed, 1)
+            let raisedHandsPenalty = min(max((maxHandY - handCenterPoint.y) / handYSpan, 0), 1)
+            let confidencePenalty = 1 - min(max(frame.confidence / maxConfidence, 0), 1)
+            let latenessPenalty = Double(index) / Double(max(searchEnd, 1))
+            let score = (normalizedSpeed * 0.50)
+                + (raisedHandsPenalty * 0.28)
+                + (confidencePenalty * 0.17)
+                + (latenessPenalty * 0.05)
+
+            if score < bestScore {
+                bestScore = score
+                bestIndex = index
+            }
+        }
+
+        return bestIndex
     }
 
     private static func topOfBackswingIndex(in frames: [SwingFrame], fallbackStart: Int) -> Int {

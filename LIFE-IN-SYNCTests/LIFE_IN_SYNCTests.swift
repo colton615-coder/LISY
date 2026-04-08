@@ -235,6 +235,91 @@ struct LIFE_IN_SYNCTests {
         #expect(progress.nextAction.title == "Workflow Complete")
     }
 
+    @Test func garageReviewVideoResolverFallsBackToExportAssetWhenReviewMasterIsMissing() async throws {
+        let exportFilename = "export-fallback.mp4"
+        makePersistedGarageExportFixture(named: exportFilename)
+
+        let record = SwingRecord(
+            title: "Export Fallback",
+            reviewMasterFilename: "missing-review.mov",
+            exportAssetFilename: exportFilename,
+            swingFrames: makeSyntheticSwingFrames(),
+            keyFrames: GarageAnalysisPipeline.detectKeyFrames(from: makeSyntheticSwingFrames())
+        )
+
+        let resolvedVideo = try #require(GarageMediaStore.resolvedReviewVideo(for: record))
+
+        #expect(resolvedVideo.origin == .exportStorage)
+        #expect(resolvedVideo.url.lastPathComponent == exportFilename)
+    }
+
+    @Test func garageReviewVideoResolverUsesBookmarkWhenStoredFilenameFails() async throws {
+        let bookmarkURL = FileManager.default.temporaryDirectory.appendingPathComponent("garage-bookmark-\(UUID().uuidString).mov")
+        FileManager.default.createFile(atPath: bookmarkURL.path, contents: Data())
+
+        let record = SwingRecord(
+            title: "Bookmark Fallback",
+            reviewMasterBookmark: GarageMediaStore.bookmarkData(for: bookmarkURL),
+            swingFrames: makeSyntheticSwingFrames(),
+            keyFrames: GarageAnalysisPipeline.detectKeyFrames(from: makeSyntheticSwingFrames())
+        )
+
+        let resolvedVideo = try #require(GarageMediaStore.resolvedReviewVideo(for: record))
+
+        #expect(resolvedVideo.origin == .reviewMasterBookmark)
+        #expect(resolvedVideo.url.lastPathComponent == bookmarkURL.lastPathComponent)
+    }
+
+    @Test func garageWorkflowTreatsPoseFallbackAsReviewReadyWhenFramesStillExist() async throws {
+        let frames = makeSyntheticSwingFrames()
+        let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames)
+        let anchors = GarageAnalysisPipeline.deriveHandAnchors(from: frames, keyFrames: keyFrames)
+        let record = SwingRecord(
+            title: "Pose Fallback",
+            swingFrames: frames,
+            keyFrames: keyFrames,
+            keyframeValidationStatus: .approved,
+            handAnchors: anchors,
+            pathPoints: GarageAnalysisPipeline.generatePathPoints(from: anchors, samplesPerSegment: 4)
+        )
+
+        let progress = GarageWorkflow.progress(for: record)
+
+        #expect(GarageMediaStore.reviewFrameSource(for: record) == .poseFallback)
+        #expect(progress.stages.first(where: { $0.stage == .importVideo })?.status == .complete)
+    }
+
+    @Test func garageManualAnchorMergePreservesManualPointWhileRefreshingAutomaticAnchors() async throws {
+        let frames = makeSyntheticSwingFrames()
+        let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames)
+        let merged = GarageAnalysisPipeline.mergedHandAnchors(
+            preserving: [
+                HandAnchor(phase: .address, x: 0.11, y: 0.22, source: .manual)
+            ],
+            from: frames,
+            keyFrames: keyFrames
+        )
+
+        let addressAnchor = try #require(merged.first(where: { $0.phase == .address }))
+        let impactAnchor = try #require(merged.first(where: { $0.phase == .impact }))
+
+        #expect(addressAnchor.x == 0.11)
+        #expect(addressAnchor.y == 0.22)
+        #expect(addressAnchor.source == .manual)
+        #expect(impactAnchor.source == .automatic)
+        #expect(merged.count == SwingPhase.allCases.count)
+    }
+
+    @Test func garageKeyframeDetectionChoosesStableAddressAfterNoisyPreroll() async throws {
+        let frames = makeNoisyPrerollSwingFrames()
+
+        let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames)
+        let address = try #require(keyFrames.first(where: { $0.phase == .address }))
+
+        #expect(address.frameIndex >= 2)
+        #expect(address.frameIndex < (keyFrames.first(where: { $0.phase == .takeaway })?.frameIndex ?? Int.max))
+    }
+
 }
 
 @MainActor
@@ -368,6 +453,40 @@ private func makePrerollSwingFrames() -> [SwingFrame] {
 }
 
 @MainActor
+private func makeNoisyPrerollSwingFrames() -> [SwingFrame] {
+    let samples: [(Double, Double, Double, Double, Double)] = [
+        (0.24, 0.48, 0.28, 0.48, 0.28),
+        (0.26, 0.52, 0.30, 0.52, 0.35),
+        (0.30, 0.73, 0.34, 0.73, 0.96),
+        (0.31, 0.73, 0.35, 0.73, 0.97),
+        (0.33, 0.71, 0.37, 0.71, 0.95),
+        (0.39, 0.62, 0.43, 0.62, 0.95),
+        (0.47, 0.48, 0.51, 0.48, 0.94),
+        (0.54, 0.35, 0.58, 0.35, 0.93),
+        (0.50, 0.40, 0.54, 0.40, 0.93),
+        (0.38, 0.64, 0.42, 0.64, 0.92),
+        (0.33, 0.72, 0.37, 0.72, 0.92),
+        (0.57, 0.29, 0.61, 0.29, 0.92)
+    ]
+
+    return samples.enumerated().map { index, sample in
+        let (leftWristX, leftWristY, rightWristX, rightWristY, confidence) = sample
+        return SwingFrame(
+            timestamp: Double(index) * 0.1,
+            joints: [
+                joint(.leftShoulder, x: 0.40, y: 0.34),
+                joint(.rightShoulder, x: 0.60, y: 0.34),
+                joint(.leftHip, x: 0.44, y: 0.60),
+                joint(.rightHip, x: 0.58, y: 0.60),
+                joint(.leftWrist, x: leftWristX, y: leftWristY, confidence: confidence),
+                joint(.rightWrist, x: rightWristX, y: rightWristY, confidence: confidence)
+            ],
+            confidence: confidence
+        )
+    }
+}
+
+@MainActor
 private func joint(_ name: SwingJointName, x: Double, y: Double, confidence: Double = 0.9) -> SwingJoint {
     SwingJoint(name: name, x: x, y: y, confidence: confidence)
 }
@@ -437,5 +556,32 @@ private func makePersistedGarageVideoFixture(named filename: String) {
     }
 
     try? fileManager.createDirectory(at: garageURL, withIntermediateDirectories: true)
+    fileManager.createFile(atPath: fileURL.path, contents: Data())
+}
+
+@MainActor
+private func makePersistedGarageExportFixture(named filename: String) {
+    let fileManager = FileManager.default
+    guard
+        let baseURL = try? fileManager.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+    else {
+        return
+    }
+
+    let exportsURL = baseURL
+        .appendingPathComponent("GarageSwingVideos", isDirectory: true)
+        .appendingPathComponent("Exports", isDirectory: true)
+    let fileURL = exportsURL.appendingPathComponent(filename)
+
+    if fileManager.fileExists(atPath: fileURL.path) {
+        return
+    }
+
+    try? fileManager.createDirectory(at: exportsURL, withIntermediateDirectories: true)
     fileManager.createFile(atPath: fileURL.path, contents: Data())
 }

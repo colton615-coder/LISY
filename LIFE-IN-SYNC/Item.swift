@@ -178,12 +178,64 @@ enum KeyFrameSource: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum HandAnchorSource: String, Codable, CaseIterable, Identifiable {
+    case automatic
+    case manual
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .automatic:
+            "Auto"
+        case .manual:
+            "Manual"
+        }
+    }
+}
+
 struct HandAnchor: Codable, Hashable, Identifiable {
     var phase: SwingPhase
     var x: Double
     var y: Double
+    var source: HandAnchorSource = .automatic
 
     var id: SwingPhase { phase }
+
+    init(
+        phase: SwingPhase,
+        x: Double,
+        y: Double,
+        source: HandAnchorSource = .automatic
+    ) {
+        self.phase = phase
+        self.x = x
+        self.y = y
+        self.source = source
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case phase
+        case x
+        case y
+        case source
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        phase = try container.decode(SwingPhase.self, forKey: .phase)
+        x = try container.decode(Double.self, forKey: .x)
+        y = try container.decode(Double.self, forKey: .y)
+        source = try container.decodeIfPresent(HandAnchorSource.self, forKey: .source) ?? .automatic
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(phase, forKey: .phase)
+        try container.encode(x, forKey: .x)
+        try container.encode(y, forKey: .y)
+        try container.encode(source, forKey: .source)
+    }
 }
 
 struct PathPoint: Codable, Hashable, Identifiable {
