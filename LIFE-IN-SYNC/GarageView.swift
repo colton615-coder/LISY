@@ -412,6 +412,7 @@ private struct GarageFocusedReviewWorkspace: View {
     @State private var isEditingAnchor = false
     @State private var manualAnchorDraft: GarageManualAnchorDraft?
     @State private var overlayPresentationMode: GarageOverlayPresentationMode = .anchorOnly
+    @State private var isShowingAnalysisOverlay = false
 
     private var resolvedReviewVideo: GarageResolvedReviewVideo? {
         GarageMediaStore.resolvedReviewVideo(for: record)
@@ -531,7 +532,7 @@ private struct GarageFocusedReviewWorkspace: View {
     }
 
     var body: some View {
-        ModuleRowSurface(theme: AppModule.garage.theme) {
+        VStack(spacing: 0) {
             GarageFocusedReviewFrame(
                 source: reviewFrameSource,
                 image: reviewImage,
@@ -542,14 +543,53 @@ private struct GarageFocusedReviewWorkspace: View {
                 isEditingAnchor: isEditingAnchor,
                 overlayMode: overlayPresentationMode,
                 onSetAnchor: updateDraftAnchor
-            )
+            ) {
+                VStack(spacing: 10) {
+                    HStack {
+                        Spacer(minLength: 0)
+                        Button {
+                            isShowingAnalysisOverlay.toggle()
+                        } label: {
+                            Label(isShowingAnalysisOverlay ? "Hide Analysis" : "Show Analysis", systemImage: isShowingAnalysisOverlay ? "eye.slash.fill" : "eye.fill")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(garageReviewReadableText)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(.ultraThinMaterial, in: Capsule())
+                                .overlay(
+                                    Capsule()
+                                        .stroke(garageReviewGlassBorder, lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    GarageReviewToolRail(
+                        selectedStatus: selectedCheckpointStatus,
+                        isEditingAnchor: isEditingAnchor,
+                        canAdjustCurrentFrame: currentFrameIndex != nil,
+                        canMoveBetweenCheckpoints: orderedKeyframes.isEmpty == false,
+                        onPrevious: previousCheckpoint,
+                        onBeginAdjust: beginAnchorEditing,
+                        onCancelAdjust: cancelAnchorEditing,
+                        onSaveAdjust: saveAnchorAdjustment,
+                        onApprove: approveCheckpoint,
+                        onFlag: flagCheckpoint,
+                        onNext: nextCheckpoint
+                    )
+                }
+                .padding(.horizontal, ModuleSpacing.medium)
+                .padding(.bottom, 14)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .layoutPriority(1)
 
             VStack(alignment: .leading, spacing: ModuleSpacing.medium) {
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(selectedPhase.reviewTitle)
                             .font(.title3.weight(.bold))
-                            .foregroundStyle(AppModule.garage.theme.textPrimary)
+                            .foregroundStyle(garageReviewReadableText)
 
                         HStack(spacing: 8) {
                             GarageCheckpointStatusBadge(status: selectedCheckpointStatus)
@@ -583,44 +623,6 @@ private struct GarageFocusedReviewWorkspace: View {
                     seekToSelectedCheckpoint()
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text(isEditingAnchor ? "Scrub to the exact frame, then drag the hand marker into place." : "Scrub to pinpoint the checkpoint frame.")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(AppModule.garage.theme.textSecondary)
-
-                        Spacer(minLength: 0)
-
-                        if let currentFrameIndex {
-                            Text("Frame \(currentFrameIndex + 1)")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(AppModule.garage.theme.textPrimary)
-                        }
-                    }
-
-                    GarageTimelineScrubber(
-                        range: 0...effectiveDuration,
-                        currentTime: $currentTime,
-                        markers: orderedKeyframes,
-                        selectedPhase: selectedPhase,
-                        statusProvider: { record.reviewStatus(for: $0) }
-                    )
-                }
-
-                GarageReviewToolRail(
-                    selectedStatus: selectedCheckpointStatus,
-                    isEditingAnchor: isEditingAnchor,
-                    canAdjustCurrentFrame: currentFrameIndex != nil,
-                    canMoveBetweenCheckpoints: orderedKeyframes.isEmpty == false,
-                    onPrevious: previousCheckpoint,
-                    onBeginAdjust: beginAnchorEditing,
-                    onCancelAdjust: cancelAnchorEditing,
-                    onSaveAdjust: saveAnchorAdjustment,
-                    onApprove: approveCheckpoint,
-                    onFlag: flagCheckpoint,
-                    onNext: nextCheckpoint
-                )
-
                 if reviewFrameSource != .video {
                     GarageReviewRecoveryCallout(
                         title: reviewRecoveryTitle,
@@ -641,6 +643,47 @@ private struct GarageFocusedReviewWorkspace: View {
                     }
                 }
             }
+            .padding(.horizontal, ModuleSpacing.medium)
+            .padding(.top, ModuleSpacing.medium)
+            .padding(.bottom, ModuleSpacing.medium)
+            .background(garageReviewSurface)
+        }
+        .background(garageReviewBackground.ignoresSafeArea())
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(isEditingAnchor ? "Scrub to the exact frame, then drag the hand marker into place." : "Scrub to pinpoint the checkpoint frame.")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(garageReviewReadableText.opacity(0.8))
+
+                    Spacer(minLength: 0)
+
+                    if let currentFrameIndex {
+                        Text("Frame \(currentFrameIndex + 1)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(garageReviewReadableText)
+                    }
+                }
+
+                GarageTimelineScrubber(
+                    range: 0...effectiveDuration,
+                    currentTime: $currentTime,
+                    markers: orderedKeyframes,
+                    selectedPhase: selectedPhase,
+                    statusProvider: { record.reviewStatus(for: $0) }
+                )
+            }
+            .padding(.horizontal, ModuleSpacing.medium)
+            .padding(.top, 10)
+            .padding(.bottom, 12)
+            .background(
+                Rectangle()
+                    .fill(garageReviewSurface)
+                    .overlay(
+                        Rectangle()
+                            .fill(.ultraThinMaterial.opacity(0.35))
+                    )
+            )
         }
         .task(id: garageRecordSelectionKey(for: record)) {
             record.hydrateCheckpointStatusesFromAggregateIfNeeded()
@@ -656,6 +699,9 @@ private struct GarageFocusedReviewWorkspace: View {
         }
         .onChange(of: currentFrameIndex) { _, _ in
             syncDraftAnchorWithCurrentFrame()
+        }
+        .onChange(of: isShowingAnalysisOverlay) { _, isShowing in
+            overlayPresentationMode = isShowing ? .diagnosticPose : .anchorOnly
         }
     }
 
@@ -867,20 +913,36 @@ private struct GarageFocusedReviewFrame: View {
     let isEditingAnchor: Bool
     let overlayMode: GarageOverlayPresentationMode
     let onSetAnchor: (CGPoint) -> Void
+    let floatingControls: () -> AnyView
+
+    init(
+        source: GarageReviewFrameSourceState,
+        image: CGImage?,
+        isLoadingFrame: Bool,
+        currentFrame: SwingFrame?,
+        selectedAnchor: HandAnchor?,
+        highlightedStatus: KeyframeValidationStatus,
+        isEditingAnchor: Bool,
+        overlayMode: GarageOverlayPresentationMode,
+        onSetAnchor: @escaping (CGPoint) -> Void,
+        @ViewBuilder floatingControls: @escaping () -> some View = { EmptyView() }
+    ) {
+        self.source = source
+        self.image = image
+        self.isLoadingFrame = isLoadingFrame
+        self.currentFrame = currentFrame
+        self.selectedAnchor = selectedAnchor
+        self.highlightedStatus = highlightedStatus
+        self.isEditingAnchor = isEditingAnchor
+        self.overlayMode = overlayMode
+        self.onSetAnchor = onSetAnchor
+        self.floatingControls = { AnyView(floatingControls()) }
+    }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            AppModule.garage.theme.surfaceSecondary,
-                            AppModule.garage.theme.surfaceSecondary.opacity(0.65)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+            Rectangle()
+                .fill(garageReviewBackground)
 
             if let image {
                 GarageReviewImageOverlay(
@@ -925,7 +987,7 @@ private struct GarageFocusedReviewFrame: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
                     .background(.ultraThinMaterial, in: Capsule())
-                    .padding(14)
+                .padding(14)
             }
 
             if isLoadingFrame {
@@ -936,12 +998,11 @@ private struct GarageFocusedReviewFrame: View {
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
             }
         }
-        .frame(minHeight: 560)
+        .overlay(alignment: .bottom) {
+            floatingControls()
+        }
+        .frame(minHeight: 620)
         .frame(maxWidth: .infinity)
-        .overlay(
-            RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
-                .stroke(AppModule.garage.theme.borderSubtle, lineWidth: 1)
-        )
     }
 }
 
@@ -1240,12 +1301,26 @@ private struct GarageTimelineScrubber: View {
             let trackWidth = max(proxy.size.width, 1)
 
             ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(AppModule.garage.theme.surfaceSecondary)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(garageReviewSurface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(garageReviewGlassBorder.opacity(0.65), lineWidth: 1)
+                    )
 
-                Capsule()
-                    .fill(AppModule.garage.theme.primary.opacity(0.18))
-                    .frame(width: indicatorX(in: trackWidth))
+                HStack(spacing: 0) {
+                    ForEach(0...24, id: \.self) { index in
+                        Rectangle()
+                            .fill(index.isMultiple(of: 2) ? Color.white.opacity(0.08) : Color.clear)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .overlay(alignment: .trailing) {
+                                Rectangle()
+                                    .fill(Color.white.opacity(0.15))
+                                    .frame(width: 1)
+                            }
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 ForEach(markers) { marker in
                     if range.contains(marker.timestamp) {
@@ -1262,11 +1337,11 @@ private struct GarageTimelineScrubber: View {
                 }
 
                 Circle()
-                    .fill(AppModule.garage.theme.primary)
+                    .fill(garageReviewAccent)
                     .frame(width: 18, height: 18)
                     .offset(x: max(0, indicatorX(in: trackWidth) - 9))
             }
-            .frame(height: 32)
+            .frame(height: 42)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
@@ -1277,7 +1352,7 @@ private struct GarageTimelineScrubber: View {
                     }
             )
         }
-        .frame(height: 32)
+        .frame(height: 42)
     }
 
     private func markerX(for timestamp: Double, in width: CGFloat) -> CGFloat {
@@ -1440,13 +1515,10 @@ private struct GarageReviewToolRail: View {
             }
         }
         .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(.ultraThinMaterial)
-        )
+        .background(.ultraThinMaterial, in: Capsule())
         .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(AppModule.garage.theme.borderSubtle, lineWidth: 1)
+            Capsule()
+                .stroke(garageReviewGlassBorder, lineWidth: 1)
         )
     }
 
@@ -1476,6 +1548,12 @@ private struct GarageReviewToolRail: View {
         .opacity(disabled ? 0.45 : 1)
     }
 }
+
+private let garageReviewBackground = Color(red: 0.10, green: 0.11, blue: 0.14)
+private let garageReviewSurface = Color(red: 0.16, green: 0.17, blue: 0.20)
+private let garageReviewAccent = Color(red: 0.17, green: 0.86, blue: 0.96)
+private let garageReviewReadableText = Color(red: 0.95, green: 0.96, blue: 0.98)
+private let garageReviewGlassBorder = Color.white.opacity(0.2)
 
 private struct GarageReviewRecoveryCallout: View {
     let title: String
