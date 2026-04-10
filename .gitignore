@@ -1,5 +1,6 @@
 DerivedData/
 .derived-data-log-*
 *.xcuserdatad/
+*.xcworkspace/xcshareddata/
 
 .DS_Store
