@@ -517,6 +517,10 @@ private struct GarageFocusedReviewWorkspace: View {
         return record.swingFrames[currentFrameIndex]
     }
 
+    private var currentFrameTimestamp: Double? {
+        currentFrame?.timestamp
+    }
+
     private var effectiveDuration: Double {
         max(record.swingFrames.map(\.timestamp).max() ?? 0, assetDuration, 0.1)
     }
@@ -525,7 +529,7 @@ private struct GarageFocusedReviewWorkspace: View {
         [
             garageRecordSelectionKey(for: record),
             reviewVideoURL?.absoluteString ?? "no-video",
-            String(format: "%.4f", currentTime)
+            String(format: "%.4f", currentFrameTimestamp ?? currentTime)
         ].joined(separator: "::")
     }
 
@@ -771,8 +775,8 @@ private struct GarageFocusedReviewWorkspace: View {
 
         let image = await GarageMediaStore.thumbnail(
             for: reviewVideoURL,
-            at: currentTime,
-            maximumSize: CGSize(width: 1600, height: 1600)
+            at: currentFrameTimestamp ?? currentTime,
+            maximumSize: CGSize(width: 1100, height: 1100)
         )
 
         await MainActor.run {
@@ -1903,8 +1907,21 @@ private struct GarageSlowMotionPathOverlay: View {
     let currentTime: Double
     let videoSize: CGSize
 
-    private var visibleSamples: [GarageHandPathSample] {
-        pathSamples.filter { $0.timestamp <= currentTime + 0.0001 }
+    private var visibleSampleCount: Int {
+        var lowerBound = 0
+        var upperBound = pathSamples.count
+        let cutoff = currentTime + 0.0001
+
+        while lowerBound < upperBound {
+            let midpoint = (lowerBound + upperBound) / 2
+            if pathSamples[midpoint].timestamp <= cutoff {
+                lowerBound = midpoint + 1
+            } else {
+                upperBound = midpoint
+            }
+        }
+
+        return lowerBound
     }
 
     var body: some View {
@@ -1913,14 +1930,18 @@ private struct GarageSlowMotionPathOverlay: View {
             let videoRect = aspectFitRect(videoSize: videoSize, in: containerRect)
 
             Canvas { context, _ in
-                guard videoRect.isEmpty == false, visibleSamples.count >= 2 else {
+                guard videoRect.isEmpty == false, visibleSampleCount >= 2 else {
                     return
                 }
 
-                let maxSpeed = max(visibleSamples.map(\.speed).max() ?? 0.001, 0.001)
-                for segmentIndex in 1..<visibleSamples.count {
-                    let previous = visibleSamples[segmentIndex - 1]
-                    let current = visibleSamples[segmentIndex]
+                var maxSpeed = 0.001
+                for sampleIndex in 0..<visibleSampleCount {
+                    maxSpeed = max(maxSpeed, pathSamples[sampleIndex].speed)
+                }
+
+                for segmentIndex in 1..<visibleSampleCount {
+                    let previous = pathSamples[segmentIndex - 1]
+                    let current = pathSamples[segmentIndex]
                     let normalizedSpeed = min(max(current.speed / maxSpeed, 0), 1)
                     let baseWidth = 2.4 + (normalizedSpeed * 2.2)
 
@@ -1940,13 +1961,12 @@ private struct GarageSlowMotionPathOverlay: View {
                     )
                 }
 
-                if let lastSample = visibleSamples.last {
-                    let point = mappedPoint(x: lastSample.x, y: lastSample.y, in: videoRect)
-                    let outerRect = CGRect(x: point.x - 7, y: point.y - 7, width: 14, height: 14)
-                    let innerRect = CGRect(x: point.x - 4, y: point.y - 4, width: 8, height: 8)
-                    context.fill(Ellipse().path(in: outerRect), with: .color(Color.white))
-                    context.fill(Ellipse().path(in: innerRect), with: .color(garageReviewAccent))
-                }
+                let lastSample = pathSamples[visibleSampleCount - 1]
+                let point = mappedPoint(x: lastSample.x, y: lastSample.y, in: videoRect)
+                let outerRect = CGRect(x: point.x - 7, y: point.y - 7, width: 14, height: 14)
+                let innerRect = CGRect(x: point.x - 4, y: point.y - 4, width: 8, height: 8)
+                context.fill(Ellipse().path(in: outerRect), with: .color(Color.white))
+                context.fill(Ellipse().path(in: innerRect), with: .color(garageReviewAccent))
             }
         }
     }

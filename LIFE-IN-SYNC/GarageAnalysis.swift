@@ -1157,22 +1157,38 @@ enum GarageMediaStore {
     }
 
     static func thumbnail(for videoURL: URL, at timestamp: Double, maximumSize: CGSize = CGSize(width: 480, height: 480)) async -> CGImage? {
-        await withCheckedContinuation { continuation in
-            let asset = AVURLAsset(url: videoURL)
-            let generator = AVAssetImageGenerator(asset: asset)
-            generator.appliesPreferredTrackTransform = true
-            generator.maximumSize = maximumSize
-            generator.requestedTimeToleranceAfter = .zero
-            generator.requestedTimeToleranceBefore = .zero
+        let requestKey = garageThumbnailCacheKey(
+            videoURL: videoURL,
+            timestamp: timestamp,
+            maximumSize: maximumSize
+        )
 
-            let time = CMTime(seconds: timestamp, preferredTimescale: 600)
-            generator.generateCGImageAsynchronously(for: time) { image, _, _ in
-                continuation.resume(returning: image.flatMap(normalizedDisplayImage(from:)))
+        if let cachedImage = await GarageMediaStoreCache.shared.cachedThumbnail(for: requestKey) {
+            return cachedImage
+        }
+
+        let image = await withCheckedContinuation { continuation in
+            Task {
+                let generator = await GarageMediaStoreCache.shared.imageGenerator(
+                    for: videoURL,
+                    maximumSize: maximumSize
+                )
+                let time = CMTime(seconds: timestamp, preferredTimescale: 600)
+                generator.generateCGImageAsynchronously(for: time) { image, _, _ in
+                    continuation.resume(returning: image.flatMap(normalizedDisplayImage(from:)))
+                }
             }
         }
+
+        await GarageMediaStoreCache.shared.storeThumbnail(image, for: requestKey)
+        return image
     }
 
     static func assetMetadata(for videoURL: URL) async -> GarageVideoAssetMetadata? {
+        if let cachedMetadata = await GarageMediaStoreCache.shared.assetMetadata(for: videoURL) {
+            return cachedMetadata
+        }
+
         do {
             let asset = AVURLAsset(url: videoURL)
             let duration = try await asset.load(.duration)
@@ -1186,11 +1202,13 @@ enum GarageMediaStore {
             let transformedSize = naturalSize.applying(transform)
             let nominalFrameRate = try await track.load(.nominalFrameRate)
 
-            return GarageVideoAssetMetadata(
+            let metadata = GarageVideoAssetMetadata(
                 duration: max(CMTimeGetSeconds(duration), 0),
                 frameRate: nominalFrameRate > 0 ? Double(nominalFrameRate) : 0,
                 naturalSize: CGSize(width: abs(transformedSize.width), height: abs(transformedSize.height))
             )
+            await GarageMediaStoreCache.shared.storeAssetMetadata(metadata, for: videoURL)
+            return metadata
         } catch {
             return nil
         }
@@ -1264,6 +1282,65 @@ enum GarageMediaStore {
 
         context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
         return context.makeImage() ?? image
+    }
+    private static func garageThumbnailCacheKey(videoURL: URL, timestamp: Double, maximumSize: CGSize) -> String {
+        let timestampBucket = Int((timestamp * 30).rounded())
+        let maxPixelWidth = Int(maximumSize.width.rounded())
+        let maxPixelHeight = Int(maximumSize.height.rounded())
+        return "\(videoURL.absoluteString)#\(timestampBucket)#\(maxPixelWidth)x\(maxPixelHeight)"
+    }
+}
+
+private actor GarageMediaStoreCache {
+    static let shared = GarageMediaStoreCache()
+
+    private var generators: [URL: AVAssetImageGenerator] = [:]
+    private var generatorSizes: [URL: CGSize] = [:]
+    private var thumbnailCache: [String: CGImage] = [:]
+    private var thumbnailCacheOrder: [String] = []
+    private var assetMetadataCache: [URL: GarageVideoAssetMetadata] = [:]
+
+    func cachedThumbnail(for requestKey: String) -> CGImage? {
+        thumbnailCache[requestKey]
+    }
+
+    func storeThumbnail(_ image: CGImage?, for requestKey: String) {
+        guard let image else { return }
+
+        if thumbnailCache[requestKey] == nil {
+            thumbnailCacheOrder.append(requestKey)
+        }
+
+        if thumbnailCacheOrder.count > 96 {
+            let oldestKey = thumbnailCacheOrder.removeFirst()
+            thumbnailCache.removeValue(forKey: oldestKey)
+        }
+        thumbnailCache[requestKey] = image
+    }
+
+    func imageGenerator(for videoURL: URL, maximumSize: CGSize) -> AVAssetImageGenerator {
+        if let existingGenerator = generators[videoURL], generatorSizes[videoURL] == maximumSize {
+            return existingGenerator
+        }
+
+        let asset = AVURLAsset(url: videoURL)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = maximumSize
+        generator.requestedTimeToleranceAfter = CMTime(value: 1, timescale: 30)
+        generator.requestedTimeToleranceBefore = CMTime(value: 1, timescale: 30)
+
+        generators[videoURL] = generator
+        generatorSizes[videoURL] = maximumSize
+        return generator
+    }
+
+    func assetMetadata(for videoURL: URL) -> GarageVideoAssetMetadata? {
+        assetMetadataCache[videoURL]
+    }
+
+    func storeAssetMetadata(_ metadata: GarageVideoAssetMetadata, for videoURL: URL) {
+        assetMetadataCache[videoURL] = metadata
     }
 }
 
