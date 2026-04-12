@@ -14,6 +14,13 @@ private struct GarageTimelineMarker: Identifiable {
     var id: SwingPhase { keyFrame.phase }
 }
 
+private struct GarageFilmstripFrame: Identifiable, Hashable {
+    let index: Int
+    let timestamp: Double
+
+    var id: Int { index }
+}
+
 private struct GarageHandPathSample: Identifiable {
     let id: Int
     let timestamp: Double
@@ -204,24 +211,29 @@ struct GarageView: View {
                     onDismiss: dismissImportPresentation,
                     onRetry: retryImport
                 )
-            } else {
-                GarageCustomScaffold(module: .garage, tabs: [.records, .review], selectedTab: $selectedTab) { viewportSize in
-                    Group {
-                        switch selectedTab {
-                        case .records:
-                            GarageRecordsTab(records: swingRecords) {
-                                presentAddRecord()
-                            }
-                        case .review:
-                            GarageReviewTab(
-                                records: swingRecords,
-                                selectedRecordKey: $selectedReviewRecordKey,
-                                viewportHeight: viewportSize.height
-                            )
-                        default:
-                            EmptyView()
+            } else if selectedTab == .review {
+                GeometryReader { proxy in
+                    GarageReviewTab(
+                        records: swingRecords,
+                        selectedRecordKey: $selectedReviewRecordKey,
+                        viewportHeight: proxy.size.height,
+                        onBackToRecords: {
+                            selectedTab = .records
                         }
-                    }
+                    )
+                }
+            } else {
+                GarageCustomScaffold(module: .garage, tabs: [.records, .review], selectedTab: $selectedTab) { _ in
+                    GarageRecordsTab(
+                        records: swingRecords,
+                        importVideo: {
+                            presentAddRecord()
+                        },
+                        openReview: { record in
+                            selectedReviewRecordKey = garageRecordSelectionKey(for: record)
+                            selectedTab = .review
+                        }
+                    )
                 }
                 .safeAreaInset(edge: .bottom) {
                     Group {
@@ -374,6 +386,7 @@ struct GarageView: View {
 private struct GarageRecordsTab: View {
     let records: [SwingRecord]
     let importVideo: () -> Void
+    let openReview: (SwingRecord) -> Void
 
     var body: some View {
         ModuleActivityFeedSection(title: "Swing Records") {
@@ -392,7 +405,9 @@ private struct GarageRecordsTab: View {
                 }
 
                 ForEach(records.prefix(8)) { record in
-                    SwingRecordCard(record: record)
+                    SwingRecordCard(record: record) {
+                        openReview(record)
+                    }
                 }
             }
         }
@@ -401,44 +416,37 @@ private struct GarageRecordsTab: View {
 
 private struct SwingRecordCard: View {
     let record: SwingRecord
-
-    private var reviewStateLabel: String {
-        switch record.keyframeValidationStatus {
-        case .approved:
-            "Approved"
-        case .flagged:
-            "Flagged"
-        case .pending:
-            "Needs Review"
-        }
-    }
+    let openReview: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(record.title)
-                .font(.headline)
+        Button(action: openReview) {
+            HStack(alignment: .top, spacing: ModuleSpacing.medium) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(record.title)
+                        .font(.headline)
+                        .foregroundStyle(AppModule.garage.theme.textPrimary)
 
-            if record.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-                Text(record.notes)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
+                    if record.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                        Text(record.notes)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
 
-            HStack(spacing: ModuleSpacing.small) {
-                GarageReviewStatusPill(status: record.keyframeValidationStatus)
-
-                Text(reviewStateLabel)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(AppModule.garage.theme.textSecondary)
+                    Text(record.createdAt.formatted(date: .abbreviated, time: .shortened))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
                 Spacer(minLength: 0)
 
-                Text(record.createdAt.formatted(date: .abbreviated, time: .shortened))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Image(systemName: "chevron.right")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppModule.garage.theme.textMuted)
+                    .padding(.top, 2)
             }
         }
+        .buttonStyle(.plain)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
@@ -449,6 +457,7 @@ private struct GarageReviewTab: View {
     let records: [SwingRecord]
     @Binding var selectedRecordKey: String?
     let viewportHeight: CGFloat
+    let onBackToRecords: () -> Void
 
     private var selectedRecord: SwingRecord? {
         if let selectedRecordKey {
@@ -463,9 +472,8 @@ private struct GarageReviewTab: View {
             if let selectedRecord {
                 GarageFocusedReviewWorkspace(
                     record: selectedRecord,
-                    records: records,
-                    selectedRecordKey: $selectedRecordKey,
-                    viewportHeight: viewportHeight
+                    viewportHeight: viewportHeight,
+                    onExitReview: onBackToRecords
                 )
             } else {
                 ModuleEmptyStateCard(
@@ -473,7 +481,7 @@ private struct GarageReviewTab: View {
                     title: "Review workflow is ready",
                     message: "Import a swing video from Overview or Records to begin checkpoint review.",
                     actionTitle: "Go To Records",
-                    action: {}
+                    action: onBackToRecords
                 )
             }
         }
@@ -549,14 +557,12 @@ private struct GarageFocusedReviewWorkspace: View {
     @Environment(\.modelContext) private var modelContext
 
     let record: SwingRecord
-    let records: [SwingRecord]
-    @Binding var selectedRecordKey: String?
     let viewportHeight: CGFloat
+    let onExitReview: () -> Void
 
     @State private var currentTime = 0.0
     @State private var reviewImage: CGImage?
     @State private var isLoadingFrame = false
-    @State private var assetDuration = 0.0
     @State private var selectedPhase: SwingPhase = .address
     @State private var isShowingCompletionPlayback = false
     @State private var didAutoPresentCompletionPlayback = false
@@ -681,10 +687,6 @@ private struct GarageFocusedReviewWorkspace: View {
         currentFrame?.timestamp
     }
 
-    private var effectiveDuration: Double {
-        max(record.swingFrames.map(\.timestamp).max() ?? 0, assetDuration, 0.1)
-    }
-
     private var frameRequestID: String {
         [
             garageRecordSelectionKey(for: record),
@@ -695,6 +697,12 @@ private struct GarageFocusedReviewWorkspace: View {
 
     private var fullHandPathSamples: [GarageHandPathSample] {
         garageHandPathSamples(from: record.swingFrames)
+    }
+
+    private var filmstripFrames: [GarageFilmstripFrame] {
+        record.swingFrames.enumerated().map { index, frame in
+            GarageFilmstripFrame(index: index, timestamp: frame.timestamp)
+        }
     }
 
     private var reviewRecoveryTitle: String {
@@ -726,14 +734,9 @@ private struct GarageFocusedReviewWorkspace: View {
         max(viewportHeight * 0.74, 420)
     }
 
-    private var compactProgressLabel: String {
-        "\(record.approvedCheckpointCount) of \(SwingPhase.allCases.count) approved"
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: ModuleSpacing.medium) {
             GarageFocusedReviewFrame(
-                source: reviewFrameSource,
                 image: reviewImage,
                 isLoadingFrame: isLoadingFrame,
                 currentFrame: currentFrame,
@@ -742,36 +745,29 @@ private struct GarageFocusedReviewWorkspace: View {
                 showsAnchorGuides: isDraggingAnchor,
                 overlayMode: overlayPresentationMode,
                 isShowingAnalysisOverlay: isShowingAnalysisOverlay,
-                canConfirm: displayedAnchor != nil && currentFrameIndex != nil,
                 preferredHeight: videoStageHeight,
+                onExitReview: onExitReview,
                 onToggleAnalysis: toggleAnalysisOverlay,
-                onConfirm: confirmSelectionAndAdvance,
                 onAnchorDragChanged: handleAnchorDragChanged,
                 onAnchorDragEnded: handleAnchorDragEnded
             )
             .frame(maxWidth: .infinity)
 
-            GarageReviewControlPanel(
-                records: records,
-                selectedRecordTitle: record.title,
-                selectedPhaseTitle: selectedPhase.reviewTitle,
-                selectedCheckpointStatus: selectedCheckpointStatus,
-                selectedKeyFrameSource: selectedKeyFrame?.source,
-                selectedAnchorSource: displayedAnchor?.source,
-                progressLabel: compactProgressLabel,
+            GarageReviewControlStrip(
+                videoURL: reviewVideoURL,
+                frames: filmstripFrames,
                 markers: orderedKeyframes,
                 selectedPhase: selectedPhase,
-                effectiveDuration: effectiveDuration,
-                currentTime: $currentTime,
                 currentFrameIndex: currentFrameIndex,
                 totalFrameCount: record.swingFrames.count,
                 canStepBackward: canStepBackward,
                 canStepForward: canStepForward,
-                statusProvider: { record.reviewStatus(for: $0) },
-                onSelectRecord: { selectedRecordKey = garageRecordSelectionKey(for: $0) },
+                canConfirm: displayedAnchor != nil && currentFrameIndex != nil,
                 onSelectPhase: selectPhase,
+                onSelectFrame: setCurrentFrameIndex,
                 onStepBackward: { stepFrame(by: -1) },
-                onStepForward: { stepFrame(by: 1) }
+                onStepForward: { stepFrame(by: 1) },
+                onConfirm: confirmSelectionAndAdvance
             )
 
             if reviewFrameSource != .video {
@@ -802,7 +798,6 @@ private struct GarageFocusedReviewWorkspace: View {
             try? modelContext.save()
             syncSelectedPhase()
             seekToSelectedCheckpoint()
-            await loadAssetDuration()
             autoPresentCompletionPlaybackIfNeeded()
         }
         .task(id: frameRequestID) {
@@ -814,20 +809,6 @@ private struct GarageFocusedReviewWorkspace: View {
         .onChange(of: selectedPhase) { _, _ in
             dragAnchorPoint = nil
             isDraggingAnchor = false
-        }
-    }
-
-    private func loadAssetDuration() async {
-        guard let reviewVideoURL else {
-            await MainActor.run {
-                assetDuration = record.swingFrames.map(\.timestamp).max() ?? 0
-            }
-            return
-        }
-
-        let metadata = await GarageMediaStore.assetMetadata(for: reviewVideoURL)
-        await MainActor.run {
-            assetDuration = metadata?.duration ?? (record.swingFrames.map(\.timestamp).max() ?? 0)
         }
     }
 
@@ -1044,165 +1025,94 @@ private struct GarageFocusedReviewWorkspace: View {
     }
 }
 
-private struct GarageReviewControlPanel: View {
-    let records: [SwingRecord]
-    let selectedRecordTitle: String
-    let selectedPhaseTitle: String
-    let selectedCheckpointStatus: KeyframeValidationStatus
-    let selectedKeyFrameSource: KeyFrameSource?
-    let selectedAnchorSource: HandAnchorSource?
-    let progressLabel: String
+private struct GarageReviewControlStrip: View {
+    let videoURL: URL?
+    let frames: [GarageFilmstripFrame]
     let markers: [GarageTimelineMarker]
     let selectedPhase: SwingPhase
-    let effectiveDuration: Double
-    @Binding var currentTime: Double
     let currentFrameIndex: Int?
     let totalFrameCount: Int
     let canStepBackward: Bool
     let canStepForward: Bool
-    let statusProvider: (SwingPhase) -> KeyframeValidationStatus
-    let onSelectRecord: (SwingRecord) -> Void
+    let canConfirm: Bool
     let onSelectPhase: (SwingPhase) -> Void
+    let onSelectFrame: (Int) -> Void
     let onStepBackward: () -> Void
     let onStepForward: () -> Void
+    let onConfirm: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ModuleSpacing.medium) {
-            HStack(alignment: .center, spacing: ModuleSpacing.medium) {
-                Menu {
-                    ForEach(records) { record in
-                        Button(record.title) {
-                            onSelectRecord(record)
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        Text(selectedRecordTitle)
-                            .font(.subheadline.weight(.semibold))
-                            .lineLimit(1)
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.caption.weight(.bold))
-                    }
-                    .foregroundStyle(garageReviewReadableText)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(
-                        Capsule()
-                            .fill(garageReviewInsetSurface)
-                            .overlay(
-                                Capsule()
-                                    .stroke(garageReviewStroke, lineWidth: 1)
-                            )
-                    )
-                }
-                .buttonStyle(.plain)
+        VStack(alignment: .leading, spacing: 12) {
+            GarageCheckpointProgressStrip(
+                selectedPhase: selectedPhase,
+                markers: markers,
+                onSelect: onSelectPhase
+            )
 
+            HStack {
                 Spacer(minLength: 0)
-
-                Text(progressLabel)
+                Text(frameCountLabel)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(garageReviewMutedText)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
             }
 
-            VStack(alignment: .leading, spacing: 10) {
-                Text(selectedPhaseTitle)
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(garageReviewReadableText)
-                    .fixedSize(horizontal: true, vertical: false)
-
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        GarageCheckpointStatusBadge(status: selectedCheckpointStatus)
-
-                        if selectedKeyFrameSource == .adjusted {
-                            GarageMetadataBadge(
-                                title: "Frame adjusted",
-                                systemImage: "timeline.selection",
-                                tint: garageReviewPending
-                            )
-                        }
-
-                        if selectedAnchorSource == .manual {
-                            GarageMetadataBadge(
-                                title: "Manual anchor",
-                                systemImage: "hand.draw.fill",
-                                tint: garageManualAnchorAccent
-                            )
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
-            }
-
-            GarageCheckpointProgressStrip(
-                selectedPhase: selectedPhase,
+            GarageReviewFilmstrip(
+                videoURL: videoURL,
+                frames: frames,
                 markers: markers,
-                statusProvider: statusProvider,
-                onSelect: onSelectPhase
+                currentFrameIndex: currentFrameIndex,
+                onSelectFrame: onSelectFrame
             )
 
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("Scrub to validate the analyzer’s frame, then drag the anchor only if the hand path needs correction.")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(garageReviewMutedText)
-
-                    Spacer(minLength: 0)
-
-                    if let currentFrameIndex {
-                        Text("Frame \(currentFrameIndex + 1)")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(garageReviewReadableText)
-                            .fixedSize(horizontal: true, vertical: false)
-                    }
-                }
-
-                GarageTimelineScrubber(
-                    range: 0...effectiveDuration,
-                    currentTime: $currentTime,
-                    markers: markers,
-                    selectedPhase: selectedPhase,
-                    statusProvider: statusProvider
+            HStack(spacing: 16) {
+                GarageFrameStepButton(
+                    accessibilityLabel: "Previous frame",
+                    systemImage: "chevron.left",
+                    isEnabled: canStepBackward,
+                    action: onStepBackward
                 )
 
-                HStack(spacing: 12) {
-                    GarageFrameStepButton(
-                        title: "Prev Frame",
-                        systemImage: "chevron.left",
-                        isEnabled: canStepBackward,
-                        action: onStepBackward
-                    )
+                Spacer(minLength: 0)
 
-                    Spacer(minLength: 0)
-
-                    Text(frameCountLabel)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(garageReviewReadableText)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-
-                    Spacer(minLength: 0)
-
-                    GarageFrameStepButton(
-                        title: "Next Frame",
-                        systemImage: "chevron.right",
-                        isEnabled: canStepForward,
-                        action: onStepForward
-                    )
+                Button(action: onConfirm) {
+                    Label("Confirm Frame + Hand", systemImage: "checkmark")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.white)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(
+                            Capsule()
+                                .fill(AppModule.garage.theme.primary)
+                        )
                 }
+                .buttonStyle(.plain)
+                .disabled(canConfirm == false)
+                .opacity(canConfirm ? 1 : 0.45)
+                .shadow(color: AppModule.garage.theme.primary.opacity(0.22), radius: 14, y: 8)
+
+                Spacer(minLength: 0)
+
+                GarageFrameStepButton(
+                    accessibilityLabel: "Next frame",
+                    systemImage: "chevron.right",
+                    isEnabled: canStepForward,
+                    action: onStepForward
+                )
             }
         }
-        .padding(ModuleSpacing.medium)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, ModuleSpacing.medium)
+        .padding(.vertical, 12)
         .background(
             RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
-                .fill(garageReviewSurface)
+                .fill(.ultraThinMaterial)
                 .overlay(
                     RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
                         .stroke(garageReviewStroke, lineWidth: 1)
                 )
-                .shadow(color: garageReviewShadow, radius: 18, y: 8)
+                .shadow(color: garageReviewShadow, radius: 12, y: 6)
         )
     }
 
@@ -1215,8 +1125,140 @@ private struct GarageReviewControlPanel: View {
     }
 }
 
+private struct GarageReviewFilmstrip: View {
+    let videoURL: URL?
+    let frames: [GarageFilmstripFrame]
+    let markers: [GarageTimelineMarker]
+    let currentFrameIndex: Int?
+    let onSelectFrame: (Int) -> Void
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 10) {
+                    ForEach(frames) { frame in
+                        GarageReviewFilmstripThumbnail(
+                            videoURL: videoURL,
+                            frame: frame,
+                            isSelected: frame.index == currentFrameIndex,
+                            isKeyframe: markers.contains(where: { $0.keyFrame.frameIndex == frame.index }),
+                            onSelect: {
+                                onSelectFrame(frame.index)
+                            }
+                        )
+                        .id(frame.index)
+                    }
+                }
+                .padding(.horizontal, 2)
+                .padding(.vertical, 1)
+            }
+            .frame(height: 82)
+            .onAppear {
+                guard let currentFrameIndex else { return }
+                proxy.scrollTo(currentFrameIndex, anchor: .center)
+            }
+            .onChange(of: currentFrameIndex) { _, newValue in
+                guard let newValue else { return }
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    proxy.scrollTo(newValue, anchor: .center)
+                }
+            }
+        }
+    }
+}
+
+private struct GarageReviewFilmstripThumbnail: View {
+    let videoURL: URL?
+    let frame: GarageFilmstripFrame
+    let isSelected: Bool
+    let isKeyframe: Bool
+    let onSelect: () -> Void
+
+    @State private var image: CGImage?
+
+    var body: some View {
+        Button(action: onSelect) {
+            ZStack(alignment: .bottomTrailing) {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(garageReviewInsetSurface)
+
+                if let image {
+                    Image(decorative: image, scale: 1)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 54, height: 78)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                } else {
+                    VStack(spacing: 6) {
+                        Image(systemName: "video")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(garageReviewMutedText)
+                        Text("\(frame.index + 1)")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(garageReviewMutedText)
+                    }
+                    .frame(width: 54, height: 78)
+                }
+
+                if isKeyframe {
+                    Circle()
+                        .fill(garageReviewAccent)
+                        .frame(width: 8, height: 8)
+                        .padding(6)
+                }
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(
+                        isSelected
+                            ? garageReviewAccent
+                            : garageReviewReadableText.opacity(isKeyframe ? 0.18 : 0.08),
+                        lineWidth: isSelected ? 2 : 1
+                    )
+            )
+            .shadow(
+                color: isSelected ? garageReviewAccent.opacity(0.32) : garageReviewShadow,
+                radius: isSelected ? 10 : 4,
+                y: isSelected ? 4 : 2
+            )
+        }
+        .buttonStyle(.plain)
+        .task(id: requestKey) {
+            await loadThumbnail()
+        }
+    }
+
+    private var requestKey: String {
+        [
+            videoURL?.absoluteString ?? "no-video",
+            String(frame.index),
+            String(format: "%.4f", frame.timestamp)
+        ].joined(separator: "::")
+    }
+
+    private func loadThumbnail() async {
+        guard let videoURL else {
+            await MainActor.run {
+                image = nil
+            }
+            return
+        }
+
+        let thumbnail = await GarageMediaStore.thumbnail(
+            for: videoURL,
+            at: frame.timestamp,
+            maximumSize: CGSize(width: 180, height: 180)
+        )
+
+        guard Task.isCancelled == false else { return }
+
+        await MainActor.run {
+            image = thumbnail
+        }
+    }
+}
+
 private struct GarageFocusedReviewFrame: View {
-    let source: GarageReviewFrameSourceState
     let image: CGImage?
     let isLoadingFrame: Bool
     let currentFrame: SwingFrame?
@@ -1225,15 +1267,13 @@ private struct GarageFocusedReviewFrame: View {
     let showsAnchorGuides: Bool
     let overlayMode: GarageOverlayPresentationMode
     let isShowingAnalysisOverlay: Bool
-    let canConfirm: Bool
     let preferredHeight: CGFloat
+    let onExitReview: () -> Void
     let onToggleAnalysis: () -> Void
-    let onConfirm: () -> Void
     let onAnchorDragChanged: (CGPoint) -> Void
     let onAnchorDragEnded: (CGPoint) -> Void
 
     init(
-        source: GarageReviewFrameSourceState,
         image: CGImage?,
         isLoadingFrame: Bool,
         currentFrame: SwingFrame?,
@@ -1242,14 +1282,12 @@ private struct GarageFocusedReviewFrame: View {
         showsAnchorGuides: Bool,
         overlayMode: GarageOverlayPresentationMode,
         isShowingAnalysisOverlay: Bool,
-        canConfirm: Bool,
         preferredHeight: CGFloat,
+        onExitReview: @escaping () -> Void,
         onToggleAnalysis: @escaping () -> Void,
-        onConfirm: @escaping () -> Void,
         onAnchorDragChanged: @escaping (CGPoint) -> Void,
         onAnchorDragEnded: @escaping (CGPoint) -> Void
     ) {
-        self.source = source
         self.image = image
         self.isLoadingFrame = isLoadingFrame
         self.currentFrame = currentFrame
@@ -1258,17 +1296,16 @@ private struct GarageFocusedReviewFrame: View {
         self.showsAnchorGuides = showsAnchorGuides
         self.overlayMode = overlayMode
         self.isShowingAnalysisOverlay = isShowingAnalysisOverlay
-        self.canConfirm = canConfirm
         self.preferredHeight = preferredHeight
+        self.onExitReview = onExitReview
         self.onToggleAnalysis = onToggleAnalysis
-        self.onConfirm = onConfirm
         self.onAnchorDragChanged = onAnchorDragChanged
         self.onAnchorDragEnded = onAnchorDragEnded
     }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
+            Rectangle()
                 .fill(garageReviewCanvasFill)
 
             if let image {
@@ -1282,7 +1319,6 @@ private struct GarageFocusedReviewFrame: View {
                     onAnchorDragChanged: onAnchorDragChanged,
                     onAnchorDragEnded: onAnchorDragEnded
                 )
-                .clipShape(RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
             } else if let currentFrame {
                 GaragePoseFallbackOverlay(
                     currentFrame: currentFrame,
@@ -1293,7 +1329,6 @@ private struct GarageFocusedReviewFrame: View {
                     onAnchorDragChanged: onAnchorDragChanged,
                     onAnchorDragEnded: onAnchorDragEnded
                 )
-                .clipShape(RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
             } else {
                 VStack(spacing: ModuleSpacing.small) {
                     Image(systemName: "video.slash")
@@ -1310,14 +1345,6 @@ private struct GarageFocusedReviewFrame: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
-            if source != .recoveryNeeded {
-                GarageSourceLabel(
-                    title: source == .poseFallback ? "Pose Fallback" : "Video Review",
-                    tint: source == .poseFallback ? garageReviewPending : garageReviewReadableText
-                )
-                .padding(14)
-            }
-
             if isLoadingFrame {
                 ProgressView()
                     .controlSize(.large)
@@ -1325,6 +1352,22 @@ private struct GarageFocusedReviewFrame: View {
                     .padding()
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
             }
+        }
+        .overlay(alignment: .topLeading) {
+            Button(action: onExitReview) {
+                Label("Swings", systemImage: "chevron.left")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(garageReviewReadableText)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke(garageReviewStroke, lineWidth: 1)
+                    )
+            }
+            .buttonStyle(.plain)
+            .padding(14)
         }
         .overlay(alignment: .topTrailing) {
             Button(action: onToggleAnalysis) {
@@ -1345,28 +1388,6 @@ private struct GarageFocusedReviewFrame: View {
             .buttonStyle(.plain)
             .padding(14)
         }
-        .overlay(alignment: .bottomTrailing) {
-            Button(action: onConfirm) {
-                Label("Confirm Frame & Anchor", systemImage: "checkmark")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.white)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 12)
-                    .background(
-                        Capsule()
-                            .fill(AppModule.garage.theme.primary)
-                    )
-            }
-            .buttonStyle(.plain)
-            .disabled(canConfirm == false)
-            .opacity(canConfirm ? 1 : 0.45)
-            .padding(18)
-            .shadow(color: AppModule.garage.theme.primary.opacity(0.22), radius: 14, y: 8)
-        }
-        .overlay(
-            RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
-                .stroke(garageReviewStroke, lineWidth: 1)
-        )
         .frame(height: preferredHeight)
         .frame(maxWidth: .infinity)
     }
@@ -1638,7 +1659,6 @@ private extension SwingFrame {
 private struct GarageCheckpointProgressStrip: View {
     let selectedPhase: SwingPhase
     let markers: [GarageTimelineMarker]
-    let statusProvider: (SwingPhase) -> KeyframeValidationStatus
     let onSelect: (SwingPhase) -> Void
 
     var body: some View {
@@ -1646,7 +1666,6 @@ private struct GarageCheckpointProgressStrip: View {
             HStack(spacing: ModuleSpacing.small) {
                 ForEach(SwingPhase.allCases) { phase in
                     let marker = markers.first(where: { $0.keyFrame.phase == phase })
-                    let status = statusProvider(phase)
                     let isSelected = selectedPhase == phase
                     let isImpact = phase == .impact
                     Button {
@@ -1654,7 +1673,7 @@ private struct GarageCheckpointProgressStrip: View {
                     } label: {
                         HStack(spacing: 8) {
                             Circle()
-                                .fill(isImpact ? garageReviewAccent : status.reviewTint)
+                                .fill(isSelected || isImpact ? garageReviewAccent : garageReviewReadableText.opacity(marker == nil ? 0.22 : 0.52))
                                 .frame(width: 8, height: 8)
 
                             Text(shortTitle(for: phase))
@@ -1666,7 +1685,7 @@ private struct GarageCheckpointProgressStrip: View {
                             if marker?.keyFrame.source == .adjusted {
                                 Image(systemName: "hand.draw")
                                     .font(.caption2.weight(.bold))
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(garageManualAnchorAccent)
                             }
                         }
                         .padding(.horizontal, 12)
@@ -1683,7 +1702,7 @@ private struct GarageCheckpointProgressStrip: View {
                                 .stroke(
                                     isImpact
                                         ? garageReviewAccent.opacity(isSelected ? 0.75 : 0.4)
-                                        : (isSelected ? garageReviewReadableText.opacity(0.3) : garageReviewStroke),
+                                        : (isSelected ? garageReviewAccent.opacity(0.65) : garageReviewStroke),
                                     lineWidth: isSelected || isImpact ? 1.2 : 1
                                 )
                         )
@@ -1723,7 +1742,6 @@ private struct GarageTimelineScrubber: View {
     @Binding var currentTime: Double
     let markers: [GarageTimelineMarker]
     let selectedPhase: SwingPhase
-    let statusProvider: (SwingPhase) -> KeyframeValidationStatus
 
     var body: some View {
         GeometryReader { proxy in
@@ -1761,7 +1779,6 @@ private struct GarageTimelineScrubber: View {
 
                     ForEach(markers) { marker in
                         if range.contains(marker.timestamp) {
-                            let markerStatus = statusProvider(marker.keyFrame.phase)
                             let isActiveMarker = marker.keyFrame.phase == selectedPhase
                             Circle()
                                 .fill(isActiveMarker ? garageReviewAccent : garageReviewReadableText.opacity(0.88))
@@ -1770,8 +1787,8 @@ private struct GarageTimelineScrubber: View {
                                     Circle()
                                         .stroke(
                                             marker.keyFrame.source == .adjusted
-                                                ? Color.orange
-                                                : markerStatus.reviewTint.opacity(isActiveMarker ? 0.0 : 0.55),
+                                                ? garageManualAnchorAccent
+                                                : garageReviewReadableText.opacity(isActiveMarker ? 0.0 : 0.22),
                                             lineWidth: isActiveMarker ? 0 : 1.3
                                         )
                                 )
@@ -1819,41 +1836,6 @@ private struct GarageTimelineScrubber: View {
     }
 }
 
-private struct GarageCheckpointStatusBadge: View {
-    let status: KeyframeValidationStatus
-
-    var body: some View {
-        GarageStatusDotLabel(title: status.title, tint: status.reviewTint)
-    }
-}
-
-private struct GarageCheckpointProgressSummary: View {
-    let record: SwingRecord
-
-    var body: some View {
-        VStack(alignment: .trailing, spacing: 6) {
-            Text("\(record.approvedCheckpointCount) of \(SwingPhase.allCases.count) approved")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(garageReviewReadableText)
-                .fixedSize(horizontal: true, vertical: false)
-
-            HStack(spacing: 6) {
-                summaryLabel(title: "Approved", value: record.approvedCheckpointCount, tint: garageReviewApproved)
-                summaryLabel(title: "Flagged", value: record.flaggedCheckpointCount, tint: garageReviewFlagged)
-                summaryLabel(title: "Pending", value: record.pendingCheckpointCount, tint: garageReviewPending)
-            }
-        }
-    }
-
-    private func summaryLabel(title: String, value: Int, tint: Color) -> some View {
-        GarageStatusDotLabel(
-            title: "\(title) \(value)",
-            tint: tint,
-            font: .caption2.weight(.semibold)
-        )
-    }
-}
-
 private let garageReviewBackground = Color(uiColor: .systemGroupedBackground)
 private let garageReviewSurface = Color(uiColor: .secondarySystemGroupedBackground)
 private let garageReviewSurfaceRaised = Color(uiColor: .tertiarySystemGroupedBackground)
@@ -1885,55 +1867,23 @@ private struct GarageInsetPanelBackground<S: Shape>: View {
     }
 }
 
-private struct GarageMetadataBadge: View {
-    let title: String
-    let systemImage: String
-    let tint: Color
-
-    var body: some View {
-        Label(title, systemImage: systemImage)
-            .font(.caption.weight(.semibold))
-            .lineLimit(1)
-            .minimumScaleFactor(0.85)
-            .fixedSize(horizontal: true, vertical: false)
-            .foregroundStyle(tint)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                Capsule()
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        Capsule()
-                            .stroke(garageReviewStroke, lineWidth: 1)
-                    )
-            )
-    }
-}
-
 private struct GarageFrameStepButton: View {
-    let title: String
+    let accessibilityLabel: String
     let systemImage: String
     let isEnabled: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: systemImage)
-                    .font(.caption.weight(.bold))
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-            }
+            Image(systemName: systemImage)
+                .font(.subheadline.weight(.bold))
+                .frame(width: 36, height: 36)
             .foregroundStyle(isEnabled ? garageReviewReadableText : garageReviewMutedText.opacity(0.8))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
             .background(
-                Capsule()
+                Circle()
                     .fill(.ultraThinMaterial)
                     .overlay(
-                        Capsule()
+                        Circle()
                             .stroke(garageReviewStroke, lineWidth: 1)
                     )
             )
@@ -1941,6 +1891,7 @@ private struct GarageFrameStepButton: View {
         .buttonStyle(.plain)
         .disabled(isEnabled == false)
         .opacity(isEnabled ? 1 : 0.48)
+        .accessibilityLabel(accessibilityLabel)
     }
 }
 
@@ -2034,53 +1985,6 @@ private struct GarageCompletionPlaybackCallout: View {
                         .stroke(garageReviewStroke, lineWidth: 1)
                 )
         )
-    }
-}
-
-private struct GarageReviewStatusPill: View {
-    let status: KeyframeValidationStatus
-
-    var body: some View {
-        GarageStatusDotLabel(title: status.title, tint: status.reviewTint)
-    }
-}
-
-private struct GarageSourceLabel: View {
-    let title: String
-    let tint: Color
-
-    var body: some View {
-        Text(title)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(tint)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(.ultraThinMaterial, in: Capsule())
-            .overlay(
-                Capsule()
-                    .stroke(garageReviewStroke, lineWidth: 1)
-            )
-    }
-}
-
-private struct GarageStatusDotLabel: View {
-    let title: String
-    let tint: Color
-    var font: Font = .caption.weight(.semibold)
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(tint)
-                .frame(width: 8, height: 8)
-
-            Text(title)
-                .font(font)
-                .foregroundStyle(garageReviewReadableText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .fixedSize(horizontal: true, vertical: false)
-        }
     }
 }
 
