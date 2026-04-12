@@ -109,6 +109,20 @@ struct LIFE_IN_SYNCTests {
         #expect(impact > earlyDownswing)
     }
 
+    @Test func garageKeyframeDetectionUsesEarliestValidDownswingThresholdCrossing() async throws {
+        let frames = makeEarlyThresholdCrossingSwingFrames()
+
+        let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames)
+        let earlyDownswing = try #require(keyFrames.first(where: { $0.phase == .earlyDownswing }))
+        let impact = try #require(keyFrames.first(where: { $0.phase == .impact }))
+        let transition = try #require(keyFrames.first(where: { $0.phase == .transition }))
+
+        #expect(transition.frameIndex == 5)
+        #expect(earlyDownswing.frameIndex == 7)
+        #expect(earlyDownswing.frameIndex > transition.frameIndex)
+        #expect(impact.frameIndex > earlyDownswing.frameIndex)
+    }
+
     @Test func garageKeyframeDetectionPlacesEarlyBackswingFramesCloserToTakeawayAndShaftParallel() async throws {
         let frames = makeSyntheticSwingFrames()
 
@@ -141,7 +155,7 @@ struct LIFE_IN_SYNCTests {
         let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames)
         let top = try #require(keyFrames.first(where: { $0.phase == .topOfBackswing }))
 
-        #expect(top.frameIndex == 6)
+        #expect(top.frameIndex == 5)
         #expect(decodedFrameTimestamps[top.frameIndex] == frames[top.frameIndex].timestamp)
     }
 
@@ -154,6 +168,46 @@ struct LIFE_IN_SYNCTests {
 
         #expect(top <= 6)
         #expect(follow > top)
+    }
+
+    @Test func garageKeyframeDetectionFindsTakeawayDuringMostlyVerticalEarlyBackswing() async throws {
+        let frames = makeVerticalTakeawaySwingFrames()
+
+        let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames)
+        let address = try #require(keyFrames.first(where: { $0.phase == .address }))
+        let takeaway = try #require(keyFrames.first(where: { $0.phase == .takeaway }))
+        let top = try #require(keyFrames.first(where: { $0.phase == .topOfBackswing }))
+
+        #expect(takeaway.frameIndex > address.frameIndex)
+        #expect(takeaway.frameIndex <= 2)
+        #expect(takeaway.frameIndex < top.frameIndex)
+    }
+
+    @Test func garageKeyframeDetectionDoesNotPromoteLateFinishPauseToTop() async throws {
+        let frames = makeLatePauseSwingFrames()
+
+        let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames)
+        let top = try #require(keyFrames.first(where: { $0.phase == .topOfBackswing }))
+        let transition = try #require(keyFrames.first(where: { $0.phase == .transition }))
+        let follow = try #require(keyFrames.first(where: { $0.phase == .followThrough }))
+
+        #expect(top.frameIndex <= 4)
+        #expect(top.frameIndex < transition.frameIndex)
+        #expect(follow.frameIndex > top.frameIndex)
+    }
+
+    @Test func garageKeyframeDetectionStaysOrderedForMirroredSwingPath() async throws {
+        let mirroredFrames = makeMirroredSwingFrames(from: makeSyntheticSwingFrames())
+
+        let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: mirroredFrames)
+        let takeaway = try #require(keyFrames.first(where: { $0.phase == .takeaway }))
+        let shaftParallel = try #require(keyFrames.first(where: { $0.phase == .shaftParallel }))
+        let top = try #require(keyFrames.first(where: { $0.phase == .topOfBackswing }))
+        let transition = try #require(keyFrames.first(where: { $0.phase == .transition }))
+
+        #expect(takeaway.frameIndex < shaftParallel.frameIndex)
+        #expect(shaftParallel.frameIndex < top.frameIndex)
+        #expect(top.frameIndex < transition.frameIndex)
     }
 
     @Test func garageInsightsReportBecomesReadyWhenAnchorsAndPathExist() async throws {
@@ -419,6 +473,70 @@ private func makeLateFinishSwingFrames() -> [SwingFrame] {
 }
 
 @MainActor
+private func makeVerticalTakeawaySwingFrames() -> [SwingFrame] {
+    let wristPairs: [(Double, Double, Double, Double)] = [
+        (0.34, 0.72, 0.38, 0.72),
+        (0.35, 0.66, 0.39, 0.66),
+        (0.36, 0.57, 0.40, 0.57),
+        (0.37, 0.47, 0.41, 0.47),
+        (0.38, 0.35, 0.42, 0.35),
+        (0.37, 0.40, 0.41, 0.40),
+        (0.35, 0.50, 0.39, 0.50),
+        (0.33, 0.67, 0.37, 0.67),
+        (0.44, 0.32, 0.48, 0.32)
+    ]
+
+    return wristPairs.enumerated().map { index, wrists in
+        let (leftWristX, leftWristY, rightWristX, rightWristY) = wrists
+        return SwingFrame(
+            timestamp: Double(index) * 0.1,
+            joints: [
+                joint(.leftShoulder, x: 0.40, y: 0.34),
+                joint(.rightShoulder, x: 0.60, y: 0.34),
+                joint(.leftHip, x: 0.44, y: 0.60),
+                joint(.rightHip, x: 0.58, y: 0.60),
+                joint(.leftWrist, x: leftWristX, y: leftWristY),
+                joint(.rightWrist, x: rightWristX, y: rightWristY)
+            ],
+            confidence: 0.92
+        )
+    }
+}
+
+@MainActor
+private func makeLatePauseSwingFrames() -> [SwingFrame] {
+    let wristPairs: [(Double, Double, Double, Double)] = [
+        (0.30, 0.73, 0.34, 0.73),
+        (0.33, 0.68, 0.37, 0.68),
+        (0.39, 0.58, 0.43, 0.58),
+        (0.45, 0.45, 0.49, 0.45),
+        (0.51, 0.32, 0.55, 0.32),
+        (0.49, 0.38, 0.53, 0.38),
+        (0.42, 0.52, 0.46, 0.52),
+        (0.36, 0.68, 0.40, 0.68),
+        (0.54, 0.27, 0.58, 0.27),
+        (0.55, 0.26, 0.59, 0.26),
+        (0.55, 0.26, 0.59, 0.26)
+    ]
+
+    return wristPairs.enumerated().map { index, wrists in
+        let (leftWristX, leftWristY, rightWristX, rightWristY) = wrists
+        return SwingFrame(
+            timestamp: Double(index) * 0.1,
+            joints: [
+                joint(.leftShoulder, x: 0.40, y: 0.34),
+                joint(.rightShoulder, x: 0.60, y: 0.34),
+                joint(.leftHip, x: 0.44, y: 0.60),
+                joint(.rightHip, x: 0.58, y: 0.60),
+                joint(.leftWrist, x: leftWristX, y: leftWristY),
+                joint(.rightWrist, x: rightWristX, y: rightWristY)
+            ],
+            confidence: 0.91
+        )
+    }
+}
+
+@MainActor
 private func makePrerollSwingFrames() -> [SwingFrame] {
     let wristPairs: [(Double, Double, Double, Double)] = [
         (0.30, 0.72, 0.34, 0.72),
@@ -433,6 +551,39 @@ private func makePrerollSwingFrames() -> [SwingFrame] {
         (0.46, 0.50, 0.50, 0.50),
         (0.34, 0.70, 0.38, 0.70),
         (0.56, 0.28, 0.60, 0.28)
+    ]
+
+    return wristPairs.enumerated().map { index, wrists in
+        let (leftWristX, leftWristY, rightWristX, rightWristY) = wrists
+        return SwingFrame(
+            timestamp: Double(index) * 0.1,
+            joints: [
+                joint(.leftShoulder, x: 0.40, y: 0.34),
+                joint(.rightShoulder, x: 0.60, y: 0.34),
+                joint(.leftHip, x: 0.44, y: 0.60),
+                joint(.rightHip, x: 0.58, y: 0.60),
+                joint(.leftWrist, x: leftWristX, y: leftWristY),
+                joint(.rightWrist, x: rightWristX, y: rightWristY)
+            ],
+            confidence: 0.9
+        )
+    }
+}
+
+@MainActor
+private func makeEarlyThresholdCrossingSwingFrames() -> [SwingFrame] {
+    let wristPairs: [(Double, Double, Double, Double)] = [
+        (0.30, 0.72, 0.34, 0.72),
+        (0.33, 0.68, 0.37, 0.68),
+        (0.38, 0.60, 0.42, 0.60),
+        (0.45, 0.49, 0.49, 0.49),
+        (0.52, 0.36, 0.56, 0.36), // top
+        (0.50, 0.40, 0.54, 0.40), // transition
+        (0.49, 0.44, 0.53, 0.44), // downward, below threshold
+        (0.46, 0.50, 0.50, 0.50), // earliest threshold crossing
+        (0.42, 0.58, 0.46, 0.58), // later crossing
+        (0.38, 0.66, 0.42, 0.66), // impact neighborhood
+        (0.56, 0.28, 0.60, 0.28)  // follow through
     ]
 
     return wristPairs.enumerated().map { index, wrists in
@@ -482,6 +633,24 @@ private func makeNoisyPrerollSwingFrames() -> [SwingFrame] {
                 joint(.rightWrist, x: rightWristX, y: rightWristY, confidence: confidence)
             ],
             confidence: confidence
+        )
+    }
+}
+
+@MainActor
+private func makeMirroredSwingFrames(from frames: [SwingFrame]) -> [SwingFrame] {
+    frames.map { frame in
+        SwingFrame(
+            timestamp: frame.timestamp,
+            joints: frame.joints.map { joint in
+                SwingJoint(
+                    name: joint.name,
+                    x: 1 - joint.x,
+                    y: joint.y,
+                    confidence: joint.confidence
+                )
+            },
+            confidence: frame.confidence
         )
     }
 }

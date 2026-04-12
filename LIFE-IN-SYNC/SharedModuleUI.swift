@@ -1,6 +1,30 @@
 import SwiftData
 import SwiftUI
 
+extension Color {
+    init(hex: String) {
+        let sanitized = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var value: UInt64 = 0
+        Scanner(string: sanitized).scanHexInt64(&value)
+
+        let r, g, b, a: UInt64
+        switch sanitized.count {
+        case 8:
+            (r, g, b, a) = ((value >> 24) & 0xFF, (value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF)
+        default:
+            (r, g, b, a) = ((value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF, 0xFF)
+        }
+
+        self.init(
+            .sRGB,
+            red: Double(r) / 255,
+            green: Double(g) / 255,
+            blue: Double(b) / 255,
+            opacity: Double(a) / 255
+        )
+    }
+}
+
 enum ModuleHubTab: String, CaseIterable, Identifiable {
     case overview = "Overview"
     case entries = "Entries"
@@ -320,6 +344,29 @@ struct ModuleHubScaffold<Content: View>: View {
         }
         .tint(module.theme.primary)
         .background(module.theme.screenGradient)
+    }
+}
+
+struct GarageCustomScaffold<Content: View>: View {
+    let module: AppModule
+    let tabs: [ModuleHubTab]
+    @Binding var selectedTab: ModuleHubTab
+    let content: (CGSize) -> Content
+
+    var body: some View {
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: HubSectionSpacing.outer) {
+                    HubTabPicker(tabs: tabs, selectedTab: $selectedTab, theme: module.theme)
+
+                    content(proxy.size)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+            }
+            .tint(module.theme.primary)
+            .background(module.theme.screenGradient)
+        }
     }
 }
 

@@ -158,6 +158,44 @@ struct GarageAnalysisOutput {
     let analysisResult: AnalysisResult
 }
 
+enum GarageAnalysisProgressStep: Equatable {
+    case loadingVideo
+    case samplingFrames
+    case detectingBody
+    case mappingCheckpoints
+    case savingSwing
+
+    var title: String {
+        switch self {
+        case .loadingVideo:
+            "Loading video"
+        case .samplingFrames:
+            "Sampling frames"
+        case .detectingBody:
+            "Detecting body"
+        case .mappingCheckpoints:
+            "Mapping checkpoints"
+        case .savingSwing:
+            "Saving swing"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .loadingVideo:
+            "Preparing the selected swing for analysis."
+        case .samplingFrames:
+            "Sampling the review frames that will power checkpoint validation."
+        case .detectingBody:
+            "Running pose detection to establish the hand path and body landmarks."
+        case .mappingCheckpoints:
+            "Placing the swing checkpoints and preparing the review surface."
+        case .savingSwing:
+            "Saving the analyzed swing and routing it into review."
+        }
+    }
+}
+
 struct GarageVideoAssetMetadata: Equatable {
     let duration: Double
     let frameRate: Double
@@ -1358,7 +1396,11 @@ enum GarageAnalysisPipeline {
         static let impactWindow = 2
     }
 
-    static func analyzeVideo(at videoURL: URL) async throws -> GarageAnalysisOutput {
+    static func analyzeVideo(
+        at videoURL: URL,
+        progress: (@MainActor @Sendable (GarageAnalysisProgressStep) async -> Void)? = nil
+    ) async throws -> GarageAnalysisOutput {
+        await progress?(.loadingVideo)
         let asset = AVURLAsset(url: videoURL)
         let tracks = try await asset.loadTracks(withMediaType: .video)
         guard let videoTrack = tracks.first else {
@@ -1368,7 +1410,9 @@ enum GarageAnalysisPipeline {
         let duration = try await asset.load(.duration)
         let nominalFrameRate = try await videoTrack.load(.nominalFrameRate)
         let samplingFrameRate = resolvedSamplingFrameRate(from: nominalFrameRate)
+        await progress?(.samplingFrames)
         let timestamps = sampledTimestamps(duration: duration, frameRate: samplingFrameRate)
+        await progress?(.detectingBody)
         let extractedFrames = try await extractPoseFrames(from: asset, timestamps: timestamps)
         let smoothedFrames = smooth(frames: extractedFrames)
 
@@ -1376,6 +1420,7 @@ enum GarageAnalysisPipeline {
             throw GarageAnalysisError.insufficientPoseFrames
         }
 
+        await progress?(.mappingCheckpoints)
         let keyFrames = detectKeyFrames(from: smoothedFrames)
         let handAnchors = deriveHandAnchors(from: smoothedFrames, keyFrames: keyFrames)
         let pathPoints = generatePathPoints(from: smoothedFrames, samplesPerSegment: 8)
@@ -1501,23 +1546,50 @@ enum GarageAnalysisPipeline {
 
     static func detectKeyFrames(from frames: [SwingFrame]) -> [KeyFrame] {
         let addressIndex = addressIndex(in: frames)
-        let topIndex = topOfBackswingIndex(in: frames, fallbackStart: addressIndex + 2)
-        let takeawayIndex = takeawayIndex(in: frames, addressIndex: addressIndex, topIndex: topIndex)
+        let preliminaryImpactIndex = preliminaryImpactIndex(in: frames, addressIndex: addressIndex)
+        let takeawayIndex = takeawayIndex(
+            in: frames,
+            addressIndex: addressIndex,
+            preliminaryImpactIndex: preliminaryImpactIndex
+        )
+        let topIndex = topOfBackswingIndex(
+            in: frames,
+            addressIndex: addressIndex,
+            takeawayIndex: takeawayIndex,
+            preliminaryImpactIndex: preliminaryImpactIndex
+        )
         let shaftParallelIndex = shaftParallelIndex(in: frames, addressIndex: addressIndex, takeawayIndex: takeawayIndex, topIndex: topIndex)
-        let transitionIndex = transitionIndex(in: frames, topIndex: topIndex)
+        let transitionIndex = transitionIndex(
+            in: frames,
+            topIndex: topIndex,
+            latestPossibleIndex: preliminaryImpactIndex
+        )
         let impactIndex = impactIndex(in: frames, addressIndex: addressIndex, transitionIndex: transitionIndex)
         let earlyDownswingIndex = earlyDownswingIndex(in: frames, transitionIndex: transitionIndex, impactIndex: impactIndex)
         let followThroughIndex = followThroughIndex(in: frames, impactIndex: impactIndex)
+        let orderedIndices = strictlyOrderedFrameIndices(
+            [
+                addressIndex,
+                takeawayIndex,
+                shaftParallelIndex,
+                topIndex,
+                transitionIndex,
+                earlyDownswingIndex,
+                impactIndex,
+                followThroughIndex
+            ],
+            frameCount: frames.count
+        )
 
         return [
-            KeyFrame(phase: .address, frameIndex: addressIndex),
-            KeyFrame(phase: .takeaway, frameIndex: takeawayIndex),
-            KeyFrame(phase: .shaftParallel, frameIndex: shaftParallelIndex),
-            KeyFrame(phase: .topOfBackswing, frameIndex: topIndex),
-            KeyFrame(phase: .transition, frameIndex: transitionIndex),
-            KeyFrame(phase: .earlyDownswing, frameIndex: earlyDownswingIndex),
-            KeyFrame(phase: .impact, frameIndex: impactIndex),
-            KeyFrame(phase: .followThrough, frameIndex: followThroughIndex)
+            KeyFrame(phase: .address, frameIndex: orderedIndices[0]),
+            KeyFrame(phase: .takeaway, frameIndex: orderedIndices[1]),
+            KeyFrame(phase: .shaftParallel, frameIndex: orderedIndices[2]),
+            KeyFrame(phase: .topOfBackswing, frameIndex: orderedIndices[3]),
+            KeyFrame(phase: .transition, frameIndex: orderedIndices[4]),
+            KeyFrame(phase: .earlyDownswing, frameIndex: orderedIndices[5]),
+            KeyFrame(phase: .impact, frameIndex: orderedIndices[6]),
+            KeyFrame(phase: .followThrough, frameIndex: orderedIndices[7])
         ]
     }
 
@@ -1602,49 +1674,133 @@ enum GarageAnalysisPipeline {
         return bestIndex
     }
 
-    private static func topOfBackswingIndex(in frames: [SwingFrame], fallbackStart: Int) -> Int {
-        let samples = handKinematics(from: frames)
-        guard samples.count >= 4 else {
-            return min(max(fallbackStart, frames.count / 3), max(frames.count - 3, 0))
-        }
-
-        let searchStart = min(max(fallbackStart, 1), samples.count - 2)
-        let searchEnd = max(searchStart + 1, samples.count - 1)
-        let range = searchStart..<searchEnd
-
-        let candidate = range.first { index in
-            let previous = samples[index - 1].velocity.dx
-            let current = samples[index].velocity.dx
-            let vertical = abs(samples[index].velocity.dy)
-            return previous > KinematicThresholds.reversalVelocityEpsilon
-                && current < -KinematicThresholds.reversalVelocityEpsilon
-                && vertical < KinematicThresholds.reversalVelocityEpsilon * 2
-        }
-
-        if let candidate {
-            return samples[candidate - 1].index
-        }
-
-        let fallback = range.min { lhs, rhs in
-            abs(samples[lhs].velocity.dy) < abs(samples[rhs].velocity.dy)
-        }
-
-        return fallback.map { samples[$0].index } ?? min(max(fallbackStart, frames.count / 3), max(frames.count - 3, 0))
+    private static func preliminaryImpactIndex(in frames: [SwingFrame], addressIndex: Int) -> Int {
+        let motionSpan = max(frames.count - addressIndex - 1, 2)
+        let delayedSearchStart = addressIndex + max(2, Int(Double(motionSpan) * 0.45))
+        return impactIndex(in: frames, searchStart: min(delayedSearchStart, frames.count - 1))
     }
 
-    private static func takeawayIndex(in frames: [SwingFrame], addressIndex: Int, topIndex: Int) -> Int {
+    private static func topOfBackswingIndex(
+        in frames: [SwingFrame],
+        addressIndex: Int,
+        takeawayIndex: Int,
+        preliminaryImpactIndex: Int
+    ) -> Int {
+        let searchStart = min(max(takeawayIndex + 1, addressIndex + 2), max(preliminaryImpactIndex - 1, addressIndex + 2))
+        let tentativeUpperBound = min(preliminaryImpactIndex - 1, frames.count - 2)
+        guard searchStart <= tentativeUpperBound else {
+            return min(max(searchStart, addressIndex + 2), max(frames.count - 3, 0))
+        }
+
+        let limitedUpperBound = min(
+            tentativeUpperBound,
+            addressIndex + max(4, Int(Double(max(preliminaryImpactIndex - addressIndex, 4)) * 0.72))
+        )
+        let searchEnd = max(searchStart, limitedUpperBound)
+        let kinematics = Dictionary(uniqueKeysWithValues: handKinematics(from: frames).map { ($0.index, $0) })
+        let yValues = (searchStart...searchEnd).map { handCenter(in: frames[$0]).y }
+        let minY = yValues.min() ?? handCenter(in: frames[searchStart]).y
+        let maxY = yValues.max() ?? handCenter(in: frames[searchEnd]).y
+        let ySpan = max(maxY - minY, 0.0001)
+        let maxSpeed = max(
+            (searchStart...searchEnd).compactMap { kinematics[$0]?.speed }.max() ?? 0.001,
+            0.001
+        )
+
+        var bestIndex = searchStart
+        var bestScore = -Double.greatestFiniteMagnitude
+
+        for index in searchStart...searchEnd {
+            let point = handCenter(in: frames[index])
+            let previousPoint = handCenter(in: frames[max(index - 1, searchStart)])
+            let nextPoint = handCenter(in: frames[min(index + 1, searchEnd)])
+            let currentSpeed = kinematics[index]?.speed ?? maxSpeed
+            let previousDy = kinematics[index]?.velocity.dy ?? (point.y - previousPoint.y)
+            let nextDy = kinematics[index + 1]?.velocity.dy ?? (nextPoint.y - point.y)
+            let heightScore = (maxY - point.y) / ySpan
+            let speedScore = 1 - min(currentSpeed / maxSpeed, 1)
+            let reversalScore: Double
+            if previousDy < -KinematicThresholds.reversalVelocityEpsilon
+                && nextDy > KinematicThresholds.reversalVelocityEpsilon {
+                reversalScore = 1
+            } else if point.y <= previousPoint.y && point.y <= nextPoint.y {
+                reversalScore = 0.45
+            } else {
+                reversalScore = 0
+            }
+            let progress = Double(index - searchStart) / Double(max(searchEnd - searchStart, 1))
+            let latenessPenalty = progress * 0.35
+            let nearImpactPenalty = index >= preliminaryImpactIndex - 1 ? 0.45 : 0
+            let score = (heightScore * 0.55)
+                + (speedScore * 0.25)
+                + (reversalScore * 0.35)
+                - latenessPenalty
+                - nearImpactPenalty
+
+            if score > bestScore {
+                bestScore = score
+                bestIndex = index
+            }
+        }
+
+        if bestScore < 0.2 {
+            return (searchStart...searchEnd).min { lhs, rhs in
+                let lhsY = handCenter(in: frames[lhs]).y
+                let rhsY = handCenter(in: frames[rhs]).y
+                let lhsPenalty = Double(lhs - searchStart) * 0.0025
+                let rhsPenalty = Double(rhs - searchStart) * 0.0025
+                return (lhsY + lhsPenalty) < (rhsY + rhsPenalty)
+            } ?? bestIndex
+        }
+
+        return bestIndex
+    }
+
+    private static func takeawayIndex(
+        in frames: [SwingFrame],
+        addressIndex: Int,
+        preliminaryImpactIndex: Int
+    ) -> Int {
         let addressHands = handCenter(in: frames[addressIndex])
         let shoulderWidth = bodyScale(in: frames[addressIndex])
-        let horizontalThreshold = max(0.03, shoulderWidth * 0.18)
+        let searchUpperBound = min(max(addressIndex + 2, preliminaryImpactIndex - 1), frames.count - 1)
+        guard addressIndex + 1 <= searchUpperBound else {
+            return min(addressIndex + 1, frames.count - 1)
+        }
 
-        for index in (addressIndex + 1)..<max(topIndex, addressIndex + 2) {
-            let horizontalDisplacement = abs(handCenter(in: frames[index]).x - addressHands.x)
-            if horizontalDisplacement >= horizontalThreshold {
+        let kinematics = Dictionary(uniqueKeysWithValues: handKinematics(from: frames).map { ($0.index, $0) })
+        let maxPreImpactSpeed = max(
+            ((addressIndex + 1)...searchUpperBound).compactMap { kinematics[$0]?.speed }.max() ?? 0.001,
+            0.001
+        )
+        let movementThreshold = max(0.024, shoulderWidth * 0.12)
+        let persistenceThreshold = movementThreshold * 0.88
+        let speedThreshold = max(maxPreImpactSpeed * 0.12, 0.001)
+        let searchLimit = min(
+            searchUpperBound,
+            addressIndex + max(3, Int(Double(max(preliminaryImpactIndex - addressIndex, 3)) * 0.45))
+        )
+
+        for index in (addressIndex + 1)...searchLimit {
+            let windowEnd = min(index + 1, searchUpperBound)
+            let currentDistance = distance(from: addressHands, to: handCenter(in: frames[index]))
+            let windowDistances = (index...windowEnd).map { distance(from: addressHands, to: handCenter(in: frames[$0])) }
+            let windowMaxSpeed = (index...windowEnd).compactMap { kinematics[$0]?.speed }.max() ?? 0
+
+            if currentDistance >= movementThreshold,
+               windowDistances.allSatisfy({ $0 >= persistenceThreshold }),
+               windowMaxSpeed >= speedThreshold {
                 return index
             }
         }
 
-        return min(addressIndex + 1, max(topIndex - 1, addressIndex))
+        return ((addressIndex + 1)...searchUpperBound).min { lhs, rhs in
+            let lhsDistance = distance(from: addressHands, to: handCenter(in: frames[lhs]))
+            let rhsDistance = distance(from: addressHands, to: handCenter(in: frames[rhs]))
+            let lhsScore = abs(lhsDistance - movementThreshold) + (Double(lhs - addressIndex) * 0.002)
+            let rhsScore = abs(rhsDistance - movementThreshold) + (Double(rhs - addressIndex) * 0.002)
+            return lhsScore < rhsScore
+        } ?? min(addressIndex + 1, frames.count - 1)
     }
 
     private static func shaftParallelIndex(in frames: [SwingFrame], addressIndex: Int, takeawayIndex: Int, topIndex: Int) -> Int {
@@ -1664,19 +1820,20 @@ enum GarageAnalysisPipeline {
         } ?? min(takeawayIndex + 1, topIndex)
     }
 
-    private static func transitionIndex(in frames: [SwingFrame], topIndex: Int) -> Int {
+    private static func transitionIndex(in frames: [SwingFrame], topIndex: Int, latestPossibleIndex: Int) -> Int {
         let topHands = handCenter(in: frames[topIndex])
         let torsoHeight = torsoHeight(in: frames[topIndex])
         let downwardThreshold = max(0.015, torsoHeight * 0.06)
+        let searchEnd = min(max(topIndex + 1, latestPossibleIndex), frames.count - 1)
 
-        for index in (topIndex + 1)..<frames.count {
+        for index in (topIndex + 1)...searchEnd {
             let handY = handCenter(in: frames[index]).y
             if handY - topHands.y >= downwardThreshold {
                 return index
             }
         }
 
-        return min(topIndex + 1, frames.count - 1)
+        return min(topIndex + 1, searchEnd)
     }
 
     private static func earlyDownswingIndex(in frames: [SwingFrame], transitionIndex: Int, impactIndex: Int) -> Int {
@@ -1694,10 +1851,10 @@ enum GarageAnalysisPipeline {
         let kinematicByIndex = Dictionary(uniqueKeysWithValues: handKinematics(from: frames).map { ($0.index, $0) })
 
         let candidateRange = (transitionIndex + 1)...latestAllowed
-        let constrainedCandidates = candidateRange.filter { index in
+        if let earliestThresholdCrossing = candidateRange.first(where: { index in
             let point = handCenter(in: frames[index])
             let traveledDistance = distance(from: transitionHands, to: point)
-            guard traveledDistance > 0, traveledDistance <= maxDistanceBeforeImpact else {
+            guard traveledDistance >= targetDistance, traveledDistance <= maxDistanceBeforeImpact else {
                 return false
             }
 
@@ -1707,39 +1864,50 @@ enum GarageAnalysisPipeline {
             }
 
             // Require directional commitment into downswing.
-            if let sample = kinematicByIndex[index], sample.velocity.dy <= 0 {
+            guard let sample = kinematicByIndex[index], sample.velocity.dy > 0 else {
                 return false
             }
 
             return true
-        }
-
-        if let bestCandidate = constrainedCandidates.min(by: { lhs, rhs in
-            let lhsPoint = handCenter(in: frames[lhs])
-            let rhsPoint = handCenter(in: frames[rhs])
-            let lhsDelta = abs(distance(from: transitionHands, to: lhsPoint) - targetDistance)
-            let rhsDelta = abs(distance(from: transitionHands, to: rhsPoint) - targetDistance)
-            return lhsDelta < rhsDelta
         }) {
-            return bestCandidate
+            return earliestThresholdCrossing
         }
 
-        let fallbackRange = (transitionIndex + 1)...latestAllowed
-        return fallbackRange.min { lhs, rhs in
-            let lhsDelta = abs(distance(from: transitionHands, to: handCenter(in: frames[lhs])) - targetDistance)
-            let rhsDelta = abs(distance(from: transitionHands, to: handCenter(in: frames[rhs])) - targetDistance)
-            return lhsDelta < rhsDelta
-        } ?? min(transitionIndex + 1, latestAllowed)
+        if let earliestDownwardCandidate = candidateRange.first(where: { index in
+            let point = handCenter(in: frames[index])
+            let traveledDistance = distance(from: transitionHands, to: point)
+            guard traveledDistance > 0, traveledDistance <= maxDistanceBeforeImpact else {
+                return false
+            }
+
+            if point.y > impactHandY * 0.98 {
+                return false
+            }
+
+            guard let sample = kinematicByIndex[index], sample.velocity.dy > 0 else {
+                return false
+            }
+
+            return true
+        }) {
+            return earliestDownwardCandidate
+        }
+
+        return min(transitionIndex + 1, latestAllowed)
     }
 
-    private static func impactIndex(in frames: [SwingFrame], addressIndex _: Int, transitionIndex: Int) -> Int {
+    private static func impactIndex(in frames: [SwingFrame], addressIndex: Int, transitionIndex: Int) -> Int {
+        impactIndex(in: frames, searchStart: max(transitionIndex + 1, addressIndex + 2))
+    }
+
+    private static func impactIndex(in frames: [SwingFrame], searchStart: Int) -> Int {
         let samples = handKinematics(from: frames)
         guard samples.count >= 4 else { return frames.count - 1 }
 
-        let searchStart = max(transitionIndex + 1, 1)
-        guard searchStart < samples.count else { return frames.count - 1 }
+        let resolvedSearchStart = max(searchStart, 1)
+        guard resolvedSearchStart < samples.count else { return frames.count - 1 }
 
-        let candidateSamples = Array(samples[searchStart..<samples.count])
+        let candidateSamples = Array(samples[resolvedSearchStart..<samples.count])
         let speeds = candidateSamples.map(\.speed).sorted()
         let yValues = candidateSamples.map { Double($0.position.y) }.sorted()
         guard
@@ -1925,6 +2093,23 @@ enum GarageAnalysisPipeline {
         let window = samples[start...end]
         let total = window.reduce(0) { $0 + $1.speed }
         return total / Double(window.count)
+    }
+
+    private static func strictlyOrderedFrameIndices(_ rawIndices: [Int], frameCount: Int) -> [Int] {
+        guard rawIndices.isEmpty == false else { return [] }
+
+        let maxIndex = max(frameCount - 1, 0)
+        let earliestStart = max(maxIndex - (rawIndices.count - 1), 0)
+        var ordered: [Int] = Array(repeating: 0, count: rawIndices.count)
+        ordered[0] = min(max(rawIndices[0], 0), earliestStart)
+
+        for index in 1..<rawIndices.count {
+            let remaining = rawIndices.count - 1 - index
+            let latestAllowed = max(maxIndex - remaining, ordered[index - 1] + 1)
+            ordered[index] = min(max(rawIndices[index], ordered[index - 1] + 1), latestAllowed)
+        }
+
+        return ordered
     }
 }
 
