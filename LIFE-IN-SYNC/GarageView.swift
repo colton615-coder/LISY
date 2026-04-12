@@ -735,7 +735,7 @@ private struct GarageFocusedReviewWorkspace: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ModuleSpacing.medium) {
+        VStack(alignment: .leading, spacing: 10) {
             GarageFocusedReviewFrame(
                 image: reviewImage,
                 isLoadingFrame: isLoadingFrame,
@@ -753,45 +753,44 @@ private struct GarageFocusedReviewWorkspace: View {
             )
             .frame(maxWidth: .infinity)
 
-            GarageReviewControlStrip(
+            GarageReviewScrollableControls(
                 videoURL: reviewVideoURL,
                 frames: filmstripFrames,
                 markers: orderedKeyframes,
                 selectedPhase: selectedPhase,
                 currentFrameIndex: currentFrameIndex,
                 totalFrameCount: record.swingFrames.count,
+                onSelectPhase: selectPhase,
+                onSelectFrame: setCurrentFrameIndex,
+                reviewRecoveryTitle: reviewRecoveryTitle,
+                reviewRecoveryBody: reviewRecoveryBody,
+                reviewFrameSource: reviewFrameSource,
+                showsCompletionPlayback: record.allCheckpointsApproved && reviewVideoURL != nil,
+                onOpenCompletionPlayback: {
+                    isShowingCompletionPlayback = true
+                }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+        .background(garageReviewBackground.ignoresSafeArea())
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            GarageReviewActionDock(
                 canStepBackward: canStepBackward,
                 canStepForward: canStepForward,
                 canConfirm: displayedAnchor != nil && currentFrameIndex != nil,
-                onSelectPhase: selectPhase,
-                onSelectFrame: setCurrentFrameIndex,
                 onStepBackward: { stepFrame(by: -1) },
                 onStepForward: { stepFrame(by: 1) },
                 onConfirm: confirmSelectionAndAdvance
             )
-
-            if reviewFrameSource != .video {
-                GarageReviewRecoveryCallout(
-                    title: reviewRecoveryTitle,
-                    message: reviewRecoveryBody,
-                    state: reviewFrameSource
+        }
+        .sheet(isPresented: $isShowingCompletionPlayback) {
+            if let reviewVideoURL {
+                GarageSlowMotionPlaybackSheet(
+                    videoURL: reviewVideoURL,
+                    pathSamples: fullHandPathSamples
                 )
             }
-
-            if record.allCheckpointsApproved, let reviewVideoURL {
-                GarageCompletionPlaybackCallout {
-                    isShowingCompletionPlayback = true
-                }
-                .sheet(isPresented: $isShowingCompletionPlayback) {
-                    GarageSlowMotionPlaybackSheet(
-                        videoURL: reviewVideoURL,
-                        pathSamples: fullHandPathSamples
-                    )
-                }
-            }
         }
-        .padding(.bottom, ModuleSpacing.medium)
-        .background(garageReviewBackground.ignoresSafeArea())
         .task(id: garageRecordSelectionKey(for: record)) {
             record.hydrateCheckpointStatusesFromAggregateIfNeeded()
             record.refreshKeyframeValidationStatus()
@@ -1025,86 +1024,64 @@ private struct GarageFocusedReviewWorkspace: View {
     }
 }
 
-private struct GarageReviewControlStrip: View {
+private struct GarageReviewScrollableControls: View {
     let videoURL: URL?
     let frames: [GarageFilmstripFrame]
     let markers: [GarageTimelineMarker]
     let selectedPhase: SwingPhase
     let currentFrameIndex: Int?
     let totalFrameCount: Int
-    let canStepBackward: Bool
-    let canStepForward: Bool
-    let canConfirm: Bool
     let onSelectPhase: (SwingPhase) -> Void
     let onSelectFrame: (Int) -> Void
-    let onStepBackward: () -> Void
-    let onStepForward: () -> Void
-    let onConfirm: () -> Void
+    let reviewRecoveryTitle: String
+    let reviewRecoveryBody: String
+    let reviewFrameSource: GarageReviewFrameSourceState
+    let showsCompletionPlayback: Bool
+    let onOpenCompletionPlayback: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            GarageCheckpointProgressStrip(
-                selectedPhase: selectedPhase,
-                markers: markers,
-                onSelect: onSelectPhase
-            )
-
-            HStack {
-                Spacer(minLength: 0)
-                Text(frameCountLabel)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(garageReviewMutedText)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-            }
-
-            GarageReviewFilmstrip(
-                videoURL: videoURL,
-                frames: frames,
-                markers: markers,
-                currentFrameIndex: currentFrameIndex,
-                onSelectFrame: onSelectFrame
-            )
-
-            HStack(spacing: 16) {
-                GarageFrameStepButton(
-                    accessibilityLabel: "Previous frame",
-                    systemImage: "chevron.left",
-                    isEnabled: canStepBackward,
-                    action: onStepBackward
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 8) {
+                GarageCheckpointProgressStrip(
+                    selectedPhase: selectedPhase,
+                    markers: markers,
+                    onSelect: onSelectPhase
                 )
 
-                Spacer(minLength: 0)
-
-                Button(action: onConfirm) {
-                    Label("Confirm Frame + Hand", systemImage: "checkmark")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.white)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
-                        .background(
-                            Capsule()
-                                .fill(AppModule.garage.theme.primary)
-                        )
+                HStack {
+                    Spacer(minLength: 0)
+                    Text(frameCountLabel)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(garageReviewMutedText)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
-                .buttonStyle(.plain)
-                .disabled(canConfirm == false)
-                .opacity(canConfirm ? 1 : 0.45)
-                .shadow(color: AppModule.garage.theme.primary.opacity(0.22), radius: 14, y: 8)
 
-                Spacer(minLength: 0)
-
-                GarageFrameStepButton(
-                    accessibilityLabel: "Next frame",
-                    systemImage: "chevron.right",
-                    isEnabled: canStepForward,
-                    action: onStepForward
+                GarageReviewFilmstrip(
+                    videoURL: videoURL,
+                    frames: frames,
+                    markers: markers,
+                    currentFrameIndex: currentFrameIndex,
+                    onSelectFrame: onSelectFrame
                 )
+
+                if reviewFrameSource != .video {
+                    GarageReviewRecoveryCallout(
+                        title: reviewRecoveryTitle,
+                        message: reviewRecoveryBody,
+                        state: reviewFrameSource
+                    )
+                }
+
+                if showsCompletionPlayback {
+                    GarageCompletionPlaybackCallout(replay: onOpenCompletionPlayback)
+                }
             }
+            .padding(.horizontal, ModuleSpacing.medium)
+            .padding(.top, 2)
+            .padding(.bottom, 8)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, ModuleSpacing.medium)
-        .padding(.vertical, 12)
         .background(
             RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
                 .fill(.ultraThinMaterial)
@@ -1125,6 +1102,62 @@ private struct GarageReviewControlStrip: View {
     }
 }
 
+private struct GarageReviewActionDock: View {
+    let canStepBackward: Bool
+    let canStepForward: Bool
+    let canConfirm: Bool
+    let onStepBackward: () -> Void
+    let onStepForward: () -> Void
+    let onConfirm: () -> Void
+
+    var body: some View {
+        HStack(spacing: 16) {
+            GarageFrameStepButton(
+                accessibilityLabel: "Previous frame",
+                systemImage: "chevron.left",
+                isEnabled: canStepBackward,
+                action: onStepBackward
+            )
+
+            Spacer(minLength: 0)
+
+            Button(action: onConfirm) {
+                Label("Confirm Frame + Hand", systemImage: "checkmark")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 11)
+                    .background(
+                        Capsule()
+                            .fill(AppModule.garage.theme.primary)
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(canConfirm == false)
+            .opacity(canConfirm ? 1 : 0.45)
+            .shadow(color: AppModule.garage.theme.primary.opacity(0.22), radius: 14, y: 8)
+
+            Spacer(minLength: 0)
+
+            GarageFrameStepButton(
+                accessibilityLabel: "Next frame",
+                systemImage: "chevron.right",
+                isEnabled: canStepForward,
+                action: onStepForward
+            )
+        }
+        .padding(.horizontal, ModuleSpacing.medium)
+        .padding(.top, 10)
+        .padding(.bottom, 10)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(garageReviewStroke)
+                .frame(height: 1)
+        }
+    }
+}
+
 private struct GarageReviewFilmstrip: View {
     let videoURL: URL?
     let frames: [GarageFilmstripFrame]
@@ -1132,16 +1165,25 @@ private struct GarageReviewFilmstrip: View {
     let currentFrameIndex: Int?
     let onSelectFrame: (Int) -> Void
 
+    private var priorityIndexes: Set<Int> {
+        let selectedIndex = currentFrameIndex ?? 0
+        let neighborhood = max(0, selectedIndex - 8)...min(frames.count - 1, selectedIndex + 8)
+        var indexes = Set(neighborhood)
+        markers.forEach { indexes.insert($0.keyFrame.frameIndex) }
+        return indexes
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 10) {
+                LazyHStack(spacing: 8) {
                     ForEach(frames) { frame in
                         GarageReviewFilmstripThumbnail(
                             videoURL: videoURL,
                             frame: frame,
                             isSelected: frame.index == currentFrameIndex,
                             isKeyframe: markers.contains(where: { $0.keyFrame.frameIndex == frame.index }),
+                            shouldLoadImmediately: priorityIndexes.contains(frame.index),
                             onSelect: {
                                 onSelectFrame(frame.index)
                             }
@@ -1152,7 +1194,7 @@ private struct GarageReviewFilmstrip: View {
                 .padding(.horizontal, 2)
                 .padding(.vertical, 1)
             }
-            .frame(height: 82)
+            .frame(height: 72)
             .onAppear {
                 guard let currentFrameIndex else { return }
                 proxy.scrollTo(currentFrameIndex, anchor: .center)
@@ -1163,7 +1205,33 @@ private struct GarageReviewFilmstrip: View {
                     proxy.scrollTo(newValue, anchor: .center)
                 }
             }
+            .task(id: prefetchKey) {
+                await prefetchPriorityThumbnails()
+            }
         }
+    }
+
+    private var prefetchKey: String {
+        "\(videoURL?.absoluteString ?? "no-video")::\(currentFrameIndex ?? -1)"
+    }
+
+    private func prefetchPriorityThumbnails() async {
+        guard let videoURL else { return }
+
+        let prioritizedFrames = frames.filter { priorityIndexes.contains($0.index) }
+        guard prioritizedFrames.isEmpty == false else { return }
+
+        let requests = prioritizedFrames.map {
+            GarageThumbnailRequest(
+                timestamp: $0.timestamp,
+                maximumSize: CGSize(width: 132, height: 180)
+            )
+        }
+        await GarageMediaStore.prefetchThumbnails(
+            for: videoURL,
+            requests: requests,
+            priority: .low
+        )
     }
 }
 
@@ -1172,6 +1240,7 @@ private struct GarageReviewFilmstripThumbnail: View {
     let frame: GarageFilmstripFrame
     let isSelected: Bool
     let isKeyframe: Bool
+    let shouldLoadImmediately: Bool
     let onSelect: () -> Void
 
     @State private var image: CGImage?
@@ -1186,7 +1255,7 @@ private struct GarageReviewFilmstripThumbnail: View {
                     Image(decorative: image, scale: 1)
                         .resizable()
                         .scaledToFill()
-                        .frame(width: 54, height: 78)
+                        .frame(width: 48, height: 68)
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 } else {
                     VStack(spacing: 6) {
@@ -1197,7 +1266,7 @@ private struct GarageReviewFilmstripThumbnail: View {
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(garageReviewMutedText)
                     }
-                    .frame(width: 54, height: 78)
+                    .frame(width: 48, height: 68)
                 }
 
                 if isKeyframe {
@@ -1244,10 +1313,15 @@ private struct GarageReviewFilmstripThumbnail: View {
             return
         }
 
+        if shouldLoadImmediately == false {
+            try? await Task.sleep(nanoseconds: 180_000_000)
+        }
+
         let thumbnail = await GarageMediaStore.thumbnail(
             for: videoURL,
             at: frame.timestamp,
-            maximumSize: CGSize(width: 180, height: 180)
+            maximumSize: CGSize(width: 132, height: 180),
+            priority: isSelected ? .high : (shouldLoadImmediately ? .normal : .low)
         )
 
         guard Task.isCancelled == false else { return }

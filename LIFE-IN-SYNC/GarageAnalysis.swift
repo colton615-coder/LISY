@@ -202,6 +202,17 @@ struct GarageVideoAssetMetadata: Equatable {
     let naturalSize: CGSize
 }
 
+struct GarageThumbnailRequest: Hashable {
+    let timestamp: Double
+    let maximumSize: CGSize
+}
+
+enum GarageThumbnailLoadPriority {
+    case high
+    case normal
+    case low
+}
+
 enum GarageReviewFrameSourceState: Equatable {
     case video
     case poseFallback
@@ -1194,7 +1205,12 @@ enum GarageMediaStore {
         return resolvedBookmarkURL(from: record.exportAssetBookmark)
     }
 
-    static func thumbnail(for videoURL: URL, at timestamp: Double, maximumSize: CGSize = CGSize(width: 480, height: 480)) async -> CGImage? {
+    static func thumbnail(
+        for videoURL: URL,
+        at timestamp: Double,
+        maximumSize: CGSize = CGSize(width: 480, height: 480),
+        priority: GarageThumbnailLoadPriority = .normal
+    ) async -> CGImage? {
         let requestKey = garageThumbnailCacheKey(
             videoURL: videoURL,
             timestamp: timestamp,
@@ -1205,6 +1221,7 @@ enum GarageMediaStore {
             return cachedImage
         }
 
+        await GarageMediaStoreCache.shared.acquireThumbnailPermit(priority: priority)
         let image = await withCheckedContinuation { continuation in
             Task {
                 let generator = await GarageMediaStoreCache.shared.imageGenerator(
@@ -1217,9 +1234,28 @@ enum GarageMediaStore {
                 }
             }
         }
+        await GarageMediaStoreCache.shared.releaseThumbnailPermit()
 
         await GarageMediaStoreCache.shared.storeThumbnail(image, for: requestKey)
         return image
+    }
+
+    static func prefetchThumbnails(
+        for videoURL: URL,
+        requests: [GarageThumbnailRequest],
+        priority: GarageThumbnailLoadPriority = .low
+    ) async {
+        var seen = Set<GarageThumbnailRequest>()
+
+        for request in requests where seen.insert(request).inserted {
+            guard Task.isCancelled == false else { return }
+            _ = await thumbnail(
+                for: videoURL,
+                at: request.timestamp,
+                maximumSize: request.maximumSize,
+                priority: priority
+            )
+        }
     }
 
     static func assetMetadata(for videoURL: URL) async -> GarageVideoAssetMetadata? {
@@ -1337,6 +1373,10 @@ private actor GarageMediaStoreCache {
     private var thumbnailCache: [String: CGImage] = [:]
     private var thumbnailCacheOrder: [String] = []
     private var assetMetadataCache: [URL: GarageVideoAssetMetadata] = [:]
+    private var availableThumbnailPermits = 2
+    private var highPriorityThumbnailWaiters: [CheckedContinuation<Void, Never>] = []
+    private var normalPriorityThumbnailWaiters: [CheckedContinuation<Void, Never>] = []
+    private var lowPriorityThumbnailWaiters: [CheckedContinuation<Void, Never>] = []
 
     func cachedThumbnail(for requestKey: String) -> CGImage? {
         thumbnailCache[requestKey]
@@ -1354,6 +1394,46 @@ private actor GarageMediaStoreCache {
             thumbnailCache.removeValue(forKey: oldestKey)
         }
         thumbnailCache[requestKey] = image
+    }
+
+    func acquireThumbnailPermit(priority: GarageThumbnailLoadPriority) async {
+        guard availableThumbnailPermits == 0 else {
+            availableThumbnailPermits -= 1
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            switch priority {
+            case .high:
+                highPriorityThumbnailWaiters.append(continuation)
+            case .normal:
+                normalPriorityThumbnailWaiters.append(continuation)
+            case .low:
+                lowPriorityThumbnailWaiters.append(continuation)
+            }
+        }
+    }
+
+    func releaseThumbnailPermit() {
+        if highPriorityThumbnailWaiters.isEmpty == false {
+            let continuation = highPriorityThumbnailWaiters.removeFirst()
+            continuation.resume()
+            return
+        }
+
+        if normalPriorityThumbnailWaiters.isEmpty == false {
+            let continuation = normalPriorityThumbnailWaiters.removeFirst()
+            continuation.resume()
+            return
+        }
+
+        if lowPriorityThumbnailWaiters.isEmpty == false {
+            let continuation = lowPriorityThumbnailWaiters.removeFirst()
+            continuation.resume()
+            return
+        }
+
+        availableThumbnailPermits += 1
     }
 
     func imageGenerator(for videoURL: URL, maximumSize: CGSize) -> AVAssetImageGenerator {
