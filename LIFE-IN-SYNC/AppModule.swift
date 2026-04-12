@@ -119,11 +119,19 @@ enum AppModule: String, CaseIterable, Identifiable {
             )
         case .garage:
             ModuleTheme(
-                primary: .mint,
-                secondary: .teal,
-                backgroundTop: .mint.opacity(0.18),
-                backgroundBottom: .clear,
-                accentText: .mint
+                primary: ModuleTheme.electricCyan,
+                secondary: Color(hex: "#36D7FF"),
+                backgroundTop: ModuleTheme.garageBackgroundLift,
+                backgroundBottom: ModuleTheme.garageBackground,
+                accentText: ModuleTheme.electricCyan,
+                textPrimary: ModuleTheme.garageTextPrimary,
+                textSecondary: ModuleTheme.garageTextSecondary,
+                textMuted: ModuleTheme.garageTextMuted,
+                surfaceBase: ModuleTheme.garageSurface,
+                surfaceElevated: ModuleTheme.garageSurfaceRaised,
+                glow: ModuleTheme.electricCyan,
+                shadowLight: ModuleTheme.garageShadowLight,
+                shadowDark: ModuleTheme.garageShadowDark
             )
         case .habitStack:
             ModuleTheme(

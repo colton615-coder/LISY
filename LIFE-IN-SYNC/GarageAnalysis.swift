@@ -599,6 +599,103 @@ enum GarageInsights {
     }
 }
 
+enum GarageStability {
+    static func score(for record: SwingRecord) -> Int? {
+        guard let scoringWindow = scoringWindow(in: record) else {
+            return nil
+        }
+
+        let frames = Array(record.swingFrames[scoringWindow])
+        guard
+            let addressFrame = frames.first,
+            let addressHead = addressFrame.point(named: .nose, minimumConfidence: 0.5),
+            let addressPelvis = pelvisCenter(in: addressFrame, minimumConfidence: 0.5)
+        else {
+            return nil
+        }
+
+        let shoulderWidth = GarageAnalysisPipeline.bodyScale(in: addressFrame)
+        guard shoulderWidth > 0 else {
+            return nil
+        }
+
+        var unreliableFrameCount = 0
+        var maxHeadHorizontalDrift = 0.0
+        var maxHeadVerticalDrift = 0.0
+        var maxPelvisHorizontalDrift = 0.0
+        var maxPelvisVerticalDrift = 0.0
+
+        for frame in frames {
+            guard
+                let head = frame.point(named: .nose, minimumConfidence: 0.5),
+                let pelvis = pelvisCenter(in: frame, minimumConfidence: 0.5)
+            else {
+                unreliableFrameCount += 1
+                continue
+            }
+
+            maxHeadHorizontalDrift = max(maxHeadHorizontalDrift, abs(head.x - addressHead.x))
+            maxHeadVerticalDrift = max(maxHeadVerticalDrift, abs(head.y - addressHead.y))
+            maxPelvisHorizontalDrift = max(maxPelvisHorizontalDrift, abs(pelvis.x - addressPelvis.x))
+            maxPelvisVerticalDrift = max(maxPelvisVerticalDrift, abs(pelvis.y - addressPelvis.y))
+        }
+
+        let unreliableRatio = Double(unreliableFrameCount) / Double(frames.count)
+        guard unreliableRatio <= 0.3 else {
+            return nil
+        }
+
+        let headHorizontalRatio = min(maxHeadHorizontalDrift / shoulderWidth, 1)
+        let headVerticalRatio = min(maxHeadVerticalDrift / shoulderWidth, 1)
+        let pelvisHorizontalRatio = min(maxPelvisHorizontalDrift / shoulderWidth, 1)
+        let pelvisVerticalRatio = min(maxPelvisVerticalDrift / shoulderWidth, 1)
+
+        let totalPenalty = min(
+            100,
+            (headHorizontalRatio * 90) +
+                (headVerticalRatio * 72) +
+                (pelvisHorizontalRatio * 80) +
+                (pelvisVerticalRatio * 56)
+        )
+
+        return Int((100 - totalPenalty).rounded())
+    }
+
+    private static func scoringWindow(in record: SwingRecord) -> ClosedRange<Int>? {
+        guard
+            let addressIndex = keyFrameIndex(for: .address, in: record),
+            let impactIndex = keyFrameIndex(for: .impact, in: record),
+            addressIndex <= impactIndex
+        else {
+            return nil
+        }
+
+        return addressIndex...impactIndex
+    }
+
+    private static func keyFrameIndex(for phase: SwingPhase, in record: SwingRecord) -> Int? {
+        guard
+            let keyFrame = record.keyFrames.first(where: { $0.phase == phase }),
+            record.swingFrames.indices.contains(keyFrame.frameIndex)
+        else {
+            return nil
+        }
+
+        return keyFrame.frameIndex
+    }
+
+    private static func pelvisCenter(in frame: SwingFrame, minimumConfidence: Double) -> CGPoint? {
+        guard
+            let leftHip = frame.point(named: .leftHip, minimumConfidence: minimumConfidence),
+            let rightHip = frame.point(named: .rightHip, minimumConfidence: minimumConfidence)
+        else {
+            return nil
+        }
+
+        return CGPoint(x: (leftHip.x + rightHip.x) / 2, y: (leftHip.y + rightHip.y) / 2)
+    }
+}
+
 enum GarageReliability {
     static func report(for record: SwingRecord) -> GarageReliabilityReport {
         let reviewSource = GarageMediaStore.reviewFrameSource(for: record)
@@ -2227,10 +2324,22 @@ private extension SwingJointName {
 }
 
 extension SwingFrame {
-    func point(named name: SwingJointName) -> CGPoint {
-        guard let joint = joints.first(where: { $0.name == name }) else {
-            return .zero
+    func joint(named name: SwingJointName) -> SwingJoint? {
+        joints.first(where: { $0.name == name })
+    }
+
+    func point(named name: SwingJointName, minimumConfidence: Double) -> CGPoint? {
+        guard
+            let joint = joint(named: name),
+            joint.confidence >= minimumConfidence
+        else {
+            return nil
         }
+
         return CGPoint(x: joint.x, y: joint.y)
+    }
+
+    func point(named name: SwingJointName) -> CGPoint {
+        point(named: name, minimumConfidence: 0) ?? .zero
     }
 }

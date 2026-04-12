@@ -151,6 +151,83 @@ final class GarageDerivedReportsXCTests: XCTestCase {
         XCTAssertGreaterThan(earlyDownswing, transition)
         XCTAssertLessThan(earlyDownswing, impact)
     }
+
+    func testGarageStabilityScoreStaysHighForStableCoreAnchors() {
+        let frames = makeStabilityFrames(
+            headOffsets: [
+                CGPoint(x: 0.000, y: 0.000),
+                CGPoint(x: 0.004, y: 0.003),
+                CGPoint(x: 0.006, y: 0.004),
+                CGPoint(x: 0.005, y: 0.003),
+                CGPoint(x: 0.003, y: 0.002),
+                CGPoint(x: 0.002, y: 0.002)
+            ],
+            pelvisOffsets: [
+                CGPoint(x: 0.000, y: 0.000),
+                CGPoint(x: 0.003, y: 0.002),
+                CGPoint(x: 0.004, y: 0.003),
+                CGPoint(x: 0.004, y: 0.002),
+                CGPoint(x: 0.002, y: 0.001),
+                CGPoint(x: 0.001, y: 0.001)
+            ]
+        )
+
+        let score = GarageStability.score(for: makeStabilityRecord(frames: frames))
+
+        XCTAssertNotNil(score)
+        XCTAssertGreaterThanOrEqual(score ?? 0, 85)
+    }
+
+    func testGarageStabilityScoreDropsWhenHeadAndPelvisDriftWidely() {
+        let frames = makeStabilityFrames(
+            headOffsets: [
+                CGPoint(x: 0.000, y: 0.000),
+                CGPoint(x: 0.035, y: 0.020),
+                CGPoint(x: 0.060, y: 0.040),
+                CGPoint(x: 0.090, y: 0.065),
+                CGPoint(x: 0.110, y: 0.080),
+                CGPoint(x: 0.125, y: 0.095)
+            ],
+            pelvisOffsets: [
+                CGPoint(x: 0.000, y: 0.000),
+                CGPoint(x: 0.025, y: 0.015),
+                CGPoint(x: 0.045, y: 0.025),
+                CGPoint(x: 0.065, y: 0.040),
+                CGPoint(x: 0.085, y: 0.050),
+                CGPoint(x: 0.100, y: 0.060)
+            ]
+        )
+
+        let score = GarageStability.score(for: makeStabilityRecord(frames: frames))
+
+        XCTAssertNotNil(score)
+        XCTAssertLessThanOrEqual(score ?? 100, 50)
+    }
+
+    func testGarageStabilityScoreReturnsNilWhenCoreJointsLoseConfidence() {
+        let frames = makeStabilityFrames(
+            headOffsets: Array(repeating: CGPoint.zero, count: 10),
+            pelvisOffsets: Array(repeating: CGPoint.zero, count: 10),
+            lowConfidenceIndices: [1, 3, 5, 7]
+        )
+
+        let score = GarageStability.score(for: makeStabilityRecord(frames: frames))
+
+        XCTAssertNil(score)
+    }
+
+    func testGarageStabilityScoreReturnsNilWithoutImpactCheckpoint() {
+        let frames = makeStabilityFrames(
+            headOffsets: Array(repeating: CGPoint.zero, count: 6),
+            pelvisOffsets: Array(repeating: CGPoint.zero, count: 6)
+        )
+
+        let score = GarageStability.score(
+            for: makeStabilityRecord(frames: frames, includeImpact: false)
+        )
+
+        XCTAssertNil(score)
+    }
 }
 
 @MainActor
@@ -260,6 +337,64 @@ private func makeWorkflowRecord(
             issues: [],
             highlights: ["Workflow baseline"],
             summary: "Processed synthetic swing frames."
+        )
+    )
+}
+
+@MainActor
+private func makeStabilityFrames(
+    headOffsets: [CGPoint],
+    pelvisOffsets: [CGPoint],
+    lowConfidenceIndices: Set<Int> = []
+) -> [SwingFrame] {
+    precondition(headOffsets.count == pelvisOffsets.count)
+
+    let baseNose = CGPoint(x: 0.50, y: 0.20)
+    let baseLeftShoulder = CGPoint(x: 0.42, y: 0.34)
+    let baseRightShoulder = CGPoint(x: 0.58, y: 0.34)
+    let baseLeftHip = CGPoint(x: 0.45, y: 0.60)
+    let baseRightHip = CGPoint(x: 0.55, y: 0.60)
+
+    return headOffsets.enumerated().map { index, headOffset in
+        let pelvisOffset = pelvisOffsets[index]
+        let coreConfidence = lowConfidenceIndices.contains(index) ? 0.3 : 0.95
+
+        return SwingFrame(
+            timestamp: Double(index) * 0.1,
+            joints: [
+                joint(.nose, x: baseNose.x + headOffset.x, y: baseNose.y + headOffset.y, confidence: coreConfidence),
+                joint(.leftShoulder, x: baseLeftShoulder.x, y: baseLeftShoulder.y),
+                joint(.rightShoulder, x: baseRightShoulder.x, y: baseRightShoulder.y),
+                joint(.leftHip, x: baseLeftHip.x + pelvisOffset.x, y: baseLeftHip.y + pelvisOffset.y, confidence: coreConfidence),
+                joint(.rightHip, x: baseRightHip.x + pelvisOffset.x, y: baseRightHip.y + pelvisOffset.y, confidence: coreConfidence),
+                joint(.leftWrist, x: 0.36 + pelvisOffset.x, y: 0.72),
+                joint(.rightWrist, x: 0.40 + pelvisOffset.x, y: 0.72)
+            ],
+            confidence: lowConfidenceIndices.contains(index) ? 0.55 : 0.95
+        )
+    }
+}
+
+@MainActor
+private func makeStabilityRecord(frames: [SwingFrame], includeImpact: Bool = true) -> SwingRecord {
+    let lastIndex = max(frames.count - 1, 0)
+    var keyFrames = [
+        KeyFrame(phase: .address, frameIndex: 0)
+    ]
+
+    if includeImpact {
+        keyFrames.append(KeyFrame(phase: .impact, frameIndex: lastIndex))
+    }
+
+    return SwingRecord(
+        title: "Stability Record",
+        frameRate: 60,
+        swingFrames: frames,
+        keyFrames: keyFrames,
+        analysisResult: AnalysisResult(
+            issues: [],
+            highlights: [],
+            summary: "Synthetic stability case."
         )
     )
 }

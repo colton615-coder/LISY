@@ -11,29 +11,33 @@ struct AppShellView: View {
 
     var body: some View {
         NavigationStack {
-            currentModuleView
-                .navigationTitle(selectedModule.navigationTitle)
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button {
-                            isShowingModuleMenu = true
-                        } label: {
-                            Label("Modules", systemImage: "square.grid.2x2")
-                        }
-                        .accessibilityIdentifier("open-module-menu")
-                    }
+            ZStack {
+                selectedModule.theme.screenGradient
+                    .ignoresSafeArea()
 
-                    ToolbarItem(placement: .automatic) {
-                        if selectedModule != .dashboard {
-                            Button("Dashboard") {
-                                selectedModule = .dashboard
+                currentModuleView
+                    .navigationTitle(selectedModule.navigationTitle)
+                    .toolbar {
+                        ToolbarItem(placement: .primaryAction) {
+                            Button {
+                                isShowingModuleMenu = true
+                            } label: {
+                                Label("Modules", systemImage: "square.grid.2x2")
                             }
-                            .accessibilityIdentifier("return-to-dashboard")
+                            .accessibilityIdentifier("open-module-menu")
+                        }
+
+                        ToolbarItem(placement: .automatic) {
+                            if selectedModule != .dashboard {
+                                Button("Dashboard") {
+                                    selectedModule = .dashboard
+                                }
+                                .accessibilityIdentifier("return-to-dashboard")
+                            }
                         }
                     }
-                }
-                .tint(selectedModule.tintColor)
-                .background(selectedModule.theme.screenGradient)
+                    .tint(selectedModule.tintColor)
+            }
         }
         .sheet(isPresented: $isShowingModuleMenu) {
             NavigationStack {

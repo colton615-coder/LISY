@@ -399,9 +399,22 @@ private struct GarageRecordsTab: View {
                         .foregroundStyle(AppModule.garage.theme.textPrimary)
                     Text("Import another swing video whenever you want to start a new review pass.")
                         .foregroundStyle(AppModule.garage.theme.textSecondary)
-                    Button("Import Swing Video", action: importVideo)
-                        .buttonStyle(.borderedProminent)
-                        .tint(AppModule.garage.theme.primary)
+                    Button(action: importVideo) {
+                        Label("Import Swing Video", systemImage: "plus.circle.fill")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(garageReviewCanvasFill)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 12)
+                            .background(
+                                GarageRaisedPanelBackground(
+                                    shape: Capsule(),
+                                    fill: garageReviewAccent,
+                                    stroke: garageReviewAccent.opacity(0.35),
+                                    glow: garageReviewAccent
+                                )
+                            )
+                    }
+                    .buttonStyle(.plain)
                 }
 
                 ForEach(records.prefix(8)) { record in
@@ -506,9 +519,20 @@ private struct GarageReviewTab: View {
     }
 }
 
-private enum GarageOverlayPresentationMode {
-    case anchorOnly
-    case diagnosticPose
+private enum GarageReviewMode: String, CaseIterable, Identifiable {
+    case handPath
+    case skeleton
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .handPath:
+            "Hand Path"
+        case .skeleton:
+            "Skeleton"
+        }
+    }
 }
 
 private func garageAspectFitRect(contentSize: CGSize, in container: CGRect) -> CGRect {
@@ -566,8 +590,7 @@ private struct GarageFocusedReviewWorkspace: View {
     @State private var selectedPhase: SwingPhase = .address
     @State private var isShowingCompletionPlayback = false
     @State private var didAutoPresentCompletionPlayback = false
-    @State private var overlayPresentationMode: GarageOverlayPresentationMode = .anchorOnly
-    @State private var isShowingAnalysisOverlay = false
+    @State private var reviewMode: GarageReviewMode = .handPath
     @State private var dragAnchorPoint: CGPoint?
     @State private var isDraggingAnchor = false
 
@@ -687,6 +710,10 @@ private struct GarageFocusedReviewWorkspace: View {
         currentFrame?.timestamp
     }
 
+    private var stabilityScore: Int? {
+        GarageStability.score(for: record)
+    }
+
     private var frameRequestID: String {
         [
             garageRecordSelectionKey(for: record),
@@ -743,11 +770,11 @@ private struct GarageFocusedReviewWorkspace: View {
                 selectedAnchor: displayedAnchor,
                 highlightTint: selectedAnchorTint,
                 showsAnchorGuides: isDraggingAnchor,
-                overlayMode: overlayPresentationMode,
-                isShowingAnalysisOverlay: isShowingAnalysisOverlay,
+                reviewMode: reviewMode,
+                stabilityScore: stabilityScore,
                 preferredHeight: videoStageHeight,
                 onExitReview: onExitReview,
-                onToggleAnalysis: toggleAnalysisOverlay,
+                onSelectReviewMode: selectReviewMode,
                 onAnchorDragChanged: handleAnchorDragChanged,
                 onAnchorDragEnded: handleAnchorDragEnded
             )
@@ -795,15 +822,13 @@ private struct GarageFocusedReviewWorkspace: View {
             record.hydrateCheckpointStatusesFromAggregateIfNeeded()
             record.refreshKeyframeValidationStatus()
             try? modelContext.save()
+            reviewMode = .handPath
             syncSelectedPhase()
             seekToSelectedCheckpoint()
             autoPresentCompletionPlaybackIfNeeded()
         }
         .task(id: frameRequestID) {
             await loadFrameImage()
-        }
-        .onChange(of: isShowingAnalysisOverlay) { _, isShowing in
-            overlayPresentationMode = isShowing ? .diagnosticPose : .anchorOnly
         }
         .onChange(of: selectedPhase) { _, _ in
             dragAnchorPoint = nil
@@ -883,8 +908,8 @@ private struct GarageFocusedReviewWorkspace: View {
         currentTime = record.swingFrames[clampedIndex].timestamp
     }
 
-    private func toggleAnalysisOverlay() {
-        isShowingAnalysisOverlay.toggle()
+    private func selectReviewMode(_ mode: GarageReviewMode) {
+        reviewMode = mode
     }
 
     private func selectPhase(_ phase: SwingPhase) {
@@ -1083,13 +1108,10 @@ private struct GarageReviewScrollableControls: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
-                        .stroke(garageReviewStroke, lineWidth: 1)
-                )
-                .shadow(color: garageReviewShadow, radius: 12, y: 6)
+            GarageRaisedPanelBackground(
+                shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous),
+                fill: garageReviewSurface
+            )
         )
     }
 
@@ -1124,18 +1146,21 @@ private struct GarageReviewActionDock: View {
             Button(action: onConfirm) {
                 Label("Confirm Frame + Hand", systemImage: "checkmark")
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(garageReviewCanvasFill)
                     .padding(.horizontal, 18)
                     .padding(.vertical, 11)
                     .background(
-                        Capsule()
-                            .fill(AppModule.garage.theme.primary)
+                        GarageRaisedPanelBackground(
+                            shape: Capsule(),
+                            fill: garageReviewAccent,
+                            stroke: garageReviewAccent.opacity(0.38),
+                            glow: garageReviewAccent
+                        )
                     )
             }
             .buttonStyle(.plain)
             .disabled(canConfirm == false)
             .opacity(canConfirm ? 1 : 0.45)
-            .shadow(color: AppModule.garage.theme.primary.opacity(0.22), radius: 14, y: 8)
 
             Spacer(minLength: 0)
 
@@ -1149,10 +1174,16 @@ private struct GarageReviewActionDock: View {
         .padding(.horizontal, ModuleSpacing.medium)
         .padding(.top, 10)
         .padding(.bottom, 10)
-        .background(.ultraThinMaterial)
+        .background(
+            GarageRaisedPanelBackground(
+                shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous),
+                fill: garageReviewSurface
+            )
+            .ignoresSafeArea(edges: .bottom)
+        )
         .overlay(alignment: .top) {
             Rectangle()
-                .fill(garageReviewStroke)
+                .fill(garageReviewStroke.opacity(0.9))
                 .frame(height: 1)
         }
     }
@@ -1339,11 +1370,11 @@ private struct GarageFocusedReviewFrame: View {
     let selectedAnchor: HandAnchor?
     let highlightTint: Color
     let showsAnchorGuides: Bool
-    let overlayMode: GarageOverlayPresentationMode
-    let isShowingAnalysisOverlay: Bool
+    let reviewMode: GarageReviewMode
+    let stabilityScore: Int?
     let preferredHeight: CGFloat
     let onExitReview: () -> Void
-    let onToggleAnalysis: () -> Void
+    let onSelectReviewMode: (GarageReviewMode) -> Void
     let onAnchorDragChanged: (CGPoint) -> Void
     let onAnchorDragEnded: (CGPoint) -> Void
 
@@ -1354,11 +1385,11 @@ private struct GarageFocusedReviewFrame: View {
         selectedAnchor: HandAnchor?,
         highlightTint: Color,
         showsAnchorGuides: Bool,
-        overlayMode: GarageOverlayPresentationMode,
-        isShowingAnalysisOverlay: Bool,
+        reviewMode: GarageReviewMode,
+        stabilityScore: Int?,
         preferredHeight: CGFloat,
         onExitReview: @escaping () -> Void,
-        onToggleAnalysis: @escaping () -> Void,
+        onSelectReviewMode: @escaping (GarageReviewMode) -> Void,
         onAnchorDragChanged: @escaping (CGPoint) -> Void,
         onAnchorDragEnded: @escaping (CGPoint) -> Void
     ) {
@@ -1368,11 +1399,11 @@ private struct GarageFocusedReviewFrame: View {
         self.selectedAnchor = selectedAnchor
         self.highlightTint = highlightTint
         self.showsAnchorGuides = showsAnchorGuides
-        self.overlayMode = overlayMode
-        self.isShowingAnalysisOverlay = isShowingAnalysisOverlay
+        self.reviewMode = reviewMode
+        self.stabilityScore = stabilityScore
         self.preferredHeight = preferredHeight
         self.onExitReview = onExitReview
-        self.onToggleAnalysis = onToggleAnalysis
+        self.onSelectReviewMode = onSelectReviewMode
         self.onAnchorDragChanged = onAnchorDragChanged
         self.onAnchorDragEnded = onAnchorDragEnded
     }
@@ -1389,7 +1420,7 @@ private struct GarageFocusedReviewFrame: View {
                     selectedAnchor: selectedAnchor,
                     highlightTint: highlightTint,
                     showsAnchorGuides: showsAnchorGuides,
-                    overlayMode: overlayMode,
+                    reviewMode: reviewMode,
                     onAnchorDragChanged: onAnchorDragChanged,
                     onAnchorDragEnded: onAnchorDragEnded
                 )
@@ -1399,7 +1430,7 @@ private struct GarageFocusedReviewFrame: View {
                     selectedAnchor: selectedAnchor,
                     highlightTint: highlightTint,
                     showsAnchorGuides: showsAnchorGuides,
-                    overlayMode: overlayMode,
+                    reviewMode: reviewMode,
                     onAnchorDragChanged: onAnchorDragChanged,
                     onAnchorDragEnded: onAnchorDragEnded
                 )
@@ -1424,7 +1455,13 @@ private struct GarageFocusedReviewFrame: View {
                     .controlSize(.large)
                     .tint(AppModule.garage.theme.primary)
                     .padding()
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
+                    .background(
+                        GarageRaisedPanelBackground(
+                            shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous),
+                            fill: garageReviewSurfaceRaised,
+                            glow: garageReviewAccent.opacity(0.5)
+                        )
+                    )
             }
         }
         .overlay(alignment: .topLeading) {
@@ -1434,36 +1471,96 @@ private struct GarageFocusedReviewFrame: View {
                     .foregroundStyle(garageReviewReadableText)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .overlay(
-                        Capsule()
-                            .stroke(garageReviewStroke, lineWidth: 1)
+                    .background(
+                        GarageRaisedPanelBackground(
+                            shape: Capsule(),
+                            fill: garageReviewSurfaceRaised
+                        )
                     )
             }
             .buttonStyle(.plain)
             .padding(14)
         }
         .overlay(alignment: .topTrailing) {
-            Button(action: onToggleAnalysis) {
-                Label(
-                    isShowingAnalysisOverlay ? "Hide Analysis" : "Show Analysis",
-                    systemImage: isShowingAnalysisOverlay ? "eye.slash" : "eye"
+            VStack(alignment: .trailing, spacing: 10) {
+                GarageReviewModeSwitcher(
+                    selectedMode: reviewMode,
+                    onSelect: onSelectReviewMode
                 )
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(garageReviewReadableText)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(.ultraThinMaterial, in: Capsule())
-                .overlay(
-                    Capsule()
-                        .stroke(garageReviewStroke, lineWidth: 1)
-                )
+
+                if reviewMode == .skeleton {
+                    GarageStabilityScoreChip(score: stabilityScore)
+                }
             }
-            .buttonStyle(.plain)
             .padding(14)
         }
         .frame(height: preferredHeight)
         .frame(maxWidth: .infinity)
+    }
+}
+
+private struct GarageReviewModeSwitcher: View {
+    let selectedMode: GarageReviewMode
+    let onSelect: (GarageReviewMode) -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(GarageReviewMode.allCases) { mode in
+                Button {
+                    onSelect(mode)
+                } label: {
+                    Text(mode.title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(mode == selectedMode ? garageReviewCanvasFill : garageReviewReadableText)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule()
+                                .fill(mode == selectedMode ? garageReviewAccent : Color.clear)
+                                .shadow(
+                                    color: mode == selectedMode ? garageReviewAccent.opacity(0.45) : .clear,
+                                    radius: mode == selectedMode ? 10 : 0,
+                                    x: 0,
+                                    y: 0
+                                )
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(6)
+        .background(
+            GarageRaisedPanelBackground(
+                shape: Capsule(),
+                fill: garageReviewSurface,
+                stroke: garageReviewStroke
+            )
+        )
+    }
+}
+
+private struct GarageStabilityScoreChip: View {
+    let score: Int?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Postural Stability")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(garageReviewMutedText)
+
+            Text(score.map { "Stability \($0)" } ?? "Stability N/A")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(garageReviewAccent)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            GarageInsetPanelBackground(
+                shape: RoundedRectangle(cornerRadius: 16, style: .continuous),
+                fill: garageReviewInsetSurface,
+                stroke: garageReviewStroke.opacity(0.9)
+            )
+        )
     }
 }
 
@@ -1473,7 +1570,7 @@ private struct GarageReviewImageOverlay: View {
     let selectedAnchor: HandAnchor?
     let highlightTint: Color
     let showsAnchorGuides: Bool
-    let overlayMode: GarageOverlayPresentationMode
+    let reviewMode: GarageReviewMode
     let onAnchorDragChanged: (CGPoint) -> Void
     let onAnchorDragEnded: (CGPoint) -> Void
 
@@ -1491,13 +1588,19 @@ private struct GarageReviewImageOverlay: View {
                     .scaledToFit()
                     .frame(width: proxy.size.width, height: proxy.size.height)
 
+                if reviewMode == .skeleton {
+                    GarageSkeletonOverlay(
+                        drawRect: imageRect,
+                        currentFrame: currentFrame
+                    )
+                    .allowsHitTesting(false)
+                }
+
                 GarageReviewFrameOverlayCanvas(
                     drawRect: imageRect,
-                    currentFrame: currentFrame,
                     selectedAnchor: selectedAnchor,
                     highlightTint: highlightTint,
-                    showsAnchorGuides: showsAnchorGuides,
-                    overlayMode: overlayMode
+                    showsAnchorGuides: showsAnchorGuides
                 )
 
                 if let selectedAnchor {
@@ -1520,7 +1623,7 @@ private struct GaragePoseFallbackOverlay: View {
     let selectedAnchor: HandAnchor?
     let highlightTint: Color
     let showsAnchorGuides: Bool
-    let overlayMode: GarageOverlayPresentationMode
+    let reviewMode: GarageReviewMode
     let onAnchorDragChanged: (CGPoint) -> Void
     let onAnchorDragEnded: (CGPoint) -> Void
 
@@ -1533,13 +1636,19 @@ private struct GaragePoseFallbackOverlay: View {
                 Rectangle()
                     .fill(garageReviewCanvasFill)
 
+                if reviewMode == .skeleton {
+                    GarageSkeletonOverlay(
+                        drawRect: drawRect,
+                        currentFrame: currentFrame
+                    )
+                    .allowsHitTesting(false)
+                }
+
                 GarageReviewFrameOverlayCanvas(
                     drawRect: drawRect,
-                    currentFrame: currentFrame,
                     selectedAnchor: selectedAnchor,
                     highlightTint: highlightTint,
-                    showsAnchorGuides: showsAnchorGuides,
-                    overlayMode: overlayMode
+                    showsAnchorGuides: showsAnchorGuides
                 )
 
                 if let selectedAnchor {
@@ -1570,68 +1679,14 @@ private struct GaragePoseFallbackOverlay: View {
 
 private struct GarageReviewFrameOverlayCanvas: View {
     let drawRect: CGRect
-    let currentFrame: SwingFrame?
     let selectedAnchor: HandAnchor?
     let highlightTint: Color
     let showsAnchorGuides: Bool
-    let overlayMode: GarageOverlayPresentationMode
 
     var body: some View {
         Canvas { context, _ in
             guard drawRect.isEmpty == false else {
                 return
-            }
-
-            if let currentFrame, overlayMode == .diagnosticPose {
-                let skeletonSegments: [(SwingJointName, SwingJointName)] = [
-                    (.leftShoulder, .rightShoulder),
-                    (.leftShoulder, .leftElbow),
-                    (.leftElbow, .leftWrist),
-                    (.rightShoulder, .rightElbow),
-                    (.rightElbow, .rightWrist),
-                    (.leftShoulder, .leftHip),
-                    (.rightShoulder, .rightHip),
-                    (.leftHip, .rightHip)
-                ]
-
-                for segment in skeletonSegments {
-                    guard
-                        let start = currentFrame.availablePoint(named: segment.0),
-                        let end = currentFrame.availablePoint(named: segment.1)
-                    else {
-                        continue
-                    }
-
-                    var path = Path()
-                    path.move(to: garageMappedPoint(start, in: drawRect))
-                    path.addLine(to: garageMappedPoint(end, in: drawRect))
-                    context.stroke(
-                        path,
-                        with: .color(garageReviewReadableText.opacity(0.22)),
-                        style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round)
-                    )
-                }
-
-                let leftWrist = garageMappedPoint(currentFrame.point(named: .leftWrist), in: drawRect)
-                let rightWrist = garageMappedPoint(currentFrame.point(named: .rightWrist), in: drawRect)
-                let handCenter = CGPoint(x: (leftWrist.x + rightWrist.x) / 2, y: (leftWrist.y + rightWrist.y) / 2)
-
-                var wristLine = Path()
-                wristLine.move(to: leftWrist)
-                wristLine.addLine(to: rightWrist)
-                context.stroke(
-                    wristLine,
-                    with: .color(garageReviewReadableText.opacity(0.72)),
-                    style: StrokeStyle(lineWidth: 3, lineCap: .round)
-                )
-
-                for point in [leftWrist, rightWrist] {
-                    let rect = CGRect(x: point.x - 4.5, y: point.y - 4.5, width: 9, height: 9)
-                    context.fill(Ellipse().path(in: rect), with: .color(garageReviewReadableText.opacity(0.86)))
-                }
-
-                let autoCenterRect = CGRect(x: handCenter.x - 6, y: handCenter.y - 6, width: 12, height: 12)
-                context.fill(Ellipse().path(in: autoCenterRect), with: .color(garageReviewReadableText.opacity(0.7)))
             }
 
             if let selectedAnchor {
@@ -1678,16 +1733,19 @@ private struct GarageInteractiveAnchorHandle: View {
 
         ZStack {
             Circle()
-                .fill(.ultraThinMaterial)
+                .fill(garageReviewSurfaceRaised)
                 .frame(width: 28, height: 28)
                 .overlay(
                     Circle()
                         .stroke(tint, lineWidth: 1.5)
                 )
+                .shadow(color: garageReviewShadowDark.opacity(0.7), radius: 10, x: 6, y: 6)
+                .shadow(color: garageReviewShadowLight.opacity(0.7), radius: 8, x: -4, y: -4)
 
             Circle()
                 .fill(tint)
                 .frame(width: 10, height: 10)
+                .shadow(color: tint.opacity(0.6), radius: 4, x: 0, y: 0)
         }
         .frame(width: 44, height: 44)
         .contentShape(Circle())
@@ -1720,16 +1778,6 @@ private struct GarageInteractiveAnchorHandle: View {
     }
 }
 
-private extension SwingFrame {
-    func availablePoint(named name: SwingJointName) -> CGPoint? {
-        guard let joint = joints.first(where: { $0.name == name }) else {
-            return nil
-        }
-
-        return CGPoint(x: joint.x, y: joint.y)
-    }
-}
-
 private struct GarageCheckpointProgressStrip: View {
     let selectedPhase: SwingPhase
     let markers: [GarageTimelineMarker]
@@ -1749,6 +1797,12 @@ private struct GarageCheckpointProgressStrip: View {
                             Circle()
                                 .fill(isSelected || isImpact ? garageReviewAccent : garageReviewReadableText.opacity(marker == nil ? 0.22 : 0.52))
                                 .frame(width: 8, height: 8)
+                                .shadow(
+                                    color: isSelected ? garageReviewAccent.opacity(0.6) : .clear,
+                                    radius: isSelected ? 4 : 0,
+                                    x: 0,
+                                    y: 0
+                                )
 
                             Text(shortTitle(for: phase))
                                 .font(.caption.weight(.semibold))
@@ -1766,9 +1820,9 @@ private struct GarageCheckpointProgressStrip: View {
                         .padding(.vertical, 8)
                         .fixedSize(horizontal: true, vertical: false)
                         .background(
-                            GarageInsetPanelBackground(
+                            GarageRaisedPanelBackground(
                                 shape: Capsule(),
-                                fill: isSelected ? garageReviewSurfaceRaised : garageReviewInsetSurface
+                                fill: isSelected ? garageReviewSurfaceRaised : garageReviewSurface
                             )
                         )
                         .overlay(
@@ -1779,6 +1833,12 @@ private struct GarageCheckpointProgressStrip: View {
                                         : (isSelected ? garageReviewAccent.opacity(0.65) : garageReviewStroke),
                                     lineWidth: isSelected || isImpact ? 1.2 : 1
                                 )
+                        )
+                        .shadow(
+                            color: isSelected ? garageReviewAccent.opacity(0.35) : .clear,
+                            radius: isSelected ? 10 : 0,
+                            x: 0,
+                            y: 0
                         )
                     }
                     .buttonStyle(.plain)
@@ -1866,6 +1926,12 @@ private struct GarageTimelineScrubber: View {
                                             lineWidth: isActiveMarker ? 0 : 1.3
                                         )
                                 )
+                                .shadow(
+                                    color: isActiveMarker ? garageReviewAccent.opacity(0.55) : .clear,
+                                    radius: isActiveMarker ? 6 : 0,
+                                    x: 0,
+                                    y: 0
+                                )
                                 .offset(x: max(0, markerX(for: marker.timestamp, in: trackWidth) - (isActiveMarker ? 7 : 4)))
                         }
                     }
@@ -1876,6 +1942,7 @@ private struct GarageTimelineScrubber: View {
                             Circle()
                                 .stroke(garageReviewReadableText.opacity(0.3), lineWidth: 1)
                         )
+                        .shadow(color: garageReviewAccent.opacity(0.55), radius: 8, x: 0, y: 0)
                         .offset(x: max(0, indicatorX(in: trackWidth) - 9))
                 }
                 .padding(.horizontal, 12)
@@ -1910,34 +1977,74 @@ private struct GarageTimelineScrubber: View {
     }
 }
 
-private let garageReviewBackground = Color(uiColor: .systemGroupedBackground)
-private let garageReviewSurface = Color(uiColor: .secondarySystemGroupedBackground)
-private let garageReviewSurfaceRaised = Color(uiColor: .tertiarySystemGroupedBackground)
-private let garageReviewInsetSurface = Color(uiColor: .secondarySystemBackground)
-private let garageReviewCanvasFill = Color(uiColor: .tertiarySystemBackground)
-private let garageReviewTrackFill = Color(uiColor: .quaternarySystemFill)
+private let garageReviewBackground = ModuleTheme.garageBackground
+private let garageReviewSurface = ModuleTheme.garageSurface
+private let garageReviewSurfaceRaised = ModuleTheme.garageSurfaceRaised
+private let garageReviewInsetSurface = ModuleTheme.garageSurfaceInset
+private let garageReviewCanvasFill = ModuleTheme.garageCanvas
+private let garageReviewTrackFill = ModuleTheme.garageTrack
 private let garageReviewAccent = AppModule.garage.theme.primary
-private let garageManualAnchorAccent = Color(hex: "#00FFFF")
-private let garageReviewReadableText = Color.primary
-private let garageReviewMutedText = Color.secondary
+private let garageManualAnchorAccent = ModuleTheme.electricCyan
+private let garageReviewReadableText = ModuleTheme.garageTextPrimary
+private let garageReviewMutedText = ModuleTheme.garageTextMuted
 private let garageReviewApproved = Color(red: 0.33, green: 0.79, blue: 0.53)
 private let garageReviewPending = Color.orange
 private let garageReviewFlagged = Color(red: 0.94, green: 0.38, blue: 0.40)
-private let garageReviewStroke = Color.primary.opacity(0.08)
-private let garageReviewShadow = Color.black.opacity(0.08)
+private let garageReviewStroke = Color.white.opacity(0.07)
+private let garageReviewShadowLight = AppModule.garage.theme.shadowLight
+private let garageReviewShadowDark = AppModule.garage.theme.shadowDark
+private let garageReviewShadow = garageReviewShadowDark.opacity(0.5)
 
-private struct GarageInsetPanelBackground<S: Shape>: View {
+private struct GarageRaisedPanelBackground<S: Shape>: View {
     let shape: S
-    var fill: Color = garageReviewInsetSurface
+    var fill: Color = garageReviewSurface
+    var stroke: Color = garageReviewStroke
+    var glow: Color?
+
+    init(
+        shape: S,
+        fill: Color = garageReviewSurface,
+        stroke: Color = garageReviewStroke,
+        glow: Color? = nil
+    ) {
+        self.shape = shape
+        self.fill = fill
+        self.stroke = stroke
+        self.glow = glow
+    }
 
     var body: some View {
         shape
             .fill(fill)
             .overlay(
                 shape
-                    .stroke(garageReviewStroke, lineWidth: 1)
+                    .stroke(stroke, lineWidth: 1)
             )
-            .shadow(color: garageReviewShadow, radius: 8, y: 4)
+            .shadow(color: garageReviewShadowDark, radius: 16, x: 10, y: 10)
+            .shadow(color: garageReviewShadowLight, radius: 12, x: -6, y: -6)
+            .shadow(color: (glow ?? .clear).opacity(glow == nil ? 0 : 0.35), radius: glow == nil ? 0 : 12, x: 0, y: 0)
+    }
+}
+
+private struct GarageInsetPanelBackground<S: Shape>: View {
+    let shape: S
+    var fill: Color = garageReviewInsetSurface
+    var stroke: Color = garageReviewStroke
+
+    var body: some View {
+        shape
+            .fill(fill)
+            .overlay(
+                shape
+                    .stroke(stroke, lineWidth: 1)
+            )
+            .overlay(
+                shape
+                    .stroke(garageReviewShadowLight.opacity(0.65), lineWidth: 1)
+                    .blur(radius: 1)
+                    .mask(shape.fill(LinearGradient(colors: [.white, .clear], startPoint: .topLeading, endPoint: .bottomTrailing)))
+            )
+            .shadow(color: garageReviewShadowDark.opacity(0.55), radius: 10, x: 6, y: 6)
     }
 }
 
@@ -1952,15 +2059,13 @@ private struct GarageFrameStepButton: View {
             Image(systemName: systemImage)
                 .font(.subheadline.weight(.bold))
                 .frame(width: 36, height: 36)
-            .foregroundStyle(isEnabled ? garageReviewReadableText : garageReviewMutedText.opacity(0.8))
-            .background(
-                Circle()
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        Circle()
-                            .stroke(garageReviewStroke, lineWidth: 1)
+                .foregroundStyle(isEnabled ? garageReviewReadableText : garageReviewMutedText.opacity(0.8))
+                .background(
+                    GarageRaisedPanelBackground(
+                        shape: Circle(),
+                        fill: garageReviewSurfaceRaised
                     )
-            )
+                )
         }
         .buttonStyle(.plain)
         .disabled(isEnabled == false)
@@ -1995,12 +2100,11 @@ private struct GarageReviewRecoveryCallout: View {
         }
         .padding()
         .background(
-            RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous)
-                        .stroke(iconTint.opacity(0.18), lineWidth: 1)
-                )
+            GarageRaisedPanelBackground(
+                shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous),
+                fill: garageReviewSurface,
+                stroke: iconTint.opacity(0.18)
+            )
         )
     }
 
@@ -2046,18 +2150,26 @@ private struct GarageCompletionPlaybackCallout: View {
             Button(action: replay) {
                 Label("Play Slow Motion", systemImage: "play.fill")
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(garageReviewCanvasFill)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 11)
+                    .background(
+                        GarageRaisedPanelBackground(
+                            shape: Capsule(),
+                            fill: garageReviewAccent,
+                            stroke: garageReviewAccent.opacity(0.35),
+                            glow: garageReviewAccent
+                        )
+                    )
             }
-            .buttonStyle(.borderedProminent)
-            .tint(AppModule.garage.theme.primary)
+            .buttonStyle(.plain)
         }
         .padding()
         .background(
-            RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous)
-                        .stroke(garageReviewStroke, lineWidth: 1)
-                )
+            GarageRaisedPanelBackground(
+                shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous),
+                fill: garageReviewSurface
+            )
         )
     }
 }
@@ -2114,8 +2226,18 @@ private struct GarageSlowMotionPlaybackSheet: View {
                     Button("Replay") {
                         playbackController.replay()
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(AppModule.garage.theme.primary)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(garageReviewCanvasFill)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 11)
+                    .background(
+                        GarageRaisedPanelBackground(
+                            shape: Capsule(),
+                            fill: garageReviewAccent,
+                            stroke: garageReviewAccent.opacity(0.35),
+                            glow: garageReviewAccent
+                        )
+                    )
                 }
             }
             .padding(ModuleSpacing.large)
@@ -2401,43 +2523,70 @@ private struct GarageImportPresentationScreen: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(
-                            Capsule()
-                                .fill(.ultraThinMaterial)
-                                .overlay(
-                                    Capsule()
-                                        .stroke(AppModule.garage.theme.borderSubtle, lineWidth: 1)
-                                )
+                            GarageInsetPanelBackground(
+                                shape: Capsule(),
+                                fill: garageReviewInsetSurface
+                            )
                         )
                 }
 
                 if state.showsProgress {
-                    ProgressView()
-                        .controlSize(.large)
-                        .tint(AppModule.garage.theme.primary)
-                        .scaleEffect(1.2)
+                    ZStack {
+                        Circle()
+                            .fill(garageReviewSurfaceRaised)
+                            .frame(width: 78, height: 78)
+                            .shadow(color: garageReviewAccent.opacity(0.28), radius: 16, x: 0, y: 0)
+
+                        ProgressView()
+                            .controlSize(.large)
+                            .tint(AppModule.garage.theme.primary)
+                            .scaleEffect(1.2)
+                    }
                 }
 
                 if case .failure = state {
                     HStack(spacing: 12) {
-                        Button("Dismiss", action: onDismiss)
-                            .buttonStyle(.bordered)
+                        Button(action: onDismiss) {
+                            Text("Dismiss")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(garageReviewReadableText)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 11)
+                                .background(
+                                    GarageRaisedPanelBackground(
+                                        shape: Capsule(),
+                                        fill: garageReviewSurfaceRaised
+                                    )
+                                )
+                        }
+                        .buttonStyle(.plain)
 
-                        Button("Try Again", action: onRetry)
-                            .buttonStyle(.borderedProminent)
-                            .tint(AppModule.garage.theme.primary)
+                        Button(action: onRetry) {
+                            Text("Try Again")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(garageReviewCanvasFill)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 11)
+                                .background(
+                                    GarageRaisedPanelBackground(
+                                        shape: Capsule(),
+                                        fill: garageReviewAccent,
+                                        stroke: garageReviewAccent.opacity(0.35),
+                                        glow: garageReviewAccent
+                                    )
+                                )
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
             .frame(maxWidth: 320)
             .padding(ModuleSpacing.large)
             .background(
-                RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
-                    .fill(garageReviewSurface.opacity(0.94))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
-                            .stroke(AppModule.garage.theme.borderSubtle, lineWidth: 1)
-                    )
-                    .shadow(color: garageReviewShadow.opacity(1.3), radius: 24, y: 12)
+                GarageRaisedPanelBackground(
+                    shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous),
+                    fill: garageReviewSurface
+                )
             )
             .padding(ModuleSpacing.large)
         }
