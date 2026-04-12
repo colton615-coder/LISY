@@ -1306,12 +1306,14 @@ enum GarageMediaStore {
         for videoURL: URL,
         at timestamp: Double,
         maximumSize: CGSize = CGSize(width: 480, height: 480),
-        priority: GarageThumbnailLoadPriority = .normal
+        priority: GarageThumbnailLoadPriority = .normal,
+        exactFrame: Bool = false
     ) async -> CGImage? {
         let requestKey = garageThumbnailCacheKey(
             videoURL: videoURL,
             timestamp: timestamp,
-            maximumSize: maximumSize
+            maximumSize: maximumSize,
+            exactFrame: exactFrame
         )
 
         if let cachedImage = await GarageMediaStoreCache.shared.cachedThumbnail(for: requestKey) {
@@ -1323,7 +1325,8 @@ enum GarageMediaStore {
             Task {
                 let generator = await GarageMediaStoreCache.shared.imageGenerator(
                     for: videoURL,
-                    maximumSize: maximumSize
+                    maximumSize: maximumSize,
+                    exactFrame: exactFrame
                 )
                 let time = CMTime(seconds: timestamp, preferredTimescale: 600)
                 generator.generateCGImageAsynchronously(for: time) { image, _, _ in
@@ -1455,18 +1458,27 @@ enum GarageMediaStore {
         return context.makeImage() ?? image
     }
     private static func garageThumbnailCacheKey(videoURL: URL, timestamp: Double, maximumSize: CGSize) -> String {
+        garageThumbnailCacheKey(videoURL: videoURL, timestamp: timestamp, maximumSize: maximumSize, exactFrame: false)
+    }
+
+    private static func garageThumbnailCacheKey(
+        videoURL: URL,
+        timestamp: Double,
+        maximumSize: CGSize,
+        exactFrame: Bool
+    ) -> String {
         let timestampBucket = Int((timestamp * 30).rounded())
         let maxPixelWidth = Int(maximumSize.width.rounded())
         let maxPixelHeight = Int(maximumSize.height.rounded())
-        return "\(videoURL.absoluteString)#\(timestampBucket)#\(maxPixelWidth)x\(maxPixelHeight)"
+        let frameMode = exactFrame ? "exact" : "approx"
+        return "\(videoURL.absoluteString)#\(timestampBucket)#\(maxPixelWidth)x\(maxPixelHeight)#\(frameMode)"
     }
 }
 
 private actor GarageMediaStoreCache {
     static let shared = GarageMediaStoreCache()
 
-    private var generators: [URL: AVAssetImageGenerator] = [:]
-    private var generatorSizes: [URL: CGSize] = [:]
+    private var generators: [String: AVAssetImageGenerator] = [:]
     private var thumbnailCache: [String: CGImage] = [:]
     private var thumbnailCacheOrder: [String] = []
     private var assetMetadataCache: [URL: GarageVideoAssetMetadata] = [:]
@@ -1533,8 +1545,14 @@ private actor GarageMediaStoreCache {
         availableThumbnailPermits += 1
     }
 
-    func imageGenerator(for videoURL: URL, maximumSize: CGSize) -> AVAssetImageGenerator {
-        if let existingGenerator = generators[videoURL], generatorSizes[videoURL] == maximumSize {
+    func imageGenerator(for videoURL: URL, maximumSize: CGSize, exactFrame: Bool) -> AVAssetImageGenerator {
+        let generatorKey = [
+            videoURL.absoluteString,
+            "\(Int(maximumSize.width.rounded()))x\(Int(maximumSize.height.rounded()))",
+            exactFrame ? "exact" : "approx"
+        ].joined(separator: "#")
+
+        if let existingGenerator = generators[generatorKey] {
             return existingGenerator
         }
 
@@ -1542,11 +1560,15 @@ private actor GarageMediaStoreCache {
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = maximumSize
-        generator.requestedTimeToleranceAfter = CMTime(value: 1, timescale: 30)
-        generator.requestedTimeToleranceBefore = CMTime(value: 1, timescale: 30)
+        if exactFrame {
+            generator.requestedTimeToleranceAfter = .zero
+            generator.requestedTimeToleranceBefore = .zero
+        } else {
+            generator.requestedTimeToleranceAfter = CMTime(value: 1, timescale: 30)
+            generator.requestedTimeToleranceBefore = CMTime(value: 1, timescale: 30)
+        }
 
-        generators[videoURL] = generator
-        generatorSizes[videoURL] = maximumSize
+        generators[generatorKey] = generator
         return generator
     }
 

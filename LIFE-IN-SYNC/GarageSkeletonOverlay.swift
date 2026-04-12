@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct GarageSkeletonOverlay: View {
-    let drawRect: CGRect
+    let drawSize: CGSize
     let currentFrame: SwingFrame?
 
     private static let skeletonLinks: [(SwingJointName, SwingJointName)] = [
@@ -46,7 +46,8 @@ struct GarageSkeletonOverlay: View {
     var body: some View {
         Canvas { context, _ in
             guard
-                drawRect.isEmpty == false,
+                drawSize.width > 0,
+                drawSize.height > 0,
                 let currentFrame
             else {
                 return
@@ -60,8 +61,8 @@ struct GarageSkeletonOverlay: View {
                     continue
                 }
 
-                let startPoint = garageSkeletonMappedPoint(start, in: drawRect)
-                let endPoint = garageSkeletonMappedPoint(end, in: drawRect)
+                let startPoint = garageSkeletonMappedPoint(start, in: drawSize)
+                let endPoint = garageSkeletonMappedPoint(end, in: drawSize)
                 var path = Path()
                 path.move(to: startPoint)
                 path.addLine(to: endPoint)
@@ -89,8 +90,8 @@ struct GarageSkeletonOverlay: View {
                     x: (leftShoulder.x + rightShoulder.x) / 2,
                     y: (leftShoulder.y + rightShoulder.y) / 2
                 )
-                let startPoint = garageSkeletonMappedPoint(nose, in: drawRect)
-                let endPoint = garageSkeletonMappedPoint(shoulderMidpoint, in: drawRect)
+                let startPoint = garageSkeletonMappedPoint(nose, in: drawSize)
+                let endPoint = garageSkeletonMappedPoint(shoulderMidpoint, in: drawSize)
                 var connector = Path()
                 connector.move(to: startPoint)
                 connector.addLine(to: endPoint)
@@ -112,7 +113,7 @@ struct GarageSkeletonOverlay: View {
 
                 let mappedPoint = garageSkeletonMappedPoint(
                     CGPoint(x: joint.x, y: joint.y),
-                    in: drawRect
+                    in: drawSize
                 )
                 let isEmphasized = Self.emphasizedJoints.contains(jointName)
                 let radius = isEmphasized ? 6.5 : 5.0
@@ -149,9 +150,9 @@ struct GarageSkeletonOverlay: View {
     }
 }
 
-private func garageSkeletonMappedPoint(_ point: CGPoint, in rect: CGRect) -> CGPoint {
+private func garageSkeletonMappedPoint(_ point: CGPoint, in size: CGSize) -> CGPoint {
     CGPoint(
-        x: rect.minX + (rect.width * point.x),
-        y: rect.minY + (rect.height * point.y)
+        x: size.width * point.x,
+        y: size.height * point.y
     )
 }
