@@ -723,6 +723,14 @@ private func garageClampedNormalizedPoint(_ point: CGPoint) -> CGPoint {
     )
 }
 
+private struct GarageScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 private struct GarageFocusedReviewWorkspace: View {
     @Environment(\.modelContext) private var modelContext
 
@@ -735,8 +743,10 @@ private struct GarageFocusedReviewWorkspace: View {
     @State private var isLoadingFrame = false
     @State private var selectedPhase: SwingPhase = .address
     @State private var isShowingCompletionPlayback = false
+    @State private var isShowingSkeletonPlayback = false
     @State private var reviewMode: GarageReviewMode = .handPath
     @State private var reviewSurface: GarageReviewSurface = .summary
+    @State private var controlsScrollOffset: CGFloat = 0
     @State private var dragAnchorPoint: CGPoint?
     @State private var isDraggingAnchor = false
 
@@ -944,10 +954,21 @@ private struct GarageFocusedReviewWorkspace: View {
         min(max(viewportHeight * 0.55, 460), 540)
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            GarageReviewHeaderBar(onBack: onExitReview)
+    private var collapsedVideoHeight: CGFloat {
+        min(max(viewportHeight * 0.34, 300), 360)
+    }
 
+    private var videoCollapseProgress: CGFloat {
+        let range = max(videoStageHeight - collapsedVideoHeight, 1)
+        return min(max(-controlsScrollOffset / range, 0), 1)
+    }
+
+    private var activeVideoHeight: CGFloat {
+        videoStageHeight - ((videoStageHeight - collapsedVideoHeight) * videoCollapseProgress)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
             GarageFocusedReviewFrame(
                 image: reviewImage,
                 isLoadingFrame: isLoadingFrame,
@@ -960,24 +981,62 @@ private struct GarageFocusedReviewWorkspace: View {
                 handPathSamples: fullHandPathSamples,
                 currentTime: currentFrameTimestamp ?? currentTime,
                 summaryPresentation: summaryPresentation,
-                preferredHeight: videoStageHeight,
+                preferredHeight: activeVideoHeight,
                 onSelectReviewMode: selectReviewMode,
                 onAnchorDragChanged: handleAnchorDragChanged,
                 onAnchorDragEnded: handleAnchorDragEnded
             )
             .frame(maxWidth: .infinity)
+            .overlay(alignment: .topLeading) {
+                Button(action: onExitReview) {
+                    Image(systemName: "chevron.left")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(garageReviewReadableText)
+                        .frame(width: 36, height: 36)
+                        .background(Color.black.opacity(0.45), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 12)
+                .padding(.top, 12)
+            }
+            .overlay(alignment: .bottom) {
+                GarageReviewFilmstrip(
+                    videoURL: reviewVideoURL,
+                    frames: filmstripFrames,
+                    markers: orderedKeyframes,
+                    currentFrameIndex: currentFrameIndex,
+                    onSelectFrame: setCurrentFrameIndex
+                )
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
+                .background(
+                    LinearGradient(
+                        colors: [Color.black.opacity(0.35), .clear],
+                        startPoint: .bottom,
+                        endPoint: .top
+                    )
+                )
+            }
 
-            Group {
+            ScrollView(.vertical, showsIndicators: false) {
+                Color.clear
+                    .frame(height: 0)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: GarageScrollOffsetKey.self,
+                                value: proxy.frame(in: .named("garage-review-controls-scroll")).minY
+                            )
+                        }
+                    )
+
                 if reviewSurface == .fallbackHandPath {
                     GarageReviewScrollableControls(
-                        videoURL: reviewVideoURL,
-                        frames: filmstripFrames,
                         markers: orderedKeyframes,
                         selectedPhase: selectedPhase,
                         currentFrameIndex: currentFrameIndex,
                         totalFrameCount: record.swingFrames.count,
                         onSelectPhase: selectPhase,
-                        onSelectFrame: setCurrentFrameIndex,
                         reviewRecoveryTitle: reviewRecoveryTitle,
                         reviewRecoveryBody: reviewRecoveryBody,
                         reviewFrameSource: reviewFrameSource
@@ -986,21 +1045,20 @@ private struct GarageFocusedReviewWorkspace: View {
                     GarageReviewSummaryControls(
                         summaryPresentation: summaryPresentation,
                         coachingPresentation: coachingPresentation,
-                        videoURL: reviewVideoURL,
-                        frames: filmstripFrames,
-                        currentFrameIndex: currentFrameIndex,
-                        totalFrameCount: record.swingFrames.count,
-                        onSelectFrame: setCurrentFrameIndex,
                         reviewRecoveryTitle: reviewRecoveryTitle,
                         reviewRecoveryBody: reviewRecoveryBody,
                         reviewFrameSource: reviewFrameSource
                     )
                 }
             }
+            .coordinateSpace(name: "garage-review-controls-scroll")
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .onPreferenceChange(GarageScrollOffsetKey.self) { newValue in
+                controlsScrollOffset = newValue
+            }
         }
         .padding(.horizontal, ModuleSpacing.large)
-        .padding(.top, 14)
+        .padding(.top, 8)
         .background(garageReviewBackground.ignoresSafeArea())
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if reviewSurface == .fallbackHandPath {
@@ -1017,6 +1075,9 @@ private struct GarageFocusedReviewWorkspace: View {
                     canContinue: reviewVideoURL != nil,
                     onContinue: {
                         isShowingCompletionPlayback = true
+                    },
+                    onSkeletonReview: {
+                        isShowingSkeletonPlayback = true
                     }
                 )
             }
@@ -1025,7 +1086,18 @@ private struct GarageFocusedReviewWorkspace: View {
             if let reviewVideoURL {
                 GarageSlowMotionPlaybackSheet(
                     videoURL: reviewVideoURL,
-                    pathSamples: fullHandPathSamples
+                    pathSamples: fullHandPathSamples,
+                    frames: record.swingFrames,
+                    initialMode: .handPath
+                )
+            }
+        }
+        .sheet(isPresented: $isShowingSkeletonPlayback) {
+            if let reviewVideoURL {
+                GarageSkeletonReviewView(
+                    videoURL: reviewVideoURL,
+                    pathSamples: fullHandPathSamples,
+                    frames: record.swingFrames
                 )
             }
         }
@@ -1301,56 +1373,43 @@ private struct GarageFocusedReviewWorkspace: View {
 }
 
 private struct GarageReviewScrollableControls: View {
-    let videoURL: URL?
-    let frames: [GarageFilmstripFrame]
     let markers: [GarageTimelineMarker]
     let selectedPhase: SwingPhase
     let currentFrameIndex: Int?
     let totalFrameCount: Int
     let onSelectPhase: (SwingPhase) -> Void
-    let onSelectFrame: (Int) -> Void
     let reviewRecoveryTitle: String
     let reviewRecoveryBody: String
     let reviewFrameSource: GarageReviewFrameSourceState
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 8) {
-                GarageCheckpointProgressStrip(
-                    selectedPhase: selectedPhase,
-                    markers: markers,
-                    onSelect: onSelectPhase
-                )
+        VStack(alignment: .leading, spacing: 8) {
+            GarageCheckpointProgressStrip(
+                selectedPhase: selectedPhase,
+                markers: markers,
+                onSelect: onSelectPhase
+            )
 
-                HStack {
-                    Spacer(minLength: 0)
-                    Text(frameCountLabel)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(garageReviewMutedText)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                }
-
-                GarageReviewFilmstrip(
-                    videoURL: videoURL,
-                    frames: frames,
-                    markers: markers,
-                    currentFrameIndex: currentFrameIndex,
-                    onSelectFrame: onSelectFrame
-                )
-
-                if reviewFrameSource != .video {
-                    GarageReviewRecoveryCallout(
-                        title: reviewRecoveryTitle,
-                        message: reviewRecoveryBody,
-                        state: reviewFrameSource
-                    )
-                }
+            HStack {
+                Spacer(minLength: 0)
+                Text(frameCountLabel)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(garageReviewMutedText)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
-            .padding(.horizontal, ModuleSpacing.medium)
-            .padding(.top, 2)
-            .padding(.bottom, 8)
+
+            if reviewFrameSource != .video {
+                GarageReviewRecoveryCallout(
+                    title: reviewRecoveryTitle,
+                    message: reviewRecoveryBody,
+                    state: reviewFrameSource
+                )
+            }
         }
+        .padding(.horizontal, ModuleSpacing.medium)
+        .padding(.top, 2)
+        .padding(.bottom, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             GarageRaisedPanelBackground(
@@ -1372,83 +1431,28 @@ private struct GarageReviewScrollableControls: View {
 private struct GarageReviewSummaryControls: View {
     let summaryPresentation: GarageReviewSummaryPresentation
     let coachingPresentation: GarageCoachingPresentation
-    let videoURL: URL?
-    let frames: [GarageFilmstripFrame]
-    let currentFrameIndex: Int?
-    let totalFrameCount: Int
-    let onSelectFrame: (Int) -> Void
     let reviewRecoveryTitle: String
     let reviewRecoveryBody: String
     let reviewFrameSource: GarageReviewFrameSourceState
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                GarageReviewContextBand(presentation: summaryPresentation)
+        VStack(alignment: .leading, spacing: 14) {
+            GarageReviewContextBand(presentation: summaryPresentation)
 
-                GarageReviewSummaryUtilityStrip(
-                    videoURL: videoURL,
-                    frames: frames,
-                    currentFrameIndex: currentFrameIndex,
-                    totalFrameCount: totalFrameCount,
-                    onSelectFrame: onSelectFrame
-                )
+            GarageStabilityMetricCard(presentation: summaryPresentation)
 
-                GarageStabilityMetricCard(presentation: summaryPresentation)
+            GarageCoachingReportView(presentation: coachingPresentation)
 
-                GarageCoachingReportView(presentation: coachingPresentation)
-
-                if reviewFrameSource != .video {
-                    GarageReviewRecoveryCallout(
-                        title: reviewRecoveryTitle,
-                        message: reviewRecoveryBody,
-                        state: reviewFrameSource
-                    )
-                }
-
-            }
-            .padding(.bottom, 12)
-        }
-    }
-}
-
-private struct GarageReviewHeaderBar: View {
-    let onBack: () -> Void
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            Button(action: onBack) {
-                HStack(spacing: 8) {
-                    Image(systemName: "chevron.left")
-                        .font(.subheadline.weight(.bold))
-                    Text("Back")
-                        .font(.subheadline.weight(.semibold))
-                }
-                .foregroundStyle(garageReviewReadableText)
-                .padding(.horizontal, 14)
-                .frame(minWidth: 64, minHeight: 44)
-                .background(
-                    GarageInsetPanelBackground(
-                        shape: Capsule(),
-                        fill: garageReviewInsetSurface,
-                        stroke: garageReviewStroke
-                    )
+            if reviewFrameSource != .video {
+                GarageReviewRecoveryCallout(
+                    title: reviewRecoveryTitle,
+                    message: reviewRecoveryBody,
+                    state: reviewFrameSource
                 )
             }
-            .buttonStyle(.plain)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Swing Review")
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(garageReviewReadableText)
-
-                Text("Step 2 of 3: Inspect motion")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(garageReviewMutedText)
-            }
-
-            Spacer(minLength: 0)
         }
+        .padding(.bottom, 12)
     }
 }
 
@@ -1486,54 +1490,6 @@ private struct GarageReviewContextBand: View {
     }
 }
 
-private struct GarageReviewSummaryUtilityStrip: View {
-    let videoURL: URL?
-    let frames: [GarageFilmstripFrame]
-    let currentFrameIndex: Int?
-    let totalFrameCount: Int
-    let onSelectFrame: (Int) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Frame Browser")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(garageReviewMutedText)
-
-                Spacer(minLength: 0)
-
-                Text(frameCountLabel)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(garageReviewMutedText)
-            }
-
-            GarageReviewFilmstrip(
-                videoURL: videoURL,
-                frames: frames,
-                markers: [],
-                currentFrameIndex: currentFrameIndex,
-                onSelectFrame: onSelectFrame
-            )
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(
-            GarageInsetPanelBackground(
-                shape: RoundedRectangle(cornerRadius: 16, style: .continuous),
-                fill: garageReviewInsetSurface.opacity(0.82),
-                stroke: garageReviewStroke.opacity(0.7)
-            )
-        )
-    }
-
-    private var frameCountLabel: String {
-        guard let currentFrameIndex else {
-            return "\(totalFrameCount) frames"
-        }
-
-        return "\(currentFrameIndex + 1) / \(totalFrameCount) frames"
-    }
-}
 
 private struct GarageReviewActionDock: View {
     let canStepBackward: Bool
@@ -1603,11 +1559,12 @@ private struct GarageReviewActionDock: View {
 private struct GarageSummaryPrimaryActionBar: View {
     let canContinue: Bool
     let onContinue: () -> Void
+    let onSkeletonReview: () -> Void
 
     var body: some View {
-        HStack {
+        VStack(spacing: 8) {
             Button(action: onContinue) {
-                Text(canContinue ? "Continue to Slow Motion Review" : "Slow Motion Review Unavailable")
+                Text(canContinue ? "Review Hand Path" : "Slow Motion Review Unavailable")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(canContinue ? garageReviewCanvasFill : garageReviewMutedText)
                     .frame(maxWidth: .infinity)
@@ -1620,6 +1577,15 @@ private struct GarageSummaryPrimaryActionBar: View {
             .buttonStyle(.plain)
             .disabled(canContinue == false)
             .opacity(canContinue ? 1 : 0.78)
+
+            Button(action: onSkeletonReview) {
+                Text("Review Skeleton")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(garageReviewReadableText)
+            }
+            .buttonStyle(.plain)
+            .disabled(canContinue == false)
+            .opacity(canContinue ? 1 : 0.6)
         }
         .padding(.horizontal, ModuleSpacing.large)
         .padding(.top, 12)
@@ -1962,49 +1928,38 @@ private struct GarageReviewModeSwitcher: View {
     let onSelect: (GarageReviewMode) -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             ForEach(GarageReviewMode.allCases) { mode in
                 let isSelected = mode == selectedMode
                 Button {
                     onSelect(mode)
                 } label: {
-                    HStack(spacing: 6) {
-                        if isSelected {
-                            Image(systemName: "checkmark")
-                                .font(.caption.weight(.bold))
-                        }
-
+                    HStack(spacing: 4) {
                         Text(mode.title)
-                            .font(.subheadline.weight(.semibold))
+                            .font(.caption.weight(.semibold))
                             .lineLimit(1)
                             .fixedSize(horizontal: true, vertical: false)
                     }
-                        .foregroundStyle(isSelected ? garageReviewReadableText : garageReviewMutedText)
-                        .frame(minWidth: 102, minHeight: 44)
-                        .padding(.horizontal, 10)
-                        .background(
-                            Capsule()
-                                .fill(isSelected ? garageReviewAccent.opacity(0.18) : Color.clear)
-                                .overlay(
-                                    Capsule()
-                                        .stroke(
-                                            isSelected ? garageReviewAccent.opacity(0.44) : Color.clear,
-                                            lineWidth: 1
-                                        )
-                                )
-                        )
+                    .foregroundStyle(isSelected ? garageReviewReadableText : garageReviewMutedText)
+                    .frame(minHeight: 30)
+                    .padding(.horizontal, 9)
+                    .background(
+                        Capsule()
+                            .fill(isSelected ? garageReviewAccent.opacity(0.16) : Color.black.opacity(0.35))
+                            .overlay(
+                                Capsule()
+                                    .stroke(
+                                        isSelected ? garageReviewAccent.opacity(0.42) : garageReviewStroke.opacity(0.4),
+                                        lineWidth: 1
+                                    )
+                            )
+                    )
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(6)
-        .background(
-            GarageInsetPanelBackground(
-                shape: Capsule(),
-                fill: garageReviewSurface.opacity(0.84),
-                stroke: garageReviewStroke
-            )
-        )
+        .padding(4)
+        .background(Color.black.opacity(0.28), in: Capsule())
     }
 }
 
@@ -2798,83 +2753,117 @@ private struct GarageSlowMotionPlaybackSheet: View {
 
     let videoURL: URL
     let pathSamples: [GarageHandPathSample]
+    let frames: [SwingFrame]
+    let initialMode: GarageReviewMode
 
     @StateObject private var playbackController: GarageSlowMotionPlaybackController
     @State private var videoDisplaySize = CGSize(width: 1, height: 1)
+    @State private var selectedSpeed: Float = 1.0
+    @State private var reviewMode: GarageReviewMode
 
-    init(videoURL: URL, pathSamples: [GarageHandPathSample]) {
+    init(videoURL: URL, pathSamples: [GarageHandPathSample], frames: [SwingFrame], initialMode: GarageReviewMode) {
         self.videoURL = videoURL
         self.pathSamples = pathSamples
+        self.frames = frames
+        self.initialMode = initialMode
         _playbackController = StateObject(wrappedValue: GarageSlowMotionPlaybackController(url: videoURL))
+        _reviewMode = State(initialValue: initialMode)
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: ModuleSpacing.medium) {
-                Text("Slow-motion review")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(AppModule.garage.theme.textPrimary)
-
-                Text("A clean replay of the approved swing with the hand path split into backswing and downswing segments through impact.")
-                    .foregroundStyle(AppModule.garage.theme.textSecondary)
-
-                Text("Use slow motion to confirm the approved motion, then finish the review when you're ready.")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(AppModule.garage.theme.textSecondary)
-                    .padding(14)
-                    .background(
-                        GarageInsetPanelBackground(
-                            shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous),
-                            fill: garageReviewInsetSurface.opacity(0.84),
-                            stroke: garageReviewStroke.opacity(0.72)
-                        )
-                    )
-
-                ZStack {
-                    GarageSlowMotionPlayerView(player: playbackController.player)
-                        .frame(minHeight: 480)
-                        .clipShape(RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
-
-                    GarageSlowMotionPathOverlay(
-                        pathSamples: pathSamples,
-                        currentTime: playbackController.currentTime,
-                        videoSize: videoDisplaySize
-                    )
-                    .allowsHitTesting(false)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Review Playback")
+                        .font(.title3.weight(.medium))
+                        .foregroundStyle(AppModule.garage.theme.textPrimary)
+                    Text("Confirm motion flow before finishing.")
+                        .font(.subheadline)
+                        .foregroundStyle(AppModule.garage.theme.textSecondary)
                 }
-                .overlay(
-                    RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
-                        .stroke(AppModule.garage.theme.borderSubtle, lineWidth: 1)
-                )
-
-                Text("Playback \(String(format: "%.2fs", playbackController.currentTime))")
+                Spacer()
+                Text("Approved")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(AppModule.garage.theme.textSecondary)
+                    .foregroundStyle(garageReviewReadableText)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.1), in: Capsule())
             }
-            .padding(ModuleSpacing.large)
-            .navigationTitle("Approved Playback")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") {
-                        dismiss()
-                    }
-                }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                GaragePlaybackActionBar(
-                    onReplay: playbackController.replay,
-                    onFinish: dismiss.callAsFunction
+
+            ZStack {
+                GarageSlowMotionPlayerView(player: playbackController.player)
+                    .frame(minHeight: 420)
+                    .clipShape(RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
+
+                GarageSlowMotionVisualizationOverlay(
+                    mode: reviewMode,
+                    pathSamples: pathSamples,
+                    frames: frames,
+                    currentTime: playbackController.currentTime,
+                    videoSize: videoDisplaySize
                 )
+                .allowsHitTesting(false)
             }
+            .overlay(
+                RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
+                    .stroke(AppModule.garage.theme.borderSubtle, lineWidth: 1)
+            )
+
+            GaragePlaybackControlRow(
+                currentTime: playbackController.currentTime,
+                duration: playbackController.duration,
+                isPlaying: playbackController.isPlaying,
+                selectedSpeed: selectedSpeed,
+                onScrub: playbackController.seek,
+                onTogglePlayPause: playbackController.togglePlayback,
+                onSelectSpeed: { speed in
+                    selectedSpeed = speed
+                    playbackController.setRate(speed)
+                }
+            )
+
+            if initialMode == .handPath, reviewMode == .handPath {
+                Button {
+                    reviewMode = .skeleton
+                } label: {
+                    Text("Open Skeleton Review")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(garageReviewReadableText)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(ModuleSpacing.large)
+        .background(garageReviewBackground.ignoresSafeArea())
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            GaragePlaybackActionBar(
+                onRecheck: dismiss.callAsFunction,
+                onFinish: dismiss.callAsFunction
+            )
+        }
+        .safeAreaInset(edge: .top) {
+            HStack {
+                Spacer()
+                Button("Close") { dismiss() }
+                    .font(.subheadline.weight(.semibold))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(garageReviewMutedText)
+            }
+            .padding(.horizontal, ModuleSpacing.large)
         }
         .task {
             let metadata = await GarageMediaStore.assetMetadata(for: videoURL)
             await MainActor.run {
-                videoDisplaySize = metadata?.naturalSize ?? CGSize(width: 1, height: 1)
+                if let metadata {
+                    videoDisplaySize = metadata.naturalSize
+                    playbackController.updateDurationFromMetadata(metadata.duration)
+                } else {
+                    videoDisplaySize = CGSize(width: 1, height: 1)
+                }
             }
         }
         .onAppear {
-            playbackController.startSlowMotion()
+            playbackController.startPlayback(at: selectedSpeed)
         }
         .onDisappear {
             playbackController.stop()
@@ -2882,24 +2871,36 @@ private struct GarageSlowMotionPlaybackSheet: View {
     }
 }
 
+private struct GarageSkeletonReviewView: View {
+    let videoURL: URL
+    let pathSamples: [GarageHandPathSample]
+    let frames: [SwingFrame]
+
+    var body: some View {
+        GarageSlowMotionPlaybackSheet(
+            videoURL: videoURL,
+            pathSamples: pathSamples,
+            frames: frames,
+            initialMode: .skeleton
+        )
+    }
+}
+
 private struct GaragePlaybackActionBar: View {
-    let onReplay: () -> Void
+    let onRecheck: () -> Void
     let onFinish: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            Button(action: onReplay) {
-                Text("Replay Clip")
+        HStack(spacing: 10) {
+            Button(action: onRecheck) {
+                Text("Recheck Frames")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(garageReviewReadableText)
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 52)
                     .background(
-                        GarageInsetPanelBackground(
-                            shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
-                            fill: garageReviewInsetSurface,
-                            stroke: garageReviewStroke
-                        )
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(garageReviewStroke, lineWidth: 1)
                     )
             }
             .buttonStyle(.plain)
@@ -2911,12 +2912,8 @@ private struct GaragePlaybackActionBar: View {
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 52)
                     .background(
-                        GarageRaisedPanelBackground(
-                            shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
-                            fill: garageReviewAccent,
-                            stroke: garageReviewAccent.opacity(0.35),
-                            glow: garageReviewAccent
-                        )
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(garageReviewAccent)
                     )
             }
             .buttonStyle(.plain)
@@ -2939,8 +2936,92 @@ private struct GaragePlaybackActionBar: View {
     }
 }
 
-private struct GarageSlowMotionPathOverlay: View {
+private struct GaragePlaybackControlRow: View {
+    let currentTime: Double
+    let duration: Double
+    let isPlaying: Bool
+    let selectedSpeed: Float
+    let onScrub: (Double) -> Void
+    let onTogglePlayPause: () -> Void
+    let onSelectSpeed: (Float) -> Void
+    @State private var scrubTime = 0.0
+    @State private var isScrubbing = false
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Slider(
+                value: Binding(
+                    get: { scrubTime },
+                    set: { scrubTime = $0 }
+                ),
+                in: 0...sliderMaxValue,
+                onEditingChanged: handleScrubEditingChanged
+            )
+            .tint(garageReviewAccent)
+
+            HStack(spacing: 14) {
+                Button(action: onTogglePlayPause) {
+                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(garageReviewReadableText)
+                        .frame(width: 36, height: 36)
+                        .background(Color.white.opacity(0.08), in: Circle())
+                }
+                .buttonStyle(.plain)
+
+                ForEach([1.0, 0.5, 0.25], id: \.self) { speed in
+                    let speedValue = Float(speed)
+                    Button {
+                        onSelectSpeed(speedValue)
+                    } label: {
+                        Text(speedLabel(for: speed))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(selectedSpeed == speedValue ? garageReviewReadableText : garageReviewMutedText)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule()
+                                    .fill(selectedSpeed == speedValue ? garageReviewAccent.opacity(0.2) : Color.white.opacity(0.06))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .onAppear {
+            scrubTime = clampedCurrentTime
+        }
+        .onChange(of: currentTime) { _, newValue in
+            guard isScrubbing == false else { return }
+            scrubTime = min(max(newValue, 0), sliderMaxValue)
+        }
+    }
+
+    private func speedLabel(for value: Double) -> String {
+        value == 1.0 ? "1x" : String(format: "%.2gx", value)
+    }
+
+    private var sliderMaxValue: Double {
+        guard duration.isFinite, duration > 0 else { return 0.01 }
+        return duration
+    }
+
+    private var clampedCurrentTime: Double {
+        min(max(currentTime.isFinite ? currentTime : 0, 0), sliderMaxValue)
+    }
+
+    private func handleScrubEditingChanged(_ isEditing: Bool) {
+        isScrubbing = isEditing
+        if isEditing == false {
+            onScrub(scrubTime)
+        }
+    }
+}
+
+private struct GarageSlowMotionVisualizationOverlay: View {
+    let mode: GarageReviewMode
     let pathSamples: [GarageHandPathSample]
+    let frames: [SwingFrame]
     let currentTime: Double
     let videoSize: CGSize
 
@@ -2961,55 +3042,66 @@ private struct GarageSlowMotionPathOverlay: View {
         return lowerBound
     }
 
+    private var currentFrame: SwingFrame? {
+        guard frames.isEmpty == false else { return nil }
+        return frames.enumerated().min { lhs, rhs in
+            abs(lhs.element.timestamp - currentTime) < abs(rhs.element.timestamp - currentTime)
+        }?.element
+    }
+
     var body: some View {
         GeometryReader { proxy in
             let containerRect = CGRect(origin: .zero, size: proxy.size)
             let videoRect = aspectFitRect(videoSize: videoSize, in: containerRect)
 
-            Canvas { context, _ in
-                guard videoRect.isEmpty == false, visibleSampleCount >= 2 else {
-                    return
-                }
-
-                var maxSpeed = 0.001
-                for sampleIndex in 0..<visibleSampleCount {
-                    maxSpeed = max(maxSpeed, pathSamples[sampleIndex].speed)
-                }
-
-            for segmentIndex in 1..<visibleSampleCount {
-                let previous = pathSamples[segmentIndex - 1]
-                let current = pathSamples[segmentIndex]
-                let normalizedSpeed = min(max(current.speed / maxSpeed, 0), 1)
-                let baseWidth = 1.9 + (normalizedSpeed * 1.2)
-                let accentColor = current.segment == .backswing
-                    ? Color.white.opacity(0.88)
-                    : garageReviewAccent.opacity(0.42 + (normalizedSpeed * 0.32))
-
-                    var segmentPath = Path()
-                    segmentPath.move(to: mappedPoint(x: previous.x, y: previous.y, in: videoRect))
-                    segmentPath.addLine(to: mappedPoint(x: current.x, y: current.y, in: videoRect))
-
-                context.stroke(
-                    segmentPath,
-                    with: .color(Color.white.opacity(0.52)),
-                    style: StrokeStyle(lineWidth: baseWidth + 1.0, lineCap: .round, lineJoin: .round)
+            if mode == .skeleton {
+                GarageSkeletonOverlay(
+                    drawSize: videoRect.size,
+                    currentFrame: currentFrame
                 )
-                    context.stroke(
-                        segmentPath,
-                        with: .color(accentColor),
-                        style: StrokeStyle(lineWidth: baseWidth, lineCap: .round, lineJoin: .round)
-                    )
-                }
+                .frame(width: videoRect.width, height: videoRect.height)
+                .position(x: videoRect.midX, y: videoRect.midY)
+            } else {
+                Canvas { context, _ in
+                    guard videoRect.isEmpty == false, visibleSampleCount >= 2 else {
+                        return
+                    }
 
-                let lastSample = pathSamples[visibleSampleCount - 1]
-                let point = mappedPoint(x: lastSample.x, y: lastSample.y, in: videoRect)
-                let outerRect = CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10)
-                let innerRect = CGRect(x: point.x - 2.5, y: point.y - 2.5, width: 5, height: 5)
-                context.fill(Ellipse().path(in: outerRect), with: .color(Color.white.opacity(0.92)))
-                context.fill(
-                    Ellipse().path(in: innerRect),
-                    with: .color(lastSample.segment == .backswing ? Color.white : garageReviewAccent)
-                )
+                    var maxSpeed = 0.001
+                    for sampleIndex in 0..<visibleSampleCount {
+                        maxSpeed = max(maxSpeed, pathSamples[sampleIndex].speed)
+                    }
+
+                    for segmentIndex in 1..<visibleSampleCount {
+                        let previous = pathSamples[segmentIndex - 1]
+                        let current = pathSamples[segmentIndex]
+                        let normalizedSpeed = min(max(current.speed / maxSpeed, 0), 1)
+                        let baseWidth = 1.9 + (normalizedSpeed * 1.2)
+                        let accentColor = current.segment == .backswing
+                            ? Color.white.opacity(0.88)
+                            : garageReviewAccent.opacity(0.66)
+
+                        var segmentPath = Path()
+                        segmentPath.move(to: mappedPoint(x: previous.x, y: previous.y, in: videoRect))
+                        segmentPath.addLine(to: mappedPoint(x: current.x, y: current.y, in: videoRect))
+
+                        context.stroke(
+                            segmentPath,
+                            with: .color(Color.white.opacity(0.52)),
+                            style: StrokeStyle(lineWidth: baseWidth + 1.0, lineCap: .round, lineJoin: .round)
+                        )
+                        context.stroke(
+                            segmentPath,
+                            with: .color(accentColor),
+                            style: StrokeStyle(lineWidth: baseWidth, lineCap: .round, lineJoin: .round)
+                        )
+                    }
+
+                    let lastSample = pathSamples[visibleSampleCount - 1]
+                    let point = mappedPoint(x: lastSample.x, y: lastSample.y, in: videoRect)
+                    let outerRect = CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10)
+                    context.fill(Ellipse().path(in: outerRect), with: .color(Color.white.opacity(0.92)))
+                }
             }
         }
     }
@@ -3079,8 +3171,11 @@ private final class GaragePlayerContainerView: UIView {
 @MainActor
 private final class GarageSlowMotionPlaybackController: ObservableObject {
     @Published var currentTime = 0.0
+    @Published var duration = 0.0
+    @Published var isPlaying = false
 
     let player: AVPlayer
+    private var playbackRate: Float = 1.0
 
     private var timeObserverToken: Any?
     private var playbackEndObserver: NSObjectProtocol?
@@ -3090,13 +3185,17 @@ private final class GarageSlowMotionPlaybackController: ObservableObject {
         player = AVPlayer(playerItem: item)
         player.isMuted = true
         player.actionAtItemEnd = .pause
+        let resolvedDuration = CMTimeGetSeconds(item.asset.duration)
+        duration = resolvedDuration.isFinite ? max(resolvedDuration, 0) : 0
 
         timeObserverToken = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 1.0 / 60.0, preferredTimescale: 600),
             queue: .main
         ) { [weak self] time in
             Task { @MainActor [weak self] in
-                self?.currentTime = max(CMTimeGetSeconds(time), 0)
+                guard let self else { return }
+                self.currentTime = max(CMTimeGetSeconds(time), 0)
+                self.isPlaying = self.player.rate != 0
             }
         }
 
@@ -3106,6 +3205,7 @@ private final class GarageSlowMotionPlaybackController: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             self?.player.pause()
+            self?.isPlaying = false
         }
     }
 
@@ -3118,18 +3218,56 @@ private final class GarageSlowMotionPlaybackController: ObservableObject {
         }
     }
 
-    func startSlowMotion() {
+    func startPlayback(at rate: Float) {
+        setRate(rate)
         replay()
     }
 
     func replay() {
         currentTime = 0
         player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
-        player.playImmediately(atRate: 0.35)
+        player.playImmediately(atRate: playbackRate)
+        isPlaying = true
+    }
+
+    func seek(_ time: Double) {
+        let safeDuration = duration.isFinite ? max(duration, 0) : 0
+        let safeTime = time.isFinite ? time : 0
+        let clamped = min(max(safeTime, 0), safeDuration)
+        currentTime = clamped
+        let tolerance = CMTime(seconds: 1.0 / 120.0, preferredTimescale: 600)
+        player.seek(
+            to: CMTime(seconds: clamped, preferredTimescale: 600),
+            toleranceBefore: tolerance,
+            toleranceAfter: tolerance
+        )
+    }
+
+    func togglePlayback() {
+        if player.rate == 0 {
+            player.playImmediately(atRate: playbackRate)
+            isPlaying = true
+        } else {
+            player.pause()
+            isPlaying = false
+        }
+    }
+
+    func setRate(_ rate: Float) {
+        playbackRate = rate
+        if player.rate != 0 {
+            player.playImmediately(atRate: playbackRate)
+        }
+    }
+
+    func updateDurationFromMetadata(_ metadataDuration: Double) {
+        guard metadataDuration.isFinite else { return }
+        duration = max(metadataDuration, 0)
     }
 
     func stop() {
         player.pause()
+        isPlaying = false
     }
 }
 
