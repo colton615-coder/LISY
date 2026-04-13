@@ -2972,6 +2972,7 @@ private struct GaragePlaybackControlRow: View {
                         .background(Color.white.opacity(0.08), in: Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(isPlaying ? "Pause" : "Play")
 
                 ForEach([1.0, 0.5, 0.25], id: \.self) { speed in
                     let speedValue = Float(speed)
