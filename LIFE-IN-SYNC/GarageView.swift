@@ -268,6 +268,7 @@ struct GarageView: View {
                 selectedTab = .review
             }
         }
+        .toolbar(selectedTab == .review ? .hidden : .visible, for: .navigationBar)
     }
 
     private func presentAddRecord() {
@@ -588,6 +589,8 @@ struct GarageReviewSummaryPresentation: Equatable {
         stabilityScore: Int?,
         reviewFrameSource: GarageReviewFrameSourceState
     ) -> GarageReviewSummaryPresentation {
+        let limitedSkeletonDetail = "Body outline is visible, but head and hip tracking were too weak for a stable score."
+
         let basePoseQuality: GaragePoseQualityLevel
         if handPathReviewReport.score >= 75, stabilityScore != nil {
             basePoseQuality = .good
@@ -611,7 +614,7 @@ struct GarageReviewSummaryPresentation: Equatable {
         case (.recoveryNeeded, _, _, _):
             poseQualityDetail = "Review media is limited, so trust this review cautiously."
         case (_, .skeleton, .limited, nil):
-            poseQualityDetail = "Head or hip detection was too weak in this swing"
+            poseQualityDetail = limitedSkeletonDetail
         default:
             poseQualityDetail = nil
         }
@@ -627,7 +630,7 @@ struct GarageReviewSummaryPresentation: Equatable {
             stabilitySubtitle: "A support metric based on head and pelvis drift from setup to impact",
             stabilityValueText: stabilityScore.map(String.init),
             stabilityStatusText: stabilityScore == nil ? "Stability unavailable" : "Support metric",
-            stabilityDetail: stabilityScore == nil ? "Head or hip detection was too weak in this swing" : nil
+            stabilityDetail: stabilityScore == nil ? limitedSkeletonDetail : nil
         )
     }
 }
@@ -942,7 +945,7 @@ private struct GarageFocusedReviewWorkspace: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 18) {
             GarageReviewHeaderBar(onBack: onExitReview)
 
             GarageFocusedReviewFrame(
@@ -996,8 +999,8 @@ private struct GarageFocusedReviewWorkspace: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .padding(.horizontal, ModuleSpacing.medium)
-        .padding(.top, 8)
+        .padding(.horizontal, ModuleSpacing.large)
+        .padding(.top, 14)
         .background(garageReviewBackground.ignoresSafeArea())
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if reviewSurface == .fallbackHandPath {
@@ -1422,13 +1425,21 @@ private struct GarageReviewHeaderBar: View {
                         .font(.subheadline.weight(.semibold))
                 }
                 .foregroundStyle(garageReviewReadableText)
-                .frame(minWidth: 44, minHeight: 44)
+                .padding(.horizontal, 14)
+                .frame(minWidth: 64, minHeight: 44)
+                .background(
+                    GarageInsetPanelBackground(
+                        shape: Capsule(),
+                        fill: garageReviewInsetSurface,
+                        stroke: garageReviewStroke
+                    )
+                )
             }
             .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("Swing Review")
-                    .font(.title3.weight(.bold))
+                    .font(.title2.weight(.bold))
                     .foregroundStyle(garageReviewReadableText)
 
                 Text("Step 2 of 3: Inspect motion")
@@ -1445,14 +1456,18 @@ private struct GarageReviewContextBand: View {
     let presentation: GarageReviewSummaryPresentation
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(presentation.reviewTitle)
-                .font(.subheadline.weight(.semibold))
+                .font(.headline.weight(.semibold))
                 .foregroundStyle(garageReviewReadableText)
 
             Text(presentation.reviewSubtitle)
                 .font(.subheadline)
                 .foregroundStyle(garageReviewMutedText)
+
+            Text(presentation.poseQuality.badgeText)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(presentation.poseQuality.tint)
 
             if let poseQualityDetail = presentation.poseQualityDetail {
                 Text(poseQualityDetail)
@@ -1460,7 +1475,14 @@ private struct GarageReviewContextBand: View {
                     .foregroundStyle(garageReviewMutedText.opacity(0.95))
             }
         }
-        .padding(.horizontal, 2)
+        .padding(16)
+        .background(
+            GarageRaisedPanelBackground(
+                shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous),
+                fill: garageReviewSurfaceRaised,
+                stroke: garageReviewStroke.opacity(0.8)
+            )
+        )
     }
 }
 
@@ -1472,10 +1494,10 @@ private struct GarageReviewSummaryUtilityStrip: View {
     let onSelectFrame: (Int) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Frame Browser")
-                    .font(.caption.weight(.semibold))
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(garageReviewMutedText)
 
                 Spacer(minLength: 0)
@@ -1493,12 +1515,13 @@ private struct GarageReviewSummaryUtilityStrip: View {
                 onSelectFrame: onSelectFrame
             )
         }
-        .padding(14)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .background(
             GarageInsetPanelBackground(
                 shape: RoundedRectangle(cornerRadius: 16, style: .continuous),
-                fill: garageReviewInsetSurface,
-                stroke: garageReviewStroke
+                fill: garageReviewInsetSurface.opacity(0.82),
+                stroke: garageReviewStroke.opacity(0.7)
             )
         )
     }
@@ -1598,7 +1621,7 @@ private struct GarageSummaryPrimaryActionBar: View {
             .disabled(canContinue == false)
             .opacity(canContinue ? 1 : 0.78)
         }
-        .padding(.horizontal, ModuleSpacing.medium)
+        .padding(.horizontal, ModuleSpacing.large)
         .padding(.top, 12)
         .padding(.bottom, 10)
         .background(
@@ -1842,6 +1865,10 @@ private struct GarageFocusedReviewFrame: View {
     }
 
     var body: some View {
+        let limitedSkeletonInspection = reviewSurface == .summary
+            && reviewMode == .skeleton
+            && summaryPresentation.poseQuality == .limited
+
         ZStack(alignment: .topLeading) {
             Rectangle()
                 .fill(garageReviewCanvasFill)
@@ -1857,6 +1884,7 @@ private struct GarageFocusedReviewFrame: View {
                     reviewSurface: reviewSurface,
                     handPathSamples: handPathSamples,
                     currentTime: currentTime,
+                    skeletonOverlayOpacity: limitedSkeletonInspection ? 0.72 : 1,
                     onAnchorDragChanged: onAnchorDragChanged,
                     onAnchorDragEnded: onAnchorDragEnded
                 )
@@ -1870,6 +1898,7 @@ private struct GarageFocusedReviewFrame: View {
                     reviewSurface: reviewSurface,
                     handPathSamples: handPathSamples,
                     currentTime: currentTime,
+                    skeletonOverlayOpacity: limitedSkeletonInspection ? 0.72 : 1,
                     onAnchorDragChanged: onAnchorDragChanged,
                     onAnchorDragEnded: onAnchorDragEnded
                 )
@@ -1903,19 +1932,18 @@ private struct GarageFocusedReviewFrame: View {
                     )
             }
         }
-        .overlay(alignment: .topLeading) {
+        .overlay(alignment: .top) {
             if reviewSurface == .summary {
-                GaragePoseQualityBadge(level: summaryPresentation.poseQuality)
-                    .padding(16)
-            }
-        }
-        .overlay(alignment: .topTrailing) {
-            if reviewSurface == .summary {
-                GarageReviewModeSwitcher(
-                    selectedMode: reviewMode,
-                    onSelect: onSelectReviewMode
-                )
-                .padding(16)
+                HStack(alignment: .top, spacing: 12) {
+                    GaragePoseQualityBadge(level: summaryPresentation.poseQuality)
+                    Spacer(minLength: 12)
+                    GarageReviewModeSwitcher(
+                        selectedMode: reviewMode,
+                        onSelect: onSelectReviewMode
+                    )
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 14)
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
@@ -1948,10 +1976,12 @@ private struct GarageReviewModeSwitcher: View {
 
                         Text(mode.title)
                             .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                         .foregroundStyle(isSelected ? garageReviewReadableText : garageReviewMutedText)
-                        .frame(minHeight: 44)
-                        .padding(.horizontal, 14)
+                        .frame(minWidth: 102, minHeight: 44)
+                        .padding(.horizontal, 10)
                         .background(
                             Capsule()
                                 .fill(isSelected ? garageReviewAccent.opacity(0.18) : Color.clear)
@@ -1987,11 +2017,11 @@ private struct GaragePoseQualityBadge: View {
                 .fill(level.tint)
                 .frame(width: 8, height: 8)
 
-            Text(level.badgeText)
+            Text(level.label)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(garageReviewReadableText)
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 12)
         .frame(minHeight: 44)
         .background(
             GarageInsetPanelBackground(
@@ -2000,6 +2030,7 @@ private struct GaragePoseQualityBadge: View {
                 stroke: level.tint.opacity(0.28)
             )
         )
+        .accessibilityLabel(level.badgeText)
     }
 }
 
@@ -2066,6 +2097,7 @@ private struct GarageReviewImageOverlay: View {
     let reviewSurface: GarageReviewSurface
     let handPathSamples: [GarageHandPathSample]
     let currentTime: Double
+    let skeletonOverlayOpacity: Double
     let onAnchorDragChanged: (CGPoint) -> Void
     let onAnchorDragEnded: (CGPoint) -> Void
 
@@ -2088,6 +2120,7 @@ private struct GarageReviewImageOverlay: View {
                         drawSize: imageRect.size,
                         currentFrame: currentFrame
                     )
+                    .opacity(skeletonOverlayOpacity)
                     .frame(width: imageRect.width, height: imageRect.height)
                     .position(x: imageRect.midX, y: imageRect.midY)
                     .allowsHitTesting(false)
@@ -2135,6 +2168,7 @@ private struct GaragePoseFallbackOverlay: View {
     let reviewSurface: GarageReviewSurface
     let handPathSamples: [GarageHandPathSample]
     let currentTime: Double
+    let skeletonOverlayOpacity: Double
     let onAnchorDragChanged: (CGPoint) -> Void
     let onAnchorDragEnded: (CGPoint) -> Void
 
@@ -2152,6 +2186,7 @@ private struct GaragePoseFallbackOverlay: View {
                         drawSize: drawRect.size,
                         currentFrame: currentFrame
                     )
+                    .opacity(skeletonOverlayOpacity)
                     .frame(width: drawRect.width, height: drawRect.height)
                     .position(x: drawRect.midX, y: drawRect.midY)
                     .allowsHitTesting(false)
@@ -2267,8 +2302,10 @@ private struct GarageReadOnlyHandPathOverlay: View {
                 let previous = pathSamples[segmentIndex - 1]
                 let current = pathSamples[segmentIndex]
                 let normalizedSpeed = min(max(current.speed / maxSpeed, 0), 1)
-                let baseWidth = 2.0 + (normalizedSpeed * 1.6)
-                let accentColor = current.segment == .backswing ? Color.white.opacity(0.86) : garageReviewAccent.opacity(0.8)
+                let baseWidth = 1.7 + (normalizedSpeed * 1.0)
+                let accentColor = current.segment == .backswing
+                    ? Color.white.opacity(0.84)
+                    : garageReviewAccent.opacity(0.74)
 
                 var segmentPath = Path()
                 segmentPath.move(to: garageMappedPoint(x: previous.x, y: previous.y, in: drawRect))
@@ -2276,8 +2313,8 @@ private struct GarageReadOnlyHandPathOverlay: View {
 
                 context.stroke(
                     segmentPath,
-                    with: .color(Color.white.opacity(0.48)),
-                    style: StrokeStyle(lineWidth: baseWidth + 1.4, lineCap: .round, lineJoin: .round)
+                    with: .color(Color.white.opacity(0.32)),
+                    style: StrokeStyle(lineWidth: baseWidth + 0.9, lineCap: .round, lineJoin: .round)
                 )
                 context.stroke(
                     segmentPath,
@@ -2288,9 +2325,9 @@ private struct GarageReadOnlyHandPathOverlay: View {
 
             if let visibleCurrentSample {
                 let point = garageMappedPoint(x: visibleCurrentSample.x, y: visibleCurrentSample.y, in: drawRect)
-                let outerRect = CGRect(x: point.x - 6, y: point.y - 6, width: 12, height: 12)
-                let innerRect = CGRect(x: point.x - 3, y: point.y - 3, width: 6, height: 6)
-                context.fill(Ellipse().path(in: outerRect), with: .color(Color.white))
+                let outerRect = CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10)
+                let innerRect = CGRect(x: point.x - 2.5, y: point.y - 2.5, width: 5, height: 5)
+                context.fill(Ellipse().path(in: outerRect), with: .color(Color.white.opacity(0.92)))
                 context.fill(
                     Ellipse().path(in: innerRect),
                     with: .color(visibleCurrentSample.segment == .backswing ? Color.white : garageReviewAccent)
@@ -2781,6 +2818,18 @@ private struct GarageSlowMotionPlaybackSheet: View {
                 Text("A clean replay of the approved swing with the hand path split into backswing and downswing segments through impact.")
                     .foregroundStyle(AppModule.garage.theme.textSecondary)
 
+                Text("Use slow motion to confirm the approved motion, then finish the review when you're ready.")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(AppModule.garage.theme.textSecondary)
+                    .padding(14)
+                    .background(
+                        GarageInsetPanelBackground(
+                            shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous),
+                            fill: garageReviewInsetSurface.opacity(0.84),
+                            stroke: garageReviewStroke.opacity(0.72)
+                        )
+                    )
+
                 ZStack {
                     GarageSlowMotionPlayerView(player: playbackController.player)
                         .frame(minHeight: 480)
@@ -2798,38 +2847,24 @@ private struct GarageSlowMotionPlaybackSheet: View {
                         .stroke(AppModule.garage.theme.borderSubtle, lineWidth: 1)
                 )
 
-                HStack(spacing: ModuleSpacing.medium) {
-                    Text("Playback \(String(format: "%.2fs", playbackController.currentTime))")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppModule.garage.theme.textSecondary)
-
-                    Spacer(minLength: 0)
-
-                    Button("Replay") {
-                        playbackController.replay()
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(garageReviewCanvasFill)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 11)
-                    .background(
-                        GarageRaisedPanelBackground(
-                            shape: Capsule(),
-                            fill: garageReviewAccent,
-                            stroke: garageReviewAccent.opacity(0.35),
-                            glow: garageReviewAccent
-                        )
-                    )
-                }
+                Text("Playback \(String(format: "%.2fs", playbackController.currentTime))")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppModule.garage.theme.textSecondary)
             }
             .padding(ModuleSpacing.large)
             .navigationTitle("Approved Playback")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") {
+                    Button("Close") {
                         dismiss()
                     }
                 }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                GaragePlaybackActionBar(
+                    onReplay: playbackController.replay,
+                    onFinish: dismiss.callAsFunction
+                )
             }
         }
         .task {
@@ -2843,6 +2878,63 @@ private struct GarageSlowMotionPlaybackSheet: View {
         }
         .onDisappear {
             playbackController.stop()
+        }
+    }
+}
+
+private struct GaragePlaybackActionBar: View {
+    let onReplay: () -> Void
+    let onFinish: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(action: onReplay) {
+                Text("Replay Clip")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(garageReviewReadableText)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 52)
+                    .background(
+                        GarageInsetPanelBackground(
+                            shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
+                            fill: garageReviewInsetSurface,
+                            stroke: garageReviewStroke
+                        )
+                    )
+            }
+            .buttonStyle(.plain)
+
+            Button(action: onFinish) {
+                Text("Finish Review")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(garageReviewCanvasFill)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 52)
+                    .background(
+                        GarageRaisedPanelBackground(
+                            shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
+                            fill: garageReviewAccent,
+                            stroke: garageReviewAccent.opacity(0.35),
+                            glow: garageReviewAccent
+                        )
+                    )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, ModuleSpacing.large)
+        .padding(.top, 12)
+        .padding(.bottom, 10)
+        .background(
+            GarageRaisedPanelBackground(
+                shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous),
+                fill: garageReviewSurface
+            )
+            .ignoresSafeArea(edges: .bottom)
+        )
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(garageReviewStroke.opacity(0.9))
+                .frame(height: 1)
         }
     }
 }
@@ -2884,24 +2976,24 @@ private struct GarageSlowMotionPathOverlay: View {
                     maxSpeed = max(maxSpeed, pathSamples[sampleIndex].speed)
                 }
 
-                for segmentIndex in 1..<visibleSampleCount {
-                    let previous = pathSamples[segmentIndex - 1]
-                    let current = pathSamples[segmentIndex]
-                    let normalizedSpeed = min(max(current.speed / maxSpeed, 0), 1)
-                    let baseWidth = 2.4 + (normalizedSpeed * 2.2)
-                    let accentColor = current.segment == .backswing
-                        ? Color.white.opacity(0.88)
-                        : garageReviewAccent.opacity(0.45 + (normalizedSpeed * 0.45))
+            for segmentIndex in 1..<visibleSampleCount {
+                let previous = pathSamples[segmentIndex - 1]
+                let current = pathSamples[segmentIndex]
+                let normalizedSpeed = min(max(current.speed / maxSpeed, 0), 1)
+                let baseWidth = 1.9 + (normalizedSpeed * 1.2)
+                let accentColor = current.segment == .backswing
+                    ? Color.white.opacity(0.88)
+                    : garageReviewAccent.opacity(0.42 + (normalizedSpeed * 0.32))
 
                     var segmentPath = Path()
                     segmentPath.move(to: mappedPoint(x: previous.x, y: previous.y, in: videoRect))
                     segmentPath.addLine(to: mappedPoint(x: current.x, y: current.y, in: videoRect))
 
-                    context.stroke(
-                        segmentPath,
-                        with: .color(Color.white.opacity(0.78)),
-                        style: StrokeStyle(lineWidth: baseWidth + 2.0, lineCap: .round, lineJoin: .round)
-                    )
+                context.stroke(
+                    segmentPath,
+                    with: .color(Color.white.opacity(0.52)),
+                    style: StrokeStyle(lineWidth: baseWidth + 1.0, lineCap: .round, lineJoin: .round)
+                )
                     context.stroke(
                         segmentPath,
                         with: .color(accentColor),
@@ -2911,9 +3003,9 @@ private struct GarageSlowMotionPathOverlay: View {
 
                 let lastSample = pathSamples[visibleSampleCount - 1]
                 let point = mappedPoint(x: lastSample.x, y: lastSample.y, in: videoRect)
-                let outerRect = CGRect(x: point.x - 7, y: point.y - 7, width: 14, height: 14)
-                let innerRect = CGRect(x: point.x - 4, y: point.y - 4, width: 8, height: 8)
-                context.fill(Ellipse().path(in: outerRect), with: .color(Color.white))
+                let outerRect = CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10)
+                let innerRect = CGRect(x: point.x - 2.5, y: point.y - 2.5, width: 5, height: 5)
+                context.fill(Ellipse().path(in: outerRect), with: .color(Color.white.opacity(0.92)))
                 context.fill(
                     Ellipse().path(in: innerRect),
                     with: .color(lastSample.segment == .backswing ? Color.white : garageReviewAccent)

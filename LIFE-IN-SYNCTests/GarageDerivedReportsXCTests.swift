@@ -189,7 +189,10 @@ final class GarageDerivedReportsXCTests: XCTestCase {
         XCTAssertEqual(presentation.reviewTitle, "Skeleton Review")
         XCTAssertEqual(presentation.poseQuality, .limited)
         XCTAssertEqual(presentation.stabilityStatusText, "Stability unavailable")
-        XCTAssertEqual(presentation.stabilityDetail, "Head or hip detection was too weak in this swing")
+        XCTAssertEqual(
+            presentation.stabilityDetail,
+            "Body outline is visible, but head and hip tracking were too weak for a stable score."
+        )
     }
 
     func testGarageReviewSummaryPresentationUsesModeSpecificContextCopy() {
