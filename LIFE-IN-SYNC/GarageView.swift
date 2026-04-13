@@ -27,20 +27,28 @@ private struct GarageHandPathSample: Identifiable {
     let x: Double
     let y: Double
     let speed: Double
+    let segment: GarageHandPathSegmentKind
 
     init(
         id: Int,
         timestamp: Double,
         x: Double,
         y: Double,
-        speed: Double
+        speed: Double,
+        segment: GarageHandPathSegmentKind
     ) {
         self.id = id
         self.timestamp = timestamp
         self.x = x
         self.y = y
         self.speed = speed
+        self.segment = segment
     }
+}
+
+private enum GarageReviewSurface {
+    case fallbackHandPath
+    case summary
 }
 
 private enum GarageImportPresentationState: Equatable {
@@ -163,31 +171,21 @@ private func garageRecordSelectionKey(for record: SwingRecord) -> String {
     ].joined(separator: "::")
 }
 
-private func garageHandPathSamples(from frames: [SwingFrame]) -> [GarageHandPathSample] {
-    guard frames.count >= 2 else {
-        return []
-    }
-
-    let smoothedCenters = GarageAnalysisPipeline.generatePathPoints(from: frames, samplesPerSegment: 6).map {
-        CGPoint(x: $0.x, y: $0.y)
-    }
-    guard smoothedCenters.count >= 2 else { return [] }
-
-    return smoothedCenters.enumerated().map { index, point in
-        let priorIndex = max(index - 1, 0)
-        let nextIndex = min(index + 1, smoothedCenters.count - 1)
-        let previousPoint = smoothedCenters[priorIndex]
-        let nextPoint = smoothedCenters[nextIndex]
-        let speed = GarageAnalysisPipeline.distance(from: previousPoint, to: nextPoint)
-        let normalizedT = Double(index) / Double(max(smoothedCenters.count - 1, 1))
-        let sourceFrame = min(Int((Double(frames.count - 1) * normalizedT).rounded()), frames.count - 1)
-
-        return GarageHandPathSample(
-            id: garageDeterministicHandPathSampleID(index: index, timestamp: frames[sourceFrame].timestamp),
-            timestamp: frames[sourceFrame].timestamp,
-            x: point.x,
-            y: point.y,
-            speed: speed
+private func garageHandPathSamples(from frames: [SwingFrame], keyFrames: [KeyFrame]) -> [GarageHandPathSample] {
+    GarageAnalysisPipeline.segmentedHandPathSamples(
+        from: frames,
+        keyFrames: keyFrames,
+        samplesPerSegment: 6
+    )
+    .enumerated()
+    .map { index, sample in
+        GarageHandPathSample(
+            id: garageDeterministicHandPathSampleID(index: index, timestamp: sample.timestamp),
+            timestamp: sample.timestamp,
+            x: sample.x,
+            y: sample.y,
+            speed: sample.speed,
+            segment: sample.segment
         )
     }
 }
@@ -346,6 +344,11 @@ struct GarageView: View {
                 let resolvedTitle = garageSuggestedRecordTitle(for: movie.displayName, fallbackURL: reviewMasterURL)
                 let reviewMasterBookmark = GarageMediaStore.bookmarkData(for: reviewMasterURL)
                 let exportBookmark = exportURL.flatMap { GarageMediaStore.bookmarkData(for: $0) }
+                let approvedKeyFrames = GarageAnalysisPipeline.autoApprovedKeyFrames(
+                    from: output.keyFrames,
+                    reviewReport: output.handPathReviewReport
+                )
+                let initialValidationStatus: KeyframeValidationStatus = output.handPathReviewReport.requiresManualReview ? .pending : .approved
 
                 let record = SwingRecord(
                     title: resolvedTitle,
@@ -358,7 +361,8 @@ struct GarageView: View {
                     notes: "",
                     frameRate: output.frameRate,
                     swingFrames: output.swingFrames,
-                    keyFrames: output.keyFrames,
+                    keyFrames: approvedKeyFrames,
+                    keyframeValidationStatus: initialValidationStatus,
                     handAnchors: output.handAnchors,
                     pathPoints: output.pathPoints,
                     analysisResult: output.analysisResult
@@ -591,7 +595,7 @@ private struct GarageFocusedReviewWorkspace: View {
     @State private var isShowingCompletionPlayback = false
     @State private var didAutoPresentCompletionPlayback = false
     @State private var reviewMode: GarageReviewMode = .handPath
-    @State private var reviewedSkeletonPhases: Set<SwingPhase> = []
+    @State private var reviewSurface: GarageReviewSurface = .summary
     @State private var dragAnchorPoint: CGPoint?
     @State private var isDraggingAnchor = false
 
@@ -715,6 +719,10 @@ private struct GarageFocusedReviewWorkspace: View {
         GarageStability.score(for: record)
     }
 
+    private var handPathReviewReport: GarageHandPathReviewReport {
+        GarageAnalysisPipeline.handPathReviewReport(for: record.swingFrames, keyFrames: record.keyFrames)
+    }
+
     private var coachingReport: GarageCoachingReport {
         GarageCoaching.report(for: record)
     }
@@ -728,7 +736,19 @@ private struct GarageFocusedReviewWorkspace: View {
     }
 
     private var fullHandPathSamples: [GarageHandPathSample] {
-        garageHandPathSamples(from: record.swingFrames)
+        garageHandPathSamples(from: record.swingFrames, keyFrames: record.keyFrames)
+    }
+
+    private var requiresFallbackReview: Bool {
+        if record.allCheckpointsApproved || record.keyframeValidationStatus == .approved {
+            return false
+        }
+
+        if record.keyframeValidationStatus == .flagged {
+            return true
+        }
+
+        return handPathReviewReport.requiresManualReview
     }
 
     private var filmstripFrames: [GarageFilmstripFrame] {
@@ -776,6 +796,9 @@ private struct GarageFocusedReviewWorkspace: View {
                 highlightTint: selectedAnchorTint,
                 showsAnchorGuides: isDraggingAnchor,
                 reviewMode: reviewMode,
+                reviewSurface: reviewSurface,
+                handPathSamples: fullHandPathSamples,
+                currentTime: currentFrameTimestamp ?? currentTime,
                 stabilityScore: stabilityScore,
                 preferredHeight: videoStageHeight,
                 onExitReview: onExitReview,
@@ -785,41 +808,62 @@ private struct GarageFocusedReviewWorkspace: View {
             )
             .frame(maxWidth: .infinity)
 
-            GarageReviewScrollableControls(
-                record: record,
-                reviewMode: reviewMode,
-                reviewedSkeletonPhases: reviewedSkeletonPhases,
-                stabilityScore: stabilityScore,
-                coachingReport: coachingReport,
-                videoURL: reviewVideoURL,
-                frames: filmstripFrames,
-                markers: orderedKeyframes,
-                selectedPhase: selectedPhase,
-                currentFrameIndex: currentFrameIndex,
-                totalFrameCount: record.swingFrames.count,
-                onSelectPhase: selectPhase,
-                onSelectFrame: setCurrentFrameIndex,
-                reviewRecoveryTitle: reviewRecoveryTitle,
-                reviewRecoveryBody: reviewRecoveryBody,
-                reviewFrameSource: reviewFrameSource,
-                showsCompletionPlayback: record.allCheckpointsApproved && reviewVideoURL != nil,
-                onOpenCompletionPlayback: {
-                    isShowingCompletionPlayback = true
+            Group {
+                if reviewSurface == .fallbackHandPath {
+                    GarageReviewScrollableControls(
+                        videoURL: reviewVideoURL,
+                        frames: filmstripFrames,
+                        markers: orderedKeyframes,
+                        selectedPhase: selectedPhase,
+                        currentFrameIndex: currentFrameIndex,
+                        totalFrameCount: record.swingFrames.count,
+                        onSelectPhase: selectPhase,
+                        onSelectFrame: setCurrentFrameIndex,
+                        reviewRecoveryTitle: reviewRecoveryTitle,
+                        reviewRecoveryBody: reviewRecoveryBody,
+                        reviewFrameSource: reviewFrameSource,
+                        showsCompletionPlayback: record.allCheckpointsApproved && reviewVideoURL != nil,
+                        onOpenCompletionPlayback: {
+                            isShowingCompletionPlayback = true
+                        }
+                    )
+                } else {
+                    GarageReviewSummaryControls(
+                        handPathReviewReport: handPathReviewReport,
+                        reviewMode: reviewMode,
+                        stabilityScore: stabilityScore,
+                        coachingReport: coachingReport,
+                        reliabilityStatus: GarageReliability.report(for: record).status,
+                        selectedPhase: selectedPhase,
+                        videoURL: reviewVideoURL,
+                        frames: filmstripFrames,
+                        currentFrameIndex: currentFrameIndex,
+                        totalFrameCount: record.swingFrames.count,
+                        onSelectFrame: setCurrentFrameIndex,
+                        reviewRecoveryTitle: reviewRecoveryTitle,
+                        reviewRecoveryBody: reviewRecoveryBody,
+                        reviewFrameSource: reviewFrameSource,
+                        showsCompletionPlayback: reviewVideoURL != nil,
+                        onOpenCompletionPlayback: {
+                            isShowingCompletionPlayback = true
+                        }
+                    )
                 }
-            )
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .background(garageReviewBackground.ignoresSafeArea())
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            GarageReviewActionDock(
-                reviewMode: reviewMode,
-                canStepBackward: canStepBackward,
-                canStepForward: canStepForward,
-                canConfirm: primaryActionEnabled,
-                onStepBackward: { stepFrame(by: -1) },
-                onStepForward: { stepFrame(by: 1) },
-                onConfirm: performPrimaryReviewAction
-            )
+            if reviewSurface == .fallbackHandPath {
+                GarageReviewActionDock(
+                    canStepBackward: canStepBackward,
+                    canStepForward: canStepForward,
+                    canConfirm: primaryActionEnabled,
+                    onStepBackward: { stepFrame(by: -1) },
+                    onStepForward: { stepFrame(by: 1) },
+                    onConfirm: confirmSelectionAndAdvance
+                )
+            }
         }
         .sheet(isPresented: $isShowingCompletionPlayback) {
             if let reviewVideoURL {
@@ -832,12 +876,8 @@ private struct GarageFocusedReviewWorkspace: View {
         .task(id: garageRecordSelectionKey(for: record)) {
             record.hydrateCheckpointStatusesFromAggregateIfNeeded()
             record.refreshKeyframeValidationStatus()
-            try? modelContext.save()
-            reviewMode = .handPath
-            reviewedSkeletonPhases = []
-            syncSelectedPhase()
-            seekToSelectedCheckpoint()
-            autoPresentCompletionPlaybackIfNeeded()
+            applyAutomaticHandPathApprovalIfNeeded()
+            syncReviewSession()
         }
         .task(id: frameRequestID) {
             await loadFrameImage()
@@ -887,10 +927,6 @@ private struct GarageFocusedReviewWorkspace: View {
         }
     }
 
-    private func syncSelectedPhase() {
-        selectedPhase = initialPhaseSelection()
-    }
-
     private func seekToSelectedCheckpoint() {
         if let selectedMarker {
             currentTime = selectedMarker.timestamp
@@ -912,12 +948,7 @@ private struct GarageFocusedReviewWorkspace: View {
     }
 
     private var primaryActionEnabled: Bool {
-        switch reviewMode {
-        case .handPath:
-            displayedAnchor != nil && currentFrameIndex != nil
-        case .skeleton:
-            currentFrameIndex != nil
-        }
+        displayedAnchor != nil && currentFrameIndex != nil
     }
 
     private func stepFrame(by offset: Int) {
@@ -929,19 +960,14 @@ private struct GarageFocusedReviewWorkspace: View {
         guard record.swingFrames.isEmpty == false else { return }
         let clampedIndex = min(max(index, 0), record.swingFrames.count - 1)
         currentTime = record.swingFrames[clampedIndex].timestamp
+        if reviewSurface == .summary, let nearestPhase = nearestPhase(for: clampedIndex) {
+            selectedPhase = nearestPhase
+        }
     }
 
     private func selectReviewMode(_ mode: GarageReviewMode) {
+        guard reviewSurface == .summary else { return }
         reviewMode = mode
-        if mode == .handPath {
-            return
-        }
-
-        if reviewedSkeletonPhases.contains(selectedPhase) == false,
-           let nextPhase = nextSkeletonReviewPhase(after: nil) {
-            selectedPhase = nextPhase
-            seekToSelectedCheckpoint()
-        }
     }
 
     private func selectPhase(_ phase: SwingPhase) {
@@ -988,28 +1014,7 @@ private struct GarageFocusedReviewWorkspace: View {
             selectedPhase = nextPhase
             seekToSelectedCheckpoint()
         } else {
-            autoPresentCompletionPlaybackIfNeeded()
-        }
-    }
-
-    private func advanceSkeletonReview() {
-        reviewedSkeletonPhases.insert(selectedPhase)
-
-        if let nextPhase = nextSkeletonReviewPhase(after: selectedPhase) {
-            selectedPhase = nextPhase
-            seekToSelectedCheckpoint()
-            return
-        }
-
-        autoPresentCompletionPlaybackIfNeeded()
-    }
-
-    private func performPrimaryReviewAction() {
-        switch reviewMode {
-        case .handPath:
-            confirmSelectionAndAdvance()
-        case .skeleton:
-            advanceSkeletonReview()
+            transitionToSummaryReview()
         }
     }
 
@@ -1096,43 +1101,67 @@ private struct GarageFocusedReviewWorkspace: View {
     }
 
     private func autoPresentCompletionPlaybackIfNeeded() {
-        guard record.allCheckpointsApproved, didAutoPresentCompletionPlayback == false, reviewVideoURL != nil else { return }
+        guard
+            reviewSurface == .fallbackHandPath,
+            record.allCheckpointsApproved,
+            didAutoPresentCompletionPlayback == false,
+            reviewVideoURL != nil
+        else {
+            return
+        }
         didAutoPresentCompletionPlayback = true
         isShowingCompletionPlayback = true
     }
 
-    private func nextSkeletonReviewPhase(after phase: SwingPhase?) -> SwingPhase? {
-        let availablePhases = SwingPhase.allCases.filter { candidate in
-            orderedKeyframes.contains(where: { $0.keyFrame.phase == candidate })
+    private func applyAutomaticHandPathApprovalIfNeeded() {
+        guard record.keyFrames.isEmpty == false, requiresFallbackReview == false else {
+            return
         }
 
-        guard availablePhases.isEmpty == false else {
-            return nil
+        let autoApprovedKeyFrames = GarageAnalysisPipeline.autoApprovedKeyFrames(
+            from: record.keyFrames,
+            reviewReport: handPathReviewReport
+        )
+        guard autoApprovedKeyFrames != record.keyFrames || record.keyframeValidationStatus != .approved else {
+            return
         }
 
-        let startIndex: Int
-        if let phase, let resolvedIndex = availablePhases.firstIndex(of: phase) {
-            startIndex = resolvedIndex + 1
-        } else {
-            startIndex = 0
+        record.keyFrames = autoApprovedKeyFrames
+        record.refreshKeyframeValidationStatus()
+        try? modelContext.save()
+    }
+
+    private func syncReviewSession() {
+        reviewSurface = requiresFallbackReview ? .fallbackHandPath : .summary
+        reviewMode = reviewSurface == .summary ? .skeleton : .handPath
+        didAutoPresentCompletionPlayback = false
+
+        if reviewSurface == .fallbackHandPath {
+            selectedPhase = handPathReviewReport.weakestPhase ?? initialPhaseSelection()
+            seekToSelectedCheckpoint()
+            autoPresentCompletionPlaybackIfNeeded()
+            return
         }
 
-        if startIndex < availablePhases.count {
-            for candidate in availablePhases[startIndex...] where reviewedSkeletonPhases.contains(candidate) == false {
-                return candidate
-            }
-        }
+        selectedPhase = initialPhaseSelection()
+        seekToSelectedCheckpoint()
+    }
 
-        return availablePhases.first(where: { reviewedSkeletonPhases.contains($0) == false })
+    private func transitionToSummaryReview() {
+        reviewSurface = .summary
+        reviewMode = .skeleton
+        selectedPhase = nearestPhase(for: currentFrameIndex ?? 0) ?? .impact
+        didAutoPresentCompletionPlayback = false
+    }
+
+    private func nearestPhase(for frameIndex: Int) -> SwingPhase? {
+        orderedKeyframes.min { lhs, rhs in
+            abs(lhs.keyFrame.frameIndex - frameIndex) < abs(rhs.keyFrame.frameIndex - frameIndex)
+        }?.keyFrame.phase
     }
 }
 
 private struct GarageReviewScrollableControls: View {
-    let record: SwingRecord
-    let reviewMode: GarageReviewMode
-    let reviewedSkeletonPhases: Set<SwingPhase>
-    let stabilityScore: Int?
-    let coachingReport: GarageCoachingReport
     let videoURL: URL?
     let frames: [GarageFilmstripFrame]
     let markers: [GarageTimelineMarker]
@@ -1153,8 +1182,6 @@ private struct GarageReviewScrollableControls: View {
                 GarageCheckpointProgressStrip(
                     selectedPhase: selectedPhase,
                     markers: markers,
-                    reviewMode: reviewMode,
-                    reviewedSkeletonPhases: reviewedSkeletonPhases,
                     onSelect: onSelectPhase
                 )
 
@@ -1174,22 +1201,6 @@ private struct GarageReviewScrollableControls: View {
                     currentFrameIndex: currentFrameIndex,
                     onSelectFrame: onSelectFrame
                 )
-
-                if reviewMode == .skeleton {
-                    GarageSkeletonReviewSummaryCard(
-                        selectedPhase: selectedPhase,
-                        reviewedCount: reviewedSkeletonPhases.count,
-                        totalCount: markers.count,
-                        isCurrentPhaseReviewed: reviewedSkeletonPhases.contains(selectedPhase)
-                    )
-
-                    GarageCoachingReportView(
-                        report: coachingReport,
-                        stabilityScore: stabilityScore,
-                        selectedPhase: selectedPhase,
-                        reliabilityStatus: GarageReliability.report(for: record).status
-                    )
-                }
 
                 if reviewFrameSource != .video {
                     GarageReviewRecoveryCallout(
@@ -1225,25 +1236,111 @@ private struct GarageReviewScrollableControls: View {
     }
 }
 
-private struct GarageSkeletonReviewSummaryCard: View {
+private struct GarageReviewSummaryControls: View {
+    let handPathReviewReport: GarageHandPathReviewReport
+    let reviewMode: GarageReviewMode
+    let stabilityScore: Int?
+    let coachingReport: GarageCoachingReport
+    let reliabilityStatus: GarageReliabilityStatus
     let selectedPhase: SwingPhase
-    let reviewedCount: Int
-    let totalCount: Int
-    let isCurrentPhaseReviewed: Bool
+    let videoURL: URL?
+    let frames: [GarageFilmstripFrame]
+    let currentFrameIndex: Int?
+    let totalFrameCount: Int
+    let onSelectFrame: (Int) -> Void
+    let reviewRecoveryTitle: String
+    let reviewRecoveryBody: String
+    let reviewFrameSource: GarageReviewFrameSourceState
+    let showsCompletionPlayback: Bool
+    let onOpenCompletionPlayback: () -> Void
+
+    var body: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 10) {
+                GarageAutomaticHandPathSummaryCard(
+                    reviewMode: reviewMode,
+                    handPathReviewReport: handPathReviewReport
+                )
+
+                if reviewMode == .skeleton {
+                    GarageCoachingReportView(
+                        report: coachingReport,
+                        stabilityScore: stabilityScore,
+                        selectedPhase: selectedPhase,
+                        reliabilityStatus: reliabilityStatus
+                    )
+                } else {
+                    GarageReadOnlyHandPathSummaryCard()
+                }
+
+                HStack {
+                    Spacer(minLength: 0)
+                    Text(frameCountLabel)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(garageReviewMutedText)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+
+                GarageReviewFilmstrip(
+                    videoURL: videoURL,
+                    frames: frames,
+                    markers: [],
+                    currentFrameIndex: currentFrameIndex,
+                    onSelectFrame: onSelectFrame
+                )
+
+                if reviewFrameSource != .video {
+                    GarageReviewRecoveryCallout(
+                        title: reviewRecoveryTitle,
+                        message: reviewRecoveryBody,
+                        state: reviewFrameSource
+                    )
+                }
+
+                if showsCompletionPlayback {
+                    GarageCompletionPlaybackCallout(replay: onOpenCompletionPlayback)
+                }
+            }
+            .padding(.horizontal, ModuleSpacing.medium)
+            .padding(.top, 2)
+            .padding(.bottom, 8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            GarageRaisedPanelBackground(
+                shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous),
+                fill: garageReviewSurface
+            )
+        )
+    }
+
+    private var frameCountLabel: String {
+        guard let currentFrameIndex else {
+            return "\(totalFrameCount) frames"
+        }
+
+        return "\(currentFrameIndex + 1) / \(totalFrameCount) frames"
+    }
+}
+
+private struct GarageAutomaticHandPathSummaryCard: View {
+    let reviewMode: GarageReviewMode
+    let handPathReviewReport: GarageHandPathReviewReport
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Skeleton Review")
+                    Text("Automatic Hand Path")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(garageReviewAccent)
 
-                    Text(selectedPhase.reviewTitle)
+                    Text(reviewMode == .skeleton ? "Skeleton Summary Ready" : "Hand Path Ready")
                         .font(.headline)
                         .foregroundStyle(garageReviewReadableText)
 
-                    Text("Confirm each checkpoint against the full-body overlay without disturbing the hand-path anchors.")
+                    Text("Garage auto-detected the grip path and only keeps manual fallback for genuinely weak wrist reads.")
                         .font(.caption)
                         .foregroundStyle(garageReviewMutedText)
                 }
@@ -1251,22 +1348,19 @@ private struct GarageSkeletonReviewSummaryCard: View {
                 Spacer(minLength: 0)
 
                 VStack(alignment: .trailing, spacing: 4) {
-                    Text("Progress")
+                    Text("Confidence")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(garageReviewMutedText)
-                    Text("\(reviewedCount)/\(totalCount)")
+                    Text("\(handPathReviewReport.score)")
                         .font(.title3.weight(.bold))
                         .foregroundStyle(garageReviewAccent)
                 }
             }
 
-            HStack(spacing: 8) {
-                Label(
-                    isCurrentPhaseReviewed ? "Current phase confirmed" : "Current phase pending",
-                    systemImage: isCurrentPhaseReviewed ? "checkmark.circle.fill" : "circle.dotted"
-                )
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(isCurrentPhaseReviewed ? garageReviewAccent : garageReviewMutedText)
+            if handPathReviewReport.weakPhases.isEmpty == false {
+                Text("Watch \(handPathReviewReport.weakPhases.map(\.reviewTitle).joined(separator: ", ")) if you want to manually verify edge frames.")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(garageReviewMutedText)
             }
         }
         .padding(16)
@@ -1280,8 +1374,29 @@ private struct GarageSkeletonReviewSummaryCard: View {
     }
 }
 
+private struct GarageReadOnlyHandPathSummaryCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Finalized Hand Path")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(garageReviewReadableText)
+
+            Text("The path is clipped at impact and split into backswing and downswing colors so the motion reads cleanly without the follow-through squiggle.")
+                .font(.subheadline)
+                .foregroundStyle(garageReviewMutedText)
+        }
+        .padding(14)
+        .background(
+            GarageInsetPanelBackground(
+                shape: RoundedRectangle(cornerRadius: 16, style: .continuous),
+                fill: garageReviewInsetSurface,
+                stroke: garageReviewStroke
+            )
+        )
+    }
+}
+
 private struct GarageReviewActionDock: View {
-    let reviewMode: GarageReviewMode
     let canStepBackward: Bool
     let canStepForward: Bool
     let canConfirm: Bool
@@ -1301,7 +1416,7 @@ private struct GarageReviewActionDock: View {
             Spacer(minLength: 0)
 
             Button(action: onConfirm) {
-                Label(primaryActionTitle, systemImage: primaryActionSymbol)
+                Label("Confirm Frame", systemImage: "checkmark")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(garageReviewCanvasFill)
                     .padding(.horizontal, 18)
@@ -1342,24 +1457,6 @@ private struct GarageReviewActionDock: View {
             Rectangle()
                 .fill(garageReviewStroke.opacity(0.9))
                 .frame(height: 1)
-        }
-    }
-
-    private var primaryActionTitle: String {
-        switch reviewMode {
-        case .handPath:
-            "Confirm Frame + Hand"
-        case .skeleton:
-            "Confirm Skeleton Frame"
-        }
-    }
-
-    private var primaryActionSymbol: String {
-        switch reviewMode {
-        case .handPath:
-            "checkmark"
-        case .skeleton:
-            "figure.golf"
         }
     }
 }
@@ -1546,6 +1643,9 @@ private struct GarageFocusedReviewFrame: View {
     let highlightTint: Color
     let showsAnchorGuides: Bool
     let reviewMode: GarageReviewMode
+    let reviewSurface: GarageReviewSurface
+    let handPathSamples: [GarageHandPathSample]
+    let currentTime: Double
     let stabilityScore: Int?
     let preferredHeight: CGFloat
     let onExitReview: () -> Void
@@ -1561,6 +1661,9 @@ private struct GarageFocusedReviewFrame: View {
         highlightTint: Color,
         showsAnchorGuides: Bool,
         reviewMode: GarageReviewMode,
+        reviewSurface: GarageReviewSurface,
+        handPathSamples: [GarageHandPathSample],
+        currentTime: Double,
         stabilityScore: Int?,
         preferredHeight: CGFloat,
         onExitReview: @escaping () -> Void,
@@ -1575,6 +1678,9 @@ private struct GarageFocusedReviewFrame: View {
         self.highlightTint = highlightTint
         self.showsAnchorGuides = showsAnchorGuides
         self.reviewMode = reviewMode
+        self.reviewSurface = reviewSurface
+        self.handPathSamples = handPathSamples
+        self.currentTime = currentTime
         self.stabilityScore = stabilityScore
         self.preferredHeight = preferredHeight
         self.onExitReview = onExitReview
@@ -1596,6 +1702,9 @@ private struct GarageFocusedReviewFrame: View {
                     highlightTint: highlightTint,
                     showsAnchorGuides: showsAnchorGuides,
                     reviewMode: reviewMode,
+                    reviewSurface: reviewSurface,
+                    handPathSamples: handPathSamples,
+                    currentTime: currentTime,
                     onAnchorDragChanged: onAnchorDragChanged,
                     onAnchorDragEnded: onAnchorDragEnded
                 )
@@ -1606,6 +1715,9 @@ private struct GarageFocusedReviewFrame: View {
                     highlightTint: highlightTint,
                     showsAnchorGuides: showsAnchorGuides,
                     reviewMode: reviewMode,
+                    reviewSurface: reviewSurface,
+                    handPathSamples: handPathSamples,
+                    currentTime: currentTime,
                     onAnchorDragChanged: onAnchorDragChanged,
                     onAnchorDragEnded: onAnchorDragEnded
                 )
@@ -1657,17 +1769,19 @@ private struct GarageFocusedReviewFrame: View {
             .padding(14)
         }
         .overlay(alignment: .topTrailing) {
-            VStack(alignment: .trailing, spacing: 10) {
-                GarageReviewModeSwitcher(
-                    selectedMode: reviewMode,
-                    onSelect: onSelectReviewMode
-                )
+            if reviewSurface == .summary {
+                VStack(alignment: .trailing, spacing: 10) {
+                    GarageReviewModeSwitcher(
+                        selectedMode: reviewMode,
+                        onSelect: onSelectReviewMode
+                    )
 
-                if reviewMode == .skeleton {
-                    GarageStabilityScoreChip(score: stabilityScore)
+                    if reviewMode == .skeleton {
+                        GarageStabilityScoreChip(score: stabilityScore)
+                    }
                 }
+                .padding(14)
             }
-            .padding(14)
         }
         .frame(height: preferredHeight)
         .frame(maxWidth: .infinity)
@@ -1746,6 +1860,9 @@ private struct GarageReviewImageOverlay: View {
     let highlightTint: Color
     let showsAnchorGuides: Bool
     let reviewMode: GarageReviewMode
+    let reviewSurface: GarageReviewSurface
+    let handPathSamples: [GarageHandPathSample]
+    let currentTime: Double
     let onAnchorDragChanged: (CGPoint) -> Void
     let onAnchorDragEnded: (CGPoint) -> Void
 
@@ -1773,7 +1890,16 @@ private struct GarageReviewImageOverlay: View {
                     .allowsHitTesting(false)
                 }
 
-                if reviewMode == .handPath {
+                if reviewMode == .handPath, reviewSurface == .summary {
+                    GarageReadOnlyHandPathOverlay(
+                        drawRect: imageRect,
+                        pathSamples: handPathSamples,
+                        currentTime: currentTime
+                    )
+                    .allowsHitTesting(false)
+                }
+
+                if reviewMode == .handPath, reviewSurface == .fallbackHandPath {
                     GarageReviewFrameOverlayCanvas(
                         drawRect: imageRect,
                         selectedAnchor: selectedAnchor,
@@ -1803,6 +1929,9 @@ private struct GaragePoseFallbackOverlay: View {
     let highlightTint: Color
     let showsAnchorGuides: Bool
     let reviewMode: GarageReviewMode
+    let reviewSurface: GarageReviewSurface
+    let handPathSamples: [GarageHandPathSample]
+    let currentTime: Double
     let onAnchorDragChanged: (CGPoint) -> Void
     let onAnchorDragEnded: (CGPoint) -> Void
 
@@ -1825,7 +1954,16 @@ private struct GaragePoseFallbackOverlay: View {
                     .allowsHitTesting(false)
                 }
 
-                if reviewMode == .handPath {
+                if reviewMode == .handPath, reviewSurface == .summary {
+                    GarageReadOnlyHandPathOverlay(
+                        drawRect: drawRect,
+                        pathSamples: handPathSamples,
+                        currentTime: currentTime
+                    )
+                    .allowsHitTesting(false)
+                }
+
+                if reviewMode == .handPath, reviewSurface == .fallbackHandPath {
                     GarageReviewFrameOverlayCanvas(
                         drawRect: drawRect,
                         selectedAnchor: selectedAnchor,
@@ -1874,7 +2012,7 @@ private struct GarageReviewFrameOverlayCanvas: View {
 
             if let selectedAnchor {
                 let anchorPoint = garageMappedPoint(x: selectedAnchor.x, y: selectedAnchor.y, in: drawRect)
-                let haloRect = CGRect(x: anchorPoint.x - 18, y: anchorPoint.y - 18, width: 36, height: 36)
+                let haloRect = CGRect(x: anchorPoint.x - 12, y: anchorPoint.y - 12, width: 24, height: 24)
                 context.fill(Ellipse().path(in: haloRect), with: .color(highlightTint.opacity(0.16)))
 
                 if showsAnchorGuides {
@@ -1901,6 +2039,64 @@ private struct GarageReviewFrameOverlayCanvas: View {
     }
 }
 
+private struct GarageReadOnlyHandPathOverlay: View {
+    let drawRect: CGRect
+    let pathSamples: [GarageHandPathSample]
+    let currentTime: Double
+
+    private var visibleCurrentSample: GarageHandPathSample? {
+        let cappedTime = pathSamples.last.map { min(currentTime, $0.timestamp) } ?? currentTime
+        return pathSamples.last(where: { $0.timestamp <= cappedTime }) ?? pathSamples.first
+    }
+
+    var body: some View {
+        Canvas { context, _ in
+            guard drawRect.isEmpty == false, pathSamples.count >= 2 else {
+                return
+            }
+
+            var maxSpeed = 0.001
+            for sample in pathSamples {
+                maxSpeed = max(maxSpeed, sample.speed)
+            }
+
+            for segmentIndex in 1..<pathSamples.count {
+                let previous = pathSamples[segmentIndex - 1]
+                let current = pathSamples[segmentIndex]
+                let normalizedSpeed = min(max(current.speed / maxSpeed, 0), 1)
+                let baseWidth = 2.0 + (normalizedSpeed * 1.6)
+                let accentColor = current.segment == .backswing ? Color.white.opacity(0.86) : garageReviewAccent.opacity(0.8)
+
+                var segmentPath = Path()
+                segmentPath.move(to: garageMappedPoint(x: previous.x, y: previous.y, in: drawRect))
+                segmentPath.addLine(to: garageMappedPoint(x: current.x, y: current.y, in: drawRect))
+
+                context.stroke(
+                    segmentPath,
+                    with: .color(Color.white.opacity(0.48)),
+                    style: StrokeStyle(lineWidth: baseWidth + 1.4, lineCap: .round, lineJoin: .round)
+                )
+                context.stroke(
+                    segmentPath,
+                    with: .color(accentColor),
+                    style: StrokeStyle(lineWidth: baseWidth, lineCap: .round, lineJoin: .round)
+                )
+            }
+
+            if let visibleCurrentSample {
+                let point = garageMappedPoint(x: visibleCurrentSample.x, y: visibleCurrentSample.y, in: drawRect)
+                let outerRect = CGRect(x: point.x - 6, y: point.y - 6, width: 12, height: 12)
+                let innerRect = CGRect(x: point.x - 3, y: point.y - 3, width: 6, height: 6)
+                context.fill(Ellipse().path(in: outerRect), with: .color(Color.white))
+                context.fill(
+                    Ellipse().path(in: innerRect),
+                    with: .color(visibleCurrentSample.segment == .backswing ? Color.white : garageReviewAccent)
+                )
+            }
+        }
+    }
+}
+
 private struct GarageInteractiveAnchorHandle: View {
     let drawRect: CGRect
     let anchorPoint: CGPoint
@@ -1917,20 +2113,20 @@ private struct GarageInteractiveAnchorHandle: View {
         ZStack {
             Circle()
                 .fill(garageReviewSurfaceRaised)
-                .frame(width: 28, height: 28)
+                .frame(width: 22, height: 22)
                 .overlay(
                     Circle()
-                        .stroke(tint, lineWidth: 1.5)
+                        .stroke(tint, lineWidth: 1.25)
                 )
                 .shadow(color: garageReviewShadowDark.opacity(0.7), radius: 10, x: 6, y: 6)
                 .shadow(color: garageReviewShadowLight.opacity(0.7), radius: 8, x: -4, y: -4)
 
             Circle()
                 .fill(tint)
-                .frame(width: 10, height: 10)
+                .frame(width: 7, height: 7)
                 .shadow(color: tint.opacity(0.6), radius: 4, x: 0, y: 0)
         }
-        .frame(width: 44, height: 44)
+        .frame(width: 34, height: 34)
         .contentShape(Circle())
         .position(mappedAnchor)
         .simultaneousGesture(
@@ -1964,8 +2160,6 @@ private struct GarageInteractiveAnchorHandle: View {
 private struct GarageCheckpointProgressStrip: View {
     let selectedPhase: SwingPhase
     let markers: [GarageTimelineMarker]
-    let reviewMode: GarageReviewMode
-    let reviewedSkeletonPhases: Set<SwingPhase>
     let onSelect: (SwingPhase) -> Void
 
     var body: some View {
@@ -1975,7 +2169,6 @@ private struct GarageCheckpointProgressStrip: View {
                     let marker = markers.first(where: { $0.keyFrame.phase == phase })
                     let isSelected = selectedPhase == phase
                     let isImpact = phase == .impact
-                    let isSkeletonReviewed = reviewMode == .skeleton && reviewedSkeletonPhases.contains(phase)
                     Button {
                         onSelect(phase)
                     } label: {
@@ -1996,11 +2189,7 @@ private struct GarageCheckpointProgressStrip: View {
                                 .fixedSize(horizontal: true, vertical: false)
                                 .foregroundStyle(garageReviewReadableText)
 
-                            if isSkeletonReviewed {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(garageReviewAccent)
-                            } else if reviewMode == .handPath, marker?.keyFrame.source == .adjusted {
+                            if marker?.keyFrame.source == .adjusted {
                                 Image(systemName: "hand.draw")
                                     .font(.caption2.weight(.bold))
                                     .foregroundStyle(garageManualAnchorAccent)
@@ -2386,7 +2575,7 @@ private struct GarageSlowMotionPlaybackSheet: View {
                     .font(.title3.weight(.bold))
                     .foregroundStyle(AppModule.garage.theme.textPrimary)
 
-                Text("A clean replay of the approved swing with the hand path drawn progressively across the full motion.")
+                Text("A clean replay of the approved swing with the hand path split into backswing and downswing segments through impact.")
                     .foregroundStyle(AppModule.garage.theme.textSecondary)
 
                 ZStack {
@@ -2497,6 +2686,9 @@ private struct GarageSlowMotionPathOverlay: View {
                     let current = pathSamples[segmentIndex]
                     let normalizedSpeed = min(max(current.speed / maxSpeed, 0), 1)
                     let baseWidth = 2.4 + (normalizedSpeed * 2.2)
+                    let accentColor = current.segment == .backswing
+                        ? Color.white.opacity(0.88)
+                        : garageReviewAccent.opacity(0.45 + (normalizedSpeed * 0.45))
 
                     var segmentPath = Path()
                     segmentPath.move(to: mappedPoint(x: previous.x, y: previous.y, in: videoRect))
@@ -2509,7 +2701,7 @@ private struct GarageSlowMotionPathOverlay: View {
                     )
                     context.stroke(
                         segmentPath,
-                        with: .color(garageReviewAccent.opacity(0.45 + (normalizedSpeed * 0.45))),
+                        with: .color(accentColor),
                         style: StrokeStyle(lineWidth: baseWidth, lineCap: .round, lineJoin: .round)
                     )
                 }
@@ -2519,7 +2711,10 @@ private struct GarageSlowMotionPathOverlay: View {
                 let outerRect = CGRect(x: point.x - 7, y: point.y - 7, width: 14, height: 14)
                 let innerRect = CGRect(x: point.x - 4, y: point.y - 4, width: 8, height: 8)
                 context.fill(Ellipse().path(in: outerRect), with: .color(Color.white))
-                context.fill(Ellipse().path(in: innerRect), with: .color(garageReviewAccent))
+                context.fill(
+                    Ellipse().path(in: innerRect),
+                    with: .color(lastSample.segment == .backswing ? Color.white : garageReviewAccent)
+                )
             }
         }
     }

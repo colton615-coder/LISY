@@ -84,6 +84,18 @@ private struct GarageHandKinematicSample {
     let speed: Double
 }
 
+private enum GarageGripEstimateSource {
+    case fused
+    case singleWrist
+    case bridged
+}
+
+private struct GarageGripEstimate {
+    let point: CGPoint
+    let confidence: Double
+    let source: GarageGripEstimateSource
+}
+
 private enum GaragePathBuilder {
     static func centripetalCatmullRom(points: [CGPoint], samplesPerSegment: Int = 10) -> [CGPoint] {
         guard points.count >= 2 else { return points }
@@ -155,7 +167,34 @@ struct GarageAnalysisOutput {
     let keyFrames: [KeyFrame]
     let handAnchors: [HandAnchor]
     let pathPoints: [PathPoint]
+    let handPathReviewReport: GarageHandPathReviewReport
     let analysisResult: AnalysisResult
+}
+
+enum GarageHandPathSegmentKind: String, Equatable {
+    case backswing
+    case downswing
+}
+
+struct GarageSegmentedPathSample: Equatable {
+    let timestamp: Double
+    let x: Double
+    let y: Double
+    let speed: Double
+    let segment: GarageHandPathSegmentKind
+}
+
+struct GarageHandPathReviewReport: Equatable {
+    let score: Int
+    let requiresManualReview: Bool
+    let weakestPhase: SwingPhase?
+    let weakPhases: [SwingPhase]
+    let continuityScore: Double
+}
+
+struct GarageSkeletonHeadCircle: Equatable {
+    let center: CGPoint
+    let radius: Double
 }
 
 enum GarageAnalysisProgressStep: Equatable {
@@ -1623,6 +1662,7 @@ enum GarageAnalysisPipeline {
         let keyFrames = detectKeyFrames(from: smoothedFrames)
         let handAnchors = deriveHandAnchors(from: smoothedFrames, keyFrames: keyFrames)
         let pathPoints = generatePathPoints(from: smoothedFrames, samplesPerSegment: 8)
+        let handPathReviewReport = handPathReviewReport(for: smoothedFrames, keyFrames: keyFrames)
         let analysisResult = AnalysisResult(
             issues: [],
             highlights: [
@@ -1638,6 +1678,7 @@ enum GarageAnalysisPipeline {
             keyFrames: keyFrames,
             handAnchors: handAnchors,
             pathPoints: pathPoints,
+            handPathReviewReport: handPathReviewReport,
             analysisResult: analysisResult
         )
     }
@@ -1796,13 +1837,14 @@ enum GarageAnalysisPipeline {
         let orderedKeyFrames = keyFrames.sorted { lhs, rhs in
             (SwingPhase.allCases.firstIndex(of: lhs.phase) ?? 0) < (SwingPhase.allCases.firstIndex(of: rhs.phase) ?? 0)
         }
+        let gripEstimates = gripEstimates(from: frames)
 
         return orderedKeyFrames.compactMap { keyFrame in
-            guard frames.indices.contains(keyFrame.frameIndex) else {
+            guard gripEstimates.indices.contains(keyFrame.frameIndex) else {
                 return nil
             }
 
-            let center = handCenter(in: frames[keyFrame.frameIndex])
+            let center = gripEstimates[keyFrame.frameIndex].point
             return HandAnchor(phase: keyFrame.phase, x: center.x, y: center.y)
         }
     }
@@ -1831,6 +1873,129 @@ enum GarageAnalysisPipeline {
             (SwingPhase.allCases.firstIndex(of: lhs.phase) ?? 0) < (SwingPhase.allCases.firstIndex(of: rhs.phase) ?? 0)
         }
         return updatedAnchors
+    }
+
+    static func handPathReviewReport(for frames: [SwingFrame], keyFrames: [KeyFrame]) -> GarageHandPathReviewReport {
+        guard frames.isEmpty == false, keyFrames.isEmpty == false else {
+            return GarageHandPathReviewReport(
+                score: 0,
+                requiresManualReview: true,
+                weakestPhase: nil,
+                weakPhases: [],
+                continuityScore: 0
+            )
+        }
+
+        let estimates = gripEstimates(from: frames)
+        let orderedKeyFrames = keyFrames.sorted { lhs, rhs in
+            (SwingPhase.allCases.firstIndex(of: lhs.phase) ?? 0) < (SwingPhase.allCases.firstIndex(of: rhs.phase) ?? 0)
+        }
+
+        let phaseConfidences: [(phase: SwingPhase, confidence: Double)] = orderedKeyFrames.map { keyFrame in
+            guard estimates.indices.contains(keyFrame.frameIndex) else {
+                return (keyFrame.phase, 0)
+            }
+            return (keyFrame.phase, phaseConfidence(for: estimates[keyFrame.frameIndex]))
+        }
+
+        let weakPhases = phaseConfidences
+            .filter { $0.confidence < 0.24 }
+            .map(\.phase)
+        let continuityScore = gripContinuityScore(estimates: estimates, frames: frames)
+        let averagePhaseConfidence = phaseConfidences.map(\.confidence).reduce(0, +) / Double(max(phaseConfidences.count, 1))
+        let averageEstimateConfidence = estimates.map { phaseConfidence(for: $0) }.reduce(0, +) / Double(max(estimates.count, 1))
+        let normalizedScore = min(
+            max(
+                (averagePhaseConfidence * 0.58)
+                    + (averageEstimateConfidence * 0.27)
+                    + (continuityScore * 0.15),
+                0
+            ),
+            1
+        )
+        let score = Int((normalizedScore * 100).rounded())
+        let weakestPhase = phaseConfidences.min { lhs, rhs in
+            lhs.confidence < rhs.confidence
+        }?.phase
+        let requiresManualReview = weakPhases.isEmpty == false || continuityScore < 0.24 || score < 48
+
+        return GarageHandPathReviewReport(
+            score: score,
+            requiresManualReview: requiresManualReview,
+            weakestPhase: weakPhases.first ?? weakestPhase,
+            weakPhases: weakPhases,
+            continuityScore: continuityScore
+        )
+    }
+
+    static func autoApprovedKeyFrames(from keyFrames: [KeyFrame], reviewReport: GarageHandPathReviewReport) -> [KeyFrame] {
+        guard reviewReport.requiresManualReview == false else {
+            return keyFrames
+        }
+
+        return keyFrames.map { keyFrame in
+            var approvedKeyFrame = keyFrame
+            approvedKeyFrame.reviewStatus = .approved
+            return approvedKeyFrame
+        }
+    }
+
+    static func segmentedHandPathSamples(
+        from frames: [SwingFrame],
+        keyFrames: [KeyFrame],
+        samplesPerSegment: Int = 12
+    ) -> [GarageSegmentedPathSample] {
+        guard
+            frames.count >= 2,
+            let topIndex = keyFrames.first(where: { $0.phase == .topOfBackswing })?.frameIndex,
+            let impactIndex = keyFrames.first(where: { $0.phase == .impact })?.frameIndex,
+            topIndex >= 0,
+            impactIndex >= 1,
+            topIndex < frames.count,
+            impactIndex < frames.count,
+            topIndex < impactIndex
+        else {
+            return []
+        }
+
+        let truncatedFrames = Array(frames[0...impactIndex])
+        let stabilizedPoints = gripEstimates(from: truncatedFrames).map(\.point)
+        guard stabilizedPoints.count >= 2 else {
+            return []
+        }
+
+        let splinePoints = GaragePathBuilder.centripetalCatmullRom(
+            points: stabilizedPoints,
+            samplesPerSegment: samplesPerSegment
+        )
+        guard splinePoints.count >= 2 else {
+            return []
+        }
+
+        let topTimestamp = frames[topIndex].timestamp
+        var samples: [GarageSegmentedPathSample] = []
+        samples.reserveCapacity(splinePoints.count)
+
+        for (index, point) in splinePoints.enumerated() {
+            let priorIndex = max(index - 1, 0)
+            let nextIndex = min(index + 1, splinePoints.count - 1)
+            let speed = distance(from: splinePoints[priorIndex], to: splinePoints[nextIndex])
+            let normalizedT = Double(index) / Double(max(splinePoints.count - 1, 1))
+            let sourceFrame = min(Int((Double(truncatedFrames.count - 1) * normalizedT).rounded()), truncatedFrames.count - 1)
+            let timestamp = truncatedFrames[sourceFrame].timestamp
+
+            samples.append(
+                GarageSegmentedPathSample(
+                    timestamp: timestamp,
+                    x: point.x,
+                    y: point.y,
+                    speed: speed,
+                    segment: timestamp <= topTimestamp ? .backswing : .downswing
+                )
+            )
+        }
+
+        return samples
     }
 
     private static func addressIndex(in frames: [SwingFrame]) -> Int {
@@ -2141,13 +2306,35 @@ enum GarageAnalysisPipeline {
     }
 
     static func handCenter(in frame: SwingFrame) -> CGPoint {
-        let left = frame.point(named: .leftWrist)
-        let right = frame.point(named: .rightWrist)
-        return CGPoint(x: (left.x + right.x) / 2, y: (left.y + right.y) / 2)
+        rawGripEstimate(in: frame)?.point ?? legacyHandCenter(in: frame)
     }
 
     static func bodyScale(in frame: SwingFrame) -> Double {
         distance(from: frame.point(named: .leftShoulder), to: frame.point(named: .rightShoulder))
+    }
+
+    static func headCircle(in frame: SwingFrame) -> GarageSkeletonHeadCircle? {
+        guard
+            let nose = frame.point(named: .nose, minimumConfidence: 0.5),
+            let leftShoulder = frame.point(named: .leftShoulder, minimumConfidence: 0.5),
+            let rightShoulder = frame.point(named: .rightShoulder, minimumConfidence: 0.5)
+        else {
+            return nil
+        }
+
+        let shoulderMidpoint = midpoint(leftShoulder, rightShoulder)
+        let headAxis = CGVector(dx: nose.x - shoulderMidpoint.x, dy: nose.y - shoulderMidpoint.y)
+        let torsoScale = max(bodyScale(in: frame), distance(from: nose, to: shoulderMidpoint))
+        let radius = min(
+            max(distance(from: nose, to: shoulderMidpoint) * 0.58, torsoScale * 0.18),
+            torsoScale * 0.34
+        )
+        let center = CGPoint(
+            x: nose.x + (headAxis.dx * 0.12),
+            y: nose.y + (headAxis.dy * 0.18)
+        )
+
+        return GarageSkeletonHeadCircle(center: center, radius: radius)
     }
 
     private static func torsoHeight(in frame: SwingFrame) -> Double {
@@ -2167,7 +2354,7 @@ enum GarageAnalysisPipeline {
     }
 
     static func generatePathPoints(from frames: [SwingFrame], samplesPerSegment: Int = 16) -> [PathPoint] {
-        let stabilizedPoints = frames.map { handCenter(in: $0) }
+        let stabilizedPoints = gripEstimates(from: frames).map(\.point)
         guard stabilizedPoints.count >= 2 else {
             return []
         }
@@ -2180,6 +2367,202 @@ enum GarageAnalysisPipeline {
         return splinePoints.enumerated().map { sequence, point in
             PathPoint(sequence: sequence, x: point.x, y: point.y)
         }
+    }
+
+    nonisolated private static func legacyHandCenter(in frame: SwingFrame) -> CGPoint {
+        let left = frame.point(named: .leftWrist)
+        let right = frame.point(named: .rightWrist)
+        return CGPoint(x: (left.x + right.x) / 2, y: (left.y + right.y) / 2)
+    }
+
+    nonisolated private static func rawGripEstimate(in frame: SwingFrame) -> GarageGripEstimate? {
+        let minimumReliableConfidence = 0.32
+        let singleWristConfidence = 0.48
+        let leftWrist = frame.joint(named: .leftWrist)
+        let rightWrist = frame.joint(named: .rightWrist)
+
+        let validLeft = leftWrist.flatMap { $0.confidence >= minimumReliableConfidence ? $0 : nil }
+        let validRight = rightWrist.flatMap { $0.confidence >= minimumReliableConfidence ? $0 : nil }
+
+        if let validLeft, let validRight {
+            let totalConfidence = max(validLeft.confidence + validRight.confidence, 0.0001)
+            let point = CGPoint(
+                x: ((validLeft.x * validLeft.confidence) + (validRight.x * validRight.confidence)) / totalConfidence,
+                y: ((validLeft.y * validLeft.confidence) + (validRight.y * validRight.confidence)) / totalConfidence
+            )
+            return GarageGripEstimate(
+                point: point,
+                confidence: min(totalConfidence / 2, 1),
+                source: .fused
+            )
+        }
+
+        if let validLeft, validLeft.confidence >= singleWristConfidence {
+            return GarageGripEstimate(
+                point: CGPoint(x: validLeft.x, y: validLeft.y),
+                confidence: min(validLeft.confidence * 0.88, 1),
+                source: .singleWrist
+            )
+        }
+
+        if let validRight, validRight.confidence >= singleWristConfidence {
+            return GarageGripEstimate(
+                point: CGPoint(x: validRight.x, y: validRight.y),
+                confidence: min(validRight.confidence * 0.88, 1),
+                source: .singleWrist
+            )
+        }
+
+        return nil
+    }
+
+    private static func gripEstimates(from frames: [SwingFrame]) -> [GarageGripEstimate] {
+        guard frames.isEmpty == false else { return [] }
+
+        let rawEstimates = frames.map(rawGripEstimate)
+        var resolvedEstimates: [GarageGripEstimate] = []
+        resolvedEstimates.reserveCapacity(frames.count)
+
+        for index in frames.indices {
+            let current = resolvedGripEstimate(
+                at: index,
+                rawEstimates: rawEstimates,
+                previousResolved: resolvedEstimates.last
+            )
+            resolvedEstimates.append(current)
+        }
+
+        return smoothedGripEstimates(resolvedEstimates)
+    }
+
+    private static func resolvedGripEstimate(
+        at index: Int,
+        rawEstimates: [GarageGripEstimate?],
+        previousResolved: GarageGripEstimate?
+    ) -> GarageGripEstimate {
+        if let rawEstimate = rawEstimates[index] {
+            return rawEstimate
+        }
+
+        let previousSlice = rawEstimates.prefix(index)
+        let nextSlice = index + 1 < rawEstimates.count ? Array(rawEstimates.suffix(from: index + 1)) : []
+        let previousValid = previousResolved ?? previousSlice.compactMap { $0 }.last
+        let nextValid = nextSlice.compactMap { $0 }.first
+
+        if let previousValid, let nextValid {
+            let previousIndex = previousSlice.lastIndex(where: { $0 != nil }) ?? max(index - 1, 0)
+            let nextIndex = rawEstimates[(index + 1)..<rawEstimates.count].firstIndex(where: { $0 != nil }) ?? min(index + 1, rawEstimates.count - 1)
+            let totalSpan = max(nextIndex - previousIndex, 1)
+            let progress = Double(index - previousIndex) / Double(totalSpan)
+            let point = CGPoint(
+                x: previousValid.point.x + ((nextValid.point.x - previousValid.point.x) * progress),
+                y: previousValid.point.y + ((nextValid.point.y - previousValid.point.y) * progress)
+            )
+            return GarageGripEstimate(
+                point: point,
+                confidence: min(previousValid.confidence, nextValid.confidence) * 0.58,
+                source: .bridged
+            )
+        }
+
+        if let previousValid {
+            return GarageGripEstimate(
+                point: previousValid.point,
+                confidence: previousValid.confidence * 0.45,
+                source: .bridged
+            )
+        }
+
+        if let nextValid {
+            return GarageGripEstimate(
+                point: nextValid.point,
+                confidence: nextValid.confidence * 0.45,
+                source: .bridged
+            )
+        }
+
+        return GarageGripEstimate(point: .zero, confidence: 0, source: .bridged)
+    }
+
+    private static func smoothedGripEstimates(_ estimates: [GarageGripEstimate]) -> [GarageGripEstimate] {
+        guard estimates.count >= 2 else { return estimates }
+
+        var smoothed: [GarageGripEstimate] = []
+        smoothed.reserveCapacity(estimates.count)
+
+        for estimate in estimates {
+            guard let previous = smoothed.last else {
+                smoothed.append(estimate)
+                continue
+            }
+
+            let baseAlpha = min(max(0.42 + (estimate.confidence * 0.4), 0.2), 0.9)
+            let alpha: Double
+            switch estimate.source {
+            case .fused:
+                alpha = baseAlpha
+            case .singleWrist:
+                alpha = baseAlpha * 0.86
+            case .bridged:
+                alpha = baseAlpha * 0.72
+            }
+
+            let point = CGPoint(
+                x: previous.point.x + ((estimate.point.x - previous.point.x) * alpha),
+                y: previous.point.y + ((estimate.point.y - previous.point.y) * alpha)
+            )
+            smoothed.append(
+                GarageGripEstimate(
+                    point: point,
+                    confidence: estimate.confidence,
+                    source: estimate.source
+                )
+            )
+        }
+
+        return smoothed
+    }
+
+    private static func phaseConfidence(for estimate: GarageGripEstimate) -> Double {
+        let sourceWeight: Double
+        switch estimate.source {
+        case .fused:
+            sourceWeight = 1.0
+        case .singleWrist:
+            sourceWeight = 0.9
+        case .bridged:
+            sourceWeight = 0.62
+        }
+
+        return min(max(estimate.confidence * sourceWeight, 0), 1)
+    }
+
+    private static func gripContinuityScore(estimates: [GarageGripEstimate], frames: [SwingFrame]) -> Double {
+        guard estimates.count >= 2 else { return 0 }
+
+        var continuityTotal = 0.0
+        var continuitySamples = 0
+
+        for index in 1..<estimates.count {
+            let previous = estimates[index - 1]
+            let current = estimates[index]
+            let scale = max(bodyScale(in: frames[min(index, frames.count - 1)]), 0.08)
+            let normalizedJump = distance(from: previous.point, to: current.point) / scale
+            let jumpPenalty = max(normalizedJump - 0.42, 0)
+            let sourcePenalty: Double
+            switch current.source {
+            case .fused:
+                sourcePenalty = 0
+            case .singleWrist:
+                sourcePenalty = 0.08
+            case .bridged:
+                sourcePenalty = 0.18
+            }
+            continuityTotal += max(0, 1 - min((jumpPenalty * 0.7) + sourcePenalty, 1))
+            continuitySamples += 1
+        }
+
+        return continuityTotal / Double(max(continuitySamples, 1))
     }
 
     static func generatePathPoints(from anchors: [HandAnchor], samplesPerSegment: Int = 16) -> [PathPoint] {
@@ -2251,13 +2634,14 @@ enum GarageAnalysisPipeline {
     private static func handKinematics(from frames: [SwingFrame]) -> [GarageHandKinematicSample] {
         guard frames.count >= 2 else { return [] }
 
+        let gripEstimates = gripEstimates(from: frames)
         var samples: [GarageHandKinematicSample] = []
         samples.reserveCapacity(frames.count - 1)
-        var previousCenter = handCenter(in: frames[0])
+        var previousCenter = gripEstimates[0].point
         var previousTime = frames[0].timestamp
 
         for index in 1..<frames.count {
-            let currentCenter = handCenter(in: frames[index])
+            let currentCenter = gripEstimates[index].point
             let currentTime = frames[index].timestamp
             let dt = max(currentTime - previousTime, 1.0 / 240.0)
             let vx = (currentCenter.x - previousCenter.x) / dt
@@ -2346,11 +2730,11 @@ private extension SwingJointName {
 }
 
 extension SwingFrame {
-    func joint(named name: SwingJointName) -> SwingJoint? {
+    nonisolated func joint(named name: SwingJointName) -> SwingJoint? {
         joints.first(where: { $0.name == name })
     }
 
-    func point(named name: SwingJointName, minimumConfidence: Double) -> CGPoint? {
+    nonisolated func point(named name: SwingJointName, minimumConfidence: Double) -> CGPoint? {
         guard
             let joint = joint(named: name),
             joint.confidence >= minimumConfidence
@@ -2361,7 +2745,7 @@ extension SwingFrame {
         return CGPoint(x: joint.x, y: joint.y)
     }
 
-    func point(named name: SwingJointName) -> CGPoint {
+    nonisolated func point(named name: SwingJointName) -> CGPoint {
         point(named: name, minimumConfidence: 0) ?? .zero
     }
 }

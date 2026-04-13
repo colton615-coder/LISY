@@ -31,12 +31,10 @@ struct GarageSkeletonOverlay: View {
         .leftElbow,
         .rightElbow,
         .leftShoulder,
-        .rightShoulder,
-        .nose
+        .rightShoulder
     ]
 
     private static let emphasizedJoints: Set<SwingJointName> = [
-        .nose,
         .leftShoulder,
         .rightShoulder,
         .leftHip,
@@ -81,6 +79,26 @@ struct GarageSkeletonOverlay: View {
                 )
             }
 
+            if let headCircle = GarageAnalysisPipeline.headCircle(in: currentFrame) {
+                let mappedCenter = garageSkeletonMappedPoint(headCircle.center, in: drawSize)
+                let mappedRadius = min(drawSize.width, drawSize.height) * headCircle.radius
+                let circleRect = CGRect(
+                    x: mappedCenter.x - mappedRadius,
+                    y: mappedCenter.y - mappedRadius,
+                    width: mappedRadius * 2,
+                    height: mappedRadius * 2
+                )
+                context.stroke(
+                    Ellipse().path(in: circleRect),
+                    with: .color(ModuleTheme.electricCyan.opacity(0.58)),
+                    style: StrokeStyle(lineWidth: 1.8)
+                )
+                context.fill(
+                    Ellipse().path(in: circleRect),
+                    with: .color(ModuleTheme.electricCyan.opacity(0.08))
+                )
+            }
+
             if
                 let nose = currentFrame.point(named: .nose, minimumConfidence: 0.5),
                 let leftShoulder = currentFrame.point(named: .leftShoulder, minimumConfidence: 0.5),
@@ -116,7 +134,7 @@ struct GarageSkeletonOverlay: View {
                     in: drawSize
                 )
                 let isEmphasized = Self.emphasizedJoints.contains(jointName)
-                let radius = isEmphasized ? 6.5 : 5.0
+                let radius = isEmphasized ? 5.0 : 3.6
                 let circleRect = CGRect(
                     x: mappedPoint.x - radius,
                     y: mappedPoint.y - radius,
@@ -129,7 +147,7 @@ struct GarageSkeletonOverlay: View {
                         layer.addFilter(
                             .shadow(
                                 color: ModuleTheme.electricCyan.opacity(isEmphasized ? 0.65 : 0.45),
-                                radius: isEmphasized ? 6 : 4,
+                                radius: isEmphasized ? 4 : 2.5,
                                 x: 0,
                                 y: 0
                             )

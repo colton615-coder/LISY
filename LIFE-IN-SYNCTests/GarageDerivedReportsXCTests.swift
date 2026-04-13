@@ -228,6 +228,88 @@ final class GarageDerivedReportsXCTests: XCTestCase {
 
         XCTAssertNil(score)
     }
+
+    func testAutomaticHandPathAutoApprovesReliableSwing() {
+        let frames = makeReliableAutomaticHandPathFrames()
+        let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames)
+
+        let report = GarageAnalysisPipeline.handPathReviewReport(for: frames, keyFrames: keyFrames)
+        let autoApproved = GarageAnalysisPipeline.autoApprovedKeyFrames(from: keyFrames, reviewReport: report)
+
+        XCTAssertFalse(report.requiresManualReview)
+        XCTAssertGreaterThanOrEqual(report.score, 70)
+        XCTAssertGreaterThanOrEqual(report.continuityScore, 0.8)
+        XCTAssertTrue(autoApproved.allSatisfy { $0.reviewStatus == .approved })
+    }
+
+    func testAutomaticHandPathStaysUsableWhenOneWristDropsOutBriefly() {
+        let frames = makeSingleWristDropoutSwingFrames()
+        let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames)
+
+        let report = GarageAnalysisPipeline.handPathReviewReport(for: frames, keyFrames: keyFrames)
+        let segmentedSamples = GarageAnalysisPipeline.segmentedHandPathSamples(from: frames, keyFrames: keyFrames, samplesPerSegment: 4)
+        let fallbackFrameIndex = 3
+        let rightWrist = frames[fallbackFrameIndex].point(named: .rightWrist, minimumConfidence: 0.5)
+        let estimatedGrip = GarageAnalysisPipeline.handCenter(in: frames[fallbackFrameIndex])
+
+        XCTAssertFalse(report.requiresManualReview)
+        XCTAssertGreaterThanOrEqual(report.score, 55)
+        XCTAssertFalse(segmentedSamples.isEmpty)
+        XCTAssertNotNil(rightWrist)
+        if let rightWrist {
+            XCTAssertLessThan(GarageAnalysisPipeline.distance(from: estimatedGrip, to: rightWrist), 0.02)
+        }
+    }
+
+    func testAutomaticHandPathFallsBackWhenWristConfidenceCollapses() {
+        let frames = makeSeverelyBrokenHandPathFrames()
+        let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames)
+
+        let report = GarageAnalysisPipeline.handPathReviewReport(for: frames, keyFrames: keyFrames)
+
+        XCTAssertTrue(report.requiresManualReview)
+        XCTAssertLessThan(report.score, 65)
+        XCTAssertFalse(report.weakPhases.isEmpty)
+        XCTAssertNotNil(report.weakestPhase)
+    }
+
+    func testSegmentedHandPathStopsAtImpactAndExcludesFollowThroughDrawing() {
+        let frames = makeReliableAutomaticHandPathFrames()
+        let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames)
+        let samples = GarageAnalysisPipeline.segmentedHandPathSamples(from: frames, keyFrames: keyFrames, samplesPerSegment: 4)
+
+        guard
+            let topIndex = keyFrames.first(where: { $0.phase == .topOfBackswing })?.frameIndex,
+            let impactIndex = keyFrames.first(where: { $0.phase == .impact })?.frameIndex,
+            let followThroughIndex = keyFrames.first(where: { $0.phase == .followThrough })?.frameIndex
+        else {
+            return XCTFail("Missing expected checkpoints for segmented hand-path test.")
+        }
+
+        let topTimestamp = frames[topIndex].timestamp
+        let impactTimestamp = frames[impactIndex].timestamp
+
+        XCTAssertFalse(samples.isEmpty)
+        XCTAssertGreaterThan(followThroughIndex, impactIndex)
+        XCTAssertTrue(samples.contains(where: { $0.segment == .backswing && $0.timestamp <= topTimestamp }))
+        XCTAssertTrue(samples.contains(where: { $0.segment == .downswing && $0.timestamp > topTimestamp }))
+        XCTAssertTrue(samples.allSatisfy { $0.timestamp <= impactTimestamp + 0.0001 })
+    }
+
+    func testSkeletonHeadCircleResolvesFromReliableHeadReferences() {
+        let frame = makeHeadCircleFrame()
+        let headCircle = GarageAnalysisPipeline.headCircle(in: frame)
+
+        XCTAssertNotNil(headCircle)
+        XCTAssertGreaterThan(headCircle?.radius ?? 0, 0.03)
+        XCTAssertLessThan(headCircle?.center.y ?? 1, 0.22)
+    }
+
+    func testSkeletonHeadCircleReturnsNilWhenHeadReferencesAreWeak() {
+        let frame = makeHeadCircleFrame(noseConfidence: 0.3)
+
+        XCTAssertNil(GarageAnalysisPipeline.headCircle(in: frame))
+    }
 }
 
 @MainActor
@@ -396,6 +478,121 @@ private func makeStabilityRecord(frames: [SwingFrame], includeImpact: Bool = tru
             highlights: [],
             summary: "Synthetic stability case."
         )
+    )
+}
+
+@MainActor
+private func makeReliableAutomaticHandPathFrames() -> [SwingFrame] {
+    let wristPairs: [(Double, Double, Double, Double)] = [
+        (0.31, 0.73, 0.35, 0.73),
+        (0.33, 0.71, 0.37, 0.71),
+        (0.37, 0.66, 0.41, 0.66),
+        (0.43, 0.57, 0.47, 0.57),
+        (0.49, 0.46, 0.53, 0.46),
+        (0.53, 0.37, 0.57, 0.37),
+        (0.50, 0.42, 0.54, 0.42),
+        (0.45, 0.51, 0.49, 0.51),
+        (0.38, 0.63, 0.42, 0.63),
+        (0.34, 0.71, 0.38, 0.71),
+        (0.55, 0.31, 0.59, 0.31)
+    ]
+
+    return wristPairs.enumerated().map { index, wrists in
+        let (leftWristX, leftWristY, rightWristX, rightWristY) = wrists
+        return SwingFrame(
+            timestamp: Double(index) * 0.08,
+            joints: [
+                joint(.nose, x: 0.50, y: 0.21),
+                joint(.leftShoulder, x: 0.41, y: 0.34),
+                joint(.rightShoulder, x: 0.59, y: 0.34),
+                joint(.leftHip, x: 0.45, y: 0.59),
+                joint(.rightHip, x: 0.57, y: 0.59),
+                joint(.leftWrist, x: leftWristX, y: leftWristY),
+                joint(.rightWrist, x: rightWristX, y: rightWristY)
+            ],
+            confidence: 0.95
+        )
+    }
+}
+
+@MainActor
+private func makeSingleWristDropoutSwingFrames() -> [SwingFrame] {
+    let wristPairs: [(Double, Double, Double, Double, Double, Double)] = [
+        (0.31, 0.73, 0.35, 0.73, 0.95, 0.95),
+        (0.34, 0.70, 0.38, 0.70, 0.95, 0.95),
+        (0.39, 0.63, 0.43, 0.63, 0.20, 0.95),
+        (0.45, 0.55, 0.49, 0.55, 0.18, 0.96),
+        (0.50, 0.45, 0.54, 0.45, 0.95, 0.95),
+        (0.53, 0.38, 0.57, 0.38, 0.95, 0.95),
+        (0.49, 0.43, 0.53, 0.43, 0.22, 0.94),
+        (0.43, 0.53, 0.47, 0.53, 0.95, 0.95),
+        (0.37, 0.65, 0.41, 0.65, 0.95, 0.95),
+        (0.33, 0.72, 0.37, 0.72, 0.95, 0.95),
+        (0.55, 0.31, 0.59, 0.31, 0.95, 0.95)
+    ]
+
+    return wristPairs.enumerated().map { index, wrists in
+        let (leftWristX, leftWristY, rightWristX, rightWristY, leftConfidence, rightConfidence) = wrists
+        return SwingFrame(
+            timestamp: Double(index) * 0.08,
+            joints: [
+                joint(.nose, x: 0.50, y: 0.21),
+                joint(.leftShoulder, x: 0.41, y: 0.34),
+                joint(.rightShoulder, x: 0.59, y: 0.34),
+                joint(.leftHip, x: 0.45, y: 0.59),
+                joint(.rightHip, x: 0.57, y: 0.59),
+                joint(.leftWrist, x: leftWristX, y: leftWristY, confidence: leftConfidence),
+                joint(.rightWrist, x: rightWristX, y: rightWristY, confidence: rightConfidence)
+            ],
+            confidence: 0.9
+        )
+    }
+}
+
+@MainActor
+private func makeSeverelyBrokenHandPathFrames() -> [SwingFrame] {
+    let wristPairs: [(Double, Double, Double, Double, Double, Double)] = [
+        (0.31, 0.73, 0.35, 0.73, 0.95, 0.95),
+        (0.33, 0.70, 0.37, 0.70, 0.10, 0.10),
+        (0.44, 0.44, 0.48, 0.44, 0.10, 0.10),
+        (0.18, 0.18, 0.22, 0.18, 0.10, 0.10),
+        (0.54, 0.35, 0.58, 0.35, 0.95, 0.95),
+        (0.24, 0.82, 0.28, 0.82, 0.10, 0.10),
+        (0.49, 0.44, 0.53, 0.44, 0.10, 0.10),
+        (0.41, 0.55, 0.45, 0.55, 0.10, 0.10),
+        (0.34, 0.69, 0.38, 0.69, 0.10, 0.10),
+        (0.56, 0.29, 0.60, 0.29, 0.95, 0.95)
+    ]
+
+    return wristPairs.enumerated().map { index, wrists in
+        let (leftWristX, leftWristY, rightWristX, rightWristY, leftConfidence, rightConfidence) = wrists
+        return SwingFrame(
+            timestamp: Double(index) * 0.08,
+            joints: [
+                joint(.leftShoulder, x: 0.41, y: 0.34),
+                joint(.rightShoulder, x: 0.59, y: 0.34),
+                joint(.leftHip, x: 0.45, y: 0.59),
+                joint(.rightHip, x: 0.57, y: 0.59),
+                joint(.leftWrist, x: leftWristX, y: leftWristY, confidence: leftConfidence),
+                joint(.rightWrist, x: rightWristX, y: rightWristY, confidence: rightConfidence)
+            ],
+            confidence: 0.45
+        )
+    }
+}
+
+@MainActor
+private func makeHeadCircleFrame(noseConfidence: Double = 0.95, shoulderConfidence: Double = 0.95) -> SwingFrame {
+    SwingFrame(
+        timestamp: 0,
+        joints: [
+            joint(.nose, x: 0.50, y: 0.20, confidence: noseConfidence),
+            joint(.leftShoulder, x: 0.42, y: 0.34, confidence: shoulderConfidence),
+            joint(.rightShoulder, x: 0.58, y: 0.34, confidence: shoulderConfidence),
+            joint(.leftHip, x: 0.45, y: 0.60),
+            joint(.rightHip, x: 0.55, y: 0.60)
+        ],
+        confidence: 0.95
     )
 }
 
