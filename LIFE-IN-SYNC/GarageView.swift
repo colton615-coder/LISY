@@ -996,6 +996,8 @@ private struct GarageFocusedReviewWorkspace: View {
                         .background(Color.black.opacity(0.45), in: Circle())
                 }
                 .accessibilityLabel("Back")
+                .accessibilityHint("Returns to the previous screen")
+                .accessibilityLabel("Back")
                 .accessibilityHint("Exit review")
                 .buttonStyle(.plain)
                 .padding(.leading, 12)
@@ -2859,7 +2861,12 @@ private struct GarageSlowMotionPlaybackSheet: View {
         .task {
             let metadata = await GarageMediaStore.assetMetadata(for: videoURL)
             await MainActor.run {
-                videoDisplaySize = metadata?.naturalSize ?? CGSize(width: 1, height: 1)
+                if let metadata {
+                    videoDisplaySize = metadata.naturalSize
+                    playbackController.updateDurationFromMetadata(metadata.duration)
+                } else {
+                    videoDisplaySize = CGSize(width: 1, height: 1)
+                }
             }
         }
         .onAppear {
@@ -2967,6 +2974,7 @@ private struct GaragePlaybackControlRow: View {
                         .frame(width: 36, height: 36)
                         .background(Color.white.opacity(0.08), in: Circle())
                 }
+                .accessibilityLabel(isPlaying ? "Pause" : "Play")
                 .buttonStyle(.plain)
                 .accessibilityLabel(isPlaying ? "Pause" : "Play")
                 .accessibilityValue(speedLabel(for: Double(selectedSpeed)))
