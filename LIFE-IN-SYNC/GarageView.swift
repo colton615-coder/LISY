@@ -2837,7 +2837,10 @@ private struct GarageSlowMotionPlaybackSheet: View {
         .background(garageReviewBackground.ignoresSafeArea())
         .safeAreaInset(edge: .bottom, spacing: 0) {
             GaragePlaybackActionBar(
-                onRecheck: dismiss.callAsFunction,
+                onRecheck: {
+                    playbackController.seek(0)
+                    playbackController.startPlayback(at: selectedSpeed)
+                },
                 onFinish: dismiss.callAsFunction
             )
         }
