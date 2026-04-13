@@ -2974,6 +2974,7 @@ private struct GaragePlaybackControlRow: View {
                         .frame(width: 36, height: 36)
                         .background(Color.white.opacity(0.08), in: Circle())
                 }
+                .accessibilityLabel(isPlaying ? "Pause" : "Play")
                 .buttonStyle(.plain)
                 .accessibilityLabel(isPlaying ? "Pause" : "Play")
                 .accessibilityValue(speedLabel(for: Double(selectedSpeed)))
