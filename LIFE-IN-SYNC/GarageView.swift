@@ -996,6 +996,8 @@ private struct GarageFocusedReviewWorkspace: View {
                         .background(Color.black.opacity(0.45), in: Circle())
                 }
                 .accessibilityLabel("Back")
+                .accessibilityHint("Returns to the previous screen")
+                .accessibilityLabel("Back")
                 .accessibilityHint("Exit review")
                 .buttonStyle(.plain)
                 .padding(.leading, 12)
