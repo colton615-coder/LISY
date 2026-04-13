@@ -995,6 +995,8 @@ private struct GarageFocusedReviewWorkspace: View {
                         .frame(width: 36, height: 36)
                         .background(Color.black.opacity(0.45), in: Circle())
                 }
+                .accessibilityLabel("Back")
+                .accessibilityHint("Return to review list")
                 .buttonStyle(.plain)
                 .padding(.leading, 12)
                 .padding(.top, 12)
