@@ -995,6 +995,8 @@ private struct GarageFocusedReviewWorkspace: View {
                         .frame(width: 36, height: 36)
                         .background(Color.black.opacity(0.45), in: Circle())
                 }
+                .accessibilityLabel("Back")
+                .accessibilityHint("Exit review")
                 .buttonStyle(.plain)
                 .padding(.leading, 12)
                 .padding(.top, 12)
@@ -2837,7 +2839,10 @@ private struct GarageSlowMotionPlaybackSheet: View {
         .background(garageReviewBackground.ignoresSafeArea())
         .safeAreaInset(edge: .bottom, spacing: 0) {
             GaragePlaybackActionBar(
-                onRecheck: dismiss.callAsFunction,
+                onRecheck: {
+                    playbackController.seek(0)
+                    playbackController.startPlayback(at: selectedSpeed)
+                },
                 onFinish: dismiss.callAsFunction
             )
         }
@@ -2968,6 +2973,8 @@ private struct GaragePlaybackControlRow: View {
                         .background(Color.white.opacity(0.08), in: Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(isPlaying ? "Pause" : "Play")
+                .accessibilityValue(speedLabel(for: Double(selectedSpeed)))
 
                 ForEach([1.0, 0.5, 0.25], id: \.self) { speed in
                     let speedValue = Float(speed)
@@ -3043,10 +3050,39 @@ private struct GarageSlowMotionVisualizationOverlay: View {
     }
 
     private var currentFrame: SwingFrame? {
+        guard let index = nearestFrameIndex(for: currentTime) else { return nil }
+        return frames[index]
+    }
+
+    private func nearestFrameIndex(for timestamp: Double) -> Int? {
         guard frames.isEmpty == false else { return nil }
-        return frames.enumerated().min { lhs, rhs in
-            abs(lhs.element.timestamp - currentTime) < abs(rhs.element.timestamp - currentTime)
-        }?.element
+
+        var lowerBound = 0
+        var upperBound = frames.count
+
+        while lowerBound < upperBound {
+            let midpoint = (lowerBound + upperBound) / 2
+            if frames[midpoint].timestamp < timestamp {
+                lowerBound = midpoint + 1
+            } else {
+                upperBound = midpoint
+            }
+        }
+
+        if lowerBound == 0 {
+            return 0
+        }
+
+        if lowerBound == frames.count {
+            return frames.count - 1
+        }
+
+        let previousIndex = lowerBound - 1
+        let nextIndex = lowerBound
+        let previousDelta = abs(frames[previousIndex].timestamp - timestamp)
+        let nextDelta = abs(frames[nextIndex].timestamp - timestamp)
+
+        return previousDelta <= nextDelta ? previousIndex : nextIndex
     }
 
     var body: some View {
@@ -3258,11 +3294,6 @@ private final class GarageSlowMotionPlaybackController: ObservableObject {
         if player.rate != 0 {
             player.playImmediately(atRate: playbackRate)
         }
-    }
-
-    func updateDurationFromMetadata(_ metadataDuration: Double) {
-        guard metadataDuration.isFinite else { return }
-        duration = max(metadataDuration, 0)
     }
 
     func stop() {
