@@ -1441,6 +1441,8 @@ private struct GarageReviewSummaryControls: View {
                 GarageStep2UnavailableCard()
             }
 
+            GarageStabilityMetricCard(presentation: summaryPresentation)
+            GarageCoachingReportView(presentation: summaryPresentation)
             if reviewFrameSource != .video {
                 GarageReviewRecoveryCallout(
                     title: reviewRecoveryTitle,
