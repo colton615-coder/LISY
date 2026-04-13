@@ -1,166 +1,81 @@
 import SwiftUI
 
 struct GarageCoachingReportView: View {
-    let report: GarageCoachingReport
-    let stabilityScore: Int?
-    let selectedPhase: SwingPhase
-    let reliabilityStatus: GarageReliabilityStatus
+    let presentation: GarageCoachingPresentation
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Advisory Coaching")
+                    Text(presentation.title)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppModule.garage.theme.accentText)
+                        .foregroundStyle(AppModule.garage.theme.textMuted)
 
-                    Text(report.headline)
+                    Text(presentation.headline)
                         .font(.headline)
                         .foregroundStyle(AppModule.garage.theme.textPrimary)
 
-                    Text("\(selectedPhase.reviewTitle) review")
-                        .font(.caption)
+                    Text(presentation.body)
+                        .font(.subheadline)
                         .foregroundStyle(AppModule.garage.theme.textSecondary)
                 }
 
                 Spacer(minLength: 0)
-
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text("Stability")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(AppModule.garage.theme.textMuted)
-                    Text(stabilityScore.map(String.init) ?? "N/A")
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(AppModule.garage.theme.accentText)
-                }
             }
 
             HStack(spacing: 8) {
-                GarageCoachingBadge(title: report.confidenceLabel, tint: badgeTint(for: reliabilityStatus))
-                GarageCoachingBadge(title: selectedPhase.reviewTitle, tint: ModuleTheme.electricCyan.opacity(0.7))
-            }
-
-            if report.cues.isEmpty {
-                GarageCoachingFallbackCard(
-                    title: "Coaching unavailable",
-                    message: "Keep reviewing the deterministic skeleton overlay and stability score while coaching catches up."
+                GarageCoachingBadge(
+                    title: presentation.confidenceLabel,
+                    tint: badgeTint(for: presentation.confidenceLabel)
                 )
-            } else {
-                ForEach(report.cues) { cue in
-                    GarageCoachingCueCard(cue: cue)
-                }
+                GarageCoachingBadge(
+                    title: presentation.phaseLabel,
+                    tint: ModuleTheme.electricCyan.opacity(0.42)
+                )
             }
 
-            if report.blockers.isEmpty == false {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Review notes")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppModule.garage.theme.textMuted)
+            if let supportingLine = presentation.supportingLine {
+                Text(supportingLine)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(AppModule.garage.theme.textMuted)
+            }
 
-                    ForEach(report.blockers, id: \.self) { blocker in
+            if presentation.notes.isEmpty == false {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(presentation.notes, id: \.self) { note in
                         HStack(alignment: .top, spacing: 10) {
                             Circle()
-                                .fill(Color.orange.opacity(0.85))
+                                .fill(Color.orange.opacity(0.72))
                                 .frame(width: 7, height: 7)
                                 .padding(.top, 5)
 
-                            Text(blocker)
+                            Text(note)
                                 .font(.subheadline)
                                 .foregroundStyle(AppModule.garage.theme.textSecondary)
                         }
                     }
                 }
-                .padding(.top, 2)
             }
-
-            Text(report.nextBestAction)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(AppModule.garage.theme.textPrimary)
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    GarageCoachingInsetBackground(
-                        shape: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    )
-                )
         }
         .padding(16)
         .background(
             GarageCoachingCardBackground(
-                shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
+                shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous),
+                fill: ModuleTheme.garageSurfaceRaised,
+                stroke: Color.white.opacity(0.05)
             )
         )
     }
 
-    private func badgeTint(for status: GarageReliabilityStatus) -> Color {
-        switch status {
-        case .trusted:
+    private func badgeTint(for confidenceLabel: String) -> Color {
+        switch confidenceLabel {
+        case GarageReliabilityStatus.trusted.rawValue:
             Color(red: 0.33, green: 0.79, blue: 0.53)
-        case .review:
+        case GarageReliabilityStatus.review.rawValue:
             .orange
-        case .provisional:
+        default:
             Color(red: 0.94, green: 0.38, blue: 0.40)
         }
-    }
-}
-
-private struct GarageCoachingCueCard: View {
-    let cue: GarageCoachingCue
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(cue.title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(AppModule.garage.theme.textPrimary)
-
-            Text(cue.message)
-                .font(.subheadline)
-                .foregroundStyle(AppModule.garage.theme.textSecondary)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            GarageCoachingCardBackground(
-                shape: RoundedRectangle(cornerRadius: 16, style: .continuous),
-                fill: ModuleTheme.garageSurfaceRaised,
-                stroke: cueTint.opacity(0.18)
-            )
-        )
-    }
-
-    private var cueTint: Color {
-        switch cue.severity {
-        case .positive:
-            Color(red: 0.33, green: 0.79, blue: 0.53)
-        case .info:
-            ModuleTheme.electricCyan
-        case .caution:
-            .orange
-        }
-    }
-}
-
-private struct GarageCoachingFallbackCard: View {
-    let title: String
-    let message: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(AppModule.garage.theme.textPrimary)
-
-            Text(message)
-                .font(.subheadline)
-                .foregroundStyle(AppModule.garage.theme.textSecondary)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            GarageCoachingInsetBackground(
-                shape: RoundedRectangle(cornerRadius: 16, style: .continuous)
-            )
-        )
     }
 }
 
@@ -174,12 +89,13 @@ private struct GarageCoachingBadge: View {
             .foregroundStyle(AppModule.garage.theme.textPrimary)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
+            .frame(minHeight: 32)
             .background(
                 Capsule()
-                    .fill(tint.opacity(0.12))
+                    .fill(tint.opacity(0.10))
                     .overlay(
                         Capsule()
-                            .stroke(tint.opacity(0.28), lineWidth: 1)
+                            .stroke(tint.opacity(0.22), lineWidth: 1)
                     )
             )
     }
@@ -194,24 +110,7 @@ private struct GarageCoachingCardBackground<S: Shape>: View {
         shape
             .fill(fill)
             .overlay(shape.stroke(stroke, lineWidth: 1))
-            .shadow(color: AppModule.garage.theme.shadowDark, radius: 16, x: 10, y: 10)
-            .shadow(color: AppModule.garage.theme.shadowLight, radius: 12, x: -6, y: -6)
-    }
-}
-
-private struct GarageCoachingInsetBackground<S: Shape>: View {
-    let shape: S
-
-    var body: some View {
-        shape
-            .fill(ModuleTheme.garageSurfaceInset)
-            .overlay(shape.stroke(Color.white.opacity(0.07), lineWidth: 1))
-            .overlay(
-                shape
-                    .stroke(AppModule.garage.theme.shadowLight.opacity(0.6), lineWidth: 1)
-                    .blur(radius: 1)
-                    .mask(shape.fill(LinearGradient(colors: [.white, .clear], startPoint: .topLeading, endPoint: .bottomTrailing)))
-            )
-            .shadow(color: AppModule.garage.theme.shadowDark.opacity(0.55), radius: 10, x: 6, y: 6)
+            .shadow(color: AppModule.garage.theme.shadowDark.opacity(0.4), radius: 14, x: 8, y: 8)
+            .shadow(color: AppModule.garage.theme.shadowLight.opacity(0.35), radius: 8, x: -4, y: -4)
     }
 }

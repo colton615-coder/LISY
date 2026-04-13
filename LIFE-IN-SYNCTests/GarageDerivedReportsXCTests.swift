@@ -152,6 +152,95 @@ final class GarageDerivedReportsXCTests: XCTestCase {
         XCTAssertLessThan(earlyDownswing, impact)
     }
 
+    func testGarageReviewSummaryPresentationUsesGoodPoseQualityWhenConfidenceAndStabilityAreStrong() {
+        let presentation = GarageReviewSummaryPresentation.make(
+            reviewMode: .handPath,
+            handPathReviewReport: GarageHandPathReviewReport(
+                score: 82,
+                requiresManualReview: false,
+                weakestPhase: nil,
+                weakPhases: [],
+                continuityScore: 0.9
+            ),
+            stabilityScore: 88,
+            reviewFrameSource: .video
+        )
+
+        XCTAssertEqual(presentation.reviewTitle, "Hand Path Review")
+        XCTAssertEqual(presentation.poseQuality, .good)
+        XCTAssertNil(presentation.stabilityDetail)
+        XCTAssertEqual(presentation.stabilityValueText, "88")
+    }
+
+    func testGarageReviewSummaryPresentationFallsBackToLimitedWhenSkeletonStabilityIsUnavailable() {
+        let presentation = GarageReviewSummaryPresentation.make(
+            reviewMode: .skeleton,
+            handPathReviewReport: GarageHandPathReviewReport(
+                score: 79,
+                requiresManualReview: false,
+                weakestPhase: nil,
+                weakPhases: [],
+                continuityScore: 0.88
+            ),
+            stabilityScore: nil,
+            reviewFrameSource: .video
+        )
+
+        XCTAssertEqual(presentation.reviewTitle, "Skeleton Review")
+        XCTAssertEqual(presentation.poseQuality, .limited)
+        XCTAssertEqual(presentation.stabilityStatusText, "Stability unavailable")
+        XCTAssertEqual(presentation.stabilityDetail, "Head or hip detection was too weak in this swing")
+    }
+
+    func testGarageReviewSummaryPresentationUsesModeSpecificContextCopy() {
+        let skeletonPresentation = GarageReviewSummaryPresentation.make(
+            reviewMode: .skeleton,
+            handPathReviewReport: GarageHandPathReviewReport(
+                score: 60,
+                requiresManualReview: false,
+                weakestPhase: nil,
+                weakPhases: [],
+                continuityScore: 0.7
+            ),
+            stabilityScore: 74,
+            reviewFrameSource: .video
+        )
+
+        XCTAssertEqual(skeletonPresentation.reviewSubtitle, "Checking body alignment and stability through impact")
+
+        let handPathPresentation = GarageReviewSummaryPresentation.make(
+            reviewMode: .handPath,
+            handPathReviewReport: GarageHandPathReviewReport(
+                score: 60,
+                requiresManualReview: false,
+                weakestPhase: nil,
+                weakPhases: [],
+                continuityScore: 0.7
+            ),
+            stabilityScore: 74,
+            reviewFrameSource: .video
+        )
+
+        XCTAssertEqual(handPathPresentation.reviewSubtitle, "Reviewing the detected grip path from setup to impact")
+    }
+
+    func testGarageReviewSummaryPresentationExplainsPoseFallbackSource() {
+        let presentation = GarageReviewSummaryPresentation.make(
+            reviewMode: .handPath,
+            handPathReviewReport: GarageHandPathReviewReport(
+                score: 58,
+                requiresManualReview: false,
+                weakestPhase: nil,
+                weakPhases: [],
+                continuityScore: 0.64
+            ),
+            stabilityScore: 66,
+            reviewFrameSource: .poseFallback
+        )
+
+        XCTAssertEqual(presentation.poseQualityDetail, "Reviewing sampled pose data because the stored video is unavailable.")
+    }
+
     func testGarageStabilityScoreStaysHighForStableCoreAnchors() {
         let frames = makeStabilityFrames(
             headOffsets: [

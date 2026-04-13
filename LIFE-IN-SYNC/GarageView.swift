@@ -523,7 +523,7 @@ private struct GarageReviewTab: View {
     }
 }
 
-private enum GarageReviewMode: String, CaseIterable, Identifiable {
+enum GarageReviewMode: String, CaseIterable, Identifiable {
     case handPath
     case skeleton
 
@@ -536,6 +536,145 @@ private enum GarageReviewMode: String, CaseIterable, Identifiable {
         case .skeleton:
             "Skeleton"
         }
+    }
+}
+
+enum GaragePoseQualityLevel: String, Equatable {
+    case good
+    case moderate
+    case limited
+
+    var label: String {
+        switch self {
+        case .good:
+            "Good"
+        case .moderate:
+            "Moderate"
+        case .limited:
+            "Limited"
+        }
+    }
+
+    var badgeText: String {
+        "Pose quality: \(label)"
+    }
+
+    var tint: Color {
+        switch self {
+        case .good:
+            Color(red: 0.33, green: 0.79, blue: 0.53)
+        case .moderate:
+            Color(red: 0.77, green: 0.83, blue: 0.89)
+        case .limited:
+            .orange
+        }
+    }
+}
+
+struct GarageReviewSummaryPresentation: Equatable {
+    let reviewTitle: String
+    let reviewSubtitle: String
+    let poseQuality: GaragePoseQualityLevel
+    let poseQualityDetail: String?
+    let stabilityTitle: String
+    let stabilitySubtitle: String
+    let stabilityValueText: String?
+    let stabilityStatusText: String
+    let stabilityDetail: String?
+
+    static func make(
+        reviewMode: GarageReviewMode,
+        handPathReviewReport: GarageHandPathReviewReport,
+        stabilityScore: Int?,
+        reviewFrameSource: GarageReviewFrameSourceState
+    ) -> GarageReviewSummaryPresentation {
+        let basePoseQuality: GaragePoseQualityLevel
+        if handPathReviewReport.score >= 75, stabilityScore != nil {
+            basePoseQuality = .good
+        } else if handPathReviewReport.score >= 55 {
+            basePoseQuality = .moderate
+        } else {
+            basePoseQuality = .limited
+        }
+
+        let resolvedPoseQuality: GaragePoseQualityLevel
+        if reviewMode == .skeleton, stabilityScore == nil {
+            resolvedPoseQuality = .limited
+        } else {
+            resolvedPoseQuality = basePoseQuality
+        }
+
+        let poseQualityDetail: String?
+        switch (reviewFrameSource, reviewMode, resolvedPoseQuality, stabilityScore) {
+        case (.poseFallback, _, _, _):
+            poseQualityDetail = "Reviewing sampled pose data because the stored video is unavailable."
+        case (.recoveryNeeded, _, _, _):
+            poseQualityDetail = "Review media is limited, so trust this review cautiously."
+        case (_, .skeleton, .limited, nil):
+            poseQualityDetail = "Head or hip detection was too weak in this swing"
+        default:
+            poseQualityDetail = nil
+        }
+
+        return GarageReviewSummaryPresentation(
+            reviewTitle: reviewMode == .handPath ? "Hand Path Review" : "Skeleton Review",
+            reviewSubtitle: reviewMode == .handPath
+                ? "Reviewing the detected grip path from setup to impact"
+                : "Checking body alignment and stability through impact",
+            poseQuality: resolvedPoseQuality,
+            poseQualityDetail: poseQualityDetail,
+            stabilityTitle: "Postural Stability",
+            stabilitySubtitle: "A support metric based on head and pelvis drift from setup to impact",
+            stabilityValueText: stabilityScore.map(String.init),
+            stabilityStatusText: stabilityScore == nil ? "Stability unavailable" : "Support metric",
+            stabilityDetail: stabilityScore == nil ? "Head or hip detection was too weak in this swing" : nil
+        )
+    }
+}
+
+struct GarageCoachingPresentation: Equatable {
+    let title: String
+    let headline: String
+    let body: String
+    let supportingLine: String?
+    let confidenceLabel: String
+    let phaseLabel: String
+    let notes: [String]
+    let isUnavailable: Bool
+
+    static func make(
+        report: GarageCoachingReport,
+        selectedPhase: SwingPhase,
+        reliabilityStatus: GarageReliabilityStatus
+    ) -> GarageCoachingPresentation {
+        let unavailable = report.cues.isEmpty
+        let primaryCue = report.cues.first
+        let rawHeadline = primaryCue?.title ?? report.headline
+
+        let headline: String
+        if rawHeadline == "Transition Looks Rushed" {
+            headline = "Transition appears faster than this swing’s baseline"
+        } else {
+            headline = rawHeadline
+        }
+
+        let body: String
+        if let primaryCue {
+            body = primaryCue.message
+        } else {
+            body = "Review the motion and stability metric while coaching catches up."
+        }
+
+        return GarageCoachingPresentation(
+            title: "Coaching Notes",
+            headline: unavailable ? "Coaching unavailable" : headline,
+            body: body,
+            supportingLine: unavailable ? nil : "Use this as a cue, not a final judgment",
+            confidenceLabel: reliabilityStatus.rawValue,
+            phaseLabel: selectedPhase.reviewTitle,
+            notes: Array(report.blockers.prefix(2)),
+            isUnavailable: unavailable
+        )
     }
 }
 
@@ -593,7 +732,6 @@ private struct GarageFocusedReviewWorkspace: View {
     @State private var isLoadingFrame = false
     @State private var selectedPhase: SwingPhase = .address
     @State private var isShowingCompletionPlayback = false
-    @State private var didAutoPresentCompletionPlayback = false
     @State private var reviewMode: GarageReviewMode = .handPath
     @State private var reviewSurface: GarageReviewSurface = .summary
     @State private var dragAnchorPoint: CGPoint?
@@ -727,6 +865,23 @@ private struct GarageFocusedReviewWorkspace: View {
         GarageCoaching.report(for: record)
     }
 
+    private var summaryPresentation: GarageReviewSummaryPresentation {
+        GarageReviewSummaryPresentation.make(
+            reviewMode: reviewMode,
+            handPathReviewReport: handPathReviewReport,
+            stabilityScore: stabilityScore,
+            reviewFrameSource: reviewFrameSource
+        )
+    }
+
+    private var coachingPresentation: GarageCoachingPresentation {
+        GarageCoachingPresentation.make(
+            report: coachingReport,
+            selectedPhase: selectedPhase,
+            reliabilityStatus: GarageReliability.report(for: record).status
+        )
+    }
+
     private var frameRequestID: String {
         [
             garageRecordSelectionKey(for: record),
@@ -783,11 +938,13 @@ private struct GarageFocusedReviewWorkspace: View {
     }
 
     private var videoStageHeight: CGFloat {
-        max(viewportHeight * 0.74, 420)
+        min(max(viewportHeight * 0.55, 460), 540)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 16) {
+            GarageReviewHeaderBar(onBack: onExitReview)
+
             GarageFocusedReviewFrame(
                 image: reviewImage,
                 isLoadingFrame: isLoadingFrame,
@@ -799,9 +956,8 @@ private struct GarageFocusedReviewWorkspace: View {
                 reviewSurface: reviewSurface,
                 handPathSamples: fullHandPathSamples,
                 currentTime: currentFrameTimestamp ?? currentTime,
-                stabilityScore: stabilityScore,
+                summaryPresentation: summaryPresentation,
                 preferredHeight: videoStageHeight,
-                onExitReview: onExitReview,
                 onSelectReviewMode: selectReviewMode,
                 onAnchorDragChanged: handleAnchorDragChanged,
                 onAnchorDragEnded: handleAnchorDragEnded
@@ -821,20 +977,12 @@ private struct GarageFocusedReviewWorkspace: View {
                         onSelectFrame: setCurrentFrameIndex,
                         reviewRecoveryTitle: reviewRecoveryTitle,
                         reviewRecoveryBody: reviewRecoveryBody,
-                        reviewFrameSource: reviewFrameSource,
-                        showsCompletionPlayback: record.allCheckpointsApproved && reviewVideoURL != nil,
-                        onOpenCompletionPlayback: {
-                            isShowingCompletionPlayback = true
-                        }
+                        reviewFrameSource: reviewFrameSource
                     )
                 } else {
                     GarageReviewSummaryControls(
-                        handPathReviewReport: handPathReviewReport,
-                        reviewMode: reviewMode,
-                        stabilityScore: stabilityScore,
-                        coachingReport: coachingReport,
-                        reliabilityStatus: GarageReliability.report(for: record).status,
-                        selectedPhase: selectedPhase,
+                        summaryPresentation: summaryPresentation,
+                        coachingPresentation: coachingPresentation,
                         videoURL: reviewVideoURL,
                         frames: filmstripFrames,
                         currentFrameIndex: currentFrameIndex,
@@ -842,16 +990,14 @@ private struct GarageFocusedReviewWorkspace: View {
                         onSelectFrame: setCurrentFrameIndex,
                         reviewRecoveryTitle: reviewRecoveryTitle,
                         reviewRecoveryBody: reviewRecoveryBody,
-                        reviewFrameSource: reviewFrameSource,
-                        showsCompletionPlayback: reviewVideoURL != nil,
-                        onOpenCompletionPlayback: {
-                            isShowingCompletionPlayback = true
-                        }
+                        reviewFrameSource: reviewFrameSource
                     )
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
+        .padding(.horizontal, ModuleSpacing.medium)
+        .padding(.top, 8)
         .background(garageReviewBackground.ignoresSafeArea())
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if reviewSurface == .fallbackHandPath {
@@ -862,6 +1008,13 @@ private struct GarageFocusedReviewWorkspace: View {
                     onStepBackward: { stepFrame(by: -1) },
                     onStepForward: { stepFrame(by: 1) },
                     onConfirm: confirmSelectionAndAdvance
+                )
+            } else {
+                GarageSummaryPrimaryActionBar(
+                    canContinue: reviewVideoURL != nil,
+                    onContinue: {
+                        isShowingCompletionPlayback = true
+                    }
                 )
             }
         }
@@ -1069,7 +1222,6 @@ private struct GarageFocusedReviewWorkspace: View {
         record.pathPoints = GarageAnalysisPipeline.generatePathPoints(from: record.handAnchors, samplesPerSegment: 16)
         record.refreshKeyframeValidationStatus()
         try? modelContext.save()
-        didAutoPresentCompletionPlayback = false
     }
 
     private func initialPhaseSelection() -> SwingPhase {
@@ -1100,19 +1252,6 @@ private struct GarageFocusedReviewWorkspace: View {
         return availablePhases.first(where: { record.reviewStatus(for: $0) != .approved })
     }
 
-    private func autoPresentCompletionPlaybackIfNeeded() {
-        guard
-            reviewSurface == .fallbackHandPath,
-            record.allCheckpointsApproved,
-            didAutoPresentCompletionPlayback == false,
-            reviewVideoURL != nil
-        else {
-            return
-        }
-        didAutoPresentCompletionPlayback = true
-        isShowingCompletionPlayback = true
-    }
-
     private func applyAutomaticHandPathApprovalIfNeeded() {
         guard record.keyFrames.isEmpty == false, requiresFallbackReview == false else {
             return
@@ -1133,13 +1272,11 @@ private struct GarageFocusedReviewWorkspace: View {
 
     private func syncReviewSession() {
         reviewSurface = requiresFallbackReview ? .fallbackHandPath : .summary
-        reviewMode = reviewSurface == .summary ? .skeleton : .handPath
-        didAutoPresentCompletionPlayback = false
+        reviewMode = .handPath
 
         if reviewSurface == .fallbackHandPath {
             selectedPhase = handPathReviewReport.weakestPhase ?? initialPhaseSelection()
             seekToSelectedCheckpoint()
-            autoPresentCompletionPlaybackIfNeeded()
             return
         }
 
@@ -1149,9 +1286,8 @@ private struct GarageFocusedReviewWorkspace: View {
 
     private func transitionToSummaryReview() {
         reviewSurface = .summary
-        reviewMode = .skeleton
+        reviewMode = .handPath
         selectedPhase = nearestPhase(for: currentFrameIndex ?? 0) ?? .impact
-        didAutoPresentCompletionPlayback = false
     }
 
     private func nearestPhase(for frameIndex: Int) -> SwingPhase? {
@@ -1173,8 +1309,6 @@ private struct GarageReviewScrollableControls: View {
     let reviewRecoveryTitle: String
     let reviewRecoveryBody: String
     let reviewFrameSource: GarageReviewFrameSourceState
-    let showsCompletionPlayback: Bool
-    let onOpenCompletionPlayback: () -> Void
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -1209,10 +1343,6 @@ private struct GarageReviewScrollableControls: View {
                         state: reviewFrameSource
                     )
                 }
-
-                if showsCompletionPlayback {
-                    GarageCompletionPlaybackCallout(replay: onOpenCompletionPlayback)
-                }
             }
             .padding(.horizontal, ModuleSpacing.medium)
             .padding(.top, 2)
@@ -1237,12 +1367,8 @@ private struct GarageReviewScrollableControls: View {
 }
 
 private struct GarageReviewSummaryControls: View {
-    let handPathReviewReport: GarageHandPathReviewReport
-    let reviewMode: GarageReviewMode
-    let stabilityScore: Int?
-    let coachingReport: GarageCoachingReport
-    let reliabilityStatus: GarageReliabilityStatus
-    let selectedPhase: SwingPhase
+    let summaryPresentation: GarageReviewSummaryPresentation
+    let coachingPresentation: GarageCoachingPresentation
     let videoURL: URL?
     let frames: [GarageFilmstripFrame]
     let currentFrameIndex: Int?
@@ -1251,44 +1377,23 @@ private struct GarageReviewSummaryControls: View {
     let reviewRecoveryTitle: String
     let reviewRecoveryBody: String
     let reviewFrameSource: GarageReviewFrameSourceState
-    let showsCompletionPlayback: Bool
-    let onOpenCompletionPlayback: () -> Void
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 10) {
-                GarageAutomaticHandPathSummaryCard(
-                    reviewMode: reviewMode,
-                    handPathReviewReport: handPathReviewReport
-                )
+            VStack(alignment: .leading, spacing: 14) {
+                GarageReviewContextBand(presentation: summaryPresentation)
 
-                if reviewMode == .skeleton {
-                    GarageCoachingReportView(
-                        report: coachingReport,
-                        stabilityScore: stabilityScore,
-                        selectedPhase: selectedPhase,
-                        reliabilityStatus: reliabilityStatus
-                    )
-                } else {
-                    GarageReadOnlyHandPathSummaryCard()
-                }
-
-                HStack {
-                    Spacer(minLength: 0)
-                    Text(frameCountLabel)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(garageReviewMutedText)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                }
-
-                GarageReviewFilmstrip(
+                GarageReviewSummaryUtilityStrip(
                     videoURL: videoURL,
                     frames: frames,
-                    markers: [],
                     currentFrameIndex: currentFrameIndex,
+                    totalFrameCount: totalFrameCount,
                     onSelectFrame: onSelectFrame
                 )
+
+                GarageStabilityMetricCard(presentation: summaryPresentation)
+
+                GarageCoachingReportView(presentation: coachingPresentation)
 
                 if reviewFrameSource != .video {
                     GarageReviewRecoveryCallout(
@@ -1298,19 +1403,102 @@ private struct GarageReviewSummaryControls: View {
                     )
                 }
 
-                if showsCompletionPlayback {
-                    GarageCompletionPlaybackCallout(replay: onOpenCompletionPlayback)
-                }
             }
-            .padding(.horizontal, ModuleSpacing.medium)
-            .padding(.top, 2)
-            .padding(.bottom, 8)
+            .padding(.bottom, 12)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct GarageReviewHeaderBar: View {
+    let onBack: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            Button(action: onBack) {
+                HStack(spacing: 8) {
+                    Image(systemName: "chevron.left")
+                        .font(.subheadline.weight(.bold))
+                    Text("Back")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .foregroundStyle(garageReviewReadableText)
+                .frame(minWidth: 44, minHeight: 44)
+            }
+            .buttonStyle(.plain)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Swing Review")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(garageReviewReadableText)
+
+                Text("Step 2 of 3: Inspect motion")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(garageReviewMutedText)
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+private struct GarageReviewContextBand: View {
+    let presentation: GarageReviewSummaryPresentation
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(presentation.reviewTitle)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(garageReviewReadableText)
+
+            Text(presentation.reviewSubtitle)
+                .font(.subheadline)
+                .foregroundStyle(garageReviewMutedText)
+
+            if let poseQualityDetail = presentation.poseQualityDetail {
+                Text(poseQualityDetail)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(garageReviewMutedText.opacity(0.95))
+            }
+        }
+        .padding(.horizontal, 2)
+    }
+}
+
+private struct GarageReviewSummaryUtilityStrip: View {
+    let videoURL: URL?
+    let frames: [GarageFilmstripFrame]
+    let currentFrameIndex: Int?
+    let totalFrameCount: Int
+    let onSelectFrame: (Int) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Frame Browser")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(garageReviewMutedText)
+
+                Spacer(minLength: 0)
+
+                Text(frameCountLabel)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(garageReviewMutedText)
+            }
+
+            GarageReviewFilmstrip(
+                videoURL: videoURL,
+                frames: frames,
+                markers: [],
+                currentFrameIndex: currentFrameIndex,
+                onSelectFrame: onSelectFrame
+            )
+        }
+        .padding(14)
         .background(
-            GarageRaisedPanelBackground(
-                shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous),
-                fill: garageReviewSurface
+            GarageInsetPanelBackground(
+                shape: RoundedRectangle(cornerRadius: 16, style: .continuous),
+                fill: garageReviewInsetSurface,
+                stroke: garageReviewStroke
             )
         )
     }
@@ -1321,78 +1509,6 @@ private struct GarageReviewSummaryControls: View {
         }
 
         return "\(currentFrameIndex + 1) / \(totalFrameCount) frames"
-    }
-}
-
-private struct GarageAutomaticHandPathSummaryCard: View {
-    let reviewMode: GarageReviewMode
-    let handPathReviewReport: GarageHandPathReviewReport
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Automatic Hand Path")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(garageReviewAccent)
-
-                    Text(reviewMode == .skeleton ? "Skeleton Summary Ready" : "Hand Path Ready")
-                        .font(.headline)
-                        .foregroundStyle(garageReviewReadableText)
-
-                    Text("Garage auto-detected the grip path and only keeps manual fallback for genuinely weak wrist reads.")
-                        .font(.caption)
-                        .foregroundStyle(garageReviewMutedText)
-                }
-
-                Spacer(minLength: 0)
-
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text("Confidence")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(garageReviewMutedText)
-                    Text("\(handPathReviewReport.score)")
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(garageReviewAccent)
-                }
-            }
-
-            if handPathReviewReport.weakPhases.isEmpty == false {
-                Text("Watch \(handPathReviewReport.weakPhases.map(\.reviewTitle).joined(separator: ", ")) if you want to manually verify edge frames.")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(garageReviewMutedText)
-            }
-        }
-        .padding(16)
-        .background(
-            GarageRaisedPanelBackground(
-                shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous),
-                fill: garageReviewSurfaceRaised,
-                stroke: garageReviewStroke
-            )
-        )
-    }
-}
-
-private struct GarageReadOnlyHandPathSummaryCard: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Finalized Hand Path")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(garageReviewReadableText)
-
-            Text("The path is clipped at impact and split into backswing and downswing colors so the motion reads cleanly without the follow-through squiggle.")
-                .font(.subheadline)
-                .foregroundStyle(garageReviewMutedText)
-        }
-        .padding(14)
-        .background(
-            GarageInsetPanelBackground(
-                shape: RoundedRectangle(cornerRadius: 16, style: .continuous),
-                fill: garageReviewInsetSurface,
-                stroke: garageReviewStroke
-            )
-        )
     }
 }
 
@@ -1445,6 +1561,45 @@ private struct GarageReviewActionDock: View {
         }
         .padding(.horizontal, ModuleSpacing.medium)
         .padding(.top, 10)
+        .padding(.bottom, 10)
+        .background(
+            GarageRaisedPanelBackground(
+                shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous),
+                fill: garageReviewSurface
+            )
+            .ignoresSafeArea(edges: .bottom)
+        )
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(garageReviewStroke.opacity(0.9))
+                .frame(height: 1)
+        }
+    }
+}
+
+private struct GarageSummaryPrimaryActionBar: View {
+    let canContinue: Bool
+    let onContinue: () -> Void
+
+    var body: some View {
+        HStack {
+            Button(action: onContinue) {
+                Text(canContinue ? "Continue to Slow Motion Review" : "Slow Motion Review Unavailable")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(canContinue ? garageReviewCanvasFill : garageReviewMutedText)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 52)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(canContinue ? garageReviewAccent : garageReviewSurfaceRaised)
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(canContinue == false)
+            .opacity(canContinue ? 1 : 0.78)
+        }
+        .padding(.horizontal, ModuleSpacing.medium)
+        .padding(.top, 12)
         .padding(.bottom, 10)
         .background(
             GarageRaisedPanelBackground(
@@ -1646,9 +1801,8 @@ private struct GarageFocusedReviewFrame: View {
     let reviewSurface: GarageReviewSurface
     let handPathSamples: [GarageHandPathSample]
     let currentTime: Double
-    let stabilityScore: Int?
+    let summaryPresentation: GarageReviewSummaryPresentation
     let preferredHeight: CGFloat
-    let onExitReview: () -> Void
     let onSelectReviewMode: (GarageReviewMode) -> Void
     let onAnchorDragChanged: (CGPoint) -> Void
     let onAnchorDragEnded: (CGPoint) -> Void
@@ -1664,9 +1818,8 @@ private struct GarageFocusedReviewFrame: View {
         reviewSurface: GarageReviewSurface,
         handPathSamples: [GarageHandPathSample],
         currentTime: Double,
-        stabilityScore: Int?,
+        summaryPresentation: GarageReviewSummaryPresentation,
         preferredHeight: CGFloat,
-        onExitReview: @escaping () -> Void,
         onSelectReviewMode: @escaping (GarageReviewMode) -> Void,
         onAnchorDragChanged: @escaping (CGPoint) -> Void,
         onAnchorDragEnded: @escaping (CGPoint) -> Void
@@ -1681,9 +1834,8 @@ private struct GarageFocusedReviewFrame: View {
         self.reviewSurface = reviewSurface
         self.handPathSamples = handPathSamples
         self.currentTime = currentTime
-        self.stabilityScore = stabilityScore
+        self.summaryPresentation = summaryPresentation
         self.preferredHeight = preferredHeight
-        self.onExitReview = onExitReview
         self.onSelectReviewMode = onSelectReviewMode
         self.onAnchorDragChanged = onAnchorDragChanged
         self.onAnchorDragEnded = onAnchorDragEnded
@@ -1752,37 +1904,26 @@ private struct GarageFocusedReviewFrame: View {
             }
         }
         .overlay(alignment: .topLeading) {
-            Button(action: onExitReview) {
-                Label("Swings", systemImage: "chevron.left")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(garageReviewReadableText)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(
-                        GarageRaisedPanelBackground(
-                            shape: Capsule(),
-                            fill: garageReviewSurfaceRaised
-                        )
-                    )
+            if reviewSurface == .summary {
+                GaragePoseQualityBadge(level: summaryPresentation.poseQuality)
+                    .padding(16)
             }
-            .buttonStyle(.plain)
-            .padding(14)
         }
         .overlay(alignment: .topTrailing) {
             if reviewSurface == .summary {
-                VStack(alignment: .trailing, spacing: 10) {
-                    GarageReviewModeSwitcher(
-                        selectedMode: reviewMode,
-                        onSelect: onSelectReviewMode
-                    )
-
-                    if reviewMode == .skeleton {
-                        GarageStabilityScoreChip(score: stabilityScore)
-                    }
-                }
-                .padding(14)
+                GarageReviewModeSwitcher(
+                    selectedMode: reviewMode,
+                    onSelect: onSelectReviewMode
+                )
+                .padding(16)
             }
         }
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .stroke(garageReviewStroke.opacity(0.95), lineWidth: 1)
+        )
+        .shadow(color: garageReviewShadowDark.opacity(0.34), radius: 20, x: 0, y: 12)
         .frame(height: preferredHeight)
         .frame(maxWidth: .infinity)
     }
@@ -1793,24 +1934,33 @@ private struct GarageReviewModeSwitcher: View {
     let onSelect: (GarageReviewMode) -> Void
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             ForEach(GarageReviewMode.allCases) { mode in
+                let isSelected = mode == selectedMode
                 Button {
                     onSelect(mode)
                 } label: {
-                    Text(mode.title)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(mode == selectedMode ? garageReviewCanvasFill : garageReviewReadableText)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                    HStack(spacing: 6) {
+                        if isSelected {
+                            Image(systemName: "checkmark")
+                                .font(.caption.weight(.bold))
+                        }
+
+                        Text(mode.title)
+                            .font(.subheadline.weight(.semibold))
+                    }
+                        .foregroundStyle(isSelected ? garageReviewReadableText : garageReviewMutedText)
+                        .frame(minHeight: 44)
+                        .padding(.horizontal, 14)
                         .background(
                             Capsule()
-                                .fill(mode == selectedMode ? garageReviewAccent : Color.clear)
-                                .shadow(
-                                    color: mode == selectedMode ? garageReviewAccent.opacity(0.45) : .clear,
-                                    radius: mode == selectedMode ? 10 : 0,
-                                    x: 0,
-                                    y: 0
+                                .fill(isSelected ? garageReviewAccent.opacity(0.18) : Color.clear)
+                                .overlay(
+                                    Capsule()
+                                        .stroke(
+                                            isSelected ? garageReviewAccent.opacity(0.44) : Color.clear,
+                                            lineWidth: 1
+                                        )
                                 )
                         )
                 }
@@ -1819,35 +1969,88 @@ private struct GarageReviewModeSwitcher: View {
         }
         .padding(6)
         .background(
-            GarageRaisedPanelBackground(
+            GarageInsetPanelBackground(
                 shape: Capsule(),
-                fill: garageReviewSurface,
+                fill: garageReviewSurface.opacity(0.84),
                 stroke: garageReviewStroke
             )
         )
     }
 }
 
-private struct GarageStabilityScoreChip: View {
-    let score: Int?
+private struct GaragePoseQualityBadge: View {
+    let level: GaragePoseQualityLevel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("Postural Stability")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(garageReviewMutedText)
+        HStack(spacing: 8) {
+            Circle()
+                .fill(level.tint)
+                .frame(width: 8, height: 8)
 
-            Text(score.map { "Stability \($0)" } ?? "Stability N/A")
+            Text(level.badgeText)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(garageReviewAccent)
+                .foregroundStyle(garageReviewReadableText)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .frame(minHeight: 44)
         .background(
             GarageInsetPanelBackground(
-                shape: RoundedRectangle(cornerRadius: 16, style: .continuous),
-                fill: garageReviewInsetSurface,
-                stroke: garageReviewStroke.opacity(0.9)
+                shape: Capsule(),
+                fill: garageReviewSurface.opacity(0.82),
+                stroke: level.tint.opacity(0.28)
+            )
+        )
+    }
+}
+
+private struct GarageStabilityMetricCard: View {
+    let presentation: GarageReviewSummaryPresentation
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(presentation.stabilityTitle)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(garageReviewReadableText)
+
+                    Text(presentation.stabilitySubtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(garageReviewMutedText)
+                }
+
+                Spacer(minLength: 0)
+
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(presentation.stabilityStatusText)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(garageReviewMutedText)
+
+                    if let stabilityValueText = presentation.stabilityValueText {
+                        Text(stabilityValueText)
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(garageReviewReadableText)
+                    } else {
+                        Text("Stability unavailable")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(garageReviewReadableText)
+                            .multilineTextAlignment(.trailing)
+                    }
+                }
+            }
+
+            if let stabilityDetail = presentation.stabilityDetail {
+                Text(stabilityDetail)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(garageReviewMutedText)
+            }
+        }
+        .padding(16)
+        .background(
+            GarageRaisedPanelBackground(
+                shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous),
+                fill: garageReviewSurfaceRaised,
+                stroke: garageReviewStroke
             )
         )
     }
