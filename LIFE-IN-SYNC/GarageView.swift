@@ -874,10 +874,6 @@ private struct GarageFocusedReviewWorkspace: View {
         GarageAnalysisPipeline.handPathReviewReport(for: record.swingFrames, keyFrames: record.keyFrames)
     }
 
-    private var coachingReport: GarageCoachingReport {
-        GarageCoaching.report(for: record)
-    }
-
     private var summaryPresentation: GarageReviewSummaryPresentation {
         GarageReviewSummaryPresentation.make(
             reviewMode: reviewMode,
@@ -887,12 +883,9 @@ private struct GarageFocusedReviewWorkspace: View {
         )
     }
 
-    private var coachingPresentation: GarageCoachingPresentation {
-        GarageCoachingPresentation.make(
-            report: coachingReport,
-            selectedPhase: selectedPhase,
-            reliabilityStatus: GarageReliability.report(for: record).status
-        )
+    private var swingScorecard: GarageSwingScorecard? {
+        record.analysisResult?.scorecard
+            ?? GarageScorecardEngine.generate(frames: record.swingFrames, keyFrames: record.keyFrames)
     }
 
     private var frameRequestID: String {
@@ -1048,7 +1041,7 @@ private struct GarageFocusedReviewWorkspace: View {
                 } else {
                     GarageReviewSummaryControls(
                         summaryPresentation: summaryPresentation,
-                        coachingPresentation: coachingPresentation,
+                        scorecard: swingScorecard,
                         reviewRecoveryTitle: reviewRecoveryTitle,
                         reviewRecoveryBody: reviewRecoveryBody,
                         reviewFrameSource: reviewFrameSource
@@ -1434,7 +1427,7 @@ private struct GarageReviewScrollableControls: View {
 
 private struct GarageReviewSummaryControls: View {
     let summaryPresentation: GarageReviewSummaryPresentation
-    let coachingPresentation: GarageCoachingPresentation
+    let scorecard: GarageSwingScorecard?
     let reviewRecoveryTitle: String
     let reviewRecoveryBody: String
     let reviewFrameSource: GarageReviewFrameSourceState
@@ -1443,10 +1436,15 @@ private struct GarageReviewSummaryControls: View {
         VStack(alignment: .leading, spacing: 14) {
             GarageReviewContextBand(presentation: summaryPresentation)
 
+            if let scorecard {
+                GarageStep2ScoreSummaryCard(scorecard: scorecard)
+                GarageStep2MetricGrid(scorecard: scorecard)
+            } else {
+                GarageStep2UnavailableCard()
+            }
+
             GarageStabilityMetricCard(presentation: summaryPresentation)
-
-            GarageCoachingReportView(presentation: coachingPresentation)
-
+            GarageCoachingReportView(presentation: summaryPresentation)
             if reviewFrameSource != .video {
                 GarageReviewRecoveryCallout(
                     title: reviewRecoveryTitle,
@@ -2043,6 +2041,137 @@ private struct GarageStabilityMetricCard: View {
                 stroke: garageReviewStroke
             )
         )
+    }
+}
+
+private struct GarageStep2ScoreSummaryCard: View {
+    let scorecard: GarageSwingScorecard
+
+    var body: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Swing Score")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(garageReviewReadableText)
+                Text("DTL automated analysis")
+                    .font(.caption)
+                    .foregroundStyle(garageReviewMutedText)
+            }
+
+            Spacer(minLength: 0)
+
+            Text("\(scorecard.totalScore)")
+                .font(.system(size: 34, weight: .bold, design: .rounded))
+                .foregroundStyle(garageReviewReadableText)
+            Text("/100")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(garageReviewMutedText)
+                .padding(.top, 8)
+        }
+        .padding(16)
+        .background(
+            GarageRaisedPanelBackground(
+                shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous),
+                fill: garageReviewSurfaceRaised,
+                stroke: garageReviewStroke
+            )
+        )
+    }
+}
+
+private struct GarageStep2MetricGrid: View {
+    let scorecard: GarageSwingScorecard
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10)
+    ]
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: 10) {
+            ForEach(scorecard.domainScores) { domain in
+                GarageStep2MetricCard(domain: domain)
+            }
+        }
+    }
+}
+
+private struct GarageStep2MetricCard: View {
+    let domain: GarageSwingDomainScore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(domain.grade.tint)
+                    .frame(width: 7, height: 7)
+
+                Text(domain.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(garageReviewMutedText)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+
+                Text("\(domain.score)/20")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(garageReviewMutedText)
+            }
+
+            Text(domain.displayValue)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(garageReviewReadableText)
+                .lineLimit(2)
+
+            Text(domain.grade.label)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(domain.grade.tint.opacity(0.9))
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            GarageInsetPanelBackground(
+                shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous),
+                fill: garageReviewInsetSurface,
+                stroke: domain.grade.tint.opacity(0.2)
+            )
+        )
+    }
+}
+
+private struct GarageStep2UnavailableCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Step 2 metrics unavailable")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(garageReviewReadableText)
+            Text("Pose confidence was too limited to produce stable DTL measurements.")
+                .font(.caption)
+                .foregroundStyle(garageReviewMutedText)
+        }
+        .padding(14)
+        .background(
+            GarageRaisedPanelBackground(
+                shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous),
+                fill: garageReviewSurfaceRaised,
+                stroke: garageReviewStroke
+            )
+        )
+    }
+}
+
+private extension GarageMetricGrade {
+    var tint: Color {
+        switch self {
+        case .excellent:
+            Color(red: 0.31, green: 0.78, blue: 0.53)
+        case .good:
+            Color(red: 0.37, green: 0.72, blue: 0.93)
+        case .fair:
+            Color(red: 0.89, green: 0.71, blue: 0.32)
+        case .needsWork:
+            Color(red: 0.86, green: 0.44, blue: 0.44)
+        }
     }
 }
 

@@ -250,6 +250,19 @@ struct AnalysisResult: Codable, Hashable {
     var issues: [String]
     var highlights: [String]
     var summary: String
+    var scorecard: GarageSwingScorecard?
+
+    init(
+        issues: [String],
+        highlights: [String],
+        summary: String,
+        scorecard: GarageSwingScorecard? = nil
+    ) {
+        self.issues = issues
+        self.highlights = highlights
+        self.summary = summary
+        self.scorecard = scorecard
+    }
 }
 
 @Model
