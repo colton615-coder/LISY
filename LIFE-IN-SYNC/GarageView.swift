@@ -3025,10 +3025,40 @@ private struct GarageSlowMotionVisualizationOverlay: View {
     }
 
     private var currentFrame: SwingFrame? {
+        nearestFrame(to: currentTime)
+    }
+
+    private func nearestFrame(to time: Double) -> SwingFrame? {
         guard frames.isEmpty == false else { return nil }
-        return frames.enumerated().min { lhs, rhs in
-            abs(lhs.element.timestamp - currentTime) < abs(rhs.element.timestamp - currentTime)
-        }?.element
+
+        var lowerBound = 0
+        var upperBound = frames.count
+
+        while lowerBound < upperBound {
+            let midpoint = (lowerBound + upperBound) / 2
+            if frames[midpoint].timestamp < time {
+                lowerBound = midpoint + 1
+            } else {
+                upperBound = midpoint
+            }
+        }
+
+        if lowerBound == 0 {
+            return frames[0]
+        }
+
+        if lowerBound == frames.count {
+            return frames[frames.count - 1]
+        }
+
+        let previousFrame = frames[lowerBound - 1]
+        let nextFrame = frames[lowerBound]
+
+        if abs(previousFrame.timestamp - time) <= abs(nextFrame.timestamp - time) {
+            return previousFrame
+        } else {
+            return nextFrame
+        }
     }
 
     var body: some View {
