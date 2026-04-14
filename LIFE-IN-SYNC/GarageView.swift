@@ -374,13 +374,16 @@ struct GarageView: View {
             prepareSelectedVideo(newItem)
         }
         .onChange(of: swingRecords.map(garageRecordSelectionKey)) { _, keys in
+            guard case let .review(recordKey) = route else {
+                return
+            }
+
             guard keys.isEmpty == false else {
                 route = .records
                 return
             }
 
-            if case let .review(recordKey) = route,
-               let recordKey,
+            if let recordKey,
                keys.contains(recordKey) == false {
                 route = .review(recordKey: keys.first)
             }
