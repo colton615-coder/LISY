@@ -1665,7 +1665,7 @@ enum GarageAnalysisPipeline {
         let handPathReviewReport = handPathReviewReport(for: smoothedFrames, keyFrames: keyFrames)
         let scorecard = GarageScorecardEngine.generate(frames: smoothedFrames, keyFrames: keyFrames)
         let analysisIssues = scorecard == nil
-            ? ["Garage could not confidently compute all Step 2 metrics from the detected pose landmarks."]
+            ? [GarageScorecardEngine.unavailableMessage]
             : []
         let analysisHighlights = [
             "Eight deterministic keyframes detected from normalized pose frames.",
@@ -2760,6 +2760,29 @@ enum GarageCameraPerspective: String, Codable, Hashable {
     case dtl
 }
 
+enum GarageSwingDomain: String, Codable, CaseIterable, Hashable {
+    case tempo
+    case spine
+    case pelvis
+    case knee
+    case head
+
+    var title: String {
+        switch self {
+        case .tempo:
+            "Tempo Ratio"
+        case .spine:
+            "Spine Angle Delta"
+        case .pelvis:
+            "Pelvic Depth"
+        case .knee:
+            "Knee Flex Retention"
+        case .head:
+            "Head Stability"
+        }
+    }
+}
+
 struct GarageSwingTimestamps: Codable, Hashable {
     let perspective: GarageCameraPerspective
     let start: Double
@@ -2809,8 +2832,8 @@ struct GaragePelvicDepthMetric: Codable, Hashable {
 }
 
 struct GarageKneeFlexMetric: Codable, Hashable {
-    let leadDeltaDegrees: Double
-    let trailDeltaDegrees: Double
+    let leftDeltaDegrees: Double
+    let rightDeltaDegrees: Double
 }
 
 struct GarageHeadStabilityMetric: Codable, Hashable {
@@ -2841,10 +2864,15 @@ struct GarageSwingScorecard: Codable, Hashable {
     let totalScore: Int
 }
 
-enum GarageScorecardEngine {
-    private static let assumedShoulderWidthInches = 18.0
+struct GarageTimestampDetection: Hashable {
+    let timestamps: GarageSwingTimestamps
+    let startFrameIndex: Int
+    let topFrameIndex: Int
+    let impactFrameIndex: Int
+}
 
-    static func generate(frames: [SwingFrame], keyFrames: [KeyFrame]) -> GarageSwingScorecard? {
+enum GarageTimestampDetector {
+    static func detect(from frames: [SwingFrame], keyFrames: [KeyFrame]) -> GarageTimestampDetection? {
         guard
             let addressIndex = keyFrames.first(where: { $0.phase == .address })?.frameIndex,
             let topIndex = keyFrames.first(where: { $0.phase == .topOfBackswing })?.frameIndex,
@@ -2858,9 +2886,78 @@ enum GarageScorecardEngine {
             return nil
         }
 
-        let addressFrame = frames[addressIndex]
-        let topFrame = frames[topIndex]
-        let impactFrame = frames[impactIndex]
+        return GarageTimestampDetection(
+            timestamps: GarageSwingTimestamps(
+                perspective: .dtl,
+                start: frames[addressIndex].timestamp,
+                top: frames[topIndex].timestamp,
+                impact: frames[impactIndex].timestamp
+            ),
+            startFrameIndex: addressIndex,
+            topFrameIndex: topIndex,
+            impactFrameIndex: impactIndex
+        )
+    }
+}
+
+struct GarageScoreNormalizationProfile: Hashable {
+    struct Bounds: Hashable {
+        let ideal: Double
+        let upperBound: Double
+    }
+
+    let assumedShoulderWidthInches: Double
+    let tempoRatio: Bounds
+    let spineDeltaDegrees: Bounds
+    let pelvicDepthInches: Bounds
+    let kneeFlexDeltaDegrees: Bounds
+    let headCompositeInches: Bounds
+
+    static let dtlV1 = GarageScoreNormalizationProfile(
+        assumedShoulderWidthInches: 18.0,
+        tempoRatio: Bounds(ideal: 0.0, upperBound: 1.5),
+        spineDeltaDegrees: Bounds(ideal: 2.0, upperBound: 20.0),
+        pelvicDepthInches: Bounds(ideal: 1.2, upperBound: 8.0),
+        kneeFlexDeltaDegrees: Bounds(ideal: 5.0, upperBound: 30.0),
+        headCompositeInches: Bounds(ideal: 1.0, upperBound: 6.0)
+    )
+
+    func normalizedScore(for domain: GarageSwingDomain, metrics: GarageSwingMetrics) -> Double {
+        switch domain {
+        case .tempo:
+            return linearScore(distance: abs(metrics.tempo.ratio - 3.0), bounds: tempoRatio)
+        case .spine:
+            return linearScore(distance: metrics.spine.deltaDegrees, bounds: spineDeltaDegrees)
+        case .pelvis:
+            return linearScore(distance: metrics.pelvicDepth.driftInches, bounds: pelvicDepthInches)
+        case .knee:
+            let combinedDelta = (metrics.kneeFlex.leftDeltaDegrees + metrics.kneeFlex.rightDeltaDegrees) / 2
+            return linearScore(distance: combinedDelta, bounds: kneeFlexDeltaDegrees)
+        case .head:
+            let composite = (metrics.headStability.swayInches * 0.6) + (metrics.headStability.dipInches * 0.4)
+            return linearScore(distance: composite, bounds: headCompositeInches)
+        }
+    }
+
+    private func linearScore(distance: Double, bounds: Bounds) -> Double {
+        guard bounds.upperBound > bounds.ideal else { return 0 }
+        if distance <= bounds.ideal { return 1 }
+        if distance >= bounds.upperBound { return 0 }
+        return 1 - ((distance - bounds.ideal) / (bounds.upperBound - bounds.ideal))
+    }
+}
+
+enum GarageSwingMeasurementEngine {
+    private static let minimumJointConfidence = 0.45
+
+    static func measure(
+        frames: [SwingFrame],
+        detection: GarageTimestampDetection,
+        profile: GarageScoreNormalizationProfile = .dtlV1
+    ) -> GarageSwingMetrics? {
+        let addressFrame = frames[detection.startFrameIndex]
+        let topFrame = frames[detection.topFrameIndex]
+        let impactFrame = frames[detection.impactFrameIndex]
 
         let shoulderWidth = GarageAnalysisPipeline.bodyScale(in: addressFrame)
         guard shoulderWidth > 0 else {
@@ -2872,13 +2969,13 @@ enum GarageScorecardEngine {
             let impactSpineAngle = spineAngle(in: impactFrame),
             let addressPelvis = pelvisCenter(in: addressFrame),
             let impactPelvis = pelvisCenter(in: impactFrame),
-            let addressHead = addressFrame.point(named: .nose, minimumConfidence: 0.45),
-            let topHead = topFrame.point(named: .nose, minimumConfidence: 0.45),
-            let impactHead = impactFrame.point(named: .nose, minimumConfidence: 0.45),
-            let leadAddressKnee = kneeAngle(in: addressFrame, side: .left),
-            let trailAddressKnee = kneeAngle(in: addressFrame, side: .right),
-            let leadImpactKnee = kneeAngle(in: impactFrame, side: .left),
-            let trailImpactKnee = kneeAngle(in: impactFrame, side: .right)
+            let addressHead = addressFrame.point(named: .nose, minimumConfidence: minimumJointConfidence),
+            let topHead = topFrame.point(named: .nose, minimumConfidence: minimumJointConfidence),
+            let impactHead = impactFrame.point(named: .nose, minimumConfidence: minimumJointConfidence),
+            let leftAddressKnee = kneeAngle(in: addressFrame, side: .left),
+            let rightAddressKnee = kneeAngle(in: addressFrame, side: .right),
+            let leftImpactKnee = kneeAngle(in: impactFrame, side: .left),
+            let rightImpactKnee = kneeAngle(in: impactFrame, side: .right)
         else {
             return nil
         }
@@ -2888,104 +2985,41 @@ enum GarageScorecardEngine {
         let tempoRatio = backswingDuration / downswingDuration
 
         let spineDelta = abs(impactSpineAngle - addressSpineAngle)
-        let pelvicDepthDrift = pointsToInches(abs(impactPelvis.x - addressPelvis.x), shoulderWidth: shoulderWidth)
+        let pelvicDepthDrift = pointsToInches(
+            abs(impactPelvis.x - addressPelvis.x),
+            shoulderWidth: shoulderWidth,
+            profile: profile
+        )
 
-        let leadKneeDelta = abs(leadImpactKnee - leadAddressKnee)
-        let trailKneeDelta = abs(trailImpactKnee - trailAddressKnee)
+        let leftKneeDelta = abs(leftImpactKnee - leftAddressKnee)
+        let rightKneeDelta = abs(rightImpactKnee - rightAddressKnee)
 
         let sway = max(abs(topHead.x - addressHead.x), abs(impactHead.x - addressHead.x))
         let dip = max(abs(topHead.y - addressHead.y), abs(impactHead.y - addressHead.y))
-        let headSwayInches = pointsToInches(sway, shoulderWidth: shoulderWidth)
-        let headDipInches = pointsToInches(dip, shoulderWidth: shoulderWidth)
+        let headSwayInches = pointsToInches(sway, shoulderWidth: shoulderWidth, profile: profile)
+        let headDipInches = pointsToInches(dip, shoulderWidth: shoulderWidth, profile: profile)
 
-        let timestamps = GarageSwingTimestamps(
-            perspective: .dtl,
-            start: addressFrame.timestamp,
-            top: topFrame.timestamp,
-            impact: impactFrame.timestamp
-        )
-
-        let metrics = GarageSwingMetrics(
+        return GarageSwingMetrics(
             tempo: GarageTempoMetric(ratio: tempoRatio),
             spine: GarageSpineAngleMetric(deltaDegrees: spineDelta),
             pelvicDepth: GaragePelvicDepthMetric(driftInches: pelvicDepthDrift),
-            kneeFlex: GarageKneeFlexMetric(leadDeltaDegrees: leadKneeDelta, trailDeltaDegrees: trailKneeDelta),
+            kneeFlex: GarageKneeFlexMetric(leftDeltaDegrees: leftKneeDelta, rightDeltaDegrees: rightKneeDelta),
             headStability: GarageHeadStabilityMetric(swayInches: headSwayInches, dipInches: headDipInches)
         )
-
-        let domains = scoreDomains(for: metrics)
-        let total = Int((Double(domains.map(\.score).reduce(0, +))).rounded())
-
-        return GarageSwingScorecard(
-            timestamps: timestamps,
-            metrics: metrics,
-            domainScores: domains,
-            totalScore: min(max(total, 0), 100)
-        )
     }
 
-    private static func scoreDomains(for metrics: GarageSwingMetrics) -> [GarageSwingDomainScore] {
-        let tempoNormalized = normalizedScore(distance: abs(metrics.tempo.ratio - 3.0), ideal: 0.0, max: 1.5)
-        let spineNormalized = normalizedScore(distance: metrics.spine.deltaDegrees, ideal: 2.0, max: 20.0)
-        let pelvisNormalized = normalizedScore(distance: metrics.pelvicDepth.driftInches, ideal: 1.2, max: 8.0)
-        let kneeAverage = (metrics.kneeFlex.leadDeltaDegrees + metrics.kneeFlex.trailDeltaDegrees) / 2
-        let kneeNormalized = normalizedScore(distance: kneeAverage, ideal: 5.0, max: 30.0)
-        let headComposite = (metrics.headStability.swayInches * 0.6) + (metrics.headStability.dipInches * 0.4)
-        let headNormalized = normalizedScore(distance: headComposite, ideal: 1.0, max: 6.0)
-
-        let domains: [(String, String, Double)] = [
-            ("tempo", "Tempo Ratio", tempoNormalized),
-            ("spine", "Spine Angle Delta", spineNormalized),
-            ("pelvis", "Pelvic Depth", pelvisNormalized),
-            ("knee", "Knee Flex Retention", kneeNormalized),
-            ("head", "Head Stability", headNormalized)
-        ]
-
-        return domains.map { id, title, normalized in
-            let score = Int((normalized * 20).rounded())
-            let value = displayValue(for: id, metrics: metrics)
-            return GarageSwingDomainScore(
-                id: id,
-                title: title,
-                score: min(max(score, 0), 20),
-                grade: .from(score: normalized),
-                displayValue: value
-            )
-        }
-    }
-
-    private static func normalizedScore(distance: Double, ideal: Double, max: Double) -> Double {
-        guard max > ideal else { return 0 }
-        if distance <= ideal { return 1 }
-        if distance >= max { return 0 }
-        return 1 - ((distance - ideal) / (max - ideal))
-    }
-
-    private static func displayValue(for id: String, metrics: GarageSwingMetrics) -> String {
-        switch id {
-        case "tempo":
-            return String(format: "%.1f : 1", metrics.tempo.ratio)
-        case "spine":
-            return String(format: "%.1f°", metrics.spine.deltaDegrees)
-        case "pelvis":
-            return String(format: "%.1f in", metrics.pelvicDepth.driftInches)
-        case "knee":
-            return String(format: "Lead %.0f° / Trail %.0f°", metrics.kneeFlex.leadDeltaDegrees, metrics.kneeFlex.trailDeltaDegrees)
-        case "head":
-            return String(format: "Sway %.1f in · Dip %.1f in", metrics.headStability.swayInches, metrics.headStability.dipInches)
-        default:
-            return "—"
-        }
-    }
-
-    private static func pointsToInches(_ points: Double, shoulderWidth: Double) -> Double {
-        (points / max(shoulderWidth, 0.0001)) * assumedShoulderWidthInches
+    private static func pointsToInches(
+        _ points: Double,
+        shoulderWidth: Double,
+        profile: GarageScoreNormalizationProfile
+    ) -> Double {
+        (points / max(shoulderWidth, 0.0001)) * profile.assumedShoulderWidthInches
     }
 
     private static func pelvisCenter(in frame: SwingFrame) -> CGPoint? {
         guard
-            let leftHip = frame.point(named: .leftHip, minimumConfidence: 0.45),
-            let rightHip = frame.point(named: .rightHip, minimumConfidence: 0.45)
+            let leftHip = frame.point(named: .leftHip, minimumConfidence: minimumJointConfidence),
+            let rightHip = frame.point(named: .rightHip, minimumConfidence: minimumJointConfidence)
         else {
             return nil
         }
@@ -2994,8 +3028,8 @@ enum GarageScorecardEngine {
 
     private static func spineAngle(in frame: SwingFrame) -> Double? {
         guard
-            let leftShoulder = frame.point(named: .leftShoulder, minimumConfidence: 0.45),
-            let rightShoulder = frame.point(named: .rightShoulder, minimumConfidence: 0.45),
+            let leftShoulder = frame.point(named: .leftShoulder, minimumConfidence: minimumJointConfidence),
+            let rightShoulder = frame.point(named: .rightShoulder, minimumConfidence: minimumJointConfidence),
             let pelvis = pelvisCenter(in: frame)
         else {
             return nil
@@ -3018,9 +3052,9 @@ enum GarageScorecardEngine {
         let ankleName: SwingJointName = side == .left ? .leftAnkle : .rightAnkle
 
         guard
-            let hip = frame.point(named: hipName, minimumConfidence: 0.45),
-            let knee = frame.point(named: kneeName, minimumConfidence: 0.45),
-            let ankle = frame.point(named: ankleName, minimumConfidence: 0.45)
+            let hip = frame.point(named: hipName, minimumConfidence: minimumJointConfidence),
+            let knee = frame.point(named: kneeName, minimumConfidence: minimumJointConfidence),
+            let ankle = frame.point(named: ankleName, minimumConfidence: minimumJointConfidence)
         else {
             return nil
         }
@@ -3034,5 +3068,70 @@ enum GarageScorecardEngine {
         let dot = (upper.dx * lower.dx) + (upper.dy * lower.dy)
         let cosine = min(max(dot / (upperMagnitude * lowerMagnitude), -1), 1)
         return acos(cosine) * 180 / .pi
+    }
+}
+
+enum GarageScorecardEngine {
+    static let unavailableMessage = "Garage couldn't confirm stable DTL landmarks at address, top, and impact."
+
+    static func generate(frames: [SwingFrame], keyFrames: [KeyFrame]) -> GarageSwingScorecard? {
+        guard let detection = GarageTimestampDetector.detect(from: frames, keyFrames: keyFrames) else {
+            return nil
+        }
+
+        let normalizationProfile = GarageScoreNormalizationProfile.dtlV1
+        guard let metrics = GarageSwingMeasurementEngine.measure(
+            frames: frames,
+            detection: detection,
+            profile: normalizationProfile
+        ) else {
+            return nil
+        }
+
+        let domains = scoreDomains(for: metrics, profile: normalizationProfile)
+        let total = Int((Double(domains.map(\.score).reduce(0, +))).rounded())
+
+        return GarageSwingScorecard(
+            timestamps: detection.timestamps,
+            metrics: metrics,
+            domainScores: domains,
+            totalScore: min(max(total, 0), 100)
+        )
+    }
+
+    private static func scoreDomains(
+        for metrics: GarageSwingMetrics,
+        profile: GarageScoreNormalizationProfile
+    ) -> [GarageSwingDomainScore] {
+        GarageSwingDomain.allCases.map { domain in
+            let normalized = profile.normalizedScore(for: domain, metrics: metrics)
+            let score = Int((normalized * 20).rounded())
+            return GarageSwingDomainScore(
+                id: domain.rawValue,
+                title: domain.title,
+                score: min(max(score, 0), 20),
+                grade: .from(score: normalized),
+                displayValue: displayValue(for: domain, metrics: metrics)
+            )
+        }
+    }
+
+    private static func displayValue(for domain: GarageSwingDomain, metrics: GarageSwingMetrics) -> String {
+        switch domain {
+        case .tempo:
+            return String(format: "%.1f : 1", metrics.tempo.ratio)
+        case .spine:
+            return String(format: "%.1f°", metrics.spine.deltaDegrees)
+        case .pelvis:
+            return String(format: "%.1f in", metrics.pelvicDepth.driftInches)
+        case .knee:
+            return String(
+                format: "Left %.0f° / Right %.0f°",
+                metrics.kneeFlex.leftDeltaDegrees,
+                metrics.kneeFlex.rightDeltaDegrees
+            )
+        case .head:
+            return String(format: "Sway %.1f in · Dip %.1f in", metrics.headStability.swayInches, metrics.headStability.dipInches)
+        }
     }
 }

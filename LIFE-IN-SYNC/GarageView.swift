@@ -888,6 +888,10 @@ private struct GarageFocusedReviewWorkspace: View {
             ?? GarageScorecardEngine.generate(frames: record.swingFrames, keyFrames: record.keyFrames)
     }
 
+    private var step2Presentation: GarageStep2Presentation {
+        GarageStep2Presentation.make(scorecard: swingScorecard)
+    }
+
     private var frameRequestID: String {
         [
             garageRecordSelectionKey(for: record),
@@ -1041,7 +1045,7 @@ private struct GarageFocusedReviewWorkspace: View {
                 } else {
                     GarageReviewSummaryControls(
                         summaryPresentation: summaryPresentation,
-                        scorecard: swingScorecard,
+                        step2Presentation: step2Presentation,
                         reviewRecoveryTitle: reviewRecoveryTitle,
                         reviewRecoveryBody: reviewRecoveryBody,
                         reviewFrameSource: reviewFrameSource
@@ -1427,7 +1431,7 @@ private struct GarageReviewScrollableControls: View {
 
 private struct GarageReviewSummaryControls: View {
     let summaryPresentation: GarageReviewSummaryPresentation
-    let scorecard: GarageSwingScorecard?
+    let step2Presentation: GarageStep2Presentation
     let reviewRecoveryTitle: String
     let reviewRecoveryBody: String
     let reviewFrameSource: GarageReviewFrameSourceState
@@ -1436,15 +1440,13 @@ private struct GarageReviewSummaryControls: View {
         VStack(alignment: .leading, spacing: 14) {
             GarageReviewContextBand(presentation: summaryPresentation)
 
-            if let scorecard {
-                GarageStep2ScoreSummaryCard(scorecard: scorecard)
-                GarageStep2MetricGrid(scorecard: scorecard)
-            } else {
-                GarageStep2UnavailableCard()
+            switch step2Presentation {
+            case let .ready(score, metrics):
+                GarageStep2ScoreSummaryCard(presentation: score)
+                GarageStep2MetricGrid(metrics: metrics)
+            case let .unavailable(presentation):
+                GarageStep2UnavailableCard(presentation: presentation)
             }
-
-            GarageStabilityMetricCard(presentation: summaryPresentation)
-            GarageCoachingReportView(presentation: summaryPresentation)
             if reviewFrameSource != .video {
                 GarageReviewRecoveryCallout(
                     title: reviewRecoveryTitle,
@@ -2045,25 +2047,25 @@ private struct GarageStabilityMetricCard: View {
 }
 
 private struct GarageStep2ScoreSummaryCard: View {
-    let scorecard: GarageSwingScorecard
+    let presentation: GarageStep2ScorePresentation
 
     var body: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Swing Score")
+                Text(presentation.title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(garageReviewReadableText)
-                Text("DTL automated analysis")
+                Text(presentation.subtitle)
                     .font(.caption)
                     .foregroundStyle(garageReviewMutedText)
             }
 
             Spacer(minLength: 0)
 
-            Text("\(scorecard.totalScore)")
+            Text(presentation.scoreValue)
                 .font(.system(size: 34, weight: .bold, design: .rounded))
                 .foregroundStyle(garageReviewReadableText)
-            Text("/100")
+            Text(presentation.scoreLimit)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(garageReviewMutedText)
                 .padding(.top, 8)
@@ -2080,7 +2082,7 @@ private struct GarageStep2ScoreSummaryCard: View {
 }
 
 private struct GarageStep2MetricGrid: View {
-    let scorecard: GarageSwingScorecard
+    let metrics: [GarageStep2MetricPresentation]
 
     private let columns = [
         GridItem(.flexible(), spacing: 10),
@@ -2089,43 +2091,47 @@ private struct GarageStep2MetricGrid: View {
 
     var body: some View {
         LazyVGrid(columns: columns, spacing: 10) {
-            ForEach(scorecard.domainScores) { domain in
-                GarageStep2MetricCard(domain: domain)
+            ForEach(metrics) { metric in
+                GarageStep2MetricCard(metric: metric)
             }
         }
     }
 }
 
 private struct GarageStep2MetricCard: View {
-    let domain: GarageSwingDomainScore
+    let metric: GarageStep2MetricPresentation
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Circle()
-                    .fill(domain.grade.tint)
+                    .fill(metric.grade.tint)
                     .frame(width: 7, height: 7)
 
-                Text(domain.title)
+                Text(metric.title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(garageReviewMutedText)
                     .lineLimit(1)
-
-                Spacer(minLength: 0)
-
-                Text("\(domain.score)/20")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(garageReviewMutedText)
             }
 
-            Text(domain.displayValue)
+            Text(metric.value)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(garageReviewReadableText)
                 .lineLimit(2)
 
-            Text(domain.grade.label)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(domain.grade.tint.opacity(0.9))
+            Text(metric.grade.label)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(metric.grade.tint.opacity(0.9))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule()
+                        .fill(metric.grade.tint.opacity(0.10))
+                        .overlay(
+                            Capsule()
+                                .stroke(metric.grade.tint.opacity(0.18), lineWidth: 1)
+                        )
+                )
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2133,19 +2139,21 @@ private struct GarageStep2MetricCard: View {
             GarageInsetPanelBackground(
                 shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous),
                 fill: garageReviewInsetSurface,
-                stroke: domain.grade.tint.opacity(0.2)
+                stroke: metric.grade.tint.opacity(0.2)
             )
         )
     }
 }
 
 private struct GarageStep2UnavailableCard: View {
+    let presentation: GarageStep2UnavailablePresentation
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Step 2 metrics unavailable")
+            Text(presentation.title)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(garageReviewReadableText)
-            Text("Pose confidence was too limited to produce stable DTL measurements.")
+            Text(presentation.message)
                 .font(.caption)
                 .foregroundStyle(garageReviewMutedText)
         }
@@ -3425,6 +3433,15 @@ private final class GarageSlowMotionPlaybackController: ObservableObject {
         playbackRate = rate
         if player.rate != 0 {
             player.playImmediately(atRate: playbackRate)
+        }
+    }
+
+    func updateDurationFromMetadata(_ updatedDuration: Double) {
+        let safeDuration = updatedDuration.isFinite ? max(updatedDuration, 0) : 0
+        guard safeDuration > 0 else { return }
+        duration = safeDuration
+        if currentTime > safeDuration {
+            seek(safeDuration)
         }
     }
 

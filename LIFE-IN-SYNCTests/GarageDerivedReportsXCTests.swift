@@ -111,6 +111,71 @@ final class GarageDerivedReportsXCTests: XCTestCase {
         XCTAssertTrue(report.cues.contains(where: { $0.title == "Backswing Is Running Long" && $0.severity == GarageCoachingSeverity.caution }))
     }
 
+    func testGarageTimestampDetectorProjectsAddressTopAndImpactForStep2() throws {
+        let frames = makeFullBodyDTLSwingFrames()
+        let keyFrames = makeStep2KeyFrames()
+
+        let detection = try XCTUnwrap(GarageTimestampDetector.detect(from: frames, keyFrames: keyFrames))
+
+        XCTAssertEqual(detection.timestamps.perspective, .dtl)
+        XCTAssertEqual(detection.startFrameIndex, 0)
+        XCTAssertEqual(detection.topFrameIndex, 6)
+        XCTAssertEqual(detection.impactFrameIndex, 8)
+        XCTAssertLessThan(detection.timestamps.start, detection.timestamps.top)
+        XCTAssertLessThan(detection.timestamps.top, detection.timestamps.impact)
+    }
+
+    func testGarageScorecardGeneratesFiveStep2DomainsForFullBodyDTLSwing() throws {
+        let frames = makeFullBodyDTLSwingFrames()
+        let keyFrames = makeStep2KeyFrames()
+
+        let scorecard = try XCTUnwrap(GarageScorecardEngine.generate(frames: frames, keyFrames: keyFrames))
+
+        XCTAssertEqual(scorecard.timestamps.perspective, .dtl)
+        XCTAssertEqual(scorecard.domainScores.map(\.id), GarageSwingDomain.allCases.map(\.rawValue))
+        XCTAssertEqual(scorecard.domainScores.count, 5)
+        XCTAssertGreaterThan(scorecard.metrics.tempo.ratio, 0)
+        XCTAssertGreaterThan(scorecard.metrics.spine.deltaDegrees, 0)
+        XCTAssertGreaterThan(scorecard.metrics.pelvicDepth.driftInches, 0)
+        XCTAssertGreaterThan(scorecard.metrics.kneeFlex.leftDeltaDegrees, 0)
+        XCTAssertGreaterThan(scorecard.metrics.kneeFlex.rightDeltaDegrees, 0)
+        XCTAssertGreaterThanOrEqual(scorecard.totalScore, 0)
+        XCTAssertLessThanOrEqual(scorecard.totalScore, 100)
+        XCTAssertTrue(scorecard.domainScores.contains(where: { $0.id == GarageSwingDomain.knee.rawValue && $0.displayValue.contains("Left") }))
+    }
+
+    func testGarageScorecardReturnsNilWhenCriticalStep2LandmarksAreUnreliable() {
+        let frames = makeFullBodyDTLSwingFrames(missingCriticalImpactJoints: true)
+        let keyFrames = makeStep2KeyFrames()
+
+        let scorecard = GarageScorecardEngine.generate(frames: frames, keyFrames: keyFrames)
+
+        XCTAssertNil(scorecard)
+    }
+
+    func testGarageStep2PresentationBuildsFiveCardsWithoutSpeedLanguage() throws {
+        let scorecard = try XCTUnwrap(
+            GarageScorecardEngine.generate(
+                frames: makeFullBodyDTLSwingFrames(),
+                keyFrames: makeStep2KeyFrames()
+            )
+        )
+
+        let presentation = GarageStep2Presentation.make(scorecard: scorecard)
+
+        guard case let .ready(score, metrics) = presentation else {
+            return XCTFail("Expected Step 2 presentation to be ready")
+        }
+
+        XCTAssertEqual(score.scoreLimit, "/100")
+        XCTAssertEqual(metrics.count, 5)
+        XCTAssertEqual(metrics.map(\.title), ["Tempo", "Spine Delta", "Pelvic Depth", "Knee Flex", "Head Stability"])
+        XCTAssertFalse(metrics.contains(where: {
+            let combined = "\($0.title) \($0.value)".lowercased()
+            return combined.contains("speed") || combined.contains("mph") || combined.contains("m/s")
+        }))
+    }
+
     func testDetectKeyFramesMaintainsStrictPhaseOrdering() {
         let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: makeSyntheticSwingFrames())
         let byPhase = Dictionary(uniqueKeysWithValues: keyFrames.map { ($0.phase, $0.frameIndex) })
@@ -469,8 +534,90 @@ private func makeLateDownswingDriftFrames() -> [SwingFrame] {
 }
 
 @MainActor
+private func makeFullBodyDTLSwingFrames(missingCriticalImpactJoints: Bool = false) -> [SwingFrame] {
+    struct BodyState {
+        let noseX: Double
+        let noseY: Double
+        let pelvisShiftX: Double
+        let pelvisShiftY: Double
+        let leftKneeX: Double
+        let rightKneeX: Double
+    }
+
+    let wristPairs: [(Double, Double, Double, Double)] = [
+        (0.30, 0.72, 0.34, 0.72),
+        (0.32, 0.71, 0.36, 0.71),
+        (0.36, 0.67, 0.40, 0.67),
+        (0.42, 0.58, 0.46, 0.58),
+        (0.47, 0.47, 0.51, 0.47),
+        (0.51, 0.38, 0.55, 0.38),
+        (0.54, 0.32, 0.58, 0.32),
+        (0.48, 0.46, 0.52, 0.46),
+        (0.34, 0.70, 0.38, 0.70),
+        (0.56, 0.28, 0.60, 0.28)
+    ]
+
+    let bodyStates: [BodyState] = [
+        BodyState(noseX: 0.500, noseY: 0.200, pelvisShiftX: 0.000, pelvisShiftY: 0.000, leftKneeX: 0.460, rightKneeX: 0.560),
+        BodyState(noseX: 0.501, noseY: 0.201, pelvisShiftX: 0.002, pelvisShiftY: 0.000, leftKneeX: 0.460, rightKneeX: 0.560),
+        BodyState(noseX: 0.503, noseY: 0.202, pelvisShiftX: 0.003, pelvisShiftY: 0.000, leftKneeX: 0.461, rightKneeX: 0.559),
+        BodyState(noseX: 0.506, noseY: 0.204, pelvisShiftX: 0.004, pelvisShiftY: 0.000, leftKneeX: 0.462, rightKneeX: 0.558),
+        BodyState(noseX: 0.508, noseY: 0.205, pelvisShiftX: 0.005, pelvisShiftY: 0.001, leftKneeX: 0.464, rightKneeX: 0.556),
+        BodyState(noseX: 0.510, noseY: 0.206, pelvisShiftX: 0.006, pelvisShiftY: 0.001, leftKneeX: 0.466, rightKneeX: 0.554),
+        BodyState(noseX: 0.512, noseY: 0.206, pelvisShiftX: 0.007, pelvisShiftY: 0.001, leftKneeX: 0.468, rightKneeX: 0.552),
+        BodyState(noseX: 0.507, noseY: 0.207, pelvisShiftX: 0.010, pelvisShiftY: 0.001, leftKneeX: 0.472, rightKneeX: 0.548),
+        BodyState(noseX: 0.495, noseY: 0.209, pelvisShiftX: 0.018, pelvisShiftY: 0.002, leftKneeX: 0.490, rightKneeX: 0.540),
+        BodyState(noseX: 0.490, noseY: 0.208, pelvisShiftX: 0.014, pelvisShiftY: 0.001, leftKneeX: 0.486, rightKneeX: 0.542)
+    ]
+
+    return wristPairs.enumerated().map { index, wrists in
+        let (leftWristX, leftWristY, rightWristX, rightWristY) = wrists
+        let state = bodyStates[index]
+        let isImpact = index == 8
+        let criticalConfidence = missingCriticalImpactJoints && isImpact ? 0.2 : 0.96
+        let leftHipX = 0.45 + state.pelvisShiftX
+        let rightHipX = 0.55 + state.pelvisShiftX
+        let pelvisY = 0.60 + state.pelvisShiftY
+
+        return SwingFrame(
+            timestamp: Double(index) * 0.1,
+            joints: [
+                joint(.nose, x: state.noseX, y: state.noseY, confidence: criticalConfidence),
+                joint(.leftShoulder, x: 0.42 + (state.pelvisShiftX * 0.4), y: 0.34),
+                joint(.rightShoulder, x: 0.58 + (state.pelvisShiftX * 0.4), y: 0.34),
+                joint(.leftElbow, x: leftWristX - 0.03, y: leftWristY - 0.10),
+                joint(.rightElbow, x: rightWristX - 0.03, y: rightWristY - 0.10),
+                joint(.leftHip, x: leftHipX, y: pelvisY),
+                joint(.rightHip, x: rightHipX, y: pelvisY),
+                joint(.leftKnee, x: state.leftKneeX, y: 0.78, confidence: criticalConfidence),
+                joint(.rightKnee, x: state.rightKneeX, y: 0.78, confidence: criticalConfidence),
+                joint(.leftAnkle, x: 0.46, y: 0.94, confidence: criticalConfidence),
+                joint(.rightAnkle, x: 0.56, y: 0.94, confidence: criticalConfidence),
+                joint(.leftWrist, x: leftWristX, y: leftWristY),
+                joint(.rightWrist, x: rightWristX, y: rightWristY)
+            ],
+            confidence: missingCriticalImpactJoints && isImpact ? 0.62 : 0.96
+        )
+    }
+}
+
+@MainActor
 private func joint(_ name: SwingJointName, x: Double, y: Double, confidence: Double = 0.9) -> SwingJoint {
     SwingJoint(name: name, x: x, y: y, confidence: confidence)
+}
+
+@MainActor
+private func makeStep2KeyFrames() -> [KeyFrame] {
+    [
+        KeyFrame(phase: .address, frameIndex: 0),
+        KeyFrame(phase: .takeaway, frameIndex: 1),
+        KeyFrame(phase: .shaftParallel, frameIndex: 3),
+        KeyFrame(phase: .topOfBackswing, frameIndex: 6),
+        KeyFrame(phase: .transition, frameIndex: 7),
+        KeyFrame(phase: .earlyDownswing, frameIndex: 7),
+        KeyFrame(phase: .impact, frameIndex: 8),
+        KeyFrame(phase: .followThrough, frameIndex: 9)
+    ]
 }
 
 @MainActor
