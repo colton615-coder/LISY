@@ -106,6 +106,29 @@ private enum GarageImportPresentationState: Equatable {
     }
 }
 
+private enum GarageRoute: Equatable {
+    case records
+    case review
+
+    var tab: ModuleHubTab {
+        switch self {
+        case .records:
+            return .records
+        case .review:
+            return .review
+        }
+    }
+
+    init(tab: ModuleHubTab) {
+        switch tab {
+        case .review:
+            self = .review
+        default:
+            self = .records
+        }
+    }
+}
+
 func garageDeterministicHandPathSampleID(index: Int, timestamp: Double) -> Int {
     let quantizedTimestamp = Int64((timestamp * 1_000_000).rounded())
     let indexBits = UInt64(bitPattern: Int64(index))
@@ -275,7 +298,7 @@ struct GarageView: View {
     @State private var selectedVideoItem: PhotosPickerItem?
     @State private var importPresentationState: GarageImportPresentationState = .idle
     @State private var pendingImportMovie: GaragePickedMovie?
-    @State private var selectedTab: ModuleHubTab = .records
+    @State private var route: GarageRoute = .records
     @State private var selectedReviewRecordKey: String?
 
     var body: some View {
@@ -286,19 +309,19 @@ struct GarageView: View {
                     onDismiss: dismissImportPresentation,
                     onRetry: retryImport
                 )
-            } else if selectedTab == .review {
+            } else if route == .review {
                 GeometryReader { proxy in
                     GarageReviewTab(
                         records: swingRecords,
                         selectedRecordKey: $selectedReviewRecordKey,
                         viewportHeight: proxy.size.height,
                         onBackToRecords: {
-                            selectedTab = .records
+                            route = .records
                         }
                     )
                 }
             } else {
-                GarageCustomScaffold(module: .garage, tabs: [.records, .review], selectedTab: $selectedTab) { _ in
+                GarageCustomScaffold(module: .garage, tabs: [.records, .review], selectedTab: selectedTabBinding) { _ in
                     GarageRecordsTab(
                         records: swingRecords,
                         importVideo: {
@@ -306,13 +329,13 @@ struct GarageView: View {
                         },
                         openReview: { record in
                             selectedReviewRecordKey = garageRecordSelectionKey(for: record)
-                            selectedTab = .review
+                            route = .review
                         }
                     )
                 }
                 .safeAreaInset(edge: .bottom) {
                     Group {
-                        if selectedTab != .review {
+                        if route != .review {
                             ModuleBottomActionBar(
                                 theme: AppModule.garage.theme,
                                 title: "Add Swing Record",
@@ -337,15 +360,22 @@ struct GarageView: View {
         }
         .onChange(of: swingRecords.map(garageRecordSelectionKey)) { _, keys in
             guard keys.isEmpty == false else {
-                selectedTab = .records
+                route = .records
                 return
             }
 
-            if selectedTab == .records, selectedReviewRecordKey != nil {
-                selectedTab = .review
+            if route == .records, selectedReviewRecordKey != nil {
+                route = .review
             }
         }
-        .toolbar(selectedTab == .review ? .hidden : .visible, for: .navigationBar)
+        .toolbar(route == .review ? .hidden : .visible, for: .navigationBar)
+    }
+
+    private var selectedTabBinding: Binding<ModuleHubTab> {
+        Binding(
+            get: { route.tab },
+            set: { route = GarageRoute(tab: $0) }
+        )
     }
 
     private func presentAddRecord() {
@@ -454,7 +484,7 @@ struct GarageView: View {
                     pendingImportMovie = nil
                     importPresentationState = .idle
                     selectedReviewRecordKey = garageRecordSelectionKey(for: record)
-                    selectedTab = .review
+                    route = .review
                 }
             } catch {
                 await MainActor.run {
