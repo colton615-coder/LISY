@@ -144,6 +144,17 @@ final class GarageDerivedReportsXCTests: XCTestCase {
         XCTAssertTrue(scorecard.domainScores.contains(where: { $0.id == GarageSwingDomain.knee.rawValue && $0.displayValue.contains("Left") }))
     }
 
+    func testGarageScorecardPrefers3DSpineMetricWhenAvailable() throws {
+        let frames = makeFullBodyDTL3DFrames()
+        let keyFrames = makeStep2KeyFrames()
+
+        let scorecard = try XCTUnwrap(GarageScorecardEngine.generate(frames: frames, keyFrames: keyFrames))
+
+        XCTAssertEqual(scorecard.timestamps.perspective, .dtl)
+        XCTAssertGreaterThan(scorecard.metrics.spine.deltaDegrees, 10)
+        XCTAssertLessThan(scorecard.metrics.spine.deltaDegrees, 20)
+    }
+
     func testGarageScorecardReturnsNilWhenCriticalStep2LandmarksAreUnreliable() {
         let frames = makeFullBodyDTLSwingFrames(missingCriticalImpactJoints: true)
         let keyFrames = makeStep2KeyFrames()
@@ -215,6 +226,15 @@ final class GarageDerivedReportsXCTests: XCTestCase {
 
         XCTAssertGreaterThan(earlyDownswing, transition)
         XCTAssertLessThan(earlyDownswing, impact)
+    }
+
+    func testEarlyDownswingUses3DDepthProgressionWhenAvailable() throws {
+        let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: makeDepthBiasedSwingFrames())
+        let byPhase = Dictionary(uniqueKeysWithValues: keyFrames.map { ($0.phase, $0.frameIndex) })
+
+        XCTAssertEqual(byPhase[.transition], 5)
+        XCTAssertEqual(byPhase[.earlyDownswing], 7)
+        XCTAssertEqual(byPhase[.impact], 8)
     }
 
     func testGarageReviewSummaryPresentationUsesGoodPoseQualityWhenConfidenceAndStabilityAreStrong() {
@@ -602,8 +622,78 @@ private func makeFullBodyDTLSwingFrames(missingCriticalImpactJoints: Bool = fals
 }
 
 @MainActor
+private func makeFullBodyDTL3DFrames() -> [SwingFrame] {
+    let baseFrames = makeFullBodyDTLSwingFrames()
+
+    return baseFrames.enumerated().map { index, frame in
+        var joints3D: [SwingJoint3D] = [
+            joint3D(.root, x: 0, y: 0, z: 0),
+            joint3D(.centerShoulder, x: 0.02, y: 1.0, z: 0)
+        ]
+
+        if index == 8 {
+            joints3D = [
+                joint3D(.root, x: 0, y: 0, z: 0),
+                joint3D(.centerShoulder, x: 0.26, y: 0.92, z: 0.08)
+            ]
+        }
+
+        return SwingFrame(
+            timestamp: frame.timestamp,
+            joints: frame.joints,
+            joints3D: joints3D,
+            confidence: frame.confidence
+        )
+    }
+}
+
+@MainActor
+private func makeDepthBiasedSwingFrames() -> [SwingFrame] {
+    let wristPairs: [(Double, Double, Double, Double)] = [
+        (0.30, 0.72, 0.34, 0.72),
+        (0.33, 0.68, 0.37, 0.68),
+        (0.38, 0.60, 0.42, 0.60),
+        (0.45, 0.49, 0.49, 0.49),
+        (0.52, 0.36, 0.56, 0.36),
+        (0.50, 0.40, 0.54, 0.40),
+        (0.49, 0.46, 0.53, 0.46),
+        (0.46, 0.50, 0.50, 0.50),
+        (0.39, 0.66, 0.43, 0.66),
+        (0.56, 0.30, 0.60, 0.30)
+    ]
+    let depthByIndex: [Double] = [0.00, 0.01, 0.02, 0.03, 0.06, 0.08, 0.10, 0.22, 0.34, 0.20]
+
+    return wristPairs.enumerated().map { index, wrists in
+        let (leftWristX, leftWristY, rightWristX, rightWristY) = wrists
+        let depth = depthByIndex[index]
+        return SwingFrame(
+            timestamp: Double(index) * 0.1,
+            joints: [
+                joint(.leftShoulder, x: 0.40, y: 0.34),
+                joint(.rightShoulder, x: 0.60, y: 0.34),
+                joint(.leftHip, x: 0.44, y: 0.60),
+                joint(.rightHip, x: 0.58, y: 0.60),
+                joint(.leftWrist, x: leftWristX, y: leftWristY),
+                joint(.rightWrist, x: rightWristX, y: rightWristY)
+            ],
+            joints3D: [
+                joint3D(.root, x: 0, y: 0, z: 0),
+                joint3D(.leftWrist, x: -0.12, y: 0.55, z: depth),
+                joint3D(.rightWrist, x: 0.12, y: 0.55, z: depth)
+            ],
+            confidence: 0.92
+        )
+    }
+}
+
+@MainActor
 private func joint(_ name: SwingJointName, x: Double, y: Double, confidence: Double = 0.9) -> SwingJoint {
     SwingJoint(name: name, x: x, y: y, confidence: confidence)
+}
+
+@MainActor
+private func joint3D(_ name: SwingJoint3DName, x: Double, y: Double, z: Double, confidence: Double = 0.92) -> SwingJoint3D {
+    SwingJoint3D(name: name, x: x, y: y, z: z, confidence: confidence)
 }
 
 @MainActor

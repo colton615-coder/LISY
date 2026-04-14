@@ -5,6 +5,7 @@
 //  Created by Colton Thomas on 3/31/26.
 //
 
+import CoreGraphics
 import Foundation
 import Testing
 @testable import LIFE_IN_SYNC
@@ -76,6 +77,63 @@ struct LIFE_IN_SYNCTests {
 
         #expect(firstPass == secondPass)
         #expect(Set(firstPass).count == firstPass.count)
+    }
+
+    @Test func garageSampledPresentationTimestampsStayOrderedWhenTargetsOversampleSourceFrames() async throws {
+        let desired = stride(from: 0.0, through: 0.1333, by: 1.0 / 30.0).map { $0 }
+        let presentationTimes = [0.0, 0.0417, 0.0833, 0.1250]
+
+        let sampled = GarageAnalysisPipeline.sampledPresentationTimestamps(
+            from: presentationTimes,
+            matching: desired
+        )
+
+        #expect(sampled == presentationTimes)
+    }
+
+    @Test func swingFrameDecodingDefaults3DJointPayloadToEmpty() async throws {
+        let json = """
+        {
+          "timestamp": 0.2,
+          "joints": [
+            { "name": "leftShoulder", "x": 0.4, "y": 0.3, "confidence": 0.9 }
+          ],
+          "confidence": 0.91
+        }
+        """.data(using: .utf8)!
+
+        let frame = try JSONDecoder().decode(SwingFrame.self, from: json)
+
+        #expect(frame.joints3D.isEmpty)
+        #expect(frame.joints.count == 1)
+    }
+
+    @Test func garageVelocityRibbonPaletteWarmsAndWidensAsSpeedIncreases() async throws {
+        let cool = garageVelocityRibbonPalette(normalizedSpeed: 0.1, segment: .backswing)
+        let hot = garageVelocityRibbonPalette(normalizedSpeed: 0.95, segment: .downswing)
+
+        #expect(hot.innerWidth > cool.innerWidth)
+        #expect(hot.outerWidth > cool.outerWidth)
+        #expect(hot.fill.x > cool.fill.x)
+        #expect(hot.fill.z < cool.fill.z)
+    }
+
+    @Test func garageLoupeCropRectClampsNearImageEdges() async throws {
+        let topLeft = garageLoupeCropRect(
+            anchorPoint: CGPoint(x: -0.2, y: -0.1),
+            imageSize: CGSize(width: 320, height: 180),
+            sampleSize: 120
+        )
+        let bottomRight = garageLoupeCropRect(
+            anchorPoint: CGPoint(x: 1.4, y: 1.2),
+            imageSize: CGSize(width: 320, height: 180),
+            sampleSize: 120
+        )
+
+        #expect(topLeft.minX == 0)
+        #expect(topLeft.minY == 0)
+        #expect(bottomRight.maxX == 320)
+        #expect(bottomRight.maxY == 180)
     }
 
     @Test func garageKeyframeDetectionReturnsCanonicalPhaseOrder() async throws {

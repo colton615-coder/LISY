@@ -1,5 +1,7 @@
 import AVFoundation
 import Foundation
+import ImageIO
+import simd
 import Vision
 
 private struct GaragePoseCoordinateMapper {
@@ -45,7 +47,12 @@ private struct GarageWeightedPointSmoother {
             smoothedJoints.append(weightedAverage(for: joint.name, with: samples))
         }
 
-        return SwingFrame(timestamp: frame.timestamp, joints: smoothedJoints, confidence: frame.confidence)
+        return SwingFrame(
+            timestamp: frame.timestamp,
+            joints: smoothedJoints,
+            joints3D: frame.joints3D,
+            confidence: frame.confidence
+        )
     }
 
     private func weightedAverage(for name: SwingJointName, with samples: [SwingJoint]) -> SwingJoint {
@@ -82,6 +89,11 @@ private struct GarageHandKinematicSample {
     let position: CGPoint
     let velocity: CGVector
     let speed: Double
+}
+
+private struct GaragePoseExtractionMetadata {
+    let usedZeroCopyReader: Bool
+    let includes3DFrames: Bool
 }
 
 private enum GarageGripEstimateSource {
@@ -1651,7 +1663,8 @@ enum GarageAnalysisPipeline {
         await progress?(.samplingFrames)
         let timestamps = sampledTimestamps(duration: duration, frameRate: samplingFrameRate)
         await progress?(.detectingBody)
-        let extractedFrames = try await extractPoseFrames(from: asset, timestamps: timestamps)
+        let extraction = try await extractPoseFrames(from: asset, timestamps: timestamps)
+        let extractedFrames = extraction.frames
         let smoothedFrames = smooth(frames: extractedFrames)
 
         guard smoothedFrames.count >= SwingPhase.allCases.count else {
@@ -1667,10 +1680,16 @@ enum GarageAnalysisPipeline {
         let analysisIssues = scorecard == nil
             ? [GarageScorecardEngine.unavailableMessage]
             : []
-        let analysisHighlights = [
+        var analysisHighlights = [
             "Eight deterministic keyframes detected from normalized pose frames.",
             "\(handAnchors.count) hand checkpoints are aligned to the saved review phases."
         ]
+        if extraction.metadata.usedZeroCopyReader {
+            analysisHighlights.append("Pose extraction used the zero-copy AVAssetReader pipeline.")
+        }
+        if extraction.metadata.includes3DFrames {
+            analysisHighlights.append("3D pose enrichment was available for depth-sensitive analysis.")
+        }
 
         let analysisResult = AnalysisResult(
             issues: analysisIssues,
@@ -1714,7 +1733,110 @@ enum GarageAnalysisPipeline {
         return timestamps
     }
 
-    private static func extractPoseFrames(from asset: AVAsset, timestamps: [Double]) async throws -> [SwingFrame] {
+    private static func extractPoseFrames(
+        from asset: AVAsset,
+        timestamps: [Double]
+    ) async throws -> (frames: [SwingFrame], metadata: GaragePoseExtractionMetadata) {
+        guard timestamps.isEmpty == false else {
+            return (
+                [],
+                GaragePoseExtractionMetadata(usedZeroCopyReader: false, includes3DFrames: false)
+            )
+        }
+
+        if let zeroCopyFrames = try? await extractPoseFramesZeroCopy(from: asset, timestamps: timestamps),
+           zeroCopyFrames.isEmpty == false {
+            return (
+                zeroCopyFrames,
+                GaragePoseExtractionMetadata(
+                    usedZeroCopyReader: true,
+                    includes3DFrames: zeroCopyFrames.contains(where: { $0.joints3D.isEmpty == false })
+                )
+            )
+        }
+
+        let fallbackFrames = try await extractPoseFramesUsingGenerator(from: asset, timestamps: timestamps)
+        return (
+            fallbackFrames,
+            GaragePoseExtractionMetadata(
+                usedZeroCopyReader: false,
+                includes3DFrames: fallbackFrames.contains(where: { $0.joints3D.isEmpty == false })
+            )
+        )
+    }
+
+    private static func extractPoseFramesZeroCopy(from asset: AVAsset, timestamps: [Double]) async throws -> [SwingFrame] {
+        let tracks = try await asset.loadTracks(withMediaType: .video)
+        guard let videoTrack = tracks.first else {
+            throw GarageAnalysisError.missingVideoTrack
+        }
+
+        let transform = try await videoTrack.load(.preferredTransform)
+        let orientation = cgImageOrientation(for: transform)
+        let reader = try AVAssetReader(asset: asset)
+        let outputSettings: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+        ]
+        let trackOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: outputSettings)
+        trackOutput.alwaysCopiesSampleData = false
+        guard reader.canAdd(trackOutput) else {
+            throw GarageAnalysisError.insufficientPoseFrames
+        }
+        reader.add(trackOutput)
+
+        guard reader.startReading() else {
+            throw reader.error ?? GarageAnalysisError.insufficientPoseFrames
+        }
+
+        var frames: [SwingFrame] = []
+        frames.reserveCapacity(timestamps.count)
+        var nextTimestampIndex = 0
+
+        while let sampleBuffer = trackOutput.copyNextSampleBuffer(), nextTimestampIndex < timestamps.count {
+            try Task.checkCancellation()
+            let presentationTimestamp = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
+            guard presentationTimestamp.isFinite else {
+                continue
+            }
+
+            let desiredTimestamp = timestamps[nextTimestampIndex]
+            if presentationTimestamp + 0.0001 < desiredTimestamp {
+                continue
+            }
+
+            guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+                nextTimestampIndex = advancedTimestampIndex(
+                    from: nextTimestampIndex,
+                    actualTimestamp: presentationTimestamp,
+                    desiredTimestamps: timestamps
+                )
+                continue
+            }
+
+            if let frame = try detectPoseFrame(
+                from: pixelBuffer,
+                timestamp: presentationTimestamp,
+                orientation: orientation
+            ) {
+                frames.append(frame)
+            }
+
+            nextTimestampIndex = advancedTimestampIndex(
+                from: nextTimestampIndex,
+                actualTimestamp: presentationTimestamp,
+                desiredTimestamps: timestamps
+            )
+            await Task.yield()
+        }
+
+        if case .failed = reader.status, let error = reader.error {
+            throw error
+        }
+
+        return frames
+    }
+
+    private static func extractPoseFramesUsingGenerator(from asset: AVAsset, timestamps: [Double]) async throws -> [SwingFrame] {
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 960, height: 960)
@@ -1739,16 +1861,90 @@ enum GarageAnalysisPipeline {
         return frames
     }
 
-    private static func detectPoseFrame(from cgImage: CGImage, timestamp: Double) throws -> SwingFrame? {
-        let request = VNDetectHumanBodyPoseRequest()
-        let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up)
-        try handler.perform([request])
+    static func sampledPresentationTimestamps(
+        from presentationTimes: [Double],
+        matching desiredTimestamps: [Double]
+    ) -> [Double] {
+        guard presentationTimes.isEmpty == false, desiredTimestamps.isEmpty == false else {
+            return []
+        }
 
-        guard let observation = request.results?.first else {
+        var matched: [Double] = []
+        matched.reserveCapacity(desiredTimestamps.count)
+        var nextTimestampIndex = 0
+
+        for presentationTime in presentationTimes {
+            guard nextTimestampIndex < desiredTimestamps.count else { break }
+            guard presentationTime + 0.0001 >= desiredTimestamps[nextTimestampIndex] else {
+                continue
+            }
+
+            matched.append(presentationTime)
+            nextTimestampIndex = advancedTimestampIndex(
+                from: nextTimestampIndex,
+                actualTimestamp: presentationTime,
+                desiredTimestamps: desiredTimestamps
+            )
+        }
+
+        return matched
+    }
+
+    private static func advancedTimestampIndex(
+        from currentIndex: Int,
+        actualTimestamp: Double,
+        desiredTimestamps: [Double]
+    ) -> Int {
+        var nextIndex = currentIndex
+        while nextIndex < desiredTimestamps.count, desiredTimestamps[nextIndex] <= actualTimestamp + 0.0001 {
+            nextIndex += 1
+        }
+        return nextIndex
+    }
+
+    private static func detectPoseFrame(from cgImage: CGImage, timestamp: Double) throws -> SwingFrame? {
+        let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up)
+        return try detectPoseFrame(with: handler, timestamp: timestamp)
+    }
+
+    private static func detectPoseFrame(
+        from pixelBuffer: CVPixelBuffer,
+        timestamp: Double,
+        orientation: CGImagePropertyOrientation
+    ) throws -> SwingFrame? {
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation)
+        return try detectPoseFrame(with: handler, timestamp: timestamp)
+    }
+
+    private static func detectPoseFrame(
+        with handler: VNImageRequestHandler,
+        timestamp: Double
+    ) throws -> SwingFrame? {
+        let request = VNDetectHumanBodyPoseRequest()
+        if #available(iOS 17.0, *) {
+            let request3D = VNDetectHumanBodyPose3DRequest()
+            try handler.perform([request, request3D])
+            return try makeSwingFrame(
+                timestamp: timestamp,
+                observation2D: request.results?.first,
+                observation3D: request3D.results?.first
+            )
+        } else {
+            try handler.perform([request])
+            return try makeSwingFrame(timestamp: timestamp, observation2D: request.results?.first, observation3D: nil)
+        }
+    }
+
+    private static func makeSwingFrame(
+        timestamp: Double,
+        observation2D: VNHumanBodyPoseObservation?,
+        observation3D: VNHumanBodyPose3DObservation?
+    ) throws -> SwingFrame? {
+        guard let observation2D else {
             return nil
         }
 
-        let recognizedPoints = try observation.recognizedPoints(.all)
+        let recognizedPoints = try observation2D.recognizedPoints(.all)
         var joints: [SwingJoint] = []
 
         let mapper = GaragePoseCoordinateMapper(isMirrored: false, invertY: true)
@@ -1776,8 +1972,9 @@ enum GarageAnalysisPipeline {
             return nil
         }
 
+        let joints3D = try extract3DJoints(from: observation3D)
         let confidence = joints.map(\.confidence).reduce(0, +) / Double(joints.count)
-        return SwingFrame(timestamp: timestamp, joints: joints, confidence: confidence)
+        return SwingFrame(timestamp: timestamp, joints: joints, joints3D: joints3D, confidence: confidence)
     }
 
     private static func hasMinimumDetectionSet(in joints: [SwingJoint]) -> Bool {
@@ -2222,6 +2419,19 @@ enum GarageAnalysisPipeline {
         let kinematicByIndex = Dictionary(uniqueKeysWithValues: handKinematics(from: frames).map { ($0.index, $0) })
 
         let candidateRange = (transitionIndex + 1)...latestAllowed
+        if let depthDrivenCandidate = earliestDepthDrivenDownswingIndex(
+            in: frames,
+            candidateRange: candidateRange,
+            transitionHands: transitionHands,
+            impactHands: impactHands,
+            targetDistance: targetDistance,
+            maxDistanceBeforeImpact: maxDistanceBeforeImpact,
+            impactHandY: impactHandY,
+            kinematicByIndex: kinematicByIndex
+        ) {
+            return depthDrivenCandidate
+        }
+
         if let earliestThresholdCrossing = candidateRange.first(where: { index in
             let point = handCenter(in: frames[index])
             let traveledDistance = distance(from: transitionHands, to: point)
@@ -2265,6 +2475,48 @@ enum GarageAnalysisPipeline {
         }
 
         return min(transitionIndex + 1, latestAllowed)
+    }
+
+    private static func earliestDepthDrivenDownswingIndex(
+        in frames: [SwingFrame],
+        candidateRange: ClosedRange<Int>,
+        transitionHands: CGPoint,
+        impactHands: CGPoint,
+        targetDistance: Double,
+        maxDistanceBeforeImpact: Double,
+        impactHandY: Double,
+        kinematicByIndex: [Int: GarageHandKinematicSample]
+    ) -> Int? {
+        guard
+            let transitionDepth = handDepth(in: frames[candidateRange.lowerBound - 1]),
+            let impactDepth = handDepth(in: frames[candidateRange.upperBound + 1]),
+            abs(impactDepth - transitionDepth) >= 0.001
+        else {
+            return nil
+        }
+
+        return candidateRange.first(where: { index in
+            let point = handCenter(in: frames[index])
+            let traveledDistance = distance(from: transitionHands, to: point)
+            guard traveledDistance >= targetDistance, traveledDistance <= maxDistanceBeforeImpact else {
+                return false
+            }
+
+            if point.y > impactHandY * 0.98 {
+                return false
+            }
+
+            guard let sample = kinematicByIndex[index], sample.velocity.dy > 0 else {
+                return false
+            }
+
+            guard let currentDepth = handDepth(in: frames[index]) else {
+                return false
+            }
+
+            let depthProgress = (currentDepth - transitionDepth) / (impactDepth - transitionDepth)
+            return depthProgress >= 0.20 && depthProgress <= 0.95
+        })
     }
 
     private static func impactIndex(in frames: [SwingFrame], addressIndex: Int, transitionIndex: Int) -> Int {
@@ -2314,6 +2566,17 @@ enum GarageAnalysisPipeline {
 
     static func handCenter(in frame: SwingFrame) -> CGPoint {
         rawGripEstimate(in: frame)?.point ?? legacyHandCenter(in: frame)
+    }
+
+    static func handDepth(in frame: SwingFrame) -> Double? {
+        let wrists = frame.joints3D.filter { joint in
+            joint.name == .leftWrist || joint.name == .rightWrist
+        }
+        guard wrists.isEmpty == false else {
+            return nil
+        }
+        let totalDepth = wrists.reduce(0.0) { $0 + $1.z }
+        return totalDepth / Double(wrists.count)
     }
 
     static func bodyScale(in frame: SwingFrame) -> Double {
@@ -2701,6 +2964,52 @@ enum GarageAnalysisPipeline {
 
         return ordered
     }
+
+    private static func cgImageOrientation(for transform: CGAffineTransform) -> CGImagePropertyOrientation {
+        switch (transform.a, transform.b, transform.c, transform.d) {
+        case (0, 1, -1, 0):
+            return .right
+        case (0, -1, 1, 0):
+            return .left
+        case (-1, 0, 0, -1):
+            return .down
+        default:
+            return .up
+        }
+    }
+
+    private static func extract3DJoints(from observation: VNHumanBodyPose3DObservation?) throws -> [SwingJoint3D] {
+        guard #available(iOS 17.0, *), let observation else {
+            return []
+        }
+
+        let jointConfidence = Double(observation.confidence)
+        var joints: [SwingJoint3D] = []
+        joints.reserveCapacity(SwingJoint3DName.allCases.count)
+
+        for jointName in SwingJoint3DName.allCases {
+            guard
+                let visionName = jointName.visionName,
+                observation.availableJointNames.contains(visionName),
+                let recognizedPoint = try? observation.recognizedPoint(visionName)
+            else {
+                continue
+            }
+
+            let translation = recognizedPoint.position.columns.3
+            joints.append(
+                SwingJoint3D(
+                    name: jointName,
+                    x: Double(translation.x),
+                    y: Double(translation.y),
+                    z: Double(translation.z),
+                    confidence: jointConfidence
+                )
+            )
+        }
+
+        return joints
+    }
 }
 
 private extension SwingJointName {
@@ -2736,6 +3045,44 @@ private extension SwingJointName {
     }
 }
 
+@available(iOS 17.0, *)
+private extension SwingJoint3DName {
+    var visionName: VNHumanBodyPose3DObservation.JointName? {
+        switch self {
+        case .centerShoulder:
+            .centerShoulder
+        case .leftShoulder:
+            .leftShoulder
+        case .rightShoulder:
+            .rightShoulder
+        case .leftElbow:
+            .leftElbow
+        case .rightElbow:
+            .rightElbow
+        case .leftWrist:
+            .leftWrist
+        case .rightWrist:
+            .rightWrist
+        case .root:
+            .root
+        case .spine:
+            .spine
+        case .leftHip:
+            .leftHip
+        case .rightHip:
+            .rightHip
+        case .leftKnee:
+            .leftKnee
+        case .rightKnee:
+            .rightKnee
+        case .leftAnkle:
+            .leftAnkle
+        case .rightAnkle:
+            .rightAnkle
+        }
+    }
+}
+
 extension SwingFrame {
     nonisolated func joint(named name: SwingJointName) -> SwingJoint? {
         joints.first(where: { $0.name == name })
@@ -2754,6 +3101,21 @@ extension SwingFrame {
 
     nonisolated func point(named name: SwingJointName) -> CGPoint {
         point(named: name, minimumConfidence: 0) ?? .zero
+    }
+
+    nonisolated func joint3D(named name: SwingJoint3DName) -> SwingJoint3D? {
+        joints3D.first(where: { $0.name == name })
+    }
+
+    nonisolated func point3D(named name: SwingJoint3DName, minimumConfidence: Double = 0) -> SIMD3<Double>? {
+        guard
+            let joint = joint3D(named: name),
+            joint.confidence >= minimumConfidence
+        else {
+            return nil
+        }
+
+        return SIMD3<Double>(joint.x, joint.y, joint.z)
     }
 }
 enum GarageCameraPerspective: String, Codable, Hashable {
@@ -2964,9 +3326,12 @@ enum GarageSwingMeasurementEngine {
             return nil
         }
 
+        let addressSpineAngle = spineAngle3D(in: addressFrame) ?? spineAngle2D(in: addressFrame)
+        let impactSpineAngle = spineAngle3D(in: impactFrame) ?? spineAngle2D(in: impactFrame)
+
         guard
-            let addressSpineAngle = spineAngle(in: addressFrame),
-            let impactSpineAngle = spineAngle(in: impactFrame),
+            let addressSpineAngle,
+            let impactSpineAngle,
             let addressPelvis = pelvisCenter(in: addressFrame),
             let impactPelvis = pelvisCenter(in: impactFrame),
             let addressHead = addressFrame.point(named: .nose, minimumConfidence: minimumJointConfidence),
@@ -3026,7 +3391,7 @@ enum GarageSwingMeasurementEngine {
         return CGPoint(x: (leftHip.x + rightHip.x) / 2, y: (leftHip.y + rightHip.y) / 2)
     }
 
-    private static func spineAngle(in frame: SwingFrame) -> Double? {
+    private static func spineAngle2D(in frame: SwingFrame) -> Double? {
         guard
             let leftShoulder = frame.point(named: .leftShoulder, minimumConfidence: minimumJointConfidence),
             let rightShoulder = frame.point(named: .rightShoulder, minimumConfidence: minimumJointConfidence),
@@ -3039,6 +3404,25 @@ enum GarageSwingMeasurementEngine {
         guard abs(spineVector.dy) > 0.0001 else { return nil }
         let radiansFromVertical = atan2(spineVector.dx, -spineVector.dy)
         return abs(radiansFromVertical * 180 / .pi)
+    }
+
+    private static func spineAngle3D(in frame: SwingFrame) -> Double? {
+        guard
+            let root = frame.point3D(named: .root, minimumConfidence: minimumJointConfidence),
+            let centerShoulder = frame.point3D(named: .centerShoulder, minimumConfidence: minimumJointConfidence)
+        else {
+            return nil
+        }
+
+        let spineVector = centerShoulder - root
+        let magnitude = simd_length(spineVector)
+        guard magnitude > 0.0001 else {
+            return nil
+        }
+
+        let normalized = spineVector / magnitude
+        let verticalAlignment = min(max(abs(simd_dot(normalized, SIMD3<Double>(0, 1, 0))), 0), 1)
+        return acos(verticalAlignment) * 180 / .pi
     }
 
     private enum KneeSide {

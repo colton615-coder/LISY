@@ -190,6 +190,83 @@ private func garageHandPathSamples(from frames: [SwingFrame], keyFrames: [KeyFra
     }
 }
 
+struct GarageVelocityRibbonPalette: Equatable {
+    let halo: SIMD4<Double>
+    let fill: SIMD4<Double>
+    let outerWidth: Double
+    let innerWidth: Double
+}
+
+func garageVelocityRibbonPalette(
+    normalizedSpeed: Double,
+    segment: GarageHandPathSegmentKind
+) -> GarageVelocityRibbonPalette {
+    let clampedSpeed = min(max(normalizedSpeed, 0), 1)
+    let slow = SIMD4<Double>(0.18, 0.63, 0.94, 0.88)
+    let mid = SIMD4<Double>(0.34, 0.78, 0.72, 0.91)
+    let fast = SIMD4<Double>(0.95, 0.45, 0.22, 0.95)
+
+    let baseFill: SIMD4<Double>
+    if clampedSpeed < 0.5 {
+        baseFill = garageMixColor(stopA: slow, stopB: mid, progress: clampedSpeed / 0.5)
+    } else {
+        baseFill = garageMixColor(stopA: mid, stopB: fast, progress: (clampedSpeed - 0.5) / 0.5)
+    }
+
+    let fill: SIMD4<Double>
+    switch segment {
+    case .backswing:
+        fill = garageMixColor(
+            stopA: baseFill,
+            stopB: SIMD4<Double>(0.96, 0.98, 1.0, baseFill.w),
+            progress: 0.18
+        )
+    case .downswing:
+        fill = baseFill
+    }
+
+    let halo = SIMD4<Double>(1.0, 1.0, 1.0, 0.26 + (clampedSpeed * 0.14))
+    let innerWidth = 1.9 + (clampedSpeed * 1.4)
+    return GarageVelocityRibbonPalette(
+        halo: halo,
+        fill: fill,
+        outerWidth: innerWidth + 1.4,
+        innerWidth: innerWidth
+    )
+}
+
+func garageLoupeCropRect(
+    anchorPoint: CGPoint,
+    imageSize: CGSize,
+    sampleSize: CGFloat = 120
+) -> CGRect {
+    guard imageSize.width > 0, imageSize.height > 0 else {
+        return .zero
+    }
+
+    let clampedAnchor = garageClampedNormalizedPoint(anchorPoint)
+    let center = CGPoint(x: clampedAnchor.x * imageSize.width, y: clampedAnchor.y * imageSize.height)
+    let maxX = max(imageSize.width - sampleSize, 0)
+    let maxY = max(imageSize.height - sampleSize, 0)
+    let origin = CGPoint(
+        x: min(max(center.x - (sampleSize / 2), 0), maxX),
+        y: min(max(center.y - (sampleSize / 2), 0), maxY)
+    )
+
+    return CGRect(origin: origin, size: CGSize(width: min(sampleSize, imageSize.width), height: min(sampleSize, imageSize.height))).integral
+}
+
+private func garageMixColor(stopA: SIMD4<Double>, stopB: SIMD4<Double>, progress: Double) -> SIMD4<Double> {
+    let clamped = min(max(progress, 0), 1)
+    return stopA + ((stopB - stopA) * clamped)
+}
+
+private extension Color {
+    init(rgba vector: SIMD4<Double>) {
+        self.init(red: vector.x, green: vector.y, blue: vector.z, opacity: vector.w)
+    }
+}
+
 struct GarageView: View {
     @Environment(\.modelContext) private var modelContext
 
@@ -2223,7 +2300,7 @@ private struct GarageReviewImageOverlay: View {
                 }
 
                 if reviewMode == .handPath, reviewSurface == .summary {
-                    GarageReadOnlyHandPathOverlay(
+                    GarageVelocityRibbonOverlay(
                         drawRect: imageRect,
                         pathSamples: handPathSamples,
                         currentTime: currentTime
@@ -2247,6 +2324,14 @@ private struct GarageReviewImageOverlay: View {
                             isManualAnchor: selectedAnchor.source == .manual,
                             onDragChanged: onAnchorDragChanged,
                             onDragEnded: onAnchorDragEnded
+                        )
+                    }
+
+                    if showsAnchorGuides, let selectedAnchor {
+                        GaragePrecisionLoupe(
+                            image: image,
+                            drawRect: imageRect,
+                            anchorPoint: CGPoint(x: selectedAnchor.x, y: selectedAnchor.y)
                         )
                     }
                 }
@@ -2289,7 +2374,7 @@ private struct GaragePoseFallbackOverlay: View {
                 }
 
                 if reviewMode == .handPath, reviewSurface == .summary {
-                    GarageReadOnlyHandPathOverlay(
+                    GarageVelocityRibbonOverlay(
                         drawRect: drawRect,
                         pathSamples: handPathSamples,
                         currentTime: currentTime
@@ -2373,7 +2458,7 @@ private struct GarageReviewFrameOverlayCanvas: View {
     }
 }
 
-private struct GarageReadOnlyHandPathOverlay: View {
+private struct GarageVelocityRibbonOverlay: View {
     let drawRect: CGRect
     let pathSamples: [GarageHandPathSample]
     let currentTime: Double
@@ -2397,11 +2482,10 @@ private struct GarageReadOnlyHandPathOverlay: View {
             for segmentIndex in 1..<pathSamples.count {
                 let previous = pathSamples[segmentIndex - 1]
                 let current = pathSamples[segmentIndex]
-                let normalizedSpeed = min(max(current.speed / maxSpeed, 0), 1)
-                let baseWidth = 1.7 + (normalizedSpeed * 1.0)
-                let accentColor = current.segment == .backswing
-                    ? Color.white.opacity(0.84)
-                    : garageReviewAccent.opacity(0.74)
+                let palette = garageVelocityRibbonPalette(
+                    normalizedSpeed: current.speed / maxSpeed,
+                    segment: current.segment
+                )
 
                 var segmentPath = Path()
                 segmentPath.move(to: garageMappedPoint(x: previous.x, y: previous.y, in: drawRect))
@@ -2409,13 +2493,13 @@ private struct GarageReadOnlyHandPathOverlay: View {
 
                 context.stroke(
                     segmentPath,
-                    with: .color(Color.white.opacity(0.32)),
-                    style: StrokeStyle(lineWidth: baseWidth + 0.9, lineCap: .round, lineJoin: .round)
+                    with: .color(Color(rgba: palette.halo)),
+                    style: StrokeStyle(lineWidth: palette.outerWidth, lineCap: .round, lineJoin: .round)
                 )
                 context.stroke(
                     segmentPath,
-                    with: .color(accentColor),
-                    style: StrokeStyle(lineWidth: baseWidth, lineCap: .round, lineJoin: .round)
+                    with: .color(Color(rgba: palette.fill)),
+                    style: StrokeStyle(lineWidth: palette.innerWidth, lineCap: .round, lineJoin: .round)
                 )
             }
 
@@ -2424,11 +2508,79 @@ private struct GarageReadOnlyHandPathOverlay: View {
                 let outerRect = CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10)
                 let innerRect = CGRect(x: point.x - 2.5, y: point.y - 2.5, width: 5, height: 5)
                 context.fill(Ellipse().path(in: outerRect), with: .color(Color.white.opacity(0.92)))
+                let palette = garageVelocityRibbonPalette(
+                    normalizedSpeed: visibleCurrentSample.speed / maxSpeed,
+                    segment: visibleCurrentSample.segment
+                )
                 context.fill(
                     Ellipse().path(in: innerRect),
-                    with: .color(visibleCurrentSample.segment == .backswing ? Color.white : garageReviewAccent)
+                    with: .color(Color(rgba: palette.fill))
                 )
             }
+        }
+    }
+}
+
+private struct GaragePrecisionLoupe: View {
+    let image: CGImage
+    let drawRect: CGRect
+    let anchorPoint: CGPoint
+
+    private let loupeSize: CGFloat = 88
+    private let sampleSize: CGFloat = 120
+
+    private var mappedAnchor: CGPoint {
+        garageMappedPoint(anchorPoint, in: drawRect)
+    }
+
+    private var croppedImage: CGImage? {
+        image.cropping(to: garageLoupeCropRect(
+            anchorPoint: anchorPoint,
+            imageSize: CGSize(width: image.width, height: image.height),
+            sampleSize: sampleSize
+        ))
+    }
+
+    private var loupePosition: CGPoint {
+        let minY = drawRect.minY + (loupeSize / 2) + 8
+        let maxX = drawRect.maxX - (loupeSize / 2) - 8
+        let minX = drawRect.minX + (loupeSize / 2) + 8
+        return CGPoint(
+            x: min(max(mappedAnchor.x, minX), maxX),
+            y: max(minY, mappedAnchor.y - 76)
+        )
+    }
+
+    var body: some View {
+        if let croppedImage {
+            ZStack {
+                Circle()
+                    .fill(garageReviewSurfaceRaised.opacity(0.96))
+                    .frame(width: loupeSize, height: loupeSize)
+                    .overlay(
+                        Image(decorative: croppedImage, scale: 1)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: loupeSize - 8, height: loupeSize - 8)
+                            .clipShape(Circle())
+                    )
+
+                Rectangle()
+                    .fill(Color.white.opacity(0.9))
+                    .frame(width: 1, height: 22)
+                Rectangle()
+                    .fill(Color.white.opacity(0.9))
+                    .frame(width: 22, height: 1)
+            }
+            .overlay(
+                Circle()
+                    .stroke(garageReviewAccent.opacity(0.75), lineWidth: 2)
+            )
+            .shadow(color: garageReviewShadowDark.opacity(0.28), radius: 18, x: 0, y: 10)
+            .position(loupePosition)
+            .transition(.scale(scale: 0.92).combined(with: .opacity))
+            .animation(.spring(response: 0.22, dampingFraction: 0.76), value: anchorPoint)
+            .allowsHitTesting(false)
         }
     }
 }
@@ -3251,11 +3403,10 @@ private struct GarageSlowMotionVisualizationOverlay: View {
                     for segmentIndex in 1..<visibleSampleCount {
                         let previous = pathSamples[segmentIndex - 1]
                         let current = pathSamples[segmentIndex]
-                        let normalizedSpeed = min(max(current.speed / maxSpeed, 0), 1)
-                        let baseWidth = 1.9 + (normalizedSpeed * 1.2)
-                        let accentColor = current.segment == .backswing
-                            ? Color.white.opacity(0.88)
-                            : garageReviewAccent.opacity(0.66)
+                        let palette = garageVelocityRibbonPalette(
+                            normalizedSpeed: current.speed / maxSpeed,
+                            segment: current.segment
+                        )
 
                         var segmentPath = Path()
                         segmentPath.move(to: mappedPoint(x: previous.x, y: previous.y, in: videoRect))
@@ -3263,20 +3414,28 @@ private struct GarageSlowMotionVisualizationOverlay: View {
 
                         context.stroke(
                             segmentPath,
-                            with: .color(Color.white.opacity(0.52)),
-                            style: StrokeStyle(lineWidth: baseWidth + 1.0, lineCap: .round, lineJoin: .round)
+                            with: .color(Color(rgba: palette.halo)),
+                            style: StrokeStyle(lineWidth: palette.outerWidth + 0.4, lineCap: .round, lineJoin: .round)
                         )
                         context.stroke(
                             segmentPath,
-                            with: .color(accentColor),
-                            style: StrokeStyle(lineWidth: baseWidth, lineCap: .round, lineJoin: .round)
+                            with: .color(Color(rgba: palette.fill)),
+                            style: StrokeStyle(lineWidth: palette.innerWidth + 0.2, lineCap: .round, lineJoin: .round)
                         )
                     }
 
                     let lastSample = pathSamples[visibleSampleCount - 1]
                     let point = mappedPoint(x: lastSample.x, y: lastSample.y, in: videoRect)
                     let outerRect = CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10)
+                    let palette = garageVelocityRibbonPalette(
+                        normalizedSpeed: lastSample.speed / maxSpeed,
+                        segment: lastSample.segment
+                    )
                     context.fill(Ellipse().path(in: outerRect), with: .color(Color.white.opacity(0.92)))
+                    context.fill(
+                        Ellipse().path(in: CGRect(x: point.x - 2.5, y: point.y - 2.5, width: 5, height: 5)),
+                        with: .color(Color(rgba: palette.fill))
+                    )
                 }
             }
         }

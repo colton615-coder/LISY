@@ -110,12 +110,78 @@ struct SwingJoint: Codable, Hashable, Identifiable {
     var id: SwingJointName { name }
 }
 
+enum SwingJoint3DName: String, Codable, CaseIterable, Identifiable {
+    case centerShoulder
+    case leftShoulder
+    case rightShoulder
+    case leftElbow
+    case rightElbow
+    case leftWrist
+    case rightWrist
+    case root
+    case spine
+    case leftHip
+    case rightHip
+    case leftKnee
+    case rightKnee
+    case leftAnkle
+    case rightAnkle
+
+    var id: String { rawValue }
+}
+
+struct SwingJoint3D: Codable, Hashable, Identifiable {
+    var name: SwingJoint3DName
+    var x: Double
+    var y: Double
+    var z: Double
+    var confidence: Double
+
+    var id: SwingJoint3DName { name }
+}
+
 struct SwingFrame: Codable, Hashable, Identifiable {
     var timestamp: Double
     var joints: [SwingJoint]
+    var joints3D: [SwingJoint3D]
     var confidence: Double
 
     var id: Double { timestamp }
+
+    init(
+        timestamp: Double,
+        joints: [SwingJoint],
+        joints3D: [SwingJoint3D] = [],
+        confidence: Double
+    ) {
+        self.timestamp = timestamp
+        self.joints = joints
+        self.joints3D = joints3D
+        self.confidence = confidence
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case timestamp
+        case joints
+        case joints3D
+        case confidence
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        timestamp = try container.decode(Double.self, forKey: .timestamp)
+        joints = try container.decode([SwingJoint].self, forKey: .joints)
+        joints3D = try container.decodeIfPresent([SwingJoint3D].self, forKey: .joints3D) ?? []
+        confidence = try container.decode(Double.self, forKey: .confidence)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encode(joints, forKey: .joints)
+        try container.encode(joints3D, forKey: .joints3D)
+        try container.encode(confidence, forKey: .confidence)
+    }
 }
 
 struct KeyFrame: Codable, Hashable, Identifiable {
