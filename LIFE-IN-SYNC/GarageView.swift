@@ -121,13 +121,17 @@ private enum GarageRoute: Equatable {
 
     init(tab: ModuleHubTab) {
         switch tab {
+        case .records:
+            self = .records
         case .review:
             self = .review
-        default:
+        @unknown default:
+            assertionFailure("Unsupported ModuleHubTab passed to GarageRoute.init(tab:): \(tab)")
             self = .records
         }
     }
 }
+
 
 func garageDeterministicHandPathSampleID(index: Int, timestamp: Double) -> Int {
     let quantizedTimestamp = Int64((timestamp * 1_000_000).rounded())
