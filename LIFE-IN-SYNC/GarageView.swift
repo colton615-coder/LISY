@@ -111,6 +111,15 @@ private enum GarageRoute: Equatable {
     case importing(GarageImportPresentationState)
     case review(recordKey: String?)
 
+    var normalizedForPresentation: GarageRoute {
+        switch self {
+        case .importing(.idle):
+            return .records
+        case .records, .importing, .review:
+            return self
+        }
+    }
+
     var tab: ModuleHubTab {
         switch self {
         case .records:
