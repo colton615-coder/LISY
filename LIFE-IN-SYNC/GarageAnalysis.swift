@@ -181,6 +181,7 @@ struct GarageAnalysisOutput {
     let pathPoints: [PathPoint]
     let handPathReviewReport: GarageHandPathReviewReport
     let analysisResult: AnalysisResult
+    let syncFlow: GarageSyncFlowReport
 }
 
 enum GarageHandPathSegmentKind: String, Equatable {
@@ -207,6 +208,77 @@ struct GarageHandPathReviewReport: Equatable {
 struct GarageSkeletonHeadCircle: Equatable {
     let center: CGPoint
     let radius: Double
+}
+
+enum GarageSyncFlowStatus: String, Codable, Hashable {
+    case ready
+    case limited
+    case unavailable
+}
+
+enum GarageSyncFlowSegment: String, Codable, Hashable {
+    case base
+    case pelvis
+    case torso
+    case hands
+    case head
+}
+
+enum GarageSyncFlowIssueKind: String, Codable, Hashable {
+    case earlyHands
+    case hipStall
+    case earlyExtension
+    case unstableHead
+
+    var riskPhrase: String {
+        switch self {
+        case .earlyHands:
+            "Release timing risk"
+        case .hipStall:
+            "Flip risk"
+        case .earlyExtension:
+            "Strike consistency risk"
+        case .unstableHead:
+            "Contact stability risk"
+        }
+    }
+}
+
+struct GarageSyncFlowIssue: Codable, Hashable {
+    let kind: GarageSyncFlowIssueKind
+    let segment: GarageSyncFlowSegment
+    let jointName: SwingJointName
+    let timestamp: Double
+    let title: String
+    let detail: String
+}
+
+struct GarageSyncFlowMarker: Codable, Hashable {
+    let segment: GarageSyncFlowSegment
+    let jointName: SwingJointName
+    let timestamp: Double
+    let title: String
+    let detail: String
+}
+
+struct GarageSyncFlowConsequence: Codable, Hashable {
+    let riskPhrase: String
+    let detail: String
+    let startTimestamp: Double
+    let endTimestamp: Double
+}
+
+struct GarageSyncFlowReport: Codable, Hashable {
+    let status: GarageSyncFlowStatus
+    let headline: String
+    let primaryIssue: GarageSyncFlowIssue?
+    let markers: [GarageSyncFlowMarker]
+    let consequence: GarageSyncFlowConsequence?
+    let summary: String
+
+    var isReady: Bool {
+        status == .ready
+    }
 }
 
 enum GarageAnalysisProgressStep: Equatable {
@@ -848,6 +920,7 @@ enum GarageCoaching {
     static func report(for record: SwingRecord) -> GarageCoachingReport {
         let insightReport = GarageInsights.report(for: record)
         let reliabilityReport = GarageReliability.report(for: record)
+        let syncFlow = record.analysisResult?.syncFlow
 
         if reliabilityReport.status == .provisional {
             return GarageCoachingReport(
@@ -860,6 +933,23 @@ enum GarageCoaching {
         }
 
         var cues: [GarageCoachingCue] = []
+        var syncFlowCue: GarageCoachingCue?
+
+        if let syncFlow, syncFlow.status == .ready {
+            if let primaryIssue = syncFlow.primaryIssue {
+                syncFlowCue = GarageCoachingCue(
+                    title: primaryIssue.title,
+                    message: primaryIssue.detail,
+                    severity: .caution
+                )
+            } else {
+                syncFlowCue = GarageCoachingCue(
+                    title: "Flow Looks Clean",
+                    message: syncFlow.summary,
+                    severity: .positive
+                )
+            }
+        }
 
         if let tempo = metricValue(named: "Tempo", in: insightReport),
            let tempoValue = Double(tempo.replacingOccurrences(of: ":1", with: "")) {
@@ -960,8 +1050,12 @@ enum GarageCoaching {
             ? reviewBlockers(from: reliabilityReport, insightReport: insightReport)
             : []
 
-        let sortedCues = cues.sorted { lhs, rhs in
+        var sortedCues = cues.sorted { lhs, rhs in
             severityPriority(lhs.severity) > severityPriority(rhs.severity)
+        }
+        if let syncFlowCue {
+            sortedCues.removeAll(where: { $0.title == syncFlowCue.title && $0.message == syncFlowCue.message })
+            sortedCues.insert(syncFlowCue, at: 0)
         }
 
         let headline: String
@@ -977,7 +1071,7 @@ enum GarageCoaching {
         } else if let cautionCue = sortedCues.first(where: { $0.severity == .caution }) {
             nextBestAction = cautionCue.message
         } else {
-            nextBestAction = "Keep building comparable swings so the strongest patterns become easier to trust."
+            nextBestAction = "Keep building comparable swings so SyncFlow can confirm the strongest movement patterns."
         }
 
         return GarageCoachingReport(
@@ -1677,6 +1771,11 @@ enum GarageAnalysisPipeline {
         let pathPoints = generatePathPoints(from: smoothedFrames, samplesPerSegment: 8)
         let handPathReviewReport = handPathReviewReport(for: smoothedFrames, keyFrames: keyFrames)
         let scorecard = GarageScorecardEngine.generate(frames: smoothedFrames, keyFrames: keyFrames)
+        let syncFlow = GarageSyncFlowEngine.generate(
+            frames: smoothedFrames,
+            keyFrames: keyFrames,
+            scorecard: scorecard
+        )
         let analysisIssues = scorecard == nil
             ? [GarageScorecardEngine.unavailableMessage]
             : []
@@ -1695,7 +1794,8 @@ enum GarageAnalysisPipeline {
             issues: analysisIssues,
             highlights: analysisHighlights,
             summary: "Processed \(smoothedFrames.count) frames at \(Int(samplingFrameRate.rounded())) FPS and prepared a DTL scorecard for Step 2.",
-            scorecard: scorecard
+            scorecard: scorecard,
+            syncFlow: syncFlow
         )
 
         return GarageAnalysisOutput(
@@ -1705,7 +1805,8 @@ enum GarageAnalysisPipeline {
             handAnchors: handAnchors,
             pathPoints: pathPoints,
             handPathReviewReport: handPathReviewReport,
-            analysisResult: analysisResult
+            analysisResult: analysisResult,
+            syncFlow: syncFlow
         )
     }
 
@@ -3452,6 +3553,444 @@ enum GarageSwingMeasurementEngine {
         let dot = (upper.dx * lower.dx) + (upper.dy * lower.dy)
         let cosine = min(max(dot / (upperMagnitude * lowerMagnitude), -1), 1)
         return acos(cosine) * 180 / .pi
+    }
+}
+
+enum GarageSyncFlowEngine {
+    private struct KinematicSample: Hashable {
+        let frameIndex: Int
+        let timestamp: Double
+        let point: CGPoint
+        let speed: Double
+    }
+
+    private struct CandidateIssue: Hashable {
+        let issue: GarageSyncFlowIssue
+        let segmentPriority: Int
+    }
+
+    private nonisolated static let minimumJointConfidence = 0.45
+    private nonisolated static let minimumFrameConfidence = 0.48
+    private nonisolated static let assumedShoulderWidthInches = 18.0
+    private nonisolated static let earlyHandsLeadTime = 0.03
+    private nonisolated static let sameWindowTolerance = 0.045
+
+    static func generate(
+        frames: [SwingFrame],
+        keyFrames: [KeyFrame],
+        scorecard: GarageSwingScorecard?
+    ) -> GarageSyncFlowReport {
+        guard
+            let detection = GarageTimestampDetector.detect(from: frames, keyFrames: keyFrames),
+            frames.indices.contains(detection.startFrameIndex),
+            frames.indices.contains(detection.topFrameIndex),
+            frames.indices.contains(detection.impactFrameIndex),
+            detection.topFrameIndex < detection.impactFrameIndex
+        else {
+            return GarageSyncFlowReport(
+                status: .unavailable,
+                headline: "SyncFlow unavailable for this swing.",
+                primaryIssue: nil,
+                markers: [],
+                consequence: nil,
+                summary: "Garage could not map enough checkpoints to build a movement-sequence story."
+            )
+        }
+
+        let addressFrame = frames[detection.startFrameIndex]
+        let topFrame = frames[detection.topFrameIndex]
+        let impactFrame = frames[detection.impactFrameIndex]
+        let downswingIndexes = Array(detection.topFrameIndex...detection.impactFrameIndex)
+
+        guard hasReliableSyncFlowCoverage(frames: frames, downswingIndexes: downswingIndexes) else {
+            return GarageSyncFlowReport(
+                status: .limited,
+                headline: "SyncFlow needs steadier pose tracking.",
+                primaryIssue: nil,
+                markers: [],
+                consequence: nil,
+                summary: "The body outline is visible, but the key pelvis, hand, or head landmarks were not stable enough for a trustworthy sequence call."
+            )
+        }
+
+        let pelvisSamples = kinematicSamples(frames: frames, indexes: downswingIndexes, pointResolver: pelvisCenter(in:))
+        let torsoSamples = kinematicSamples(frames: frames, indexes: downswingIndexes, pointResolver: torsoCenter(in:))
+        let handSamples = kinematicSamples(frames: frames, indexes: downswingIndexes) { frame in
+            GarageAnalysisPipeline.handCenter(in: frame)
+        }
+
+        var candidates: [CandidateIssue] = []
+
+        if let candidate = earlyHandsCandidate(
+            handSamples: handSamples,
+            pelvisSamples: pelvisSamples,
+            torsoSamples: torsoSamples
+        ) {
+            candidates.append(candidate)
+        }
+
+        if let candidate = hipStallCandidate(
+            pelvisSamples: pelvisSamples,
+            handSamples: handSamples,
+            impactTimestamp: impactFrame.timestamp
+        ) {
+            candidates.append(candidate)
+        }
+
+        if let candidate = earlyExtensionCandidate(
+            addressFrame: addressFrame,
+            impactFrame: impactFrame,
+            detection: detection,
+            scorecard: scorecard
+        ) {
+            candidates.append(candidate)
+        }
+
+        if let candidate = unstableHeadCandidate(
+            addressFrame: addressFrame,
+            topFrame: topFrame,
+            impactFrame: impactFrame,
+            detection: detection,
+            scorecard: scorecard
+        ) {
+            candidates.append(candidate)
+        }
+
+        let primaryIssue = selectPrimaryIssue(from: candidates.map(\.issue))
+        let markers = primaryIssue.map {
+            [
+                GarageSyncFlowMarker(
+                    segment: $0.segment,
+                    jointName: $0.jointName,
+                    timestamp: $0.timestamp,
+                    title: $0.title,
+                    detail: $0.detail
+                )
+            ]
+        } ?? []
+        let consequence = primaryIssue.map { issue in
+            let impactWindow = max(impactFrame.timestamp - topFrame.timestamp, 0.12) * 0.2
+            return GarageSyncFlowConsequence(
+                riskPhrase: issue.kind.riskPhrase,
+                detail: consequenceDetail(for: issue.kind),
+                startTimestamp: max(impactFrame.timestamp - impactWindow, 0),
+                endTimestamp: impactFrame.timestamp + impactWindow
+            )
+        }
+
+        if let primaryIssue {
+            return GarageSyncFlowReport(
+                status: .ready,
+                headline: primaryIssue.title,
+                primaryIssue: primaryIssue,
+                markers: markers,
+                consequence: consequence,
+                summary: primaryIssue.detail
+            )
+        }
+
+        return GarageSyncFlowReport(
+            status: .ready,
+            headline: "Flow looks clean through impact.",
+            primaryIssue: nil,
+            markers: [],
+            consequence: nil,
+            summary: "Garage did not find a dominant sequence break in the current swing window. Use this as direction, not judgment."
+        )
+    }
+
+    private static func hasReliableSyncFlowCoverage(
+        frames: [SwingFrame],
+        downswingIndexes: [Int]
+    ) -> Bool {
+        guard downswingIndexes.isEmpty == false else { return false }
+
+        let downswingFrames = downswingIndexes.compactMap { frames.indices.contains($0) ? frames[$0] : nil }
+        guard downswingFrames.isEmpty == false else { return false }
+
+        let averageFrameConfidence = downswingFrames.map(\.confidence).reduce(0, +) / Double(downswingFrames.count)
+        guard averageFrameConfidence >= minimumFrameConfidence else { return false }
+
+        let requiredSignals: [[SwingJointName]] = [
+            [.leftHip, .rightHip],
+            [.leftShoulder, .rightShoulder],
+            [.leftWrist, .rightWrist],
+            [.nose]
+        ]
+
+        return requiredSignals.allSatisfy { jointNames in
+            let reliableCount = downswingFrames.reduce(into: 0) { partialResult, frame in
+                let hasReliableJoint = jointNames.contains { jointName in
+                    frame.joint(named: jointName)?.confidence ?? 0 >= minimumJointConfidence
+                }
+                if hasReliableJoint {
+                    partialResult += 1
+                }
+            }
+            return Double(reliableCount) / Double(downswingFrames.count) >= 0.6
+        }
+    }
+
+    private static func kinematicSamples(
+        frames: [SwingFrame],
+        indexes: [Int],
+        pointResolver: (SwingFrame) -> CGPoint?
+    ) -> [KinematicSample] {
+        var samples: [KinematicSample] = []
+        var previousIndex: Int?
+        var previousTimestamp: Double?
+        var previousPoint: CGPoint?
+
+        for index in indexes where frames.indices.contains(index) {
+            let frame = frames[index]
+            guard let point = pointResolver(frame) else { continue }
+
+            let speed: Double
+            if
+                let previousIndex,
+                let previousTimestamp,
+                let previousPoint,
+                previousIndex != index
+            {
+                let deltaTime = max(frame.timestamp - previousTimestamp, 0.0001)
+                speed = GarageAnalysisPipeline.distance(from: previousPoint, to: point) / deltaTime
+            } else {
+                speed = 0
+            }
+
+            samples.append(
+                KinematicSample(
+                    frameIndex: index,
+                    timestamp: frame.timestamp,
+                    point: point,
+                    speed: speed
+                )
+            )
+            previousIndex = index
+            previousTimestamp = frame.timestamp
+            previousPoint = point
+        }
+
+        return samples
+    }
+
+    private static func earlyHandsCandidate(
+        handSamples: [KinematicSample],
+        pelvisSamples: [KinematicSample],
+        torsoSamples: [KinematicSample]
+    ) -> CandidateIssue? {
+        guard
+            let handOnset = onsetSample(in: handSamples),
+            let pelvisOnset = onsetSample(in: pelvisSamples),
+            let torsoOnset = onsetSample(in: torsoSamples)
+        else {
+            return nil
+        }
+
+        let leadThreshold = min(pelvisOnset.timestamp, torsoOnset.timestamp) - earlyHandsLeadTime
+        guard handOnset.timestamp <= leadThreshold else { return nil }
+
+        let issue = GarageSyncFlowIssue(
+            kind: .earlyHands,
+            segment: .hands,
+            jointName: .rightWrist,
+            timestamp: handOnset.timestamp,
+            title: "Sequence break: hands jumped first",
+            detail: "The hands accelerated before the pelvis and torso could organize the downswing. That usually makes release timing harder to repeat."
+        )
+        return CandidateIssue(issue: issue, segmentPriority: segmentPriority(for: .hands))
+    }
+
+    private static func hipStallCandidate(
+        pelvisSamples: [KinematicSample],
+        handSamples: [KinematicSample],
+        impactTimestamp: Double
+    ) -> CandidateIssue? {
+        guard
+            pelvisSamples.count >= 3,
+            handSamples.count >= 3,
+            let peakPelvis = pelvisSamples.max(by: { $0.speed < $1.speed }),
+            let latePelvisAverage = trailingAverageSpeed(in: pelvisSamples, count: 2),
+            let lateHandAverage = trailingAverageSpeed(in: handSamples, count: 2)
+        else {
+            return nil
+        }
+
+        let hasEarlyPeak = peakPelvis.timestamp < impactTimestamp - 0.05
+        let pelvisStalled = latePelvisAverage < max(peakPelvis.speed * 0.4, 0.01)
+        let handsStillWorking = lateHandAverage > max(latePelvisAverage * 1.45, 0.03)
+        guard hasEarlyPeak, pelvisStalled, handsStillWorking else { return nil }
+
+        let issue = GarageSyncFlowIssue(
+            kind: .hipStall,
+            segment: .pelvis,
+            jointName: .rightHip,
+            timestamp: peakPelvis.timestamp,
+            title: "Sequence break: hips stalled",
+            detail: "Power slowed in the pelvis before the hands delivered through impact. The swing had to finish with the handle instead of the pivot."
+        )
+        return CandidateIssue(issue: issue, segmentPriority: segmentPriority(for: .pelvis))
+    }
+
+    private static func earlyExtensionCandidate(
+        addressFrame: SwingFrame,
+        impactFrame: SwingFrame,
+        detection: GarageTimestampDetection,
+        scorecard: GarageSwingScorecard?
+    ) -> CandidateIssue? {
+        let driftInches = scorecard?.metrics.pelvicDepth.driftInches
+            ?? pelvicDepthDriftInches(addressFrame: addressFrame, impactFrame: impactFrame)
+        guard driftInches >= 3.25 else { return nil }
+
+        let issue = GarageSyncFlowIssue(
+            kind: .earlyExtension,
+            segment: .pelvis,
+            jointName: .rightHip,
+            timestamp: detection.timestamps.impact,
+            title: "Energy leak: pelvis moved in",
+            detail: "Pelvic depth drifted toward the ball late in the swing. That narrows space through impact and makes strike quality harder to stabilize."
+        )
+        return CandidateIssue(issue: issue, segmentPriority: segmentPriority(for: .pelvis))
+    }
+
+    private static func unstableHeadCandidate(
+        addressFrame: SwingFrame,
+        topFrame: SwingFrame,
+        impactFrame: SwingFrame,
+        detection: GarageTimestampDetection,
+        scorecard: GarageSwingScorecard?
+    ) -> CandidateIssue? {
+        let headComposite = scorecard.map {
+            ($0.metrics.headStability.swayInches * 0.6) + ($0.metrics.headStability.dipInches * 0.4)
+        } ?? headCompositeInches(addressFrame: addressFrame, topFrame: topFrame, impactFrame: impactFrame)
+
+        guard headComposite >= 3.0 else { return nil }
+
+        let issue = GarageSyncFlowIssue(
+            kind: .unstableHead,
+            segment: .head,
+            jointName: .nose,
+            timestamp: detection.timestamps.impact,
+            title: "Flow check: head lost stability",
+            detail: "Head sway and dip increased late in the motion, so Garage is treating the strike picture as less stable than the rest of the swing."
+        )
+        return CandidateIssue(issue: issue, segmentPriority: segmentPriority(for: .head))
+    }
+
+    static func selectPrimaryIssue(from issues: [GarageSyncFlowIssue]) -> GarageSyncFlowIssue? {
+        issues.sorted(by: compareIssues).first
+    }
+
+    private nonisolated static func compareIssues(lhs: GarageSyncFlowIssue, rhs: GarageSyncFlowIssue) -> Bool {
+        let timeDelta = lhs.timestamp - rhs.timestamp
+        if abs(timeDelta) <= sameWindowTolerance {
+            let lhsPriority = segmentPriority(for: lhs.segment)
+            let rhsPriority = segmentPriority(for: rhs.segment)
+            if lhsPriority != rhsPriority {
+                return lhsPriority < rhsPriority
+            }
+            return lhs.kind.rawValue < rhs.kind.rawValue
+        }
+
+        return lhs.timestamp < rhs.timestamp
+    }
+
+    private static func onsetSample(in samples: [KinematicSample]) -> KinematicSample? {
+        guard let peakSpeed = samples.map(\.speed).max(), peakSpeed > 0 else {
+            return nil
+        }
+
+        let threshold = max(peakSpeed * 0.45, 0.02)
+        return samples.dropFirst().first(where: { $0.speed >= threshold })
+    }
+
+    private static func trailingAverageSpeed(in samples: [KinematicSample], count: Int) -> Double? {
+        let tail = samples.suffix(max(count, 1))
+        guard tail.isEmpty == false else { return nil }
+        return tail.map(\.speed).reduce(0, +) / Double(tail.count)
+    }
+
+    private nonisolated static func pelvisCenter(in frame: SwingFrame) -> CGPoint? {
+        guard
+            let leftHip = frame.point(named: .leftHip, minimumConfidence: minimumJointConfidence),
+            let rightHip = frame.point(named: .rightHip, minimumConfidence: minimumJointConfidence)
+        else {
+            return nil
+        }
+
+        return CGPoint(x: (leftHip.x + rightHip.x) / 2, y: (leftHip.y + rightHip.y) / 2)
+    }
+
+    private nonisolated static func torsoCenter(in frame: SwingFrame) -> CGPoint? {
+        guard
+            let leftShoulder = frame.point(named: .leftShoulder, minimumConfidence: minimumJointConfidence),
+            let rightShoulder = frame.point(named: .rightShoulder, minimumConfidence: minimumJointConfidence)
+        else {
+            return nil
+        }
+
+        return CGPoint(x: (leftShoulder.x + rightShoulder.x) / 2, y: (leftShoulder.y + rightShoulder.y) / 2)
+    }
+
+    private static func pelvicDepthDriftInches(addressFrame: SwingFrame, impactFrame: SwingFrame) -> Double {
+        guard
+            let addressPelvis = pelvisCenter(in: addressFrame),
+            let impactPelvis = pelvisCenter(in: impactFrame)
+        else {
+            return 0
+        }
+
+        let shoulderWidth = max(GarageAnalysisPipeline.bodyScale(in: addressFrame), 0.0001)
+        return (abs(impactPelvis.x - addressPelvis.x) / shoulderWidth) * assumedShoulderWidthInches
+    }
+
+    private static func headCompositeInches(
+        addressFrame: SwingFrame,
+        topFrame: SwingFrame,
+        impactFrame: SwingFrame
+    ) -> Double {
+        guard
+            let addressHead = addressFrame.point(named: .nose, minimumConfidence: minimumJointConfidence),
+            let topHead = topFrame.point(named: .nose, minimumConfidence: minimumJointConfidence),
+            let impactHead = impactFrame.point(named: .nose, minimumConfidence: minimumJointConfidence)
+        else {
+            return 0
+        }
+
+        let shoulderWidth = max(GarageAnalysisPipeline.bodyScale(in: addressFrame), 0.0001)
+        let sway = max(abs(topHead.x - addressHead.x), abs(impactHead.x - addressHead.x))
+        let dip = max(abs(topHead.y - addressHead.y), abs(impactHead.y - addressHead.y))
+        let swayInches = (sway / shoulderWidth) * assumedShoulderWidthInches
+        let dipInches = (dip / shoulderWidth) * assumedShoulderWidthInches
+        return (swayInches * 0.6) + (dipInches * 0.4)
+    }
+
+    private static func consequenceDetail(for kind: GarageSyncFlowIssueKind) -> String {
+        switch kind {
+        case .earlyHands:
+            "The release may outrun the body unless the pivot starts the downswing first."
+        case .hipStall:
+            "If the pelvis slows too early, the hands have to rescue impact timing."
+        case .earlyExtension:
+            "Losing depth late reduces space and makes strike quality less repeatable."
+        case .unstableHead:
+            "When the head drifts late, contact tends to get harder to stabilize."
+        }
+    }
+
+    private nonisolated static func segmentPriority(for segment: GarageSyncFlowSegment) -> Int {
+        switch segment {
+        case .base:
+            0
+        case .pelvis:
+            1
+        case .torso:
+            2
+        case .hands:
+            3
+        case .head:
+            4
+        }
     }
 }
 

@@ -317,17 +317,20 @@ struct AnalysisResult: Codable, Hashable {
     var highlights: [String]
     var summary: String
     var scorecard: GarageSwingScorecard?
+    var syncFlow: GarageSyncFlowReport?
 
     init(
         issues: [String],
         highlights: [String],
         summary: String,
-        scorecard: GarageSwingScorecard? = nil
+        scorecard: GarageSwingScorecard? = nil,
+        syncFlow: GarageSyncFlowReport? = nil
     ) {
         self.issues = issues
         self.highlights = highlights
         self.summary = summary
         self.scorecard = scorecard
+        self.syncFlow = syncFlow
     }
 }
 
