@@ -409,6 +409,7 @@ struct GarageView: View {
         }
 
         if let selectedVideoItem {
+            route = .records
             prepareSelectedVideo(selectedVideoItem)
             return
         }
