@@ -1077,25 +1077,6 @@ private struct GarageFocusedReviewWorkspace: View {
                 .padding(.leading, 12)
                 .padding(.top, 12)
             }
-            .overlay(alignment: .bottom) {
-                GarageReviewFilmstrip(
-                    videoURL: reviewVideoURL,
-                    frames: filmstripFrames,
-                    markers: orderedKeyframes,
-                    currentFrameIndex: currentFrameIndex,
-                    onSelectFrame: setCurrentFrameIndex
-                )
-                .padding(.horizontal, 12)
-                .padding(.bottom, 12)
-                .background(
-                    LinearGradient(
-                        colors: [Color.black.opacity(0.35), .clear],
-                        startPoint: .bottom,
-                        endPoint: .top
-                    )
-                )
-            }
-
             ScrollView(.vertical, showsIndicators: false) {
                 Color.clear
                     .frame(height: 0)
@@ -1979,17 +1960,13 @@ private struct GarageFocusedReviewFrame: View {
                     )
             }
         }
-        .overlay(alignment: .top) {
+        .overlay(alignment: .topTrailing) {
             if reviewSurface == .summary {
-                HStack(alignment: .top, spacing: 12) {
-                    GaragePoseQualityBadge(level: summaryPresentation.poseQuality)
-                    Spacer(minLength: 12)
-                    GarageReviewModeSwitcher(
-                        selectedMode: reviewMode,
-                        onSelect: onSelectReviewMode
-                    )
-                }
-                .padding(.horizontal, 14)
+                GarageReviewModeSwitcher(
+                    selectedMode: reviewMode,
+                    onSelect: onSelectReviewMode
+                )
+                .padding(.trailing, 14)
                 .padding(.top, 14)
             }
         }
@@ -2009,64 +1986,37 @@ private struct GarageReviewModeSwitcher: View {
     let onSelect: (GarageReviewMode) -> Void
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 4) {
             ForEach(GarageReviewMode.allCases) { mode in
                 let isSelected = mode == selectedMode
                 Button {
                     onSelect(mode)
                 } label: {
-                    HStack(spacing: 4) {
-                        Text(mode.title)
-                            .font(.caption.weight(.semibold))
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                    }
-                    .foregroundStyle(isSelected ? garageReviewReadableText : garageReviewMutedText)
-                    .frame(minHeight: 30)
-                    .padding(.horizontal, 9)
-                    .background(
-                        Capsule()
-                            .fill(isSelected ? garageReviewAccent.opacity(0.16) : Color.black.opacity(0.35))
-                            .overlay(
-                                Capsule()
-                                    .stroke(
-                                        isSelected ? garageReviewAccent.opacity(0.42) : garageReviewStroke.opacity(0.4),
-                                        lineWidth: 1
-                                    )
-                            )
-                    )
+                    Text(mode.title)
+                        .font(.caption2.weight(.semibold))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .foregroundStyle(isSelected ? garageReviewReadableText : garageReviewMutedText)
+                        .frame(minHeight: 24)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule()
+                                .fill(isSelected ? garageReviewAccent.opacity(0.16) : Color.black.opacity(0.35))
+                                .overlay(
+                                    Capsule()
+                                        .stroke(
+                                            isSelected ? garageReviewAccent.opacity(0.42) : garageReviewStroke.opacity(0.4),
+                                            lineWidth: 1
+                                        )
+                                )
+                        )
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(4)
+        .padding(3)
         .background(Color.black.opacity(0.28), in: Capsule())
-    }
-}
-
-private struct GaragePoseQualityBadge: View {
-    let level: GaragePoseQualityLevel
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(level.tint)
-                .frame(width: 8, height: 8)
-
-            Text(level.label)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(garageReviewReadableText)
-        }
-        .padding(.horizontal, 12)
-        .frame(minHeight: 44)
-        .background(
-            GarageInsetPanelBackground(
-                shape: Capsule(),
-                fill: garageReviewSurface.opacity(0.82),
-                stroke: level.tint.opacity(0.28)
-            )
-        )
-        .accessibilityLabel(level.badgeText)
     }
 }
 
