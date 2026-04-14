@@ -108,11 +108,14 @@ private enum GarageImportPresentationState: Equatable {
 
 private enum GarageRoute: Equatable {
     case records
-    case review
+    case importing(GarageImportPresentationState)
+    case review(recordKey: String?)
 
     var tab: ModuleHubTab {
         switch self {
         case .records:
+            return .records
+        case .importing:
             return .records
         case .review:
             return .review
@@ -124,7 +127,7 @@ private enum GarageRoute: Equatable {
         case .records:
             self = .records
         case .review:
-            self = .review
+            self = .review(recordKey: nil)
         @unknown default:
             assertionFailure("Unsupported ModuleHubTab passed to GarageRoute.init(tab:): \(tab)")
             self = .records
@@ -300,31 +303,35 @@ struct GarageView: View {
     @Query(sort: \SwingRecord.createdAt, order: .reverse) private var swingRecords: [SwingRecord]
     @State private var isShowingAddRecord = false
     @State private var selectedVideoItem: PhotosPickerItem?
-    @State private var importPresentationState: GarageImportPresentationState = .idle
     @State private var pendingImportMovie: GaragePickedMovie?
     @State private var route: GarageRoute = .records
-    @State private var selectedReviewRecordKey: String?
 
     var body: some View {
         Group {
-            if importPresentationState.isPresented {
+            switch route {
+            case let .importing(state):
                 GarageImportPresentationScreen(
-                    state: importPresentationState,
+                    state: state,
                     onDismiss: dismissImportPresentation,
                     onRetry: retryImport
                 )
-            } else if route == .review {
+            case let .review(recordKey):
                 GeometryReader { proxy in
                     GarageReviewTab(
                         records: swingRecords,
-                        selectedRecordKey: $selectedReviewRecordKey,
+                        selectedRecordKey: Binding(
+                            get: { recordKey },
+                            set: { newKey in
+                                route = .review(recordKey: newKey)
+                            }
+                        ),
                         viewportHeight: proxy.size.height,
                         onBackToRecords: {
                             route = .records
                         }
                     )
                 }
-            } else {
+            case .records:
                 GarageCustomScaffold(module: .garage, tabs: [.records, .review], selectedTab: selectedTabBinding) { _ in
                     GarageRecordsTab(
                         records: swingRecords,
@@ -332,22 +339,17 @@ struct GarageView: View {
                             presentAddRecord()
                         },
                         openReview: { record in
-                            selectedReviewRecordKey = garageRecordSelectionKey(for: record)
-                            route = .review
+                            route = .review(recordKey: garageRecordSelectionKey(for: record))
                         }
                     )
                 }
                 .safeAreaInset(edge: .bottom) {
-                    Group {
-                        if route != .review {
-                            ModuleBottomActionBar(
-                                theme: AppModule.garage.theme,
-                                title: "Add Swing Record",
-                                systemImage: "plus"
-                            ) {
-                                presentAddRecord()
-                            }
-                        }
+                    ModuleBottomActionBar(
+                        theme: AppModule.garage.theme,
+                        title: "Add Swing Record",
+                        systemImage: "plus"
+                    ) {
+                        presentAddRecord()
                     }
                 }
             }
@@ -368,11 +370,18 @@ struct GarageView: View {
                 return
             }
 
-            if route == .records, selectedReviewRecordKey != nil {
-                route = .review
+            if case let .review(recordKey) = route,
+               let recordKey,
+               keys.contains(recordKey) == false {
+                route = .review(recordKey: keys.first)
             }
         }
-        .toolbar(route == .review ? .hidden : .visible, for: .navigationBar)
+        .toolbar({
+            if case .review = route {
+                return .hidden
+            }
+            return .visible
+        }(), for: .navigationBar)
     }
 
     private var selectedTabBinding: Binding<ModuleHubTab> {
@@ -389,7 +398,7 @@ struct GarageView: View {
     private func dismissImportPresentation() {
         selectedVideoItem = nil
         pendingImportMovie = nil
-        importPresentationState = .idle
+        route = .records
     }
 
     @MainActor
@@ -404,16 +413,16 @@ struct GarageView: View {
             return
         }
 
-        importPresentationState = .idle
+        route = .records
         isShowingAddRecord = true
     }
 
     @MainActor
     private func prepareSelectedVideo(_ item: PhotosPickerItem) {
-        guard importPresentationState == .idle else { return }
+        guard case .records = route else { return }
 
         pendingImportMovie = nil
-        importPresentationState = .preparing
+        route = .importing(.preparing)
 
         Task {
             do {
@@ -427,7 +436,7 @@ struct GarageView: View {
                 }
             } catch {
                 await MainActor.run {
-                    importPresentationState = .failure(error.localizedDescription)
+                    route = .importing(.failure(error.localizedDescription))
                 }
             }
         }
@@ -436,17 +445,17 @@ struct GarageView: View {
     @MainActor
     private func importSelectedVideo(_ movie: GaragePickedMovie) {
         pendingImportMovie = movie
-        importPresentationState = .analyzing(.loadingVideo)
+        route = .importing(.analyzing(.loadingVideo))
 
         Task {
             do {
                 await MainActor.run {
-                    importPresentationState = .analyzing(.loadingVideo)
+                    route = .importing(.analyzing(.loadingVideo))
                 }
                 let reviewMasterURL = try GarageMediaStore.persistReviewMaster(from: movie.url)
                 async let analysisTask = GarageAnalysisPipeline.analyzeVideo(at: reviewMasterURL) { step in
                     await MainActor.run {
-                        importPresentationState = .analyzing(step)
+                        route = .importing(.analyzing(step))
                     }
                 }
                 async let exportTask = GarageMediaStore.createExportDerivative(from: reviewMasterURL)
@@ -481,18 +490,16 @@ struct GarageView: View {
                 )
 
                 await MainActor.run {
-                    importPresentationState = .analyzing(.savingSwing)
+                    route = .importing(.analyzing(.savingSwing))
                     modelContext.insert(record)
                     try? modelContext.save()
                     selectedVideoItem = nil
                     pendingImportMovie = nil
-                    importPresentationState = .idle
-                    selectedReviewRecordKey = garageRecordSelectionKey(for: record)
-                    route = .review
+                    route = .review(recordKey: garageRecordSelectionKey(for: record))
                 }
             } catch {
                 await MainActor.run {
-                    importPresentationState = .failure(error.localizedDescription)
+                    route = .importing(.failure(error.localizedDescription))
                 }
             }
         }
