@@ -271,7 +271,7 @@ final class GarageDerivedReportsXCTests: XCTestCase {
             reviewFrameSource: .video
         )
 
-        XCTAssertEqual(presentation.reviewTitle, "Skeleton Review")
+        XCTAssertEqual(presentation.reviewTitle, "SyncFlow Review")
         XCTAssertEqual(presentation.poseQuality, .limited)
         XCTAssertEqual(presentation.stabilityStatusText, "Stability unavailable")
         XCTAssertEqual(
@@ -294,7 +294,7 @@ final class GarageDerivedReportsXCTests: XCTestCase {
             reviewFrameSource: .video
         )
 
-        XCTAssertEqual(skeletonPresentation.reviewSubtitle, "Checking body alignment and stability through impact")
+        XCTAssertEqual(skeletonPresentation.reviewSubtitle, "Reviewing sequence, energy flow, and pose confidence through impact")
 
         let handPathPresentation = GarageReviewSummaryPresentation.make(
             reviewMode: .handPath,
@@ -327,6 +327,125 @@ final class GarageDerivedReportsXCTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation.poseQualityDetail, "Reviewing sampled pose data because the stored video is unavailable.")
+    }
+
+    func testGarageReviewModeUsesSyncFlowLabel() {
+        XCTAssertEqual(GarageReviewMode.handPath.title, "Hand Path")
+        XCTAssertEqual(GarageReviewMode.skeleton.title, "SyncFlow")
+    }
+
+    func testSyncFlowDetectsEarlyHandsAndMapsReleaseTimingRisk() throws {
+        let frames = makeSyncFlowEarlyHandsFrames()
+        let keyFrames = makeSyncFlowKeyFrames()
+
+        let report = GarageSyncFlowEngine.generate(
+            frames: frames,
+            keyFrames: keyFrames,
+            scorecard: GarageScorecardEngine.generate(frames: frames, keyFrames: keyFrames)
+        )
+
+        XCTAssertEqual(report.status, .ready)
+        XCTAssertEqual(try XCTUnwrap(report.primaryIssue).kind, .earlyHands)
+        XCTAssertEqual(report.consequence?.riskPhrase, "Release timing risk")
+    }
+
+    func testSyncFlowDetectsEarlyExtensionAndMapsStrikeConsistencyRisk() throws {
+        let frames = makeSyncFlowEarlyExtensionFrames()
+        let keyFrames = makeSyncFlowKeyFrames()
+
+        let report = GarageSyncFlowEngine.generate(
+            frames: frames,
+            keyFrames: keyFrames,
+            scorecard: GarageScorecardEngine.generate(frames: frames, keyFrames: keyFrames)
+        )
+
+        XCTAssertEqual(report.status, .ready)
+        XCTAssertEqual(try XCTUnwrap(report.primaryIssue).kind, .earlyExtension)
+        XCTAssertEqual(report.consequence?.riskPhrase, "Strike consistency risk")
+    }
+
+    func testSyncFlowDetectsHipStallAndMapsFlipRisk() throws {
+        let frames = makeSyncFlowHipStallFrames()
+        let keyFrames = makeSyncFlowKeyFrames()
+
+        let report = GarageSyncFlowEngine.generate(
+            frames: frames,
+            keyFrames: keyFrames,
+            scorecard: GarageScorecardEngine.generate(frames: frames, keyFrames: keyFrames)
+        )
+
+        XCTAssertEqual(report.status, .ready)
+        XCTAssertEqual(try XCTUnwrap(report.primaryIssue).kind, .hipStall)
+        XCTAssertEqual(report.consequence?.riskPhrase, "Flip risk")
+    }
+
+    func testSyncFlowFallsBackToLimitedWhenCoverageIsWeak() {
+        let frames = makeSyntheticSwingFrames()
+        let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames)
+
+        let report = GarageSyncFlowEngine.generate(
+            frames: frames,
+            keyFrames: keyFrames,
+            scorecard: GarageScorecardEngine.generate(frames: frames, keyFrames: keyFrames)
+        )
+
+        XCTAssertEqual(report.status, .limited)
+        XCTAssertNil(report.primaryIssue)
+        XCTAssertNil(report.consequence)
+    }
+
+    func testSyncFlowPrefersProximalCauseWhenTriggersShareTheSameWindow() throws {
+        let issues = [
+            GarageSyncFlowIssue(
+                kind: .earlyHands,
+                segment: .hands,
+                jointName: .rightWrist,
+                timestamp: 0.06,
+                title: "Sequence break: hands jumped first",
+                detail: "Synthetic early-hands case."
+            ),
+            GarageSyncFlowIssue(
+                kind: .hipStall,
+                segment: .pelvis,
+                jointName: .rightHip,
+                timestamp: 0.08,
+                title: "Sequence break: hips stalled",
+                detail: "Synthetic hip-stall case."
+            )
+        ]
+
+        XCTAssertEqual(try XCTUnwrap(GarageSyncFlowEngine.selectPrimaryIssue(from: issues)).kind, .hipStall)
+    }
+
+    func testGarageCoachingReportPrefersSyncFlowCueWhenAvailable() throws {
+        let frames = makeSyncFlowEarlyHandsFrames()
+        let keyFrames = makeSyncFlowKeyFrames()
+        let syncFlow = GarageSyncFlowEngine.generate(
+            frames: frames,
+            keyFrames: keyFrames,
+            scorecard: GarageScorecardEngine.generate(frames: frames, keyFrames: keyFrames)
+        )
+        let record = SwingRecord(
+            title: "SyncFlow Coaching",
+            mediaFilename: "workflow.mov",
+            frameRate: 60,
+            swingFrames: frames,
+            keyFrames: keyFrames,
+            keyframeValidationStatus: .approved,
+            handAnchors: makeFullAnchorSet(),
+            pathPoints: GarageAnalysisPipeline.generatePathPoints(from: makeFullAnchorSet(), samplesPerSegment: 4),
+            analysisResult: AnalysisResult(
+                issues: [],
+                highlights: [],
+                summary: "Synthetic SyncFlow case.",
+                scorecard: GarageScorecardEngine.generate(frames: frames, keyFrames: keyFrames),
+                syncFlow: syncFlow
+            )
+        )
+
+        let report = GarageCoaching.report(for: record)
+
+        XCTAssertEqual(try XCTUnwrap(report.cues.first).title, "Sequence break: hands jumped first")
     }
 
     func testGarageStabilityScoreStaysHighForStableCoreAnchors() {
@@ -682,6 +801,132 @@ private func makeDepthBiasedSwingFrames() -> [SwingFrame] {
                 joint3D(.rightWrist, x: 0.12, y: 0.55, z: depth)
             ],
             confidence: 0.92
+        )
+    }
+}
+
+@MainActor
+private func makeSyncFlowKeyFrames() -> [KeyFrame] {
+    [
+        KeyFrame(phase: .address, frameIndex: 0),
+        KeyFrame(phase: .takeaway, frameIndex: 1),
+        KeyFrame(phase: .shaftParallel, frameIndex: 2),
+        KeyFrame(phase: .topOfBackswing, frameIndex: 3),
+        KeyFrame(phase: .transition, frameIndex: 4),
+        KeyFrame(phase: .earlyDownswing, frameIndex: 5),
+        KeyFrame(phase: .impact, frameIndex: 7),
+        KeyFrame(phase: .followThrough, frameIndex: 9)
+    ]
+}
+
+@MainActor
+private func makeSyncFlowEarlyHandsFrames() -> [SwingFrame] {
+    makeSyncFlowFrames(
+        timestamps: stride(from: 0.0, through: 0.45, by: 0.05).map { $0 },
+        handCenters: [
+            CGPoint(x: 0.36, y: 0.72),
+            CGPoint(x: 0.40, y: 0.66),
+            CGPoint(x: 0.48, y: 0.50),
+            CGPoint(x: 0.56, y: 0.34),
+            CGPoint(x: 0.44, y: 0.46),
+            CGPoint(x: 0.36, y: 0.60),
+            CGPoint(x: 0.32, y: 0.70),
+            CGPoint(x: 0.30, y: 0.75),
+            CGPoint(x: 0.42, y: 0.52),
+            CGPoint(x: 0.54, y: 0.30)
+        ],
+        pelvisShifts: [0.000, 0.002, 0.004, 0.006, 0.008, 0.012, 0.018, 0.022, 0.020, 0.018],
+        shoulderShifts: [0.000, 0.001, 0.002, 0.003, 0.004, 0.008, 0.013, 0.017, 0.015, 0.013],
+        headShifts: Array(repeating: CGPoint(x: 0.0, y: 0.0), count: 10)
+    )
+}
+
+@MainActor
+private func makeSyncFlowEarlyExtensionFrames() -> [SwingFrame] {
+    makeSyncFlowFrames(
+        timestamps: stride(from: 0.0, through: 0.45, by: 0.05).map { $0 },
+        handCenters: [
+            CGPoint(x: 0.36, y: 0.72),
+            CGPoint(x: 0.39, y: 0.68),
+            CGPoint(x: 0.45, y: 0.58),
+            CGPoint(x: 0.54, y: 0.36),
+            CGPoint(x: 0.50, y: 0.42),
+            CGPoint(x: 0.43, y: 0.54),
+            CGPoint(x: 0.37, y: 0.66),
+            CGPoint(x: 0.33, y: 0.73),
+            CGPoint(x: 0.46, y: 0.50),
+            CGPoint(x: 0.57, y: 0.30)
+        ],
+        pelvisShifts: [0.000, 0.003, 0.005, 0.007, 0.012, 0.020, 0.034, 0.050, 0.044, 0.038],
+        shoulderShifts: [0.000, 0.001, 0.002, 0.003, 0.006, 0.010, 0.014, 0.018, 0.015, 0.012],
+        headShifts: Array(repeating: CGPoint(x: 0.0, y: 0.0), count: 10)
+    )
+}
+
+@MainActor
+private func makeSyncFlowHipStallFrames() -> [SwingFrame] {
+    makeSyncFlowFrames(
+        timestamps: stride(from: 0.0, through: 0.45, by: 0.05).map { $0 },
+        handCenters: [
+            CGPoint(x: 0.36, y: 0.72),
+            CGPoint(x: 0.40, y: 0.67),
+            CGPoint(x: 0.47, y: 0.55),
+            CGPoint(x: 0.55, y: 0.35),
+            CGPoint(x: 0.52, y: 0.40),
+            CGPoint(x: 0.43, y: 0.56),
+            CGPoint(x: 0.34, y: 0.70),
+            CGPoint(x: 0.28, y: 0.76),
+            CGPoint(x: 0.44, y: 0.52),
+            CGPoint(x: 0.56, y: 0.31)
+        ],
+        pelvisShifts: [0.000, 0.002, 0.004, 0.006, 0.034, 0.036, 0.037, 0.038, 0.035, 0.030],
+        shoulderShifts: [0.000, 0.001, 0.002, 0.003, 0.016, 0.018, 0.019, 0.020, 0.018, 0.015],
+        headShifts: Array(repeating: CGPoint(x: 0.0, y: 0.0), count: 10)
+    )
+}
+
+@MainActor
+private func makeSyncFlowFrames(
+    timestamps: [Double],
+    handCenters: [CGPoint],
+    pelvisShifts: [Double],
+    shoulderShifts: [Double],
+    headShifts: [CGPoint]
+) -> [SwingFrame] {
+    precondition(timestamps.count == handCenters.count)
+    precondition(timestamps.count == pelvisShifts.count)
+    precondition(timestamps.count == shoulderShifts.count)
+    precondition(timestamps.count == headShifts.count)
+
+    return timestamps.enumerated().map { index, timestamp in
+        let handCenter = handCenters[index]
+        let pelvisShift = pelvisShifts[index]
+        let shoulderShift = shoulderShifts[index]
+        let headShift = headShifts[index]
+
+        let leftWrist = CGPoint(x: handCenter.x - 0.02, y: handCenter.y)
+        let rightWrist = CGPoint(x: handCenter.x + 0.02, y: handCenter.y)
+        let leftElbow = CGPoint(x: (leftWrist.x + (0.42 + shoulderShift)) / 2, y: leftWrist.y - 0.10)
+        let rightElbow = CGPoint(x: (rightWrist.x + (0.58 + shoulderShift)) / 2, y: rightWrist.y - 0.10)
+
+        return SwingFrame(
+            timestamp: timestamp,
+            joints: [
+                joint(.nose, x: 0.50 + headShift.x, y: 0.20 + headShift.y, confidence: 0.96),
+                joint(.leftShoulder, x: 0.42 + shoulderShift, y: 0.34),
+                joint(.rightShoulder, x: 0.58 + shoulderShift, y: 0.34),
+                joint(.leftElbow, x: leftElbow.x, y: leftElbow.y),
+                joint(.rightElbow, x: rightElbow.x, y: rightElbow.y),
+                joint(.leftHip, x: 0.45 + pelvisShift, y: 0.60),
+                joint(.rightHip, x: 0.55 + pelvisShift, y: 0.60),
+                joint(.leftKnee, x: 0.47 + (pelvisShift * 0.5), y: 0.78, confidence: 0.95),
+                joint(.rightKnee, x: 0.57 + (pelvisShift * 0.5), y: 0.78, confidence: 0.95),
+                joint(.leftAnkle, x: 0.47, y: 0.94, confidence: 0.95),
+                joint(.rightAnkle, x: 0.57, y: 0.94, confidence: 0.95),
+                joint(.leftWrist, x: leftWrist.x, y: leftWrist.y, confidence: 0.96),
+                joint(.rightWrist, x: rightWrist.x, y: rightWrist.y, confidence: 0.96)
+            ],
+            confidence: 0.95
         )
     }
 }

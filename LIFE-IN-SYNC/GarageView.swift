@@ -111,6 +111,15 @@ private enum GarageRoute: Equatable {
     case importing(GarageImportPresentationState)
     case review(recordKey: String?)
 
+    var normalizedForPresentation: GarageRoute {
+        switch self {
+        case .importing(.idle):
+            return .records
+        case .records, .importing, .review:
+            return self
+        }
+    }
+
     var tab: ModuleHubTab {
         switch self {
         case .records:
@@ -309,18 +318,12 @@ struct GarageView: View {
     var body: some View {
         Group {
             switch route {
-            case .records:
-                recordsRootView
             case let .importing(state):
-                if state == .idle {
-                    recordsRootView
-                } else {
-                    GarageImportPresentationScreen(
-                        state: state,
-                        onDismiss: dismissImportPresentation,
-                        onRetry: retryImport
-                    )
-                }
+                GarageImportPresentationScreen(
+                    state: state,
+                    onDismiss: dismissImportPresentation,
+                    onRetry: retryImport
+                )
             case let .review(recordKey):
                 GeometryReader { proxy in
                     GarageReviewTab(
@@ -337,6 +340,27 @@ struct GarageView: View {
                         }
                     )
                 }
+            case .records:
+                GarageCustomScaffold(module: .garage, tabs: [.records, .review], selectedTab: selectedTabBinding) { _ in
+                    GarageRecordsTab(
+                        records: swingRecords,
+                        importVideo: {
+                            presentAddRecord()
+                        },
+                        openReview: { record in
+                            route = .review(recordKey: garageRecordSelectionKey(for: record))
+                        }
+                    )
+                }
+                .safeAreaInset(edge: .bottom) {
+                    ModuleBottomActionBar(
+                        theme: AppModule.garage.theme,
+                        title: "Add Swing Record",
+                        systemImage: "plus"
+                    ) {
+                        presentAddRecord()
+                    }
+                }
             }
         }
         .photosPicker(
@@ -350,14 +374,17 @@ struct GarageView: View {
             prepareSelectedVideo(newItem)
         }
         .onChange(of: swingRecords.map(garageRecordSelectionKey)) { _, keys in
-            if case .review = route, keys.isEmpty {
+            guard case let .review(recordKey) = route else {
+                return
+            }
+
+            guard keys.isEmpty == false else {
                 route = .records
                 return
             }
 
-            if case let .review(recordKey) = route,
-               let resolvedRecordKey = recordKey,
-               keys.contains(resolvedRecordKey) == false {
+            if let recordKey,
+               keys.contains(recordKey) == false {
                 route = .review(recordKey: keys.first)
             }
         }
@@ -367,29 +394,6 @@ struct GarageView: View {
             }
             return .visible
         }(), for: .navigationBar)
-    }
-
-    private var recordsRootView: some View {
-        GarageCustomScaffold(module: .garage, tabs: [.records, .review], selectedTab: selectedTabBinding) { _ in
-            GarageRecordsTab(
-                records: swingRecords,
-                importVideo: {
-                    presentAddRecord()
-                },
-                openReview: { record in
-                    route = .review(recordKey: garageRecordSelectionKey(for: record))
-                }
-            )
-        }
-        .safeAreaInset(edge: .bottom) {
-            ModuleBottomActionBar(
-                theme: AppModule.garage.theme,
-                title: "Add Swing Record",
-                systemImage: "plus"
-            ) {
-                presentAddRecord()
-            }
-        }
     }
 
     private var selectedTabBinding: Binding<ModuleHubTab> {
@@ -662,7 +666,7 @@ enum GarageReviewMode: String, CaseIterable, Identifiable {
         case .handPath:
             "Hand Path"
         case .skeleton:
-            "Skeleton"
+            "SyncFlow"
         }
     }
 }
@@ -714,9 +718,12 @@ struct GarageReviewSummaryPresentation: Equatable {
         reviewMode: GarageReviewMode,
         handPathReviewReport: GarageHandPathReviewReport,
         stabilityScore: Int?,
-        reviewFrameSource: GarageReviewFrameSourceState
+        reviewFrameSource: GarageReviewFrameSourceState,
+        syncFlow: GarageSyncFlowReport? = nil
     ) -> GarageReviewSummaryPresentation {
-        let limitedSkeletonDetail = "Body outline is visible, but head and hip tracking were too weak for a stable score."
+        let limitedSyncFlowDetail = syncFlow?.status == .limited
+            ? syncFlow?.summary ?? "Body outline is visible, but SyncFlow needs steadier head and pelvis tracking for a confident sequence call."
+            : "Body outline is visible, but head and hip tracking were too weak for a stable score."
 
         let basePoseQuality: GaragePoseQualityLevel
         if handPathReviewReport.score >= 75, stabilityScore != nil {
@@ -741,23 +748,23 @@ struct GarageReviewSummaryPresentation: Equatable {
         case (.recoveryNeeded, _, _, _):
             poseQualityDetail = "Review media is limited, so trust this review cautiously."
         case (_, .skeleton, .limited, nil):
-            poseQualityDetail = limitedSkeletonDetail
+            poseQualityDetail = limitedSyncFlowDetail
         default:
             poseQualityDetail = nil
         }
 
         return GarageReviewSummaryPresentation(
-            reviewTitle: reviewMode == .handPath ? "Hand Path Review" : "Skeleton Review",
+            reviewTitle: reviewMode == .handPath ? "Hand Path Review" : "SyncFlow Review",
             reviewSubtitle: reviewMode == .handPath
                 ? "Reviewing the detected grip path from setup to impact"
-                : "Checking body alignment and stability through impact",
+                : "Reviewing sequence, energy flow, and pose confidence through impact",
             poseQuality: resolvedPoseQuality,
             poseQualityDetail: poseQualityDetail,
             stabilityTitle: "Postural Stability",
             stabilitySubtitle: "A support metric based on head and pelvis drift from setup to impact",
             stabilityValueText: stabilityScore.map(String.init),
             stabilityStatusText: stabilityScore == nil ? "Stability unavailable" : "Support metric",
-            stabilityDetail: stabilityScore == nil ? limitedSkeletonDetail : nil
+            stabilityDetail: stabilityScore == nil ? limitedSyncFlowDetail : nil
         )
     }
 }
@@ -1001,12 +1008,17 @@ private struct GarageFocusedReviewWorkspace: View {
         GarageAnalysisPipeline.handPathReviewReport(for: record.swingFrames, keyFrames: record.keyFrames)
     }
 
+    private var syncFlowReport: GarageSyncFlowReport? {
+        record.analysisResult?.syncFlow
+    }
+
     private var summaryPresentation: GarageReviewSummaryPresentation {
         GarageReviewSummaryPresentation.make(
             reviewMode: reviewMode,
             handPathReviewReport: handPathReviewReport,
             stabilityScore: stabilityScore,
-            reviewFrameSource: reviewFrameSource
+            reviewFrameSource: reviewFrameSource,
+            syncFlow: syncFlowReport
         )
     }
 
@@ -1097,6 +1109,8 @@ private struct GarageFocusedReviewWorkspace: View {
                 image: reviewImage,
                 isLoadingFrame: isLoadingFrame,
                 currentFrame: currentFrame,
+                currentFrameIndex: currentFrameIndex,
+                totalFrameCount: record.swingFrames.count,
                 selectedAnchor: displayedAnchor,
                 highlightTint: selectedAnchorTint,
                 showsAnchorGuides: isDraggingAnchor,
@@ -1104,6 +1118,7 @@ private struct GarageFocusedReviewWorkspace: View {
                 reviewSurface: reviewSurface,
                 handPathSamples: fullHandPathSamples,
                 currentTime: currentFrameTimestamp ?? currentTime,
+                syncFlow: syncFlowReport,
                 summaryPresentation: summaryPresentation,
                 preferredHeight: activeVideoHeight,
                 onSelectReviewMode: selectReviewMode,
@@ -1197,6 +1212,7 @@ private struct GarageFocusedReviewWorkspace: View {
                     videoURL: reviewVideoURL,
                     pathSamples: fullHandPathSamples,
                     frames: record.swingFrames,
+                    syncFlow: syncFlowReport,
                     initialMode: .handPath
                 )
             }
@@ -1206,7 +1222,8 @@ private struct GarageFocusedReviewWorkspace: View {
                 GarageSkeletonReviewView(
                     videoURL: reviewVideoURL,
                     pathSamples: fullHandPathSamples,
-                    frames: record.swingFrames
+                    frames: record.swingFrames,
+                    syncFlow: syncFlowReport
                 )
             }
         }
@@ -1691,7 +1708,7 @@ private struct GarageSummaryPrimaryActionBar: View {
             .opacity(canContinue ? 1 : 0.78)
 
             Button(action: onSkeletonReview) {
-                Text("Review Skeleton")
+                Text("Review SyncFlow")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(garageReviewReadableText)
             }
@@ -1895,6 +1912,8 @@ private struct GarageFocusedReviewFrame: View {
     let image: CGImage?
     let isLoadingFrame: Bool
     let currentFrame: SwingFrame?
+    let currentFrameIndex: Int?
+    let totalFrameCount: Int
     let selectedAnchor: HandAnchor?
     let highlightTint: Color
     let showsAnchorGuides: Bool
@@ -1902,6 +1921,7 @@ private struct GarageFocusedReviewFrame: View {
     let reviewSurface: GarageReviewSurface
     let handPathSamples: [GarageHandPathSample]
     let currentTime: Double
+    let syncFlow: GarageSyncFlowReport?
     let summaryPresentation: GarageReviewSummaryPresentation
     let preferredHeight: CGFloat
     let onSelectReviewMode: (GarageReviewMode) -> Void
@@ -1912,6 +1932,8 @@ private struct GarageFocusedReviewFrame: View {
         image: CGImage?,
         isLoadingFrame: Bool,
         currentFrame: SwingFrame?,
+        currentFrameIndex: Int?,
+        totalFrameCount: Int,
         selectedAnchor: HandAnchor?,
         highlightTint: Color,
         showsAnchorGuides: Bool,
@@ -1919,6 +1941,7 @@ private struct GarageFocusedReviewFrame: View {
         reviewSurface: GarageReviewSurface,
         handPathSamples: [GarageHandPathSample],
         currentTime: Double,
+        syncFlow: GarageSyncFlowReport?,
         summaryPresentation: GarageReviewSummaryPresentation,
         preferredHeight: CGFloat,
         onSelectReviewMode: @escaping (GarageReviewMode) -> Void,
@@ -1928,6 +1951,8 @@ private struct GarageFocusedReviewFrame: View {
         self.image = image
         self.isLoadingFrame = isLoadingFrame
         self.currentFrame = currentFrame
+        self.currentFrameIndex = currentFrameIndex
+        self.totalFrameCount = totalFrameCount
         self.selectedAnchor = selectedAnchor
         self.highlightTint = highlightTint
         self.showsAnchorGuides = showsAnchorGuides
@@ -1935,6 +1960,7 @@ private struct GarageFocusedReviewFrame: View {
         self.reviewSurface = reviewSurface
         self.handPathSamples = handPathSamples
         self.currentTime = currentTime
+        self.syncFlow = syncFlow
         self.summaryPresentation = summaryPresentation
         self.preferredHeight = preferredHeight
         self.onSelectReviewMode = onSelectReviewMode
@@ -1955,6 +1981,8 @@ private struct GarageFocusedReviewFrame: View {
                 GarageReviewImageOverlay(
                     image: image,
                     currentFrame: currentFrame,
+                    currentFrameIndex: currentFrameIndex,
+                    totalFrameCount: totalFrameCount,
                     selectedAnchor: selectedAnchor,
                     highlightTint: highlightTint,
                     showsAnchorGuides: showsAnchorGuides,
@@ -1962,6 +1990,7 @@ private struct GarageFocusedReviewFrame: View {
                     reviewSurface: reviewSurface,
                     handPathSamples: handPathSamples,
                     currentTime: currentTime,
+                    syncFlow: syncFlow,
                     skeletonOverlayOpacity: limitedSkeletonInspection ? 0.72 : 1,
                     onAnchorDragChanged: onAnchorDragChanged,
                     onAnchorDragEnded: onAnchorDragEnded
@@ -1969,6 +1998,8 @@ private struct GarageFocusedReviewFrame: View {
             } else if let currentFrame {
                 GaragePoseFallbackOverlay(
                     currentFrame: currentFrame,
+                    currentFrameIndex: currentFrameIndex,
+                    totalFrameCount: totalFrameCount,
                     selectedAnchor: selectedAnchor,
                     highlightTint: highlightTint,
                     showsAnchorGuides: showsAnchorGuides,
@@ -1976,6 +2007,7 @@ private struct GarageFocusedReviewFrame: View {
                     reviewSurface: reviewSurface,
                     handPathSamples: handPathSamples,
                     currentTime: currentTime,
+                    syncFlow: syncFlow,
                     skeletonOverlayOpacity: limitedSkeletonInspection ? 0.72 : 1,
                     onAnchorDragChanged: onAnchorDragChanged,
                     onAnchorDragEnded: onAnchorDragEnded
@@ -2263,6 +2295,8 @@ private extension GarageMetricGrade {
 private struct GarageReviewImageOverlay: View {
     let image: CGImage
     let currentFrame: SwingFrame?
+    let currentFrameIndex: Int?
+    let totalFrameCount: Int
     let selectedAnchor: HandAnchor?
     let highlightTint: Color
     let showsAnchorGuides: Bool
@@ -2270,6 +2304,7 @@ private struct GarageReviewImageOverlay: View {
     let reviewSurface: GarageReviewSurface
     let handPathSamples: [GarageHandPathSample]
     let currentTime: Double
+    let syncFlow: GarageSyncFlowReport?
     let skeletonOverlayOpacity: Double
     let onAnchorDragChanged: (CGPoint) -> Void
     let onAnchorDragEnded: (CGPoint) -> Void
@@ -2291,7 +2326,10 @@ private struct GarageReviewImageOverlay: View {
                 if reviewMode == .skeleton {
                     GarageSkeletonOverlay(
                         drawSize: imageRect.size,
-                        currentFrame: currentFrame
+                        currentFrame: currentFrame,
+                        currentTime: currentTime,
+                        pulseProgress: pulseProgress,
+                        syncFlow: syncFlow
                     )
                     .opacity(skeletonOverlayOpacity)
                     .frame(width: imageRect.width, height: imageRect.height)
@@ -2338,10 +2376,17 @@ private struct GarageReviewImageOverlay: View {
             }
         }
     }
+
+    private var pulseProgress: Double {
+        guard let currentFrameIndex else { return 0 }
+        return min(max(Double(currentFrameIndex) / Double(max(totalFrameCount - 1, 1)), 0), 1)
+    }
 }
 
 private struct GaragePoseFallbackOverlay: View {
     let currentFrame: SwingFrame
+    let currentFrameIndex: Int?
+    let totalFrameCount: Int
     let selectedAnchor: HandAnchor?
     let highlightTint: Color
     let showsAnchorGuides: Bool
@@ -2349,6 +2394,7 @@ private struct GaragePoseFallbackOverlay: View {
     let reviewSurface: GarageReviewSurface
     let handPathSamples: [GarageHandPathSample]
     let currentTime: Double
+    let syncFlow: GarageSyncFlowReport?
     let skeletonOverlayOpacity: Double
     let onAnchorDragChanged: (CGPoint) -> Void
     let onAnchorDragEnded: (CGPoint) -> Void
@@ -2365,7 +2411,10 @@ private struct GaragePoseFallbackOverlay: View {
                 if reviewMode == .skeleton {
                     GarageSkeletonOverlay(
                         drawSize: drawRect.size,
-                        currentFrame: currentFrame
+                        currentFrame: currentFrame,
+                        currentTime: currentTime,
+                        pulseProgress: pulseProgress,
+                        syncFlow: syncFlow
                     )
                     .opacity(skeletonOverlayOpacity)
                     .frame(width: drawRect.width, height: drawRect.height)
@@ -2414,6 +2463,11 @@ private struct GaragePoseFallbackOverlay: View {
                 .frame(maxHeight: .infinity, alignment: .top)
             }
         }
+    }
+
+    private var pulseProgress: Double {
+        guard let currentFrameIndex else { return 0 }
+        return min(max(Double(currentFrameIndex) / Double(max(totalFrameCount - 1, 1)), 0), 1)
     }
 }
 
@@ -3047,6 +3101,7 @@ private struct GarageSlowMotionPlaybackSheet: View {
     let videoURL: URL
     let pathSamples: [GarageHandPathSample]
     let frames: [SwingFrame]
+    let syncFlow: GarageSyncFlowReport?
     let initialMode: GarageReviewMode
 
     @StateObject private var playbackController: GarageSlowMotionPlaybackController
@@ -3054,10 +3109,17 @@ private struct GarageSlowMotionPlaybackSheet: View {
     @State private var selectedSpeed: Float = 1.0
     @State private var reviewMode: GarageReviewMode
 
-    init(videoURL: URL, pathSamples: [GarageHandPathSample], frames: [SwingFrame], initialMode: GarageReviewMode) {
+    init(
+        videoURL: URL,
+        pathSamples: [GarageHandPathSample],
+        frames: [SwingFrame],
+        syncFlow: GarageSyncFlowReport?,
+        initialMode: GarageReviewMode
+    ) {
         self.videoURL = videoURL
         self.pathSamples = pathSamples
         self.frames = frames
+        self.syncFlow = syncFlow
         self.initialMode = initialMode
         _playbackController = StateObject(wrappedValue: GarageSlowMotionPlaybackController(url: videoURL))
         _reviewMode = State(initialValue: initialMode)
@@ -3093,6 +3155,7 @@ private struct GarageSlowMotionPlaybackSheet: View {
                     pathSamples: pathSamples,
                     frames: frames,
                     currentTime: playbackController.currentTime,
+                    syncFlow: syncFlow,
                     videoSize: videoDisplaySize
                 )
                 .allowsHitTesting(false)
@@ -3119,7 +3182,7 @@ private struct GarageSlowMotionPlaybackSheet: View {
                 Button {
                     reviewMode = .skeleton
                 } label: {
-                    Text("Open Skeleton Review")
+                    Text("Open SyncFlow Review")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(garageReviewReadableText)
                 }
@@ -3171,12 +3234,14 @@ private struct GarageSkeletonReviewView: View {
     let videoURL: URL
     let pathSamples: [GarageHandPathSample]
     let frames: [SwingFrame]
+    let syncFlow: GarageSyncFlowReport?
 
     var body: some View {
         GarageSlowMotionPlaybackSheet(
             videoURL: videoURL,
             pathSamples: pathSamples,
             frames: frames,
+            syncFlow: syncFlow,
             initialMode: .skeleton
         )
     }
@@ -3322,6 +3387,7 @@ private struct GarageSlowMotionVisualizationOverlay: View {
     let pathSamples: [GarageHandPathSample]
     let frames: [SwingFrame]
     let currentTime: Double
+    let syncFlow: GarageSyncFlowReport?
     let videoSize: CGSize
 
     private var visibleSampleCount: Int {
@@ -3385,7 +3451,10 @@ private struct GarageSlowMotionVisualizationOverlay: View {
             if mode == .skeleton {
                 GarageSkeletonOverlay(
                     drawSize: videoRect.size,
-                    currentFrame: currentFrame
+                    currentFrame: currentFrame,
+                    currentTime: currentTime,
+                    pulseProgress: pulseProgress,
+                    syncFlow: syncFlow
                 )
                 .frame(width: videoRect.width, height: videoRect.height)
                 .position(x: videoRect.midX, y: videoRect.midY)
@@ -3460,6 +3529,11 @@ private struct GarageSlowMotionVisualizationOverlay: View {
             x: rect.minX + (rect.width * x),
             y: rect.minY + (rect.height * y)
         )
+    }
+
+    private var pulseProgress: Double {
+        guard let frameIndex = nearestFrameIndex(for: currentTime) else { return 0 }
+        return min(max(Double(frameIndex) / Double(max(frames.count - 1, 1)), 0), 1)
     }
 }
 
