@@ -106,12 +106,12 @@ private enum GarageImportPresentationState: Equatable {
     }
 }
 
-private enum GarageRoute: Equatable {
+private enum GarageAnalyzerRoute: Equatable {
     case records
     case importing(GarageImportPresentationState)
     case review(recordKey: String?)
 
-    var normalizedForPresentation: GarageRoute {
+    var normalizedForPresentation: GarageAnalyzerRoute {
         switch self {
         case .importing(.idle):
             return .records
@@ -119,27 +119,40 @@ private enum GarageRoute: Equatable {
             return self
         }
     }
+}
+
+private enum GarageRoute: Equatable {
+    case hub
+    case analyzer(GarageAnalyzerRoute)
+    case drills
+    case range
 
     var tab: ModuleHubTab {
         switch self {
-        case .records:
-            return .records
-        case .importing:
-            return .records
-        case .review:
-            return .review
+        case .hub:
+            return .hub
+        case .analyzer:
+            return .analyzer
+        case .drills:
+            return .drills
+        case .range:
+            return .range
         }
     }
 
     init(tab: ModuleHubTab) {
         switch tab {
-        case .records:
-            self = .records
-        case .review:
-            self = .review(recordKey: nil)
+        case .hub:
+            self = .hub
+        case .analyzer:
+            self = .analyzer(.records)
+        case .drills:
+            self = .drills
+        case .range:
+            self = .range
         @unknown default:
             assertionFailure("Unsupported ModuleHubTab passed to GarageRoute.init(tab:): \(tab)")
-            self = .records
+            self = .hub
         }
     }
 }
@@ -313,54 +326,19 @@ struct GarageView: View {
     @State private var isShowingAddRecord = false
     @State private var selectedVideoItem: PhotosPickerItem?
     @State private var pendingImportMovie: GaragePickedMovie?
-    @State private var route: GarageRoute = .records
+    @State private var route: GarageRoute = .hub
 
     var body: some View {
-        Group {
-            switch route {
-            case let .importing(state):
+        GarageCustomScaffold(module: .garage, tabs: [], selectedTab: .constant(.hub)) { proxy in
+            garageContent(for: proxy.size)
+        }
+        .overlay {
+            if let importState = importPresentationState {
                 GarageImportPresentationScreen(
-                    state: state,
+                    state: importState,
                     onDismiss: dismissImportPresentation,
                     onRetry: retryImport
                 )
-            case let .review(recordKey):
-                GeometryReader { proxy in
-                    GarageReviewTab(
-                        records: swingRecords,
-                        selectedRecordKey: Binding(
-                            get: { recordKey },
-                            set: { newKey in
-                                route = .review(recordKey: newKey)
-                            }
-                        ),
-                        viewportHeight: proxy.size.height,
-                        onBackToRecords: {
-                            route = .records
-                        }
-                    )
-                }
-            case .records:
-                GarageCustomScaffold(module: .garage, tabs: [.records, .review], selectedTab: selectedTabBinding) { _ in
-                    GarageRecordsTab(
-                        records: swingRecords,
-                        importVideo: {
-                            presentAddRecord()
-                        },
-                        openReview: { record in
-                            route = .review(recordKey: garageRecordSelectionKey(for: record))
-                        }
-                    )
-                }
-                .safeAreaInset(edge: .bottom) {
-                    ModuleBottomActionBar(
-                        theme: AppModule.garage.theme,
-                        title: "Add Swing Record",
-                        systemImage: "plus"
-                    ) {
-                        presentAddRecord()
-                    }
-                }
             }
         }
         .photosPicker(
@@ -374,22 +352,32 @@ struct GarageView: View {
             prepareSelectedVideo(newItem)
         }
         .onChange(of: swingRecords.map(garageRecordSelectionKey)) { _, keys in
-            guard case let .review(recordKey) = route else {
+            guard case let .analyzer(analyzerRoute) = route,
+                  case let .review(recordKey) = analyzerRoute.normalizedForPresentation else {
                 return
             }
 
             guard keys.isEmpty == false else {
-                route = .records
+                route = .analyzer(.records)
                 return
             }
 
             if let recordKey,
                keys.contains(recordKey) == false {
-                route = .review(recordKey: keys.first)
+                route = .analyzer(.review(recordKey: keys.first))
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if importPresentationState == nil {
+                GarageBottomTabBar(selectedTab: selectedTabBinding)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 8)
             }
         }
         .toolbar({
-            if case .review = route {
+            if case let .analyzer(analyzerRoute) = route,
+               case .review = analyzerRoute.normalizedForPresentation {
                 return .hidden
             }
             return .visible
@@ -399,8 +387,82 @@ struct GarageView: View {
     private var selectedTabBinding: Binding<ModuleHubTab> {
         Binding(
             get: { route.tab },
-            set: { route = GarageRoute(tab: $0) }
+            set: { newTab in
+                if newTab == .analyzer, case let .analyzer(analyzerRoute) = route {
+                    route = .analyzer(analyzerRoute.normalizedForPresentation)
+                } else {
+                    route = GarageRoute(tab: newTab)
+                }
+            }
         )
+    }
+
+    private var importPresentationState: GarageImportPresentationState? {
+        guard case let .analyzer(analyzerRoute) = route,
+              case let .importing(state) = analyzerRoute.normalizedForPresentation else {
+            return nil
+        }
+        return state
+    }
+
+    @ViewBuilder
+    private func garageContent(for size: CGSize) -> some View {
+        switch route {
+        case .hub:
+            GarageCommandCenterView(records: swingRecords)
+        case let .analyzer(analyzerRoute):
+            garageAnalyzerContent(for: analyzerRoute.normalizedForPresentation, size: size)
+        case .drills:
+            GaragePendingSurface(
+                title: "Drills",
+                message: "Drills is planned for Phase 2. Command Center and Analyzer are active in this pass."
+            )
+        case .range:
+            GaragePendingSurface(
+                title: "Photo-Map",
+                message: "Photo-Map scaffolding is reserved for a future phase once the core tabs are validated."
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func garageAnalyzerContent(for analyzerRoute: GarageAnalyzerRoute, size: CGSize) -> some View {
+        switch analyzerRoute {
+        case .records, .importing:
+            GarageRecordsTab(
+                records: swingRecords,
+                importVideo: {
+                    presentAddRecord()
+                },
+                openReview: { record in
+                    route = .analyzer(.review(recordKey: garageRecordSelectionKey(for: record)))
+                }
+            )
+            .safeAreaInset(edge: .bottom) {
+                ModuleBottomActionBar(
+                    theme: AppModule.garage.theme,
+                    title: "Add Swing Record",
+                    systemImage: "plus"
+                ) {
+                    presentAddRecord()
+                }
+                .padding(.bottom, 70)
+            }
+        case let .review(recordKey):
+            GarageReviewTab(
+                records: swingRecords,
+                selectedRecordKey: Binding(
+                    get: { recordKey },
+                    set: { newKey in
+                        route = .analyzer(.review(recordKey: newKey))
+                    }
+                ),
+                viewportHeight: size.height,
+                onBackToRecords: {
+                    route = .analyzer(.records)
+                }
+            )
+        }
     }
 
     private func presentAddRecord() {
@@ -410,7 +472,7 @@ struct GarageView: View {
     private func dismissImportPresentation() {
         selectedVideoItem = nil
         pendingImportMovie = nil
-        route = .records
+        route = .analyzer(.records)
     }
 
     @MainActor
@@ -421,21 +483,22 @@ struct GarageView: View {
         }
 
         if let selectedVideoItem {
-            route = .records
+            route = .analyzer(.records)
             prepareSelectedVideo(selectedVideoItem)
             return
         }
 
-        route = .records
+        route = .analyzer(.records)
         isShowingAddRecord = true
     }
 
     @MainActor
     private func prepareSelectedVideo(_ item: PhotosPickerItem) {
-        guard case .records = route else { return }
+        guard case let .analyzer(analyzerRoute) = route,
+              case .records = analyzerRoute.normalizedForPresentation else { return }
 
         pendingImportMovie = nil
-        route = .importing(.preparing)
+        route = .analyzer(.importing(.preparing))
 
         Task {
             do {
@@ -449,7 +512,7 @@ struct GarageView: View {
                 }
             } catch {
                 await MainActor.run {
-                    route = .importing(.failure(error.localizedDescription))
+                    route = .analyzer(.importing(.failure(error.localizedDescription)))
                 }
             }
         }
@@ -458,17 +521,17 @@ struct GarageView: View {
     @MainActor
     private func importSelectedVideo(_ movie: GaragePickedMovie) {
         pendingImportMovie = movie
-        route = .importing(.analyzing(.loadingVideo))
+        route = .analyzer(.importing(.analyzing(.loadingVideo)))
 
         Task {
             do {
                 await MainActor.run {
-                    route = .importing(.analyzing(.loadingVideo))
+                    route = .analyzer(.importing(.analyzing(.loadingVideo)))
                 }
                 let reviewMasterURL = try GarageMediaStore.persistReviewMaster(from: movie.url)
                 async let analysisTask = GarageAnalysisPipeline.analyzeVideo(at: reviewMasterURL) { step in
                     await MainActor.run {
-                        route = .importing(.analyzing(step))
+                        route = .analyzer(.importing(.analyzing(step)))
                     }
                 }
                 async let exportTask = GarageMediaStore.createExportDerivative(from: reviewMasterURL)
@@ -503,19 +566,90 @@ struct GarageView: View {
                 )
 
                 await MainActor.run {
-                    route = .importing(.analyzing(.savingSwing))
+                    route = .analyzer(.importing(.analyzing(.savingSwing)))
                     modelContext.insert(record)
                     try? modelContext.save()
                     selectedVideoItem = nil
                     pendingImportMovie = nil
-                    route = .review(recordKey: garageRecordSelectionKey(for: record))
+                    route = .analyzer(.review(recordKey: garageRecordSelectionKey(for: record)))
                 }
             } catch {
                 await MainActor.run {
-                    route = .importing(.failure(error.localizedDescription))
+                    route = .analyzer(.importing(.failure(error.localizedDescription)))
                 }
             }
         }
+    }
+}
+
+private struct GarageBottomTabBar: View {
+    @Binding var selectedTab: ModuleHubTab
+
+    private let tabs: [(tab: ModuleHubTab, icon: String)] = [
+        (.hub, "gauge.with.dots.needle.100percent"),
+        (.analyzer, "waveform.path.ecg.rectangle"),
+        (.drills, "figure.golf"),
+        (.range, "map")
+    ]
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ForEach(tabs, id: \.tab) { item in
+                let isSelected = selectedTab == item.tab
+                Button {
+                    selectedTab = item.tab
+                } label: {
+                    VStack(spacing: 6) {
+                        Image(systemName: item.icon)
+                            .font(.system(size: 15, weight: .semibold))
+                        Text(item.tab.rawValue)
+                            .font(.caption2.weight(.semibold))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(isSelected ? garageReviewAccent : AppModule.garage.theme.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(isSelected ? garageReviewInsetSurface : Color.clear)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(isSelected ? garageReviewAccent.opacity(0.35) : AppModule.garage.theme.borderSubtle, lineWidth: 1)
+                            )
+                    )
+                    .shadow(color: isSelected ? garageReviewAccent.opacity(0.22) : .clear, radius: 10, x: 0, y: 0)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(garageReviewInsetSurface.opacity(0.96))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(AppModule.garage.theme.borderSubtle, lineWidth: 1)
+                )
+                .shadow(color: garageReviewShadowDark.opacity(0.35), radius: 16, x: 10, y: 10)
+                .shadow(color: garageReviewShadowLight.opacity(0.25), radius: 8, x: -6, y: -6)
+        )
+    }
+}
+
+private struct GaragePendingSurface: View {
+    let title: String
+    let message: String
+
+    var body: some View {
+        ModuleRowSurface(theme: AppModule.garage.theme) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(AppModule.garage.theme.textPrimary)
+            Text(message)
+                .font(.footnote)
+                .foregroundStyle(AppModule.garage.theme.textSecondary)
+        }
+        .padding(.bottom, 90)
     }
 }
 
