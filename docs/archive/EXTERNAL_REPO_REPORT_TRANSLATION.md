@@ -1,5 +1,8 @@
 # External Report Translation: `colton615-coder/life-in-sync` → LIFE IN SYNC (SwiftUI)
 
+## Status: archived historical context/reference translation.
+
+
 ## Context
 This assessment reviews the upstream web repository (`colton615-coder/life-in-sync`) and identifies what is valuable to reuse in this native SwiftUI codebase.
 

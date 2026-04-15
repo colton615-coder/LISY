@@ -263,8 +263,8 @@ Disallowed by default:
 
 ## Source Hierarchy
 Use documents in this order:
-1. `docs/CANONICAL_PRODUCT_SPEC.md`
-2. `ARCHITECTURE.md`
+1. `docs/canonical/CANONICAL_PRODUCT_SPEC.md`
+2. `docs/architecture/ARCHITECTURE.md`
 3. files in `docs/`
 4. `PRD.md`
 5. `life-in-sync-source.txt`

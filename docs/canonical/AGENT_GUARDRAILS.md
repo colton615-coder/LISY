@@ -3,7 +3,7 @@
 ## Purpose
 This file defines how coding and planning agents must interpret the product.
 
-Read `docs/CANONICAL_PRODUCT_SPEC.md` first before proposing features, architecture, models, or UI structure.
+Read `docs/canonical/CANONICAL_PRODUCT_SPEC.md` first before proposing features, architecture, models, or UI structure.
 
 ## Mandatory Rules
 - Do not invent new top-level modules.
@@ -27,8 +27,8 @@ Read `docs/CANONICAL_PRODUCT_SPEC.md` first before proposing features, architect
 
 ## When There Is Ambiguity
 Use this decision order:
-1. Follow `docs/CANONICAL_PRODUCT_SPEC.md`
-2. Follow `ARCHITECTURE.md`
+1. Follow `docs/canonical/CANONICAL_PRODUCT_SPEC.md`
+2. Follow `docs/architecture/ARCHITECTURE.md`
 3. Follow the supporting docs in `docs/`
 4. Ignore conflicting material from `PRD.md` or `life-in-sync-source.txt`
 

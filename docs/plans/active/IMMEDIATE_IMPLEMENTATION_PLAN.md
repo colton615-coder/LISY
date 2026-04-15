@@ -1,5 +1,8 @@
 # Immediate Implementation Plan (Next 2-4 Weeks)
 
+## Status: active implementation plan (time-bound).
+
+
 ## Objective
 Translate the latest product direction into shippable architecture and module scaffolding while protecting canonical boundaries and local-first behavior.
 
@@ -8,7 +11,7 @@ Translate the latest product direction into shippable architecture and module sc
 - No autonomous AI writes
 - Offline-first for non-AI flows
 - Usefulness and clarity over visual novelty
-- The V1 Module Depth Contract in `docs/IMPLEMENTATION_CONTRACT.md` remains authoritative for "first real depth"
+- The V1 Module Depth Contract in `docs/canonical/IMPLEMENTATION_CONTRACT.md` remains authoritative for "first real depth"
 
 ## Phase 1: Lock Shared Patterns (Foundation)
 ### 1.1 Command-center module hub template

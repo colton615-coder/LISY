@@ -1,5 +1,8 @@
 # iOS CI Runner Setup (Self-Hosted macOS)
 
+## Status: operational runbook.
+
+
 ## Purpose
 This guide documents a production-ready baseline for running iOS CI jobs on a self-hosted GitHub Actions runner.
 

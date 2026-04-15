@@ -1,5 +1,8 @@
 # Task Retrospective (2026-04-02)
 
+## Status: archived historical retrospective.
+
+
 ## Scope Reviewed
 Previous task: convert the supplied product-direction answer into practical project documentation and add an immediate implementation plan.
 
@@ -18,7 +21,7 @@ Previous task: convert the supplied product-direction answer into practical proj
 - Could have added a tighter weekly cadence/checklist view to make day-to-day execution easier.
 
 ## Most Immediate Improvements Applied
-1. Added an ELI5-style step-by-step section directly inside `docs/IMMEDIATE_IMPLEMENTATION_PLAN.md`.
+1. Added an ELI5-style step-by-step section directly inside `docs/plans/active/IMMEDIATE_IMPLEMENTATION_PLAN.md`.
 2. Clarified that teams can execute the plan by simply completing the next unchecked step in sequence.
 
 ## Quality Bar Going Forward
