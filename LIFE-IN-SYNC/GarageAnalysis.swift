@@ -1894,39 +1894,44 @@ enum GarageAnalysisPipeline {
         var nextTimestampIndex = 0
 
         while let sampleBuffer = trackOutput.copyNextSampleBuffer(), nextTimestampIndex < timestamps.count {
-            try Task.checkCancellation()
-            let presentationTimestamp = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
-            guard presentationTimestamp.isFinite else {
-                continue
-            }
+            let extractedFrame: SwingFrame? = try autoreleasepool {
+                try Task.checkCancellation()
+                let presentationTimestamp = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
+                guard presentationTimestamp.isFinite else {
+                    return nil
+                }
 
-            let desiredTimestamp = timestamps[nextTimestampIndex]
-            if presentationTimestamp + 0.0001 < desiredTimestamp {
-                continue
-            }
+                let desiredTimestamp = timestamps[nextTimestampIndex]
+                if presentationTimestamp + 0.0001 < desiredTimestamp {
+                    return nil
+                }
 
-            guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+                guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+                    nextTimestampIndex = advancedTimestampIndex(
+                        from: nextTimestampIndex,
+                        actualTimestamp: presentationTimestamp,
+                        desiredTimestamps: timestamps
+                    )
+                    return nil
+                }
+
+                let detectedFrame = try detectPoseFrame(
+                    from: pixelBuffer,
+                    timestamp: presentationTimestamp,
+                    orientation: orientation
+                )
+
                 nextTimestampIndex = advancedTimestampIndex(
                     from: nextTimestampIndex,
                     actualTimestamp: presentationTimestamp,
                     desiredTimestamps: timestamps
                 )
-                continue
+                return detectedFrame
             }
 
-            if let frame = try detectPoseFrame(
-                from: pixelBuffer,
-                timestamp: presentationTimestamp,
-                orientation: orientation
-            ) {
-                frames.append(frame)
+            if let extractedFrame {
+                frames.append(extractedFrame)
             }
-
-            nextTimestampIndex = advancedTimestampIndex(
-                from: nextTimestampIndex,
-                actualTimestamp: presentationTimestamp,
-                desiredTimestamps: timestamps
-            )
             await Task.yield()
         }
 
@@ -1946,15 +1951,18 @@ enum GarageAnalysisPipeline {
 
         var frames: [SwingFrame] = []
         for timestamp in timestamps {
-            try Task.checkCancellation()
-            let time = CMTime(seconds: timestamp, preferredTimescale: 600)
-            guard let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) else {
-                await Task.yield()
-                continue
+            let extractedFrame: SwingFrame? = try autoreleasepool {
+                try Task.checkCancellation()
+                let time = CMTime(seconds: timestamp, preferredTimescale: 600)
+                guard let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) else {
+                    return nil
+                }
+
+                return try detectPoseFrame(from: cgImage, timestamp: timestamp)
             }
 
-            if let frame = try detectPoseFrame(from: cgImage, timestamp: timestamp) {
-                frames.append(frame)
+            if let extractedFrame {
+                frames.append(extractedFrame)
             }
             await Task.yield()
         }
@@ -2004,8 +2012,10 @@ enum GarageAnalysisPipeline {
     }
 
     private static func detectPoseFrame(from cgImage: CGImage, timestamp: Double) throws -> SwingFrame? {
-        let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up)
-        return try detectPoseFrame(with: handler, timestamp: timestamp)
+        try autoreleasepool {
+            let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up)
+            return try detectPoseFrame(with: handler, timestamp: timestamp)
+        }
     }
 
     private static func detectPoseFrame(
@@ -2013,8 +2023,10 @@ enum GarageAnalysisPipeline {
         timestamp: Double,
         orientation: CGImagePropertyOrientation
     ) throws -> SwingFrame? {
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation)
-        return try detectPoseFrame(with: handler, timestamp: timestamp)
+        try autoreleasepool {
+            let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation)
+            return try detectPoseFrame(with: handler, timestamp: timestamp)
+        }
     }
 
     private static func detectPoseFrame(
