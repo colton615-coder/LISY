@@ -32,6 +32,10 @@ enum ModuleHubTab: String, CaseIterable, Identifiable {
     case builder = "Builder"
     case records = "Records"
     case review = "Review"
+    case hub = "Command Center"
+    case analyzer = "Analyzer"
+    case drills = "Drills"
+    case range = "Photo-Map"
 
     var id: String { rawValue }
 }

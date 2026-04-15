@@ -27,6 +27,28 @@ The architecture must avoid:
 - **AI is advisory unless explicitly confirmed by user**
 - **Flagship modules receive deeper systems than support modules**
 
+### 2.1 Canonical shell + routing contract (unified)
+This section is the single routing/source-of-truth contract for shell and module navigation.
+
+- Dashboard is the root home screen.
+- Shell navigation owns module switching through the left module menu.
+- The module menu is available from dashboard and from inside modules.
+- Module switching is always a shell-level action (never buried in module detail content).
+- Navigation is three-layer by default:
+  1. app shell
+  2. current module root
+  3. module detail flow
+- Modules keep detail navigation inside their own boundary unless a deliberate ownership handoff exists.
+- Dashboard is a summary lens and launcher; it must not replace module detail workflows.
+- Explicit cross-module handoffs are allowed only with clear ownership:
+  - Task ↔ Calendar scheduling links
+  - Dashboard cards launching meaningful module destinations
+- Disallowed by default:
+  - arbitrary deep links between unrelated modules
+  - universal shared tabs across all modules
+  - architecture drift that blurs module ownership
+- Canonical architecture authority lives in `ARCHITECTURE.md`; planning briefs may guide sequencing but must not override this contract.
+
 ## 3. App topology
 The app contains:
 - one root app entry
@@ -96,13 +118,19 @@ Must not own:
 ### Garage
 Owns:
 - swing capture/import
-- analysis qualification
-- swing analysis
-- results review
+- command center posture for latest score + next issue
+- analysis qualification and import state
+- swing analysis and manual review
 - coaching feedback
 - swing records
 - issue threads
 - journal/progress history
+
+Garage module root uses a four-tab local navigation model:
+1. **Command Center** (`hub`) — latest score + critical next action
+2. **Analyzer** (`analyzer`) — import/manual review operational surface
+3. **Drills** (`drills`) — scaffolded in Phase 1
+4. **Photo-Map** (`range`) — scaffolded in Phase 1
 
 Must not own:
 - generic media library
