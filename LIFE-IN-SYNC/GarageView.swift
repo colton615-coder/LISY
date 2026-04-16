@@ -666,12 +666,18 @@ struct GarageView: View {
         pendingPreFlightSelection = selection
         presentImportProgress(GarageAnalysisProgressUpdate(step: .loadingVideo))
 
+        let sourceMovieURL = movie.url
+        let displayName = movie.displayName
+        let clubType = selection.clubType
+        let isLeftHanded = selection.isLeftHanded
+        let cameraAngle = selection.cameraAngle
+
         Task {
             var pendingRecordID: PersistentIdentifier?
 
             do {
-                let reviewMasterURL = try GarageMediaStore.persistReviewMaster(from: movie.url)
-                let resolvedTitle = garageSuggestedRecordTitle(for: movie.displayName, fallbackURL: reviewMasterURL)
+                let reviewMasterURL = try GarageMediaStore.persistReviewMaster(from: sourceMovieURL)
+                let resolvedTitle = garageSuggestedRecordTitle(for: displayName, fallbackURL: reviewMasterURL)
                 let reviewMasterBookmark = GarageMediaStore.bookmarkData(for: reviewMasterURL)
 
                 pendingRecordID = try await MainActor.run {
@@ -680,9 +686,9 @@ struct GarageView: View {
                     let record = SwingRecord(
                         title: resolvedTitle,
                         importStatus: .pending,
-                        clubType: selection.clubType,
-                        isLeftHanded: selection.isLeftHanded,
-                        cameraAngle: selection.cameraAngle,
+                        clubType: clubType,
+                        isLeftHanded: isLeftHanded,
+                        cameraAngle: cameraAngle,
                         mediaFilename: reviewMasterURL.lastPathComponent,
                         mediaFileBookmark: reviewMasterBookmark,
                         reviewMasterFilename: reviewMasterURL.lastPathComponent,
@@ -720,11 +726,13 @@ struct GarageView: View {
                         }
                     }
                 }
+
                 let approvedKeyFrames = GarageAnalysisPipeline.autoApprovedKeyFrames(
                     from: output.keyFrames,
                     reviewReport: output.handPathReviewReport
                 )
                 let initialValidationStatus: KeyframeValidationStatus = output.handPathReviewReport.requiresManualReview ? .pending : .approved
+                let normalizedAnalysisResult = output.analysisResult.normalizedForPersistence
 
                 let reviewKey = try await MainActor.run { () -> String in
                     presentImportProgress(
@@ -743,7 +751,7 @@ struct GarageView: View {
                         pendingRecord.keyframeValidationStatus = initialValidationStatus
                         pendingRecord.handAnchors = output.handAnchors
                         pendingRecord.pathPoints = output.pathPoints
-                        pendingRecord.analysisResult = output.analysisResult.normalizedForPersistence
+                        pendingRecord.analysisResult = normalizedAnalysisResult
                     }
 
                     try modelContext.save()
@@ -765,31 +773,67 @@ struct GarageView: View {
                 }
 
                 if let recordID = pendingRecordID {
-                    Task(priority: .utility) {
+                    Task.detached(priority: .utility) {
                         guard let exportURL = await GarageMediaStore.createExportDerivative(from: reviewMasterURL) else {
                             return
                         }
-
-                        let exportBookmark = GarageMediaStore.bookmarkData(for: exportURL)
 
                         await MainActor.run {
                             guard let savedRecord = pendingRecord(for: recordID) else {
                                 return
                             }
 
+                            let exportBookmark = GarageMediaStore.bookmarkData(for: exportURL)
+
                             savedRecord.exportAssetFilename = exportURL.lastPathComponent
                             savedRecord.exportAssetBookmark = exportBookmark
-                            try? modelContext.save()
+                            do {
+                                try modelContext.save()
+                            } catch {
+                                let nsError = error as NSError
+                                let exportMessage = [
+                                    "Garage export derivative save failed.",
+                                    "domain=\(nsError.domain)",
+                                    "code=\(nsError.code)",
+                                    nsError.localizedDescription
+                                ].joined(separator: " ")
+                                NSLog("%@", exportMessage)
+                            }
                         }
                     }
                 }
             } catch {
+                let nsError = error as NSError
+                var diagnostics: [String] = []
+                var currentError: NSError? = nsError
+
+                while let error = currentError {
+                    var segment = "domain=\(error.domain) code=\(error.code) description=\(error.localizedDescription)"
+
+                    if let failureReason = error.localizedFailureReason, failureReason.isEmpty == false {
+                        segment += " reason=\(failureReason)"
+                    }
+
+                    if let recoverySuggestion = error.localizedRecoverySuggestion, recoverySuggestion.isEmpty == false {
+                        segment += " suggestion=\(recoverySuggestion)"
+                    }
+
+                    diagnostics.append(segment)
+                    currentError = error.userInfo[NSUnderlyingErrorKey] as? NSError
+                }
+
+                let failureMessage = diagnostics.isEmpty
+                    ? "Import failed: \(error.localizedDescription)"
+                    : "Import failed: \(diagnostics.joined(separator: " | underlying: "))"
+
+                NSLog("%@", failureMessage)
+
                 await MainActor.run {
                     if let pendingRecord = pendingRecord(for: pendingRecordID) {
                         modelContext.delete(pendingRecord)
                         try? modelContext.save()
                     }
-                    route = .analyzer(.importing(.failure(error.localizedDescription)))
+                    route = .analyzer(.importing(.failure(failureMessage)))
                 }
             }
         }
