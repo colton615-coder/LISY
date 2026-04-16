@@ -361,9 +361,9 @@ struct GarageView: View {
             prepareSelectedVideo(newItem)
         }
         .sheet(isPresented: $isShowingPreFlight, onDismiss: {
-            if route == .analyzer(.importing(.preparing)) {
-                route = .analyzer(.records)
-            }
+            stagedMovie = nil
+            selectedVideoItem = nil
+            route = .analyzer(.records)
         }) {
             GaragePreFlightSheet(
                 initialSelection: pendingPreFlightSelection,
