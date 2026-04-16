@@ -518,9 +518,9 @@ final class StudyEntry {
 final class SwingRecord {
     var title: String
     var createdAt: Date
-    var clubType: String
-    var isLeftHanded: Bool
-    var cameraAngle: String
+    var clubType: String = "7 Iron"
+    var isLeftHanded: Bool = false
+    var cameraAngle: String = "Down the Line"
     var mediaFilename: String?
     var mediaFileBookmark: Data?
     var reviewMasterFilename: String?
