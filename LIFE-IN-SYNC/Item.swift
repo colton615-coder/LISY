@@ -344,6 +344,42 @@ struct AnalysisResult: Codable, Hashable {
         self.scorecard = scorecard
         self.syncFlow = syncFlow
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case issues
+        case highlights
+        case summary
+        case scorecard
+        case syncFlow
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        issues = try container.decodeIfPresent([String].self, forKey: .issues) ?? []
+        highlights = try container.decodeIfPresent([String].self, forKey: .highlights) ?? []
+        summary = try container.decodeIfPresent(String.self, forKey: .summary) ?? ""
+        scorecard = try container.decodeIfPresent(GarageSwingScorecard.self, forKey: .scorecard)
+        syncFlow = try container.decodeIfPresent(GarageSyncFlowReport.self, forKey: .syncFlow)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(issues, forKey: .issues)
+        try container.encode(highlights, forKey: .highlights)
+        try container.encode(summary, forKey: .summary)
+        try container.encodeIfPresent(scorecard, forKey: .scorecard)
+        try container.encodeIfPresent(syncFlow, forKey: .syncFlow)
+    }
+
+    var normalizedForPersistence: AnalysisResult {
+        AnalysisResult(
+            issues: issues,
+            highlights: highlights,
+            summary: summary,
+            scorecard: scorecard?.normalizedForPersistence,
+            syncFlow: syncFlow
+        )
+    }
 }
 
 @Model

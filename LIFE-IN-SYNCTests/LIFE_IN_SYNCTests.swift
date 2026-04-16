@@ -101,6 +101,68 @@ struct LIFE_IN_SYNCTests {
         #expect(extractionUpdates.last?.totalFrames == totalFrames)
     }
 
+    @Test func analysisResultRoundTripsCurrentPerspectivePayload() async throws {
+        let encoded = try JSONEncoder().encode(makeGarageAnalysisResult(perspectivePayload: .dtl))
+        let decoded = try JSONDecoder().decode(AnalysisResult.self, from: encoded)
+
+        #expect(decoded.scorecard?.timestamps.perspective == .dtl)
+        #expect(decoded.normalizedForPersistence.scorecard?.timestamps.perspective == .dtl)
+    }
+
+    @Test func analysisResultDecodesLegacyPerspectiveWrapperPayload() async throws {
+        let decoded = try JSONDecoder().decode(
+            AnalysisResult.self,
+            from: makeGarageAnalysisResultJSON(perspectiveJSON: #"{"rawValue":"dtl"}"#)
+        )
+
+        #expect(decoded.scorecard?.timestamps.perspective == .dtl)
+    }
+
+    @Test func analysisResultFallsBackSafelyForMissingOrInvalidPerspective() async throws {
+        let missingPerspective = try JSONDecoder().decode(
+            AnalysisResult.self,
+            from: makeGarageAnalysisResultJSON(omitPerspective: true)
+        )
+        let invalidPerspective = try JSONDecoder().decode(
+            AnalysisResult.self,
+            from: makeGarageAnalysisResultJSON(perspectiveJSON: #""face_on""#)
+        )
+
+        #expect(missingPerspective.scorecard?.timestamps.perspective == .dtl)
+        #expect(invalidPerspective.scorecard?.timestamps.perspective == .dtl)
+    }
+
+    @Test func analysisResultNormalizationReencodesPerspectiveInCurrentForm() async throws {
+        let decoded = try JSONDecoder().decode(
+            AnalysisResult.self,
+            from: makeGarageAnalysisResultJSON(perspectiveJSON: #"{"value":"dtl"}"#)
+        )
+        let normalized = decoded.normalizedForPersistence
+        let reencoded = try JSONEncoder().encode(normalized)
+        let reencodedString = String(decoding: reencoded, as: UTF8.self)
+
+        #expect(reencodedString.contains(#""perspective":"dtl""#))
+    }
+
+    @Test func garageResolvedSamplingFrameRateNeverExceedsThirtyFPS() async throws {
+        #expect(GarageAnalysisPipeline.resolvedSamplingFrameRate(from: 60) == 30)
+        #expect(GarageAnalysisPipeline.resolvedSamplingFrameRate(from: 30) == 30)
+        #expect(GarageAnalysisPipeline.resolvedSamplingFrameRate(from: 24) == 24)
+    }
+
+    @Test func garageSampledTimestampsCapAtOneHundredTwentyFramesAndKeepCenteredWindow() async throws {
+        let timestamps = GarageAnalysisPipeline.sampledTimestamps(
+            duration: CMTime(seconds: 10, preferredTimescale: 600),
+            frameRate: 30
+        )
+
+        #expect(timestamps.count == 120)
+        #expect((timestamps.first ?? 0) > 2.8)
+        #expect((timestamps.first ?? 0) < 3.2)
+        #expect((timestamps.last ?? 0) > 6.8)
+        #expect((timestamps.last ?? 0) < 7.2)
+    }
+
     @Test func garagePathGenerationIncludesEndpointsAndIntermediateSamples() async throws {
         let anchors = [
             HandAnchor(phase: .address, x: 0.30, y: 0.72),
@@ -816,6 +878,98 @@ private func makeWorkflowRecord(
             summary: "Processed synthetic swing frames."
         )
     )
+}
+
+@MainActor
+private func makeGarageAnalysisResult(perspectivePayload: GarageCameraPerspective) -> AnalysisResult {
+    AnalysisResult(
+        issues: [],
+        highlights: ["Legacy-safe decode"],
+        summary: "Synthetic analysis payload.",
+        scorecard: GarageSwingScorecard(
+            timestamps: GarageSwingTimestamps(
+                perspective: perspectivePayload,
+                start: 0,
+                top: 0.5,
+                impact: 1.0
+            ),
+            metrics: GarageSwingMetrics(
+                tempo: GarageTempoMetric(ratio: 3.0),
+                spine: GarageSpineAngleMetric(deltaDegrees: 2.0),
+                pelvicDepth: GaragePelvicDepthMetric(driftInches: 1.1),
+                kneeFlex: GarageKneeFlexMetric(leftDeltaDegrees: 5.0, rightDeltaDegrees: 6.0),
+                headStability: GarageHeadStabilityMetric(swayInches: 1.0, dipInches: 0.5)
+            ),
+            domainScores: [
+                GarageSwingDomainScore(
+                    id: "tempo",
+                    title: "Tempo Ratio",
+                    score: 90,
+                    grade: .good,
+                    displayValue: "3.0x"
+                )
+            ],
+            totalScore: 88
+        ),
+        syncFlow: GarageSyncFlowReport(
+            status: .ready,
+            headline: "Ready",
+            primaryIssue: nil,
+            markers: [],
+            consequence: nil,
+            summary: "Synthetic sync flow."
+        )
+    )
+}
+
+@MainActor
+private func makeGarageAnalysisResultJSON(
+    perspectiveJSON: String = #""dtl""#,
+    omitPerspective: Bool = false
+) -> Data {
+    let perspectiveField = omitPerspective ? "" : #""perspective":\#(perspectiveJSON),"#
+    let json = """
+    {
+      "issues": [],
+      "highlights": ["Legacy-safe decode"],
+      "summary": "Synthetic analysis payload.",
+      "scorecard": {
+        "timestamps": {
+          \(perspectiveField)
+          "start": 0.0,
+          "top": 0.5,
+          "impact": 1.0
+        },
+        "metrics": {
+          "tempo": { "ratio": 3.0 },
+          "spine": { "deltaDegrees": 2.0 },
+          "pelvicDepth": { "driftInches": 1.1 },
+          "kneeFlex": { "leftDeltaDegrees": 5.0, "rightDeltaDegrees": 6.0 },
+          "headStability": { "swayInches": 1.0, "dipInches": 0.5 }
+        },
+        "domainScores": [
+          {
+            "id": "tempo",
+            "title": "Tempo Ratio",
+            "score": 90,
+            "grade": "good",
+            "displayValue": "3.0x"
+          }
+        ],
+        "totalScore": 88
+      },
+      "syncFlow": {
+        "status": "ready",
+        "headline": "Ready",
+        "primaryIssue": null,
+        "markers": [],
+        "consequence": null,
+        "summary": "Synthetic sync flow."
+      }
+    }
+    """
+
+    return Data(json.utf8)
 }
 
 

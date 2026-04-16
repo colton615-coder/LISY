@@ -1756,6 +1756,9 @@ enum GarageAnalysisPipeline {
         static let impactWindow = 2
     }
 
+    private static let maximumSamplingFrameRate = 30.0
+    private static let maximumSampledFrameCount = 120
+
     static func analyzeVideo(
         at videoURL: URL,
         progress: (@MainActor @Sendable (GarageAnalysisProgressUpdate) async -> Void)? = nil
@@ -1841,16 +1844,16 @@ enum GarageAnalysisPipeline {
         )
     }
 
-    private static func resolvedSamplingFrameRate(from nominalFrameRate: Float) -> Double {
+    static func resolvedSamplingFrameRate(from nominalFrameRate: Float) -> Double {
         let baseRate = nominalFrameRate > 0 ? Double(nominalFrameRate) : 30
-        return min(max(baseRate, 30), 60)
+        return min(baseRate, maximumSamplingFrameRate)
     }
 
     static func sampledTimestamps(duration: CMTime, frameRate: Double) -> [Double] {
         let seconds = max(CMTimeGetSeconds(duration), 0)
         guard seconds > 0 else { return [] }
 
-        let interval = 1 / frameRate
+        let interval = 1 / max(frameRate, 1)
         var timestamps: [Double] = []
         var current: Double = 0
         while current < seconds {
@@ -1860,6 +1863,11 @@ enum GarageAnalysisPipeline {
 
         if let last = timestamps.last, seconds - last > 0.01 {
             timestamps.append(seconds)
+        }
+
+        if timestamps.count > maximumSampledFrameCount {
+            let startIndex = max((timestamps.count - maximumSampledFrameCount) / 2, 0)
+            timestamps = Array(timestamps[startIndex..<(startIndex + maximumSampledFrameCount)])
         }
 
         return timestamps
@@ -1926,6 +1934,7 @@ enum GarageAnalysisPipeline {
         var nextTimestampIndex = 0
 
         while let sampleBuffer = trackOutput.copyNextSampleBuffer(), nextTimestampIndex < timestamps.count {
+            await Task.yield()
             let priorTimestampIndex = nextTimestampIndex
             let extractedFrame: SwingFrame? = try autoreleasepool {
                 try Task.checkCancellation()
@@ -1993,6 +2002,7 @@ enum GarageAnalysisPipeline {
 
         var frames: [SwingFrame] = []
         for (index, timestamp) in timestamps.enumerated() {
+            await Task.yield()
             let extractedFrame: SwingFrame? = try autoreleasepool {
                 try Task.checkCancellation()
                 let time = CMTime(seconds: timestamp, preferredTimescale: 600)
@@ -3269,6 +3279,49 @@ extension SwingFrame {
 }
 enum GarageCameraPerspective: String, Codable, Hashable {
     case dtl
+
+    private enum LegacyCodingKeys: String, CodingKey {
+        case rawValue
+        case value
+        case perspective
+    }
+
+    init(from decoder: Decoder) throws {
+        if let singleValueContainer = try? decoder.singleValueContainer() {
+            if singleValueContainer.decodeNil() {
+                self = .dtl
+                return
+            }
+
+            if let rawValue = try? singleValueContainer.decode(String.self) {
+                self = GarageCameraPerspective(legacyValue: rawValue)
+                return
+            }
+        }
+
+        if let container = try? decoder.container(keyedBy: LegacyCodingKeys.self) {
+            let rawValue = (try? container.decodeIfPresent(String.self, forKey: .rawValue)) ?? nil
+            let value = (try? container.decodeIfPresent(String.self, forKey: .value)) ?? nil
+            let nestedPerspective = (try? container.decodeIfPresent(String.self, forKey: .perspective)) ?? nil
+            let normalizedSource = rawValue ?? value ?? nestedPerspective
+            self = GarageCameraPerspective(legacyValue: normalizedSource)
+            return
+        }
+
+        self = .dtl
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+
+    private init(legacyValue: String?) {
+        let normalizedValue = legacyValue?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        self = GarageCameraPerspective(rawValue: normalizedValue ?? "") ?? .dtl
+    }
 }
 
 enum GarageSwingDomain: String, Codable, CaseIterable, Hashable {
@@ -3299,6 +3352,45 @@ struct GarageSwingTimestamps: Codable, Hashable {
     let start: Double
     let top: Double
     let impact: Double
+
+    private enum CodingKeys: String, CodingKey {
+        case perspective
+        case start
+        case top
+        case impact
+    }
+
+    init(
+        perspective: GarageCameraPerspective,
+        start: Double,
+        top: Double,
+        impact: Double
+    ) {
+        self.perspective = perspective
+        self.start = start
+        self.top = top
+        self.impact = impact
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        perspective = try container.decodeIfPresent(GarageCameraPerspective.self, forKey: .perspective) ?? .dtl
+        start = try container.decode(Double.self, forKey: .start)
+        top = try container.decode(Double.self, forKey: .top)
+        impact = try container.decode(Double.self, forKey: .impact)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(perspective, forKey: .perspective)
+        try container.encode(start, forKey: .start)
+        try container.encode(top, forKey: .top)
+        try container.encode(impact, forKey: .impact)
+    }
+
+    var normalizedForPersistence: GarageSwingTimestamps {
+        GarageSwingTimestamps(perspective: perspective, start: start, top: top, impact: impact)
+    }
 }
 
 enum GarageMetricGrade: String, Codable, Hashable {
@@ -3373,6 +3465,15 @@ struct GarageSwingScorecard: Codable, Hashable {
     let metrics: GarageSwingMetrics
     let domainScores: [GarageSwingDomainScore]
     let totalScore: Int
+
+    var normalizedForPersistence: GarageSwingScorecard {
+        GarageSwingScorecard(
+            timestamps: timestamps.normalizedForPersistence,
+            metrics: metrics,
+            domainScores: domainScores,
+            totalScore: totalScore
+        )
+    }
 }
 
 struct GarageTimestampDetection: Hashable {

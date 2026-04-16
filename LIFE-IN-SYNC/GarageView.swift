@@ -262,6 +262,32 @@ func garageShouldRetryImportAfterFailure(_ error: Error) -> Bool {
     garageImportRetryErrorCode(from: error) == -54
 }
 
+private func garageClubBadgeCode(for clubType: String) -> String {
+    let trimmed = clubType.trimmingCharacters(in: .whitespacesAndNewlines)
+    switch trimmed {
+    case "Driver":
+        return "DR"
+    case "PW", "SW":
+        return trimmed
+    default:
+        break
+    }
+
+    if let clubNumber = trimmed.split(separator: " ").first {
+        if trimmed.contains("Wood") {
+            return "\(clubNumber)W"
+        }
+        if trimmed.contains("Hybrid") {
+            return "\(clubNumber)H"
+        }
+        if trimmed.contains("Iron") {
+            return "\(clubNumber)I"
+        }
+    }
+
+    return trimmed.uppercased()
+}
+
 private func garageHandPathSamples(from frames: [SwingFrame], keyFrames: [KeyFrame]) -> [GarageHandPathSample] {
     GarageAnalysisPipeline.segmentedHandPathSamples(
         from: frames,
@@ -369,6 +395,7 @@ struct GarageView: View {
     @State private var pendingImportMovie: GaragePickedMovie?
     @State private var pendingPreFlightSelection = GaragePreFlightSelection()
     @State private var route: GarageRoute = .hub
+    @State private var hasNormalizedPersistedAnalysisPayloads = false
 
     private var reviewableSwingRecords: [SwingRecord] {
         swingRecords.filter(\.isImportComplete)
@@ -442,6 +469,9 @@ struct GarageView: View {
                 GarageBottomTabBar(selectedTab: selectedTabBinding)
             }
         }
+        .task(id: swingRecords.count) {
+            await normalizePersistedAnalysisPayloadsIfNeeded()
+        }
         .toolbar({
             if case let .analyzer(analyzerRoute) = route,
                case .review = analyzerRoute.normalizedForPresentation {
@@ -489,6 +519,30 @@ struct GarageView: View {
     private func pendingRecord(for identifier: PersistentIdentifier?) -> SwingRecord? {
         guard let identifier else { return nil }
         return modelContext.registeredModel(for: identifier) ?? (modelContext.model(for: identifier) as? SwingRecord)
+    }
+
+    @MainActor
+    private func normalizePersistedAnalysisPayloadsIfNeeded() async {
+        guard hasNormalizedPersistedAnalysisPayloads == false else { return }
+
+        let candidates = swingRecords.filter { $0.analysisResult != nil }
+        guard candidates.isEmpty == false else { return }
+
+        var didTouchPayload = false
+        for record in candidates {
+            guard let analysisResult = record.analysisResult else { continue }
+            record.analysisResult = analysisResult.normalizedForPersistence
+            didTouchPayload = true
+        }
+
+        guard didTouchPayload else { return }
+
+        do {
+            try modelContext.save()
+            hasNormalizedPersistedAnalysisPayloads = true
+        } catch {
+            hasNormalizedPersistedAnalysisPayloads = false
+        }
     }
 
     @ViewBuilder
@@ -625,7 +679,7 @@ struct GarageView: View {
                 let resolvedTitle = garageSuggestedRecordTitle(for: movie.displayName, fallbackURL: reviewMasterURL)
                 let reviewMasterBookmark = GarageMediaStore.bookmarkData(for: reviewMasterURL)
 
-                pendingRecordID = await MainActor.run {
+                pendingRecordID = try await MainActor.run {
                     presentImportProgress(GarageAnalysisProgressUpdate(step: .loadingVideo))
 
                     let record = SwingRecord(
@@ -642,7 +696,7 @@ struct GarageView: View {
                     )
 
                     modelContext.insert(record)
-                    try? modelContext.save()
+                    try modelContext.save()
                     return record.persistentModelID
                 }
 
@@ -681,7 +735,7 @@ struct GarageView: View {
                 )
                 let initialValidationStatus: KeyframeValidationStatus = output.handPathReviewReport.requiresManualReview ? .pending : .approved
 
-                await MainActor.run {
+                let reviewKey = try await MainActor.run { () -> String in
                     presentImportProgress(
                         GarageAnalysisProgressUpdate(
                             step: .savingSwing,
@@ -700,19 +754,25 @@ struct GarageView: View {
                         pendingRecord.keyframeValidationStatus = initialValidationStatus
                         pendingRecord.handAnchors = output.handAnchors
                         pendingRecord.pathPoints = output.pathPoints
-                        pendingRecord.analysisResult = output.analysisResult
+                        pendingRecord.analysisResult = output.analysisResult.normalizedForPersistence
                     }
 
-                    try? modelContext.save()
+                    try modelContext.save()
                     selectedVideoItem = nil
                     stagedMovie = nil
                     pendingImportMovie = nil
 
-                    if let pendingRecord = pendingRecord(for: pendingRecordID), pendingRecord.isImportComplete {
-                        route = .analyzer(.review(recordKey: garageRecordSelectionKey(for: pendingRecord)))
-                    } else {
-                        route = .analyzer(.records)
+                    guard let savedRecord = pendingRecord(for: pendingRecordID) else {
+                        throw GarageImportError.unableToLoadSelection
                     }
+
+                    return garageRecordSelectionKey(for: savedRecord)
+                }
+
+                await MainActor.run {
+                    hasNormalizedPersistedAnalysisPayloads = true
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    route = .analyzer(.review(recordKey: reviewKey))
                 }
             } catch {
                 await MainActor.run {
@@ -869,36 +929,185 @@ private struct SwingRecordCard: View {
 
     var body: some View {
         Button(action: openReview) {
-            HStack(alignment: .top, spacing: ModuleSpacing.medium) {
+            HStack(spacing: 14) {
+                GarageRecordStripThumbnail(record: record)
+
                 VStack(alignment: .leading, spacing: 8) {
                     Text(record.title)
-                        .font(.headline)
+                        .font(.headline.weight(.semibold))
                         .foregroundStyle(AppModule.garage.theme.textPrimary)
+                        .lineLimit(1)
 
-                    if record.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-                        Text(record.notes)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
+                    HStack(spacing: 8) {
+                        Text("CLUB: \(garageClubBadgeCode(for: record.clubType))")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .tracking(1.1)
+                            .foregroundStyle(ModuleTheme.electricCyan)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(ModuleTheme.garageSurfaceInset)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .stroke(ModuleTheme.electricCyan.opacity(0.34), lineWidth: 0.5)
+                                    )
+                            )
+
+                        Text(record.createdAt.formatted(date: .abbreviated, time: .shortened))
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundStyle(AppModule.garage.theme.textMuted)
+                            .lineLimit(1)
                     }
 
-                    Text(record.createdAt.formatted(date: .abbreviated, time: .shortened))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Text(record.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Telemetry ready for review routing." : record.notes)
+                        .font(.footnote)
+                        .foregroundStyle(AppModule.garage.theme.textSecondary)
+                        .lineLimit(2)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                Spacer(minLength: 0)
+                VStack(spacing: 10) {
+                    GarageMiniScoreGauge(score: record.analysisResult?.scorecard?.totalScore)
 
-                Image(systemName: "chevron.right")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(AppModule.garage.theme.textMuted)
-                    .padding(.top, 2)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppModule.garage.theme.textMuted)
+                }
             }
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(ModuleTheme.garageSurfaceDark.opacity(0.96))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(ModuleTheme.electricCyan.opacity(0.24), lineWidth: 0.5)
+                )
+        )
+    }
+}
+
+private struct GarageRecordStripThumbnail: View {
+    let record: SwingRecord
+
+    @State private var image: CGImage?
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(ModuleTheme.garageSurfaceInset)
+
+            if let image {
+                Image(decorative: image, scale: 1)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 74, height: 56)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            } else {
+                VStack(spacing: 4) {
+                    Image(systemName: "waveform.path.ecg.rectangle")
+                        .font(.caption.weight(.bold))
+                    Text(garageClubBadgeCode(for: record.clubType))
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .tracking(1.1)
+                }
+                .foregroundStyle(AppModule.garage.theme.textMuted)
+            }
+        }
+        .frame(width: 74, height: 56)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+        )
+        .task(id: thumbnailRequestKey) {
+            await loadThumbnail()
+        }
+    }
+
+    private var thumbnailRequestKey: String {
+        [
+            garageRecordSelectionKey(for: record),
+            String(format: "%.4f", preferredThumbnailTimestamp)
+        ].joined(separator: "::")
+    }
+
+    private var preferredThumbnailTimestamp: Double {
+        if let impactIndex = record.keyFrames.first(where: { $0.phase == .impact })?.frameIndex,
+           record.swingFrames.indices.contains(impactIndex) {
+            return record.swingFrames[impactIndex].timestamp
+        }
+
+        if record.swingFrames.isEmpty == false {
+            return record.swingFrames[record.swingFrames.count / 2].timestamp
+        }
+
+        return 0
+    }
+
+    private func loadThumbnail() async {
+        guard let videoURL = GarageMediaStore.resolvedReviewVideoURL(for: record) else {
+            await MainActor.run {
+                image = nil
+            }
+            return
+        }
+
+        let thumbnail = await GarageMediaStore.thumbnail(
+            for: videoURL,
+            at: preferredThumbnailTimestamp,
+            maximumSize: CGSize(width: 200, height: 140),
+            priority: .low
+        )
+
+        guard Task.isCancelled == false else { return }
+
+        await MainActor.run {
+            image = thumbnail
+        }
+    }
+}
+
+private struct GarageMiniScoreGauge: View {
+    let score: Int?
+
+    private var resolvedScore: Int {
+        min(max(score ?? 0, 0), 100)
+    }
+
+    private var progress: Double {
+        Double(resolvedScore) / 100
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(ModuleTheme.garageTrack, lineWidth: 5)
+
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(
+                    LinearGradient(
+                        colors: [ModuleTheme.electricCyan, Color(hex: "#1AD0C8")],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+
+            Circle()
+                .fill(ModuleTheme.garageSurfaceInset)
+                .padding(8)
+
+            Text(score.map(String.init) ?? "--")
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundStyle(AppModule.garage.theme.textPrimary)
+        }
+        .frame(width: 52, height: 52)
     }
 }
 
@@ -3437,6 +3646,7 @@ private struct GarageTimelineScrubber: View {
 private let garageReviewBackground = ModuleTheme.garageBackground
 private let garageReviewSurface = ModuleTheme.garageSurface
 private let garageReviewSurfaceRaised = ModuleTheme.garageSurfaceRaised
+private let garageReviewSurfaceDark = ModuleTheme.garageSurfaceDark
 private let garageReviewInsetSurface = ModuleTheme.garageSurfaceInset
 private let garageReviewCanvasFill = ModuleTheme.garageCanvas
 private let garageReviewTrackFill = ModuleTheme.garageTrack
@@ -4273,24 +4483,16 @@ private struct GaragePreFlightSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                LinearGradient(
-                    colors: [
-                        Color(hex: "#56C8D4"),
-                        Color(hex: "#3A9DA9"),
-                        ModuleTheme.garageCanvas
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
+                AppModule.garage.theme.backgroundBottom
                 .overlay(
-                    LinearGradient(
+                    RadialGradient(
                         colors: [
-                            Color.white.opacity(0.15),
-                            Color.clear,
-                            Color.black.opacity(0.18)
+                            ModuleTheme.electricCyan.opacity(0.16),
+                            Color.clear
                         ],
-                        startPoint: .top,
-                        endPoint: .bottom
+                        center: .top,
+                        startRadius: 40,
+                        endRadius: 360
                     )
                 )
                 .ignoresSafeArea()
@@ -4299,36 +4501,36 @@ private struct GaragePreFlightSheet: View {
                     VStack(alignment: .leading, spacing: ModuleSpacing.large) {
                         VStack(alignment: .leading, spacing: 14) {
                             Text("FULL BAG CALIBRATION")
-                                .font(.caption.weight(.black))
+                                .font(.system(size: 12, weight: .bold, design: .monospaced))
                                 .tracking(2.4)
-                                .foregroundStyle(Color.white.opacity(0.72))
+                                .foregroundStyle(ModuleTheme.electricCyan.opacity(0.82))
 
                             Text("Pre-Flight Setup")
-                                .font(.system(size: 34, weight: .black, design: .rounded))
+                                .font(.system(size: 32, weight: .black, design: .monospaced))
                                 .foregroundStyle(Color.white)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.82)
 
                             Text("Dial in the exact club, handedness, and capture angle before the AI starts the heavy pass.")
                                 .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(Color.white.opacity(0.76))
+                                .foregroundStyle(AppModule.garage.theme.textSecondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         .padding(24)
                         .background(
                             GarageRaisedPanelBackground(
                                 shape: RoundedRectangle(cornerRadius: 30, style: .continuous),
-                                fill: Color.white.opacity(0.10),
-                                stroke: Color.white.opacity(0.15),
+                                fill: garageReviewSurfaceDark.opacity(0.98),
+                                stroke: ModuleTheme.electricCyan.opacity(0.24),
                                 glow: ModuleTheme.electricCyan
                             )
                         )
 
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Handedness")
-                                .font(.caption.weight(.black))
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
                                 .tracking(1.8)
-                                .foregroundStyle(Color.white.opacity(0.72))
+                                .foregroundStyle(AppModule.garage.theme.textMuted)
 
                             HStack(spacing: 10) {
                                 ForEach(handednessOptions, id: \.label) { option in
@@ -4346,41 +4548,53 @@ private struct GaragePreFlightSheet: View {
                         .background(
                             GarageRaisedPanelBackground(
                                 shape: RoundedRectangle(cornerRadius: 24, style: .continuous),
-                                fill: Color.white.opacity(0.09),
-                                stroke: Color.white.opacity(0.13)
+                                fill: garageReviewSurfaceDark.opacity(0.94),
+                                stroke: Color.white.opacity(0.07)
                             )
                         )
 
-                        VStack(alignment: .leading, spacing: 14) {
+                        VStack(alignment: .leading, spacing: 12) {
                             Text("Club Grid")
-                                .font(.caption.weight(.black))
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
                                 .tracking(1.8)
-                                .foregroundStyle(Color.white.opacity(0.72))
+                                .foregroundStyle(AppModule.garage.theme.textMuted)
 
                             Text("All 14 clubs, centered for a full-bag intake.")
                                 .font(.headline.weight(.semibold))
                                 .foregroundStyle(Color.white)
 
-                            LazyVGrid(columns: clubColumns, spacing: 12) {
+                            LazyVGrid(columns: clubColumns, spacing: 9) {
                                 ForEach(clubOptions, id: \.self) { club in
                                     Button {
                                         selection.clubType = club
                                     } label: {
                                         Text(club)
-                                            .font(.subheadline.weight(.bold))
-                                            .foregroundStyle(selection.clubType == club ? ModuleTheme.garageCanvas : Color.white.opacity(0.86))
+                                            .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                            .foregroundStyle(selection.clubType == club ? ModuleTheme.electricCyan : AppModule.garage.theme.textPrimary.opacity(0.9))
                                             .lineLimit(1)
                                             .minimumScaleFactor(0.8)
                                             .fixedSize(horizontal: false, vertical: true)
-                                            .frame(maxWidth: .infinity, minHeight: 54)
+                                            .frame(maxWidth: .infinity, minHeight: 50)
                                             .padding(.horizontal, 10)
                                             .background(
-                                                GarageRaisedPanelBackground(
+                                                GarageInsetPanelBackground(
                                                     shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
-                                                    fill: selection.clubType == club ? ModuleTheme.electricCyan : Color.white.opacity(0.08),
-                                                    stroke: selection.clubType == club ? ModuleTheme.electricCyan.opacity(0.55) : Color.white.opacity(0.12),
-                                                    glow: selection.clubType == club ? ModuleTheme.electricCyan : nil
+                                                    fill: selection.clubType == club ? garageReviewSurface : garageReviewSurfaceDark,
+                                                    stroke: selection.clubType == club ? ModuleTheme.electricCyan.opacity(0.42) : Color.white.opacity(0.08)
                                                 )
+                                            )
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                                    .stroke(
+                                                        selection.clubType == club ? ModuleTheme.electricCyan.opacity(0.72) : Color.clear,
+                                                        lineWidth: 0.5
+                                                    )
+                                            )
+                                            .shadow(
+                                                color: selection.clubType == club ? ModuleTheme.electricCyan.opacity(0.24) : .clear,
+                                                radius: selection.clubType == club ? 10 : 0,
+                                                x: 0,
+                                                y: 0
                                             )
                                     }
                                     .buttonStyle(.plain)
@@ -4391,17 +4605,17 @@ private struct GaragePreFlightSheet: View {
                         .background(
                             GarageRaisedPanelBackground(
                                 shape: RoundedRectangle(cornerRadius: 30, style: .continuous),
-                                fill: Color.white.opacity(0.10),
-                                stroke: Color.white.opacity(0.16),
+                                fill: garageReviewSurfaceDark.opacity(0.98),
+                                stroke: ModuleTheme.electricCyan.opacity(0.24),
                                 glow: ModuleTheme.electricCyan
                             )
                         )
 
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Camera Angle")
-                                .font(.caption.weight(.black))
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
                                 .tracking(1.8)
-                                .foregroundStyle(Color.white.opacity(0.72))
+                                .foregroundStyle(AppModule.garage.theme.textMuted)
 
                             HStack(spacing: 10) {
                                 ForEach(cameraOptions, id: \.self) { option in
@@ -4419,14 +4633,14 @@ private struct GaragePreFlightSheet: View {
                         .background(
                             GarageRaisedPanelBackground(
                                 shape: RoundedRectangle(cornerRadius: 24, style: .continuous),
-                                fill: Color.white.opacity(0.09),
-                                stroke: Color.white.opacity(0.13)
+                                fill: garageReviewSurfaceDark.opacity(0.94),
+                                stroke: Color.white.opacity(0.07)
                             )
                         )
 
                         VStack(alignment: .leading, spacing: 14) {
                             Text("The robot stays idle until you tap start.")
-                                .font(.footnote.weight(.semibold))
+                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(ModuleTheme.electricCyan.opacity(0.92))
                                 .fixedSize(horizontal: false, vertical: true)
 
@@ -4434,8 +4648,8 @@ private struct GaragePreFlightSheet: View {
                                 onStartAnalysis(selection)
                             } label: {
                                 Text("Start AI Analysis")
-                                    .font(.system(size: 23, weight: .black, design: .rounded))
-                                    .foregroundStyle(ModuleTheme.electricCyan)
+                                    .font(.system(size: 22, weight: .black, design: .monospaced))
+                                    .foregroundStyle(Color.white)
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.8)
                                     .fixedSize(horizontal: false, vertical: true)
@@ -4444,8 +4658,8 @@ private struct GaragePreFlightSheet: View {
                                     .background(
                                         GarageRaisedPanelBackground(
                                             shape: RoundedRectangle(cornerRadius: 24, style: .continuous),
-                                            fill: Color(hex: "#16242E"),
-                                            stroke: ModuleTheme.electricCyan.opacity(0.42),
+                                            fill: ModuleTheme.garageSurface.opacity(0.98),
+                                            stroke: ModuleTheme.electricCyan.opacity(0.55),
                                             glow: ModuleTheme.electricCyan
                                         )
                                     )
@@ -4456,8 +4670,8 @@ private struct GaragePreFlightSheet: View {
                         .background(
                             GarageRaisedPanelBackground(
                                 shape: RoundedRectangle(cornerRadius: 30, style: .continuous),
-                                fill: Color(hex: "#101921").opacity(0.94),
-                                stroke: ModuleTheme.electricCyan.opacity(0.18),
+                                fill: garageReviewSurfaceDark.opacity(0.98),
+                                stroke: ModuleTheme.electricCyan.opacity(0.26),
                                 glow: ModuleTheme.electricCyan
                             )
                         )
@@ -4466,14 +4680,20 @@ private struct GaragePreFlightSheet: View {
                     .padding(.bottom, ModuleSpacing.large)
                 }
             }
+            .overlay(
+                RoundedRectangle(cornerRadius: 0, style: .continuous)
+                    .stroke(ModuleTheme.electricCyan.opacity(0.42), lineWidth: 0.5)
+                    .ignoresSafeArea()
+            )
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Text("Pre-Flight")
-                        .font(.headline.weight(.black))
+                        .font(.system(size: 16, weight: .bold, design: .monospaced))
                         .foregroundStyle(Color.white)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Close", action: onClose)
+                        .font(.system(size: 14, weight: .medium, design: .monospaced))
                         .foregroundStyle(Color.white.opacity(0.72))
                 }
             }
@@ -4491,20 +4711,32 @@ private struct GaragePreFlightSheet: View {
     ) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(isSelected ? ModuleTheme.garageCanvas : Color.white.opacity(0.84))
+                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                .foregroundStyle(isSelected ? ModuleTheme.electricCyan : Color.white.opacity(0.84))
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, minHeight: 48)
                 .padding(.horizontal, 10)
                 .background(
-                    GarageRaisedPanelBackground(
+                    GarageInsetPanelBackground(
                         shape: shape,
-                        fill: isSelected ? ModuleTheme.electricCyan : Color.white.opacity(0.08),
-                        stroke: isSelected ? ModuleTheme.electricCyan.opacity(0.5) : Color.white.opacity(0.12),
-                        glow: isSelected ? ModuleTheme.electricCyan : nil
+                        fill: isSelected ? garageReviewSurface : garageReviewSurfaceDark,
+                        stroke: isSelected ? ModuleTheme.electricCyan.opacity(0.4) : Color.white.opacity(0.08)
                     )
+                )
+                .overlay(
+                    shape
+                        .stroke(
+                            isSelected ? ModuleTheme.electricCyan.opacity(0.7) : Color.clear,
+                            lineWidth: 0.5
+                        )
+                )
+                .shadow(
+                    color: isSelected ? ModuleTheme.electricCyan.opacity(0.22) : .clear,
+                    radius: isSelected ? 10 : 0,
+                    x: 0,
+                    y: 0
                 )
         }
         .buttonStyle(.plain)
@@ -4515,40 +4747,36 @@ private struct GarageImportPresentationScreen: View {
     let state: GarageImportPresentationState
     let onDismiss: () -> Void
     let onRetry: () -> Void
-    @State private var coachingTipIndex = 0
-    @State private var ringRotation: Double = 0
-
-    private let coachingTips = [
-        "Tracing hand path trajectories...",
-        "Calculating spine angle stability...",
-        "Detecting impact timing...",
-        "Identifying sequence breaks..."
-    ]
-    private let tipTimer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    @State private var isCalibrationPulseVisible = false
 
     var body: some View {
         ZStack {
-            AppModule.garage.theme.screenGradient
+            garageReviewSurfaceDark
+                .overlay(
+                    GarageTelemetryGridBackground()
+                        .opacity(0.42)
+                )
                 .ignoresSafeArea()
 
-            VStack(spacing: ModuleSpacing.large) {
+            VStack(spacing: 22) {
                 VStack(spacing: 10) {
-                    Text("Garage")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppModule.garage.theme.accentText)
+                    Text("GARAGE")
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .tracking(1.6)
+                        .foregroundStyle(ModuleTheme.electricCyan)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(
                             Capsule()
-                                .fill(AppModule.garage.theme.primary.opacity(0.12))
+                                .fill(ModuleTheme.electricCyan.opacity(0.08))
                                 .overlay(
                                     Capsule()
-                                        .stroke(AppModule.garage.theme.primary.opacity(0.18), lineWidth: 0.5)
+                                        .stroke(ModuleTheme.electricCyan.opacity(0.24), lineWidth: 0.5)
                                 )
                         )
 
                     Text(state.headline)
-                        .font(.title2.weight(.bold))
+                        .font(.system(size: 26, weight: .black, design: .monospaced))
                         .foregroundStyle(AppModule.garage.theme.textPrimary)
 
                     Text(state.detail)
@@ -4557,71 +4785,93 @@ private struct GarageImportPresentationScreen: View {
                         .foregroundStyle(AppModule.garage.theme.textSecondary)
                 }
 
-                if let activeStepTitle = state.activeStepTitle {
-                    Text(activeStepTitle)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppModule.garage.theme.textMuted)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(
-                            GarageInsetPanelBackground(
-                                shape: Capsule(),
-                                fill: garageReviewInsetSurface
-                            )
-                        )
-                }
-
                 if state.showsProgress {
-                    VStack(spacing: 14) {
-                        ZStack {
-                            Circle()
-                                .fill(garageReviewSurfaceRaised)
-                                .frame(width: 90, height: 90)
-                                .shadow(color: garageReviewAccent.opacity(0.22), radius: 16, x: 0, y: 0)
+                    ZStack {
+                        GarageGaugeTickMarks(
+                            tickCount: 60,
+                            radius: 88,
+                            accent: ModuleTheme.electricCyan
+                        )
 
-                            Circle()
-                                .stroke(garageReviewStroke.opacity(0.9), lineWidth: 8)
-                                .frame(width: 72, height: 72)
+                        Circle()
+                            .stroke(Color.white.opacity(0.08), style: StrokeStyle(lineWidth: 4, dash: [4, 6]))
+                            .frame(width: 148, height: 148)
 
-                            Circle()
-                                .trim(from: 0.05, to: 0.72)
-                                .stroke(
-                                    AngularGradient(
-                                        colors: [
-                                            garageManualAnchorAccent.opacity(0.2),
-                                            garageManualAnchorAccent,
-                                            garageManualAnchorAccent.opacity(0.2)
-                                        ],
-                                        center: .center
-                                    ),
-                                    style: StrokeStyle(lineWidth: 8, lineCap: .round)
-                                )
-                                .frame(width: 72, height: 72)
-                                .rotationEffect(.degrees(ringRotation))
-                        }
+                        Circle()
+                            .trim(from: 0, to: max(progressFraction, 0.035))
+                            .stroke(ModuleTheme.electricCyan.opacity(0.28), style: StrokeStyle(lineWidth: 8, lineCap: .round, dash: [4, 6]))
+                            .frame(width: 148, height: 148)
+                            .rotationEffect(.degrees(-90))
+                            .blur(radius: 10)
 
-                        if let frameProgressLabel = state.frameProgressLabel {
-                            Text(frameProgressLabel)
-                                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                .tracking(1.1)
+                        Circle()
+                            .trim(from: 0, to: max(progressFraction, 0.035))
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        ModuleTheme.electricCyan,
+                                        Color(hex: "#1AD0C8")
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                style: StrokeStyle(lineWidth: 4, lineCap: .round, dash: [4, 6])
+                            )
+                            .frame(width: 148, height: 148)
+                            .rotationEffect(.degrees(-90))
+
+                        Circle()
+                            .fill(garageReviewSurfaceDark.opacity(0.94))
+                            .frame(width: 112, height: 112)
+
+                        VStack(spacing: 6) {
+                            Text("\(progressPercent)%")
+                                .font(.system(size: 34, weight: .black, design: .monospaced))
+                                .foregroundStyle(AppModule.garage.theme.textPrimary)
+
+                            Text(state.frameProgressLabel ?? "FRAME: 0 / 0")
+                                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                .tracking(1.0)
                                 .foregroundStyle(ModuleTheme.electricCyan)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.8)
                         }
+                    }
+                }
 
-                        VStack(spacing: 6) {
-                            Text("AI Coaching Tip")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(AppModule.garage.theme.textMuted)
-                            Text(coachingTips[coachingTipIndex])
-                                .font(.footnote)
-                                .multilineTextAlignment(.center)
-                                .foregroundStyle(AppModule.garage.theme.textSecondary)
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.9)
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("TERMINAL OUTPUT")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .tracking(1.5)
+                        .foregroundStyle(AppModule.garage.theme.textMuted)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(state.activeStepTitle ?? state.headline.uppercased())
+                            .font(.system(size: 15, weight: .bold, design: .monospaced))
+                            .foregroundStyle(AppModule.garage.theme.textPrimary)
+
+                        Text(state.frameProgressLabel ?? "FRAME: 0 / 0")
+                            .font(.system(size: 14, weight: .bold, design: .monospaced))
+                            .foregroundStyle(ModuleTheme.electricCyan)
+
+                        if showsCalibrationLabel {
+                            Text("CALIBRATING...")
+                                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                .tracking(1.6)
+                                .foregroundStyle(ModuleTheme.electricCyan.opacity(isCalibrationPulseVisible ? 1 : 0.48))
                         }
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(18)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(garageReviewInsetSurface)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .stroke(ModuleTheme.electricCyan.opacity(0.22), lineWidth: 0.5)
+                        )
+                )
 
                 if case .failure = state {
                     HStack(spacing: 12) {
@@ -4659,37 +4909,126 @@ private struct GarageImportPresentationScreen: View {
                     }
                 }
             }
-            .frame(maxWidth: 320)
-            .padding(ModuleSpacing.large)
+            .frame(maxWidth: 360)
+            .padding(24)
             .background(
-                GarageRaisedPanelBackground(
-                    shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous),
-                    fill: garageReviewSurface
-                )
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(garageReviewSurfaceDark.opacity(0.96))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(ModuleTheme.electricCyan.opacity(0.24), lineWidth: 0.5)
+                    )
             )
             .padding(ModuleSpacing.large)
         }
         .onAppear {
-            if state.showsProgress {
-                startProgressRingAnimation()
-            }
+            updateCalibrationPulse()
         }
-        .onChange(of: state.showsProgress) { _, isShowingProgress in
-            if isShowingProgress {
-                startProgressRingAnimation()
-            }
-        }
-        .onReceive(tipTimer) { _ in
-            guard state.showsProgress else { return }
-            coachingTipIndex = (coachingTipIndex + 1) % coachingTips.count
+        .onChange(of: state.activeStepTitle) { _, _ in
+            updateCalibrationPulse()
         }
     }
 
-    private func startProgressRingAnimation() {
-        ringRotation = 0
-        withAnimation(.linear(duration: 1.35).repeatForever(autoreverses: false)) {
-            ringRotation = 360
+    private var progressFraction: Double {
+        switch state {
+        case let .analyzing(step, frameCount, totalFrames):
+            switch step {
+            case .loadingVideo:
+                return 0.08
+            case .samplingFrames:
+                return totalFrames > 0 ? 0.12 : 0.1
+            case .detectingBody:
+                guard totalFrames > 0 else { return 0.26 }
+                let extractionProgress = Double(frameCount) / Double(max(totalFrames, 1))
+                return 0.26 + (extractionProgress * 0.54)
+            case .mappingCheckpoints:
+                return 0.86
+            case .savingSwing:
+                return 0.97
+            }
+        case .preparing:
+            return 0.06
+        case .failure, .idle:
+            return 0
         }
+    }
+
+    private var progressPercent: Int {
+        Int((progressFraction * 100).rounded())
+    }
+
+    private var showsCalibrationLabel: Bool {
+        switch state {
+        case let .analyzing(step, _, _):
+            return step == .detectingBody || step == .mappingCheckpoints
+        default:
+            return false
+        }
+    }
+
+    private func updateCalibrationPulse() {
+        guard showsCalibrationLabel else {
+            isCalibrationPulseVisible = false
+            return
+        }
+
+        isCalibrationPulseVisible = true
+        withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+            isCalibrationPulseVisible = false
+        }
+    }
+}
+
+private struct GarageTelemetryGridBackground: View {
+    var body: some View {
+        GeometryReader { proxy in
+            Canvas { context, size in
+                let spacing: CGFloat = 28
+                var path = Path()
+
+                var x: CGFloat = 0
+                while x <= size.width {
+                    path.move(to: CGPoint(x: x, y: 0))
+                    path.addLine(to: CGPoint(x: x, y: size.height))
+                    x += spacing
+                }
+
+                var y: CGFloat = 0
+                while y <= size.height {
+                    path.move(to: CGPoint(x: 0, y: y))
+                    path.addLine(to: CGPoint(x: size.width, y: y))
+                    y += spacing
+                }
+
+                context.stroke(
+                    path,
+                    with: .color(ModuleTheme.electricCyan.opacity(0.08)),
+                    lineWidth: 0.5
+                )
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+private struct GarageGaugeTickMarks: View {
+    let tickCount: Int
+    let radius: CGFloat
+    let accent: Color
+
+    var body: some View {
+        ZStack {
+            ForEach(0..<tickCount, id: \.self) { index in
+                Capsule()
+                    .fill(accent.opacity(index.isMultiple(of: 5) ? 0.32 : 0.14))
+                    .frame(width: index.isMultiple(of: 5) ? 2 : 1, height: index.isMultiple(of: 5) ? 11 : 6)
+                    .offset(y: -radius)
+                    .rotationEffect(.degrees((Double(index) / Double(tickCount)) * 360))
+            }
+        }
+        .frame(width: radius * 2.2, height: radius * 2.2)
+        .allowsHitTesting(false)
     }
 }
 
@@ -4740,6 +5079,12 @@ private struct GarageCommandCenterView: View {
         GarageTelemetrySurface(isActive: true, cornerRadius: 28, padding: 24) {
             HStack(alignment: .center, spacing: 20) {
                 ZStack {
+                    GarageGaugeTickMarks(
+                        tickCount: 60,
+                        radius: 82,
+                        accent: ModuleTheme.electricCyan
+                    )
+
                     Circle()
                         .stroke(ModuleTheme.garageTrack, lineWidth: 14)
                         .frame(width: 150, height: 150)
@@ -4767,12 +5112,12 @@ private struct GarageCommandCenterView: View {
 
                     VStack(spacing: 4) {
                         Text("\(heroScore)")
-                            .font(.system(size: 42, weight: .black, design: .rounded))
+                            .font(.system(size: 42, weight: .black, design: .monospaced))
                             .monospacedDigit()
                             .foregroundStyle(AppModule.garage.theme.textPrimary)
 
                         Text("SWING SCORE")
-                            .font(.caption2.weight(.bold))
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
                             .tracking(1.4)
                             .foregroundStyle(AppModule.garage.theme.textMuted)
                     }
@@ -4793,8 +5138,8 @@ private struct GarageCommandCenterView: View {
                         .foregroundStyle(AppModule.garage.theme.textSecondary)
 
                     HStack(spacing: 10) {
-                        metricCapsule(title: "\(consistencyScore) consistency", tint: ModuleTheme.electricCyan)
-                        metricCapsule(title: "live baseline", tint: Color(hex: "#36D7FF"))
+                        metricCapsule(value: consistencyScore, label: "CONSISTENCY", tint: ModuleTheme.electricCyan)
+                        metricCapsule(value: "LIVE", label: "BASELINE", tint: Color(hex: "#36D7FF"))
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -4819,10 +5164,16 @@ private struct GarageCommandCenterView: View {
         }
     }
 
-    private func metricCapsule(title: String, tint: Color) -> some View {
-        Text(title)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(AppModule.garage.theme.textPrimary)
+    private func metricCapsule(value: String, label: String, tint: Color) -> some View {
+        HStack(spacing: 6) {
+            Text(value)
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundStyle(AppModule.garage.theme.textPrimary)
+            Text(label)
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.1)
+                .foregroundStyle(AppModule.garage.theme.textMuted)
+        }
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
             .background(

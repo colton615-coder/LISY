@@ -51,6 +51,7 @@ struct ModuleTheme {
     static let garageSurface = Color(hex: "#222A34")
     static let garageSurfaceRaised = Color(hex: "#2A3441")
     static let garageSurfaceInset = Color(hex: "#101821")
+    static let garageSurfaceDark = Color(hex: "#0B1118")
     static let garageCanvas = Color(hex: "#0D141B")
     static let garageTrack = Color(hex: "#17202A")
     static let garageTextPrimary = Color(hex: "#F2FAFF")
