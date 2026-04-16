@@ -146,10 +146,17 @@ private enum GarageRoute: Equatable {
             self = .hub
         case .analyzer:
             self = .analyzer(.records)
+        case .records:
+            self = .analyzer(.records)
+        case .review:
+            self = .analyzer(.review(recordKey: nil))
         case .drills:
             self = .drills
         case .range:
             self = .range
+        case .overview, .entries, .advisor, .builder:
+            assertionFailure("Unsupported ModuleHubTab passed to GarageRoute.init(tab:): \(tab)")
+            self = .hub
         @unknown default:
             assertionFailure("Unsupported ModuleHubTab passed to GarageRoute.init(tab:): \(tab)")
             self = .hub
@@ -338,8 +345,8 @@ struct GarageView: View {
     @State private var route: GarageRoute = .hub
 
     var body: some View {
-        GarageCustomScaffold(module: .garage, tabs: [], selectedTab: .constant(.hub)) { proxy in
-            garageContent(for: proxy.size)
+        GarageCustomScaffold(module: .garage, tabs: [], selectedTab: .constant(.hub)) { size in
+            garageContent(for: size)
         }
         .overlay {
             if let importState = importPresentationState {
@@ -946,19 +953,41 @@ struct GarageReviewSummaryPresentation: Equatable {
 }
 
 struct GarageCoachingPresentation: Equatable {
+    struct SessionSnapshot: Identifiable, Equatable {
+        let id: String
+        let title: String
+        let value: String
+        let caption: String
+        let systemImage: String
+    }
+
+    struct MetricTile: Identifiable, Equatable {
+        let id: String
+        let title: String
+        let value: String
+        let systemImage: String
+        let status: GarageCoachingMetricStatus
+        let progress: Double
+    }
+
     let title: String
     let headline: String
     let body: String
     let supportingLine: String?
     let confidenceLabel: String
     let phaseLabel: String
+    let nextBestAction: String
     let notes: [String]
+    let snapshots: [SessionSnapshot]
+    let metrics: [MetricTile]
     let isUnavailable: Bool
 
     static func make(
         report: GarageCoachingReport,
         selectedPhase: SwingPhase,
-        reliabilityStatus: GarageReliabilityStatus
+        reliabilityStatus: GarageReliabilityStatus,
+        scorecard: GarageSwingScorecard?,
+        stabilityScore: Int?
     ) -> GarageCoachingPresentation {
         let unavailable = report.cues.isEmpty
         let primaryCue = report.cues.first
@@ -978,6 +1007,39 @@ struct GarageCoachingPresentation: Equatable {
             body = "Review the motion and stability metric while coaching catches up."
         }
 
+        let scoreValue = scorecard.map(\.totalScore) ?? 82
+        let snapshots = [
+            SessionSnapshot(
+                id: "score",
+                title: "Session Analysis",
+                value: "\(scoreValue)",
+                caption: "swing score",
+                systemImage: "waveform.path.ecg.rectangle"
+            ),
+            SessionSnapshot(
+                id: "reliability",
+                title: "Reliability",
+                value: reliabilityStatus.rawValue.uppercased(),
+                caption: "signal confidence",
+                systemImage: "checkmark.shield"
+            ),
+            SessionSnapshot(
+                id: "phase",
+                title: "Focus Phase",
+                value: selectedPhase.reviewTitle,
+                caption: stabilityScore.map { "stability \($0)" } ?? "stability pending",
+                systemImage: "figure.golf"
+            )
+        ]
+
+        let metrics = metricTiles(
+            scorecard: scorecard,
+            reliabilityStatus: reliabilityStatus,
+            scoreValue: scoreValue,
+            selectedPhase: selectedPhase,
+            stabilityScore: stabilityScore
+        )
+
         return GarageCoachingPresentation(
             title: "Coaching Notes",
             headline: unavailable ? "Coaching unavailable" : headline,
@@ -985,9 +1047,172 @@ struct GarageCoachingPresentation: Equatable {
             supportingLine: unavailable ? nil : "Use this as a cue, not a final judgment",
             confidenceLabel: reliabilityStatus.rawValue,
             phaseLabel: selectedPhase.reviewTitle,
+            nextBestAction: report.nextBestAction,
             notes: Array(report.blockers.prefix(2)),
+            snapshots: snapshots,
+            metrics: metrics,
             isUnavailable: unavailable
         )
+    }
+
+    private static func metricTiles(
+        scorecard: GarageSwingScorecard?,
+        reliabilityStatus: GarageReliabilityStatus,
+        scoreValue: Int,
+        selectedPhase: SwingPhase,
+        stabilityScore: Int?
+    ) -> [MetricTile] {
+        guard let scorecard else {
+            return [
+                MetricTile(
+                    id: "score",
+                    title: "Swing Score",
+                    value: "\(scoreValue)",
+                    systemImage: "scope",
+                    status: metricStatus(for: scoreValue),
+                    progress: normalized(scoreValue)
+                ),
+                MetricTile(
+                    id: "reliability",
+                    title: "Reliability",
+                    value: reliabilityStatus.rawValue.uppercased(),
+                    systemImage: "checkmark.shield",
+                    status: metricStatus(for: reliabilityStatus),
+                    progress: normalized(reliabilityStatus)
+                ),
+                MetricTile(
+                    id: "focus",
+                    title: "Focus",
+                    value: selectedPhase.reviewTitle,
+                    systemImage: "target",
+                    status: .good,
+                    progress: 0.66
+                ),
+                MetricTile(
+                    id: "stability",
+                    title: "Stability",
+                    value: stabilityScore.map(String.init) ?? "--",
+                    systemImage: "figure.walk",
+                    status: metricStatus(for: stabilityScore ?? 58),
+                    progress: normalized(stabilityScore ?? 58)
+                )
+            ]
+        }
+
+        let domainData = GarageSwingDomain.allCases.compactMap { domain -> MetricTile? in
+            guard let domainScore = scorecard.domainScores.first(where: { $0.id == domain.rawValue }) else {
+                return nil
+            }
+
+            return MetricTile(
+                id: domain.rawValue,
+                title: coachingMetricTitle(for: domain),
+                value: domainScore.displayValue,
+                systemImage: coachingMetricIcon(for: domain),
+                status: GarageCoachingMetricStatus(from: domainScore.grade),
+                progress: normalized(domainScore.score)
+            )
+        }
+
+        let reliabilityTile = MetricTile(
+            id: "reliability",
+            title: "Reliability",
+            value: reliabilityStatus.rawValue.uppercased(),
+            systemImage: "checkmark.shield",
+            status: metricStatus(for: reliabilityStatus),
+            progress: normalized(reliabilityStatus)
+        )
+
+        return Array((domainData + [reliabilityTile]).prefix(6))
+    }
+
+    private static func coachingMetricTitle(for domain: GarageSwingDomain) -> String {
+        switch domain {
+        case .tempo:
+            "Tempo"
+        case .spine:
+            "Spine"
+        case .pelvis:
+            "Pelvis"
+        case .knee:
+            "Knees"
+        case .head:
+            "Head"
+        }
+    }
+
+    private static func coachingMetricIcon(for domain: GarageSwingDomain) -> String {
+        switch domain {
+        case .tempo:
+            "metronome"
+        case .spine:
+            "angle"
+        case .pelvis:
+            "arrow.left.and.right"
+        case .knee:
+            "figure.walk"
+        case .head:
+            "viewfinder.circle"
+        }
+    }
+
+    private static func metricStatus(for score: Int) -> GarageCoachingMetricStatus {
+        switch score {
+        case 85...:
+            .great
+        case 70..<85:
+            .good
+        case 55..<70:
+            .watch
+        default:
+            .bad
+        }
+    }
+
+    private static func metricStatus(for reliabilityStatus: GarageReliabilityStatus) -> GarageCoachingMetricStatus {
+        switch reliabilityStatus {
+        case .trusted:
+            .great
+        case .review:
+            .watch
+        case .provisional:
+            .bad
+        }
+    }
+
+    private static func normalized(_ score: Int) -> Double {
+        min(max(Double(score) / 100, 0), 1)
+    }
+
+    private static func normalized(_ reliabilityStatus: GarageReliabilityStatus) -> Double {
+        switch reliabilityStatus {
+        case .trusted:
+            0.92
+        case .review:
+            0.68
+        case .provisional:
+            0.34
+        }
+    }
+}
+
+enum GarageCoachingMetricStatus: String, Equatable {
+    case great
+    case good
+    case watch
+    case bad
+
+    init(from grade: GarageMetricGrade) {
+        switch grade {
+        case .excellent:
+            self = .great
+        case .good:
+            self = .good
+        case .fair:
+            self = .watch
+        case .needsWork:
+            self = .bad
+        }
     }
 }
 
@@ -1207,6 +1432,19 @@ private struct GarageFocusedReviewWorkspace: View {
         GarageStep2Presentation.make(scorecard: swingScorecard)
     }
 
+    private var coachingPresentation: GarageCoachingPresentation {
+        let reliabilityReport = GarageReliability.report(for: record)
+        let coachingReport = GarageCoaching.report(for: record)
+
+        return GarageCoachingPresentation.make(
+            report: coachingReport,
+            selectedPhase: selectedPhase,
+            reliabilityStatus: reliabilityReport.status,
+            scorecard: swingScorecard,
+            stabilityScore: stabilityScore
+        )
+    }
+
     private var frameRequestID: String {
         [
             garageRecordSelectionKey(for: record),
@@ -1345,6 +1583,7 @@ private struct GarageFocusedReviewWorkspace: View {
                     GarageReviewSummaryControls(
                         summaryPresentation: summaryPresentation,
                         step2Presentation: step2Presentation,
+                        coachingPresentation: coachingPresentation,
                         reviewRecoveryTitle: reviewRecoveryTitle,
                         reviewRecoveryBody: reviewRecoveryBody,
                         reviewFrameSource: reviewFrameSource
@@ -1733,6 +1972,7 @@ private struct GarageReviewScrollableControls: View {
 private struct GarageReviewSummaryControls: View {
     let summaryPresentation: GarageReviewSummaryPresentation
     let step2Presentation: GarageStep2Presentation
+    let coachingPresentation: GarageCoachingPresentation
     let reviewRecoveryTitle: String
     let reviewRecoveryBody: String
     let reviewFrameSource: GarageReviewFrameSourceState
@@ -1744,9 +1984,12 @@ private struct GarageReviewSummaryControls: View {
             switch step2Presentation {
             case let .ready(score, metrics):
                 GarageStep2ScoreSummaryCard(presentation: score)
-                GarageStep2MetricGrid(metrics: metrics)
+                if metrics.isEmpty == false {
+                    GarageCoachingReportView(presentation: coachingPresentation)
+                }
             case let .unavailable(presentation):
                 GarageStep2UnavailableCard(presentation: presentation)
+                GarageCoachingReportView(presentation: coachingPresentation)
             }
             if reviewFrameSource != .video {
                 GarageReviewRecoveryCallout(
@@ -3087,7 +3330,7 @@ private let garageReviewMutedText = ModuleTheme.garageTextMuted
 private let garageReviewApproved = Color(red: 0.33, green: 0.79, blue: 0.53)
 private let garageReviewPending = Color.orange
 private let garageReviewFlagged = Color(red: 0.94, green: 0.38, blue: 0.40)
-private let garageReviewStroke = Color.white.opacity(0.07)
+private let garageReviewStroke = Color.white.opacity(0.05)
 private let garageReviewShadowLight = AppModule.garage.theme.shadowLight
 private let garageReviewShadowDark = AppModule.garage.theme.shadowDark
 private let garageReviewShadow = garageReviewShadowDark.opacity(0.5)
@@ -3117,9 +3360,15 @@ private struct GarageRaisedPanelBackground<S: Shape>: View {
                 shape
                     .stroke(stroke, lineWidth: 1)
             )
-            .shadow(color: garageReviewShadowDark, radius: 16, x: 10, y: 10)
-            .shadow(color: garageReviewShadowLight, radius: 12, x: -6, y: -6)
-            .shadow(color: (glow ?? .clear).opacity(glow == nil ? 0 : 0.35), radius: glow == nil ? 0 : 12, x: 0, y: 0)
+            .overlay(
+                shape
+                    .stroke(
+                        (glow ?? .clear).opacity(glow == nil ? 0 : 0.55),
+                        lineWidth: glow == nil ? 0 : 0.5
+                    )
+            )
+            .shadow(color: garageReviewShadowDark.opacity(0.68), radius: 10, x: 0, y: 8)
+            .shadow(color: (glow ?? .clear).opacity(glow == nil ? 0 : 0.12), radius: glow == nil ? 0 : 10, x: 0, y: 0)
     }
 }
 
@@ -3137,11 +3386,11 @@ private struct GarageInsetPanelBackground<S: Shape>: View {
             )
             .overlay(
                 shape
-                    .stroke(garageReviewShadowLight.opacity(0.65), lineWidth: 1)
+                    .stroke(garageReviewShadowLight.opacity(0.35), lineWidth: 1)
                     .blur(radius: 1)
                     .mask(shape.fill(LinearGradient(colors: [.white, .clear], startPoint: .topLeading, endPoint: .bottomTrailing)))
             )
-            .shadow(color: garageReviewShadowDark.opacity(0.55), radius: 10, x: 6, y: 6)
+            .shadow(color: garageReviewShadowDark.opacity(0.44), radius: 8, x: 0, y: 6)
     }
 }
 

@@ -3,79 +3,210 @@ import SwiftUI
 struct GarageCoachingReportView: View {
     let presentation: GarageCoachingPresentation
 
+    private let columns = [
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10)
+    ]
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(presentation.title)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppModule.garage.theme.textMuted)
+        GarageTelemetrySurface(isActive: true, cornerRadius: 24, padding: 18) {
+            VStack(alignment: .leading, spacing: 14) {
+                header
+                sessionScroller
+                metricGrid
+                footer
+            }
+        }
+    }
 
-                    Text(presentation.headline)
-                        .font(.headline)
-                        .foregroundStyle(AppModule.garage.theme.textPrimary)
+    private var header: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Session Analysis")
+                    .font(.caption.weight(.bold))
+                    .tracking(1.4)
+                    .foregroundStyle(AppModule.garage.theme.textMuted)
 
-                    Text(presentation.body)
-                        .font(.subheadline)
-                        .foregroundStyle(AppModule.garage.theme.textSecondary)
-                }
+                Text(presentation.headline)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(AppModule.garage.theme.textPrimary)
 
-                Spacer(minLength: 0)
+                Text(presentation.body)
+                    .font(.subheadline)
+                    .foregroundStyle(AppModule.garage.theme.textSecondary)
+                    .lineLimit(3)
             }
 
-            HStack(spacing: 8) {
+            Spacer(minLength: 0)
+
+            VStack(alignment: .trailing, spacing: 8) {
                 GarageCoachingBadge(
-                    title: presentation.confidenceLabel,
+                    title: presentation.confidenceLabel.uppercased(),
                     tint: badgeTint(for: presentation.confidenceLabel)
                 )
                 GarageCoachingBadge(
-                    title: presentation.phaseLabel,
-                    tint: ModuleTheme.electricCyan.opacity(0.42)
+                    title: presentation.phaseLabel.uppercased(),
+                    tint: ModuleTheme.electricCyan
                 )
             }
+        }
+    }
 
+    private var sessionScroller: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(presentation.snapshots) { snapshot in
+                    SessionAnalysisMiniCard(snapshot: snapshot)
+                }
+            }
+        }
+    }
+
+    private var metricGrid: some View {
+        LazyVGrid(columns: columns, spacing: 10) {
+            ForEach(presentation.metrics) { metric in
+                GolfMetricCard(metric: metric)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: 10) {
             if let supportingLine = presentation.supportingLine {
                 Text(supportingLine)
-                    .font(.caption.weight(.medium))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(AppModule.garage.theme.textMuted)
             }
 
-            if presentation.notes.isEmpty == false {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(presentation.notes, id: \.self) { note in
-                        HStack(alignment: .top, spacing: 10) {
-                            Circle()
-                                .fill(Color.orange.opacity(0.72))
-                                .frame(width: 7, height: 7)
-                                .padding(.top, 5)
+            Text(presentation.nextBestAction)
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(AppModule.garage.theme.textPrimary)
 
-                            Text(note)
-                                .font(.subheadline)
-                                .foregroundStyle(AppModule.garage.theme.textSecondary)
-                        }
+            if presentation.notes.isEmpty == false {
+                ForEach(presentation.notes, id: \.self) { note in
+                    HStack(alignment: .top, spacing: 8) {
+                        Rectangle()
+                            .fill(Color(hex: "#FFCE52"))
+                            .frame(width: 14, height: 2)
+                            .padding(.top, 8)
+
+                        Text(note)
+                            .font(.caption)
+                            .foregroundStyle(AppModule.garage.theme.textSecondary)
                     }
                 }
             }
         }
-        .padding(16)
-        .background(
-            GarageCoachingCardBackground(
-                shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous),
-                fill: ModuleTheme.garageSurfaceRaised,
-                stroke: Color.white.opacity(0.05)
-            )
-        )
     }
 
     private func badgeTint(for confidenceLabel: String) -> Color {
         switch confidenceLabel {
         case GarageReliabilityStatus.trusted.rawValue:
-            Color(red: 0.33, green: 0.79, blue: 0.53)
+            Color(hex: "#4DDE8E")
         case GarageReliabilityStatus.review.rawValue:
-            .orange
+            Color(hex: "#FFCE52")
         default:
-            Color(red: 0.94, green: 0.38, blue: 0.40)
+            Color(hex: "#FF5F63")
         }
+    }
+}
+
+private struct SessionAnalysisMiniCard: View {
+    let snapshot: GarageCoachingPresentation.SessionSnapshot
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: snapshot.systemImage)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(ModuleTheme.electricCyan)
+
+                Spacer(minLength: 0)
+            }
+
+            Text(snapshot.title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(AppModule.garage.theme.textMuted)
+
+            Text(snapshot.value)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(AppModule.garage.theme.textPrimary)
+                .lineLimit(1)
+
+            Text(snapshot.caption)
+                .font(.caption2)
+                .foregroundStyle(AppModule.garage.theme.textSecondary)
+                .lineLimit(1)
+        }
+        .frame(width: 118, alignment: .leading)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(ModuleTheme.garageSurfaceInset.opacity(0.96))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.white.opacity(0.05), lineWidth: 1)
+                )
+        )
+    }
+}
+
+private struct GolfMetricCard: View {
+    let metric: GarageCoachingPresentation.MetricTile
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top) {
+                Image(systemName: metric.systemImage)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(metric.status.tint)
+
+                Spacer(minLength: 0)
+
+                Text(metric.status.label)
+                    .font(.caption2.weight(.bold))
+                    .tracking(0.8)
+                    .foregroundStyle(metric.status.tint)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            Text(metric.value)
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .foregroundStyle(AppModule.garage.theme.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+
+            Text(metric.title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppModule.garage.theme.textSecondary)
+                .lineLimit(1)
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(ModuleTheme.garageTrack)
+
+                    Capsule()
+                        .fill(metric.status.tint)
+                        .frame(width: max(proxy.size.width * metric.progress, 10))
+                }
+            }
+            .frame(height: 3)
+        }
+        .frame(maxWidth: .infinity, minHeight: 126, alignment: .leading)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(ModuleTheme.garageSurfaceInset.opacity(0.98))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(metric.status.tint.opacity(0.36), lineWidth: 0.5)
+                )
+        )
     }
 }
 
@@ -85,32 +216,45 @@ private struct GarageCoachingBadge: View {
 
     var body: some View {
         Text(title)
-            .font(.caption.weight(.semibold))
+            .font(.caption2.weight(.bold))
             .foregroundStyle(AppModule.garage.theme.textPrimary)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .frame(minHeight: 32)
             .background(
                 Capsule()
                     .fill(tint.opacity(0.10))
                     .overlay(
                         Capsule()
-                            .stroke(tint.opacity(0.22), lineWidth: 1)
+                            .stroke(tint.opacity(0.38), lineWidth: 0.5)
                     )
             )
     }
 }
 
-private struct GarageCoachingCardBackground<S: Shape>: View {
-    let shape: S
-    var fill: Color = ModuleTheme.garageSurface
-    var stroke: Color = Color.white.opacity(0.07)
+private extension GarageCoachingMetricStatus {
+    var label: String {
+        switch self {
+        case .great:
+            "GREAT"
+        case .good:
+            "GOOD"
+        case .watch:
+            "WATCH"
+        case .bad:
+            "BAD"
+        }
+    }
 
-    var body: some View {
-        shape
-            .fill(fill)
-            .overlay(shape.stroke(stroke, lineWidth: 1))
-            .shadow(color: AppModule.garage.theme.shadowDark.opacity(0.4), radius: 14, x: 8, y: 8)
-            .shadow(color: AppModule.garage.theme.shadowLight.opacity(0.35), radius: 8, x: -4, y: -4)
+    var tint: Color {
+        switch self {
+        case .great:
+            Color(hex: "#4DDE8E")
+        case .good:
+            Color(hex: "#1AD0C8")
+        case .watch:
+            Color(hex: "#FFCE52")
+        case .bad:
+            Color(hex: "#FF5F63")
+        }
     }
 }

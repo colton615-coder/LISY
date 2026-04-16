@@ -361,7 +361,11 @@ struct GarageCustomScaffold<Content: View>: View {
         GeometryReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: HubSectionSpacing.outer) {
-                    HubTabPicker(tabs: tabs, selectedTab: $selectedTab, theme: module.theme)
+                    GarageAnalysisHeaderBar()
+
+                    if tabs.isEmpty == false {
+                        HubTabPicker(tabs: tabs, selectedTab: $selectedTab, theme: module.theme)
+                    }
 
                     content(proxy.size)
                 }
@@ -371,6 +375,124 @@ struct GarageCustomScaffold<Content: View>: View {
             .tint(module.theme.primary)
             .background(module.theme.screenGradient)
         }
+    }
+}
+
+struct GarageAnalysisHeaderBar: View {
+    var body: some View {
+        HStack(alignment: .center, spacing: ModuleSpacing.medium) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Garage")
+                    .font(.caption.weight(.semibold))
+                    .tracking(1.8)
+                    .foregroundStyle(AppModule.garage.theme.textMuted)
+
+                Text("ANALYSIS")
+                    .font(.system(size: 28, weight: .black, design: .rounded))
+                    .tracking(1.4)
+                    .foregroundStyle(AppModule.garage.theme.textPrimary)
+            }
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 10) {
+                GarageHeaderIconButton(systemImage: "gearshape.fill")
+
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    ModuleTheme.electricCyan.opacity(0.9),
+                                    Color(hex: "#138DB1")
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+
+                    Text("CT")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(ModuleTheme.garageSurfaceInset)
+                }
+                .frame(width: 40, height: 40)
+                .overlay(
+                    Circle()
+                        .stroke(ModuleTheme.electricCyan.opacity(0.55), lineWidth: 0.5)
+                )
+                .shadow(color: Color.black.opacity(0.22), radius: 8, x: 0, y: 4)
+            }
+        }
+    }
+}
+
+private struct GarageHeaderIconButton: View {
+    let systemImage: String
+
+    var body: some View {
+        Button(action: {}) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(AppModule.garage.theme.textPrimary)
+                .frame(width: 40, height: 40)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(ModuleTheme.garageSurfaceRaised.opacity(0.96))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(ModuleTheme.electricCyan.opacity(0.45), lineWidth: 0.5)
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+    }
+}
+
+struct GarageTelemetrySurface<Content: View>: View {
+    var isActive = false
+    var cornerRadius: CGFloat = ModuleCornerRadius.card
+    var padding: CGFloat = ModuleSpacing.large
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ModuleSpacing.medium) {
+            content
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(padding)
+        .background(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            ModuleTheme.garageSurfaceRaised.opacity(0.98),
+                            ModuleTheme.garageSurface.opacity(0.98),
+                            ModuleTheme.garageSurfaceInset.opacity(0.96)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(Color.white.opacity(0.05), lineWidth: 1)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(
+                            isActive ? ModuleTheme.electricCyan.opacity(0.65) : Color.clear,
+                            lineWidth: 0.5
+                        )
+                )
+                .shadow(color: Color.black.opacity(0.24), radius: 10, x: 0, y: 8)
+                .shadow(
+                    color: isActive ? ModuleTheme.electricCyan.opacity(0.08) : .clear,
+                    radius: isActive ? 14 : 0,
+                    x: 0,
+                    y: 0
+                )
+        )
     }
 }
 
