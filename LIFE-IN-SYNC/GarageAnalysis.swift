@@ -3360,6 +3360,13 @@ struct GarageSwingTimestamps: Codable, Hashable {
         case impact
     }
 
+    private enum LegacyScalarCodingKeys: String, CodingKey {
+        case rawValue
+        case value
+        case timestamp
+        case seconds
+    }
+
     init(
         perspective: GarageCameraPerspective,
         start: Double,
@@ -3375,9 +3382,9 @@ struct GarageSwingTimestamps: Codable, Hashable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         perspective = try container.decodeIfPresent(GarageCameraPerspective.self, forKey: .perspective) ?? .dtl
-        start = try container.decode(Double.self, forKey: .start)
-        top = try container.decode(Double.self, forKey: .top)
-        impact = try container.decode(Double.self, forKey: .impact)
+        start = GarageSwingTimestamps.decodeTimestampValue(from: container, forKey: .start) ?? 0
+        top = GarageSwingTimestamps.decodeTimestampValue(from: container, forKey: .top) ?? start
+        impact = GarageSwingTimestamps.decodeTimestampValue(from: container, forKey: .impact) ?? top
     }
 
     func encode(to encoder: Encoder) throws {
@@ -3390,6 +3397,77 @@ struct GarageSwingTimestamps: Codable, Hashable {
 
     var normalizedForPersistence: GarageSwingTimestamps {
         GarageSwingTimestamps(perspective: perspective, start: start, top: top, impact: impact)
+    }
+
+    private static func decodeTimestampValue(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys
+    ) -> Double? {
+        if let value = try? container.decodeIfPresent(Double.self, forKey: key) {
+            return value
+        }
+
+        if let value = try? container.decodeIfPresent(Int.self, forKey: key) {
+            return Double(value)
+        }
+
+        if let value = try? container.decodeIfPresent(String.self, forKey: key) {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let numericValue = Double(trimmed) {
+                return numericValue
+            }
+        }
+
+        if let nestedContainer = try? container.nestedContainer(keyedBy: LegacyScalarCodingKeys.self, forKey: key) {
+            if let value = try? nestedContainer.decodeIfPresent(Double.self, forKey: .value) {
+                return value
+            }
+            if let value = try? nestedContainer.decodeIfPresent(Double.self, forKey: .rawValue) {
+                return value
+            }
+            if let value = try? nestedContainer.decodeIfPresent(Double.self, forKey: .timestamp) {
+                return value
+            }
+            if let value = try? nestedContainer.decodeIfPresent(Double.self, forKey: .seconds) {
+                return value
+            }
+
+            if let value = try? nestedContainer.decodeIfPresent(String.self, forKey: .value),
+               let numericValue = Double(value.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                return numericValue
+            }
+            if let value = try? nestedContainer.decodeIfPresent(String.self, forKey: .rawValue),
+               let numericValue = Double(value.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                return numericValue
+            }
+            if let value = try? nestedContainer.decodeIfPresent(String.self, forKey: .timestamp),
+               let numericValue = Double(value.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                return numericValue
+            }
+            if let value = try? nestedContainer.decodeIfPresent(String.self, forKey: .seconds),
+               let numericValue = Double(value.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                return numericValue
+            }
+        }
+
+        if let nestedDecoder = try? container.superDecoder(forKey: key) {
+            if let singleValueContainer = try? nestedDecoder.singleValueContainer() {
+                if let value = try? singleValueContainer.decode(Double.self) {
+                    return value
+                }
+                if let value = try? singleValueContainer.decode(Int.self) {
+                    return Double(value)
+                }
+                if let value = try? singleValueContainer.decode(String.self) {
+                    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if let numericValue = Double(trimmed) {
+                        return numericValue
+                    }
+                }
+            }
+        }
+
+        return nil
     }
 }
 

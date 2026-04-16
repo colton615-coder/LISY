@@ -566,10 +566,10 @@ final class StudyEntry {
 final class SwingRecord {
     var title: String
     var createdAt: Date
-    var importStatus: GarageImportStatus = GarageImportStatus.complete
-    var clubType: String = "7 Iron"
-    var isLeftHanded: Bool = false
-    var cameraAngle: String = "Down the Line"
+    var importStatus: GarageImportStatus?
+    var clubType: String?
+    var isLeftHanded: Bool?
+    var cameraAngle: String?
     var mediaFilename: String?
     var mediaFileBookmark: Data?
     var reviewMasterFilename: String?
@@ -637,8 +637,24 @@ final class SwingRecord {
         normalizedFilename(exportAssetFilename)
     }
 
+    var resolvedImportStatus: GarageImportStatus {
+        importStatus ?? .complete
+    }
+
+    var resolvedClubType: String {
+        normalizedFilename(clubType) ?? "7 Iron"
+    }
+
+    var resolvedIsLeftHanded: Bool {
+        isLeftHanded ?? false
+    }
+
+    var resolvedCameraAngle: String {
+        normalizedFilename(cameraAngle) ?? "Down the Line"
+    }
+
     var isImportComplete: Bool {
-        importStatus.isComplete
+        resolvedImportStatus.isComplete
     }
 
     var isUsingLegacySingleAsset: Bool {

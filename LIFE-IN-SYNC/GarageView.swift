@@ -992,7 +992,7 @@ private struct SwingRecordCard: View {
                         .lineLimit(1)
 
                     HStack(spacing: 8) {
-                        Text("CLUB: \(garageClubBadgeCode(for: record.clubType))")
+                        Text("CLUB: \(garageClubBadgeCode(for: record.resolvedClubType))")
                             .font(.system(size: 11, weight: .bold, design: .monospaced))
                             .tracking(1.1)
                             .foregroundStyle(ModuleTheme.electricCyan)
@@ -1064,7 +1064,7 @@ private struct GarageRecordStripThumbnail: View {
                 VStack(spacing: 4) {
                     Image(systemName: "waveform.path.ecg.rectangle")
                         .font(.caption.weight(.bold))
-                    Text(garageClubBadgeCode(for: record.clubType))
+                    Text(garageClubBadgeCode(for: record.resolvedClubType))
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .tracking(1.1)
                 }
