@@ -1845,17 +1845,9 @@ enum GarageAnalysisPipeline {
             )
         }
 
-        if let zeroCopyFrames = try? await extractPoseFramesZeroCopy(from: asset, timestamps: timestamps),
-           zeroCopyFrames.isEmpty == false {
-            return (
-                zeroCopyFrames,
-                GaragePoseExtractionMetadata(
-                    usedZeroCopyReader: true,
-                    includes3DFrames: zeroCopyFrames.contains(where: { $0.joints3D.isEmpty == false })
-                )
-            )
-        }
-
+        // The zero-copy AVAssetReader path has been the most likely source of on-device
+        // allocator aborts during Garage import. Prefer the more conservative generator path
+        // until the lower-level memory issue is isolated.
         let fallbackFrames = try await extractPoseFramesUsingGenerator(from: asset, timestamps: timestamps)
         return (
             fallbackFrames,
