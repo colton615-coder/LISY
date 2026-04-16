@@ -2034,18 +2034,11 @@ enum GarageAnalysisPipeline {
         timestamp: Double
     ) throws -> SwingFrame? {
         let request = VNDetectHumanBodyPoseRequest()
-        if #available(iOS 17.0, *) {
-            let request3D = VNDetectHumanBodyPose3DRequest()
-            try handler.perform([request, request3D])
-            return try makeSwingFrame(
-                timestamp: timestamp,
-                observation2D: request.results?.first,
-                observation3D: request3D.results?.first
-            )
-        } else {
-            try handler.perform([request])
-            return try makeSwingFrame(timestamp: timestamp, observation2D: request.results?.first, observation3D: nil)
-        }
+        // The 3D body-pose request has been unstable on-device during Garage import,
+        // producing repeated orientation warnings followed by allocator aborts.
+        // Keep the extraction pipeline on the proven 2D request so swing analysis completes reliably.
+        try handler.perform([request])
+        return try makeSwingFrame(timestamp: timestamp, observation2D: request.results?.first, observation3D: nil)
     }
 
     private static func makeSwingFrame(
