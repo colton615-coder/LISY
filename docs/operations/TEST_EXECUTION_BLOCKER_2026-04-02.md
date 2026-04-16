@@ -1,5 +1,8 @@
 # Test Execution Blocker
 
+## Status: active incident/blocker note (as of 2026-04-02).
+
+
 ## Status
 As of April 2, 2026, the project builds successfully in Xcode, but test execution is cancelled before any test body runs.
 

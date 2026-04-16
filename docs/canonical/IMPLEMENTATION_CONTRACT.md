@@ -3,7 +3,7 @@
 ## Purpose
 This document translates the canonical product scope into implementation constraints for the native app.
 
-If code structure or naming decisions are unclear, use this file after `docs/CANONICAL_PRODUCT_SPEC.md`.
+If code structure or naming decisions are unclear, use this file after `docs/canonical/CANONICAL_PRODUCT_SPEC.md`.
 
 ## Implementation Priorities
 Build in this order:
@@ -183,7 +183,7 @@ Before changing:
 update this file or the canonical product spec first.
 
 ## Product Direction Addendum (2026-04)
-Use `docs/PRODUCT_DIRECTION_BRIEF.md` for direction on:
+Use `docs/plans/active/PRODUCT_DIRECTION_BRIEF.md` for direction on:
 - progress-first dashboard composition
 - deep module hub-and-tabs command-center pattern
 - assistant orb and compact panel behavior

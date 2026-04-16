@@ -157,6 +157,12 @@ private enum GarageRoute: Equatable {
     }
 }
 
+private struct GaragePreFlightSelection: Equatable {
+    var clubType: String = "7 Iron"
+    var isLeftHanded: Bool = false
+    var cameraAngle: String = "Down the Line"
+}
+
 
 func garageDeterministicHandPathSampleID(index: Int, timestamp: Double) -> Int {
     let quantizedTimestamp = Int64((timestamp * 1_000_000).rounded())
@@ -324,8 +330,11 @@ struct GarageView: View {
 
     @Query(sort: \SwingRecord.createdAt, order: .reverse) private var swingRecords: [SwingRecord]
     @State private var isShowingAddRecord = false
+    @State private var isShowingPreFlight = false
     @State private var selectedVideoItem: PhotosPickerItem?
+    @State private var stagedMovie: GaragePickedMovie?
     @State private var pendingImportMovie: GaragePickedMovie?
+    @State private var pendingPreFlightSelection = GaragePreFlightSelection()
     @State private var route: GarageRoute = .hub
 
     var body: some View {
@@ -350,6 +359,30 @@ struct GarageView: View {
         .onChange(of: selectedVideoItem) { _, newItem in
             guard let newItem else { return }
             prepareSelectedVideo(newItem)
+        }
+        .sheet(isPresented: $isShowingPreFlight, onDismiss: {
+            stagedMovie = nil
+            selectedVideoItem = nil
+            route = .analyzer(.records)
+        }) {
+            GaragePreFlightSheet(
+                initialSelection: pendingPreFlightSelection,
+                onClose: {
+                    isShowingPreFlight = false
+                    stagedMovie = nil
+                    selectedVideoItem = nil
+                    route = .analyzer(.records)
+                },
+                onStartAnalysis: { selection in
+                    guard let stagedMovie else { return }
+                    pendingPreFlightSelection = selection
+                    isShowingPreFlight = false
+                    importSelectedVideo(stagedMovie, selection: selection)
+                    self.stagedMovie = nil
+                }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
         .onChange(of: swingRecords.map(garageRecordSelectionKey)) { _, keys in
             guard case let .analyzer(analyzerRoute) = route,
@@ -471,6 +504,7 @@ struct GarageView: View {
 
     private func dismissImportPresentation() {
         selectedVideoItem = nil
+        stagedMovie = nil
         pendingImportMovie = nil
         route = .analyzer(.records)
     }
@@ -478,7 +512,7 @@ struct GarageView: View {
     @MainActor
     private func retryImport() {
         if let pendingImportMovie {
-            importSelectedVideo(pendingImportMovie)
+            importSelectedVideo(pendingImportMovie, selection: pendingPreFlightSelection)
             return
         }
 
@@ -498,6 +532,7 @@ struct GarageView: View {
               case .records = analyzerRoute.normalizedForPresentation else { return }
 
         pendingImportMovie = nil
+        stagedMovie = nil
         route = .analyzer(.importing(.preparing))
 
         Task {
@@ -507,8 +542,10 @@ struct GarageView: View {
                 }
 
                 await MainActor.run {
-                    pendingImportMovie = movie
-                    importSelectedVideo(movie)
+                    route = .analyzer(.records)
+                    stagedMovie = movie
+                    selectedVideoItem = nil
+                    isShowingPreFlight = true
                 }
             } catch {
                 await MainActor.run {
@@ -519,8 +556,9 @@ struct GarageView: View {
     }
 
     @MainActor
-    private func importSelectedVideo(_ movie: GaragePickedMovie) {
+    private func importSelectedVideo(_ movie: GaragePickedMovie, selection: GaragePreFlightSelection) {
         pendingImportMovie = movie
+        pendingPreFlightSelection = selection
         route = .analyzer(.importing(.analyzing(.loadingVideo)))
 
         Task {
@@ -549,6 +587,9 @@ struct GarageView: View {
 
                 let record = SwingRecord(
                     title: resolvedTitle,
+                    clubType: selection.clubType,
+                    isLeftHanded: selection.isLeftHanded,
+                    cameraAngle: selection.cameraAngle,
                     mediaFilename: reviewMasterURL.lastPathComponent,
                     mediaFileBookmark: reviewMasterBookmark,
                     reviewMasterFilename: reviewMasterURL.lastPathComponent,
@@ -570,6 +611,7 @@ struct GarageView: View {
                     modelContext.insert(record)
                     try? modelContext.save()
                     selectedVideoItem = nil
+                    stagedMovie = nil
                     pendingImportMovie = nil
                     route = .analyzer(.review(recordKey: garageRecordSelectionKey(for: record)))
                 }
@@ -3845,10 +3887,172 @@ private func garageSuggestedRecordTitle(for filename: String, fallbackURL: URL) 
     return "Swing \(Date.now.formatted(date: .abbreviated, time: .shortened))"
 }
 
+private struct GaragePreFlightSheet: View {
+    let initialSelection: GaragePreFlightSelection
+    let onClose: () -> Void
+    let onStartAnalysis: (GaragePreFlightSelection) -> Void
+
+    @State private var selection = GaragePreFlightSelection()
+    private let clubOptions = ["Driver", "3 Wood", "5 Iron", "7 Iron", "Wedge"]
+    private let cameraOptions = ["Down the Line", "Face On"]
+    private let handednessOptions: [(label: String, value: Bool)] = [("Righty", false), ("Lefty", true)]
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: ModuleSpacing.large) {
+                VStack(alignment: .leading, spacing: ModuleSpacing.small) {
+                    Text("Handedness")
+                        .font(.headline)
+                        .foregroundStyle(AppModule.garage.theme.textPrimary)
+
+                    HStack(spacing: 10) {
+                        ForEach(handednessOptions, id: \.label) { option in
+                            Button {
+                                selection.isLeftHanded = option.value
+                            } label: {
+                                Text(option.label)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(
+                                        selection.isLeftHanded == option.value
+                                            ? garageManualAnchorAccent
+                                            : AppModule.garage.theme.textSecondary
+                                    )
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(
+                                        GarageRaisedPanelBackground(
+                                            shape: Capsule(),
+                                            fill: selection.isLeftHanded == option.value ? garageReviewSurfaceRaised : garageReviewSurface,
+                                            stroke: selection.isLeftHanded == option.value ? garageManualAnchorAccent.opacity(0.45) : garageReviewStroke,
+                                            glow: selection.isLeftHanded == option.value ? garageManualAnchorAccent : nil
+                                        )
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: ModuleSpacing.small) {
+                    Text("Club Type")
+                        .font(.headline)
+                        .foregroundStyle(AppModule.garage.theme.textPrimary)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(clubOptions, id: \.self) { club in
+                                Button {
+                                    selection.clubType = club
+                                } label: {
+                                    Text(club)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(selection.clubType == club ? garageManualAnchorAccent : AppModule.garage.theme.textSecondary)
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 10)
+                                        .background(
+                                            GarageRaisedPanelBackground(
+                                                shape: Capsule(),
+                                                fill: selection.clubType == club ? garageReviewSurfaceRaised : garageReviewSurface,
+                                                stroke: selection.clubType == club ? garageManualAnchorAccent.opacity(0.45) : garageReviewStroke,
+                                                glow: selection.clubType == club ? garageManualAnchorAccent : nil
+                                            )
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: ModuleSpacing.small) {
+                    Text("Camera Angle")
+                        .font(.headline)
+                        .foregroundStyle(AppModule.garage.theme.textPrimary)
+
+                    HStack(spacing: 10) {
+                        ForEach(cameraOptions, id: \.self) { option in
+                            Button {
+                                selection.cameraAngle = option
+                            } label: {
+                                Text(option)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(selection.cameraAngle == option ? garageManualAnchorAccent : AppModule.garage.theme.textSecondary)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(
+                                        GarageRaisedPanelBackground(
+                                            shape: RoundedRectangle(cornerRadius: 12, style: .continuous),
+                                            fill: selection.cameraAngle == option ? garageReviewSurfaceRaised : garageReviewSurface,
+                                            stroke: selection.cameraAngle == option ? garageManualAnchorAccent.opacity(0.45) : garageReviewStroke,
+                                            glow: selection.cameraAngle == option ? garageManualAnchorAccent : nil
+                                        )
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                Spacer(minLength: 0)
+
+                Button {
+                    onStartAnalysis(selection)
+                } label: {
+                    Text("Start AI Analysis")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(garageReviewCanvasFill)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            GarageRaisedPanelBackground(
+                                shape: Capsule(),
+                                fill: garageManualAnchorAccent,
+                                stroke: garageManualAnchorAccent.opacity(0.45),
+                                glow: garageManualAnchorAccent
+                            )
+                        )
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 8)
+            }
+            .padding(ModuleSpacing.large)
+            .background(
+                AppModule.garage.theme.screenGradient
+                    .ignoresSafeArea()
+            )
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Text("Pre-Flight Checklist")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(AppModule.garage.theme.textPrimary)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Close", action: onClose)
+                        .foregroundStyle(AppModule.garage.theme.textSecondary)
+                }
+            }
+        }
+        .onAppear {
+            selection = initialSelection
+        }
+    }
+}
+
 private struct GarageImportPresentationScreen: View {
     let state: GarageImportPresentationState
     let onDismiss: () -> Void
     let onRetry: () -> Void
+    @State private var coachingTipIndex = 0
+    @State private var ringRotation: Double = 0
+
+    private let coachingTips = [
+        "Tracing hand path trajectories...",
+        "Calculating spine angle stability...",
+        "Detecting impact timing...",
+        "Identifying sequence breaks..."
+    ]
+    private let tipTimer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
 
     var body: some View {
         ZStack {
@@ -3896,16 +4100,45 @@ private struct GarageImportPresentationScreen: View {
                 }
 
                 if state.showsProgress {
-                    ZStack {
-                        Circle()
-                            .fill(garageReviewSurfaceRaised)
-                            .frame(width: 78, height: 78)
-                            .shadow(color: garageReviewAccent.opacity(0.28), radius: 16, x: 0, y: 0)
+                    VStack(spacing: 14) {
+                        ZStack {
+                            Circle()
+                                .fill(garageReviewSurfaceRaised)
+                                .frame(width: 90, height: 90)
+                                .shadow(color: garageReviewAccent.opacity(0.22), radius: 16, x: 0, y: 0)
 
-                        ProgressView()
-                            .controlSize(.large)
-                            .tint(AppModule.garage.theme.primary)
-                            .scaleEffect(1.2)
+                            Circle()
+                                .stroke(garageReviewStroke.opacity(0.9), lineWidth: 8)
+                                .frame(width: 72, height: 72)
+
+                            Circle()
+                                .trim(from: 0.05, to: 0.72)
+                                .stroke(
+                                    AngularGradient(
+                                        colors: [
+                                            garageManualAnchorAccent.opacity(0.2),
+                                            garageManualAnchorAccent,
+                                            garageManualAnchorAccent.opacity(0.2)
+                                        ],
+                                        center: .center
+                                    ),
+                                    style: StrokeStyle(lineWidth: 8, lineCap: .round)
+                                )
+                                .frame(width: 72, height: 72)
+                                .rotationEffect(.degrees(ringRotation))
+                        }
+
+                        VStack(spacing: 6) {
+                            Text("AI Coaching Tip")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(AppModule.garage.theme.textMuted)
+                            Text(coachingTips[coachingTipIndex])
+                                .font(.footnote)
+                                .multilineTextAlignment(.center)
+                                .foregroundStyle(AppModule.garage.theme.textSecondary)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.9)
+                        }
                     }
                 }
 
@@ -3954,6 +4187,27 @@ private struct GarageImportPresentationScreen: View {
                 )
             )
             .padding(ModuleSpacing.large)
+        }
+        .onAppear {
+            if state.showsProgress {
+                startProgressRingAnimation()
+            }
+        }
+        .onChange(of: state.showsProgress) { _, isShowingProgress in
+            if isShowingProgress {
+                startProgressRingAnimation()
+            }
+        }
+        .onReceive(tipTimer) { _ in
+            guard state.showsProgress else { return }
+            coachingTipIndex = (coachingTipIndex + 1) % coachingTips.count
+        }
+    }
+
+    private func startProgressRingAnimation() {
+        ringRotation = 0
+        withAnimation(.linear(duration: 1.35).repeatForever(autoreverses: false)) {
+            ringRotation = 360
         }
     }
 }

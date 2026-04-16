@@ -1,5 +1,8 @@
 # Data And Persistence
 
+## Status: active architecture support guidance.
+
+
 ## Persistence Direction
 V1 is local-first.
 

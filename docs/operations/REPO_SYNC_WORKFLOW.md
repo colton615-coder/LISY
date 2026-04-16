@@ -1,5 +1,8 @@
 # Repo Sync Workflow
 
+## Status: operational workflow note.
+
+
 ## Canonical topology
 
 There is exactly one real repository checkout for this project:

@@ -518,6 +518,9 @@ final class StudyEntry {
 final class SwingRecord {
     var title: String
     var createdAt: Date
+    var clubType: String = "7 Iron"
+    var isLeftHanded: Bool = false
+    var cameraAngle: String = "Down the Line"
     var mediaFilename: String?
     var mediaFileBookmark: Data?
     var reviewMasterFilename: String?
@@ -536,6 +539,9 @@ final class SwingRecord {
     init(
         title: String,
         createdAt: Date = .now,
+        clubType: String = "7 Iron",
+        isLeftHanded: Bool = false,
+        cameraAngle: String = "Down the Line",
         mediaFilename: String? = nil,
         mediaFileBookmark: Data? = nil,
         reviewMasterFilename: String? = nil,
@@ -553,6 +559,9 @@ final class SwingRecord {
     ) {
         self.title = title
         self.createdAt = createdAt
+        self.clubType = clubType
+        self.isLeftHanded = isLeftHanded
+        self.cameraAngle = cameraAngle
         self.mediaFilename = mediaFilename
         self.mediaFileBookmark = mediaFileBookmark
         self.reviewMasterFilename = reviewMasterFilename

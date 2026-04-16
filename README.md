@@ -31,4 +31,4 @@ Do not use iCloud Drive as a second repo copy or as the editing path for this pr
 - Short-lived feature branches are allowed
 - If GitHub looks different from local code, check the current branch first
 
-More detail lives in [docs/REPO_SYNC_WORKFLOW.md](docs/REPO_SYNC_WORKFLOW.md).
+More detail lives in [docs/operations/REPO_SYNC_WORKFLOW.md](docs/operations/REPO_SYNC_WORKFLOW.md).
