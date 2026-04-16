@@ -1,5 +1,8 @@
 # ARCHITECTURE
 
+## Status: active architecture reference.
+
+
 ## 1. Architecture intent
 This app is a single-user personal life operating system built in SwiftUI.
 
@@ -47,7 +50,7 @@ This section is the single routing/source-of-truth contract for shell and module
   - arbitrary deep links between unrelated modules
   - universal shared tabs across all modules
   - architecture drift that blurs module ownership
-- Canonical architecture authority lives in `ARCHITECTURE.md`; planning briefs may guide sequencing but must not override this contract.
+- Canonical architecture authority lives in `docs/architecture/ARCHITECTURE.md`; planning briefs may guide sequencing but must not override this contract.
 
 ## 3. App topology
 The app contains:

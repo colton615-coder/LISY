@@ -1,11 +1,14 @@
 # Product Direction Brief (2026-04)
 
+## Status: active supporting direction brief (extends canon, does not override).
+
+
 ## Purpose
 This brief consolidates the latest product-direction input into implementation-ready guidance that aligns with canonical module names and architecture.
 
 This document **extends** the existing canon; it does not replace:
-- `docs/CANONICAL_PRODUCT_SPEC.md`
-- `ARCHITECTURE.md`
+- `docs/canonical/CANONICAL_PRODUCT_SPEC.md`
+- `docs/architecture/ARCHITECTURE.md`
 
 ## Direction Summary
 LIFE IN SYNC should behave as a **useful-first personal operating system** for one user:
@@ -128,4 +131,4 @@ All implementation artifacts should keep canonical names as source-of-truth iden
 ## Immediate Documentation and Delivery Implications
 Before heavy UI polish, lock reusable architecture patterns for deep modules and AI surface behavior.
 
-Use `docs/IMMEDIATE_IMPLEMENTATION_PLAN.md` as the execution sequence for next steps.
+Use `docs/plans/active/IMMEDIATE_IMPLEMENTATION_PLAN.md` as the execution sequence for next steps.

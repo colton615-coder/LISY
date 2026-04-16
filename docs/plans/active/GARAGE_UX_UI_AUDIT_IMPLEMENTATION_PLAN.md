@@ -1,5 +1,8 @@
 # Garage Module UX/UI Audit — Spec + Implementation Plan
 
+## Status: active module implementation plan (Garage-focused).
+
+
 ## Context
 This plan converts the Garage UX/UI audit into an implementable engineering spec for the existing SwiftUI architecture. It is based on current code behavior in `GarageView`, shared module scaffolding in `SharedModuleUI`, and keyframe detection logic in `GarageAnalysis`.
 
