@@ -144,6 +144,34 @@ struct LIFE_IN_SYNCTests {
         #expect(reencodedString.contains(#""perspective":"dtl""#))
     }
 
+    @Test func analysisResultLossilyDropsMalformedNestedPayloads() async throws {
+        let decoded = try JSONDecoder().decode(
+            AnalysisResult.self,
+            from: makeMalformedGarageAnalysisResultJSON()
+        )
+
+        #expect(decoded.issues.isEmpty)
+        #expect(decoded.highlights == ["Legacy-safe decode"])
+        #expect(decoded.summary == "Synthetic analysis payload.")
+        #expect(decoded.scorecard == nil)
+        #expect(decoded.syncFlow?.status == .unavailable)
+        #expect(decoded.recoveredFromCorruption)
+        #expect(decoded.recoveryDiagnostics.isEmpty == false)
+    }
+
+    @Test func analysisResultNormalizationClearsRecoveryDiagnostics() async throws {
+        let decoded = try JSONDecoder().decode(
+            AnalysisResult.self,
+            from: makeMalformedGarageAnalysisResultJSON()
+        )
+        let normalized = decoded.normalizedForPersistence
+
+        #expect(decoded.recoveredFromCorruption)
+        #expect(normalized.recoveredFromCorruption == false)
+        #expect(normalized.recoveryDiagnostics.isEmpty)
+        #expect(normalized.syncFlow?.status == .unavailable)
+    }
+
     @Test func garageResolvedSamplingFrameRateNeverExceedsThirtyFPS() async throws {
         #expect(GarageAnalysisPipeline.resolvedSamplingFrameRate(from: 60) == 30)
         #expect(GarageAnalysisPipeline.resolvedSamplingFrameRate(from: 30) == 30)
@@ -960,6 +988,46 @@ private func makeGarageAnalysisResultJSON(
       },
       "syncFlow": {
         "status": "ready",
+        "headline": "Ready",
+        "primaryIssue": null,
+        "markers": [],
+        "consequence": null,
+        "summary": "Synthetic sync flow."
+      }
+    }
+    """
+
+    return Data(json.utf8)
+}
+
+@MainActor
+private func makeMalformedGarageAnalysisResultJSON() -> Data {
+    let json = """
+    {
+      "issues": "broken",
+      "highlights": ["Legacy-safe decode"],
+      "summary": "Synthetic analysis payload.",
+      "scorecard": {
+        "timestamps": {
+          "perspective": "dtl",
+          "start": 0.0,
+          "top": 0.5,
+          "impact": 1.0
+        },
+        "metrics": "broken",
+        "domainScores": [
+          {
+            "id": "tempo",
+            "title": "Tempo Ratio",
+            "score": 90,
+            "grade": "mystery",
+            "displayValue": "3.0x"
+          }
+        ],
+        "totalScore": 88
+      },
+      "syncFlow": {
+        "status": "mystery",
         "headline": "Ready",
         "primaryIssue": null,
         "markers": [],

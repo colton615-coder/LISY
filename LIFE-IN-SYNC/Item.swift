@@ -330,6 +330,11 @@ struct AnalysisResult: Codable, Hashable {
     var summary: String
     var scorecard: GarageSwingScorecard?
     var syncFlow: GarageSyncFlowReport?
+    private(set) var recoveryDiagnostics: [String] = []
+
+    var recoveredFromCorruption: Bool {
+        recoveryDiagnostics.isEmpty == false
+    }
 
     init(
         issues: [String],
@@ -354,12 +359,54 @@ struct AnalysisResult: Codable, Hashable {
     }
 
     init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        issues = try container.decodeIfPresent([String].self, forKey: .issues) ?? []
-        highlights = try container.decodeIfPresent([String].self, forKey: .highlights) ?? []
-        summary = try container.decodeIfPresent(String.self, forKey: .summary) ?? ""
-        scorecard = try container.decodeIfPresent(GarageSwingScorecard.self, forKey: .scorecard)
-        syncFlow = try container.decodeIfPresent(GarageSyncFlowReport.self, forKey: .syncFlow)
+        issues = []
+        highlights = []
+        summary = ""
+        scorecard = nil
+        syncFlow = nil
+        recoveryDiagnostics = []
+
+        let container: KeyedDecodingContainer<CodingKeys>
+        do {
+            container = try decoder.container(keyedBy: CodingKeys.self)
+        } catch {
+            recoveryDiagnostics.append(Self.recoveryDiagnostic(for: error, field: "analysisResult"))
+            return
+        }
+
+        issues = Self.decodeValueLossy(
+            [String].self,
+            from: container,
+            forKey: .issues,
+            fallback: [],
+            diagnostics: &recoveryDiagnostics
+        )
+        highlights = Self.decodeValueLossy(
+            [String].self,
+            from: container,
+            forKey: .highlights,
+            fallback: [],
+            diagnostics: &recoveryDiagnostics
+        )
+        summary = Self.decodeValueLossy(
+            String.self,
+            from: container,
+            forKey: .summary,
+            fallback: "",
+            diagnostics: &recoveryDiagnostics
+        )
+        scorecard = Self.decodeOptionalValueLossy(
+            GarageSwingScorecard.self,
+            from: container,
+            forKey: .scorecard,
+            diagnostics: &recoveryDiagnostics
+        )
+        syncFlow = Self.decodeOptionalValueLossy(
+            GarageSyncFlowReport.self,
+            from: container,
+            forKey: .syncFlow,
+            diagnostics: &recoveryDiagnostics
+        )
     }
 
     func encode(to encoder: Encoder) throws {
@@ -379,6 +426,52 @@ struct AnalysisResult: Codable, Hashable {
             scorecard: scorecard?.normalizedForPersistence,
             syncFlow: syncFlow
         )
+    }
+
+    private static func decodeValueLossy<T: Decodable>(
+        _ type: T.Type,
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys,
+        fallback: @autoclosure () -> T,
+        diagnostics: inout [String]
+    ) -> T {
+        do {
+            return try container.decodeIfPresent(T.self, forKey: key) ?? fallback()
+        } catch {
+            diagnostics.append(recoveryDiagnostic(for: error, field: key.stringValue))
+            return fallback()
+        }
+    }
+
+    private static func decodeOptionalValueLossy<T: Decodable>(
+        _ type: T.Type,
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys,
+        diagnostics: inout [String]
+    ) -> T? {
+        do {
+            return try container.decodeIfPresent(T.self, forKey: key)
+        } catch {
+            diagnostics.append(recoveryDiagnostic(for: error, field: key.stringValue))
+            return nil
+        }
+    }
+
+    private static func recoveryDiagnostic(for error: Error, field: String) -> String {
+        switch error {
+        case let DecodingError.typeMismatch(_, context):
+            return "\(field)=typeMismatch(\(context.codingPath.map(\.stringValue).joined(separator: ".")))"
+        case let DecodingError.valueNotFound(_, context):
+            return "\(field)=valueNotFound(\(context.codingPath.map(\.stringValue).joined(separator: ".")))"
+        case let DecodingError.keyNotFound(key, context):
+            let path = (context.codingPath.map(\.stringValue) + [key.stringValue]).joined(separator: ".")
+            return "\(field)=keyNotFound(\(path))"
+        case let DecodingError.dataCorrupted(context):
+            return "\(field)=dataCorrupted(\(context.codingPath.map(\.stringValue).joined(separator: ".")))"
+        default:
+            let nsError = error as NSError
+            return "\(field)=\(nsError.domain):\(nsError.code)"
+        }
     }
 }
 

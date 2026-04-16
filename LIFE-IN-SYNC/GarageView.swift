@@ -465,7 +465,7 @@ struct GarageView: View {
             }
         }
         .task(id: swingRecords.count) {
-            await normalizePersistedAnalysisPayloadsIfNeeded()
+            await recoverAndNormalizePersistedAnalysisPayloadsIfNeeded()
         }
         .toolbar({
             if case let .analyzer(analyzerRoute) = route,
@@ -517,11 +517,52 @@ struct GarageView: View {
     }
 
     @MainActor
-    private func normalizePersistedAnalysisPayloadsIfNeeded() async {
+    private func recoverAndNormalizePersistedAnalysisPayloadsIfNeeded() async {
         guard hasNormalizedPersistedAnalysisPayloads == false else { return }
 
-        let candidates = swingRecords.filter { $0.analysisResult != nil }
-        guard candidates.isEmpty == false else { return }
+        let corruptedRecords = swingRecords.compactMap { record -> (SwingRecord, AnalysisResult)? in
+            guard let analysisResult = record.analysisResult,
+                  analysisResult.recoveredFromCorruption else {
+                return nil
+            }
+            return (record, analysisResult)
+        }
+
+        if corruptedRecords.isEmpty == false {
+            for (record, analysisResult) in corruptedRecords {
+                let removedAssets = GarageMediaStore.purgeManagedAssets(for: record)
+                let diagnostics = analysisResult.recoveryDiagnostics.joined(separator: ",")
+
+                NSLog(
+                    "%@",
+                    "Garage corrupted swing purge. recordID=\(String(describing: record.persistentModelID)) title=\(record.title) diagnostics=\(diagnostics) removedAssets=\(removedAssets.joined(separator: ","))"
+                )
+
+                modelContext.delete(record)
+            }
+
+            do {
+                try modelContext.save()
+            } catch {
+                let nsError = error as NSError
+                NSLog(
+                    "%@",
+                    "Garage corrupted swing purge save failed. domain=\(nsError.domain) code=\(nsError.code) description=\(nsError.localizedDescription)"
+                )
+                hasNormalizedPersistedAnalysisPayloads = false
+                return
+            }
+        }
+
+        let candidates = persistedSwingRecords().filter { record in
+            guard let analysisResult = record.analysisResult else { return false }
+            return analysisResult.recoveredFromCorruption == false
+        }
+
+        guard candidates.isEmpty == false else {
+            hasNormalizedPersistedAnalysisPayloads = true
+            return
+        }
 
         var didTouchPayload = false
         for record in candidates {
@@ -538,6 +579,15 @@ struct GarageView: View {
         } catch {
             hasNormalizedPersistedAnalysisPayloads = false
         }
+    }
+
+    @MainActor
+    private func persistedSwingRecords() -> [SwingRecord] {
+        let descriptor = FetchDescriptor<SwingRecord>(
+            sortBy: [SortDescriptor(\SwingRecord.createdAt, order: .reverse)]
+        )
+
+        return (try? modelContext.fetch(descriptor)) ?? swingRecords
     }
 
     @ViewBuilder

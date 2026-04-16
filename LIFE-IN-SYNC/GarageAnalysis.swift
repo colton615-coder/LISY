@@ -214,6 +214,12 @@ enum GarageSyncFlowStatus: String, Codable, Hashable {
     case ready
     case limited
     case unavailable
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = (try? container.decode(String.self)) ?? ""
+        self = GarageSyncFlowStatus(rawValue: rawValue) ?? .unavailable
+    }
 }
 
 enum GarageSyncFlowSegment: String, Codable, Hashable {
@@ -222,6 +228,12 @@ enum GarageSyncFlowSegment: String, Codable, Hashable {
     case torso
     case hands
     case head
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = (try? container.decode(String.self)) ?? ""
+        self = GarageSyncFlowSegment(rawValue: rawValue) ?? .base
+    }
 }
 
 enum GarageSyncFlowIssueKind: String, Codable, Hashable {
@@ -229,6 +241,12 @@ enum GarageSyncFlowIssueKind: String, Codable, Hashable {
     case hipStall
     case earlyExtension
     case unstableHead
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = (try? container.decode(String.self)) ?? ""
+        self = GarageSyncFlowIssueKind(rawValue: rawValue) ?? .earlyExtension
+    }
 
     var riskPhrase: String {
         switch self {
@@ -1463,6 +1481,29 @@ enum GarageMediaStore {
         return resolvedBookmarkURL(from: record.exportAssetBookmark)
     }
 
+    static func purgeManagedAssets(for record: SwingRecord) -> [String] {
+        let fileManager = FileManager.default
+        let removableURLs = managedAssetURLs(for: record)
+        var removedAssets: [String] = []
+
+        for url in removableURLs {
+            guard fileManager.fileExists(atPath: url.path) else { continue }
+
+            do {
+                try fileManager.removeItem(at: url)
+                removedAssets.append(url.lastPathComponent)
+            } catch {
+                let nsError = error as NSError
+                NSLog(
+                    "%@",
+                    "Garage asset purge failed. path=\(url.path) domain=\(nsError.domain) code=\(nsError.code) description=\(nsError.localizedDescription)"
+                )
+            }
+        }
+
+        return removedAssets.sorted()
+    }
+
     static func thumbnail(
         for videoURL: URL,
         at timestamp: Double,
@@ -1574,6 +1615,52 @@ enum GarageMediaStore {
         }
 
         return FileManager.default.fileExists(atPath: resolvedURL.path) ? resolvedURL : nil
+    }
+
+    private static func managedAssetURLs(for record: SwingRecord) -> Set<URL> {
+        var urls: Set<URL> = []
+        let persistedCandidates: [(String?, GarageStoredAssetKind)] = [
+            (record.mediaFilename, .legacyRoot),
+            (record.reviewMasterFilename, .reviewMaster),
+            (record.exportAssetFilename, .exportAsset)
+        ]
+
+        for (filename, kind) in persistedCandidates {
+            guard let filename, filename.isEmpty == false else { continue }
+            if let url = persistedAssetURL(for: filename, kind: kind) {
+                urls.insert(url.standardizedFileURL)
+            }
+        }
+
+        let bookmarkCandidates = [
+            record.mediaFileBookmark,
+            record.reviewMasterBookmark,
+            record.exportAssetBookmark
+        ]
+
+        for bookmarkData in bookmarkCandidates {
+            guard let resolvedURL = resolvedBookmarkURL(from: bookmarkData),
+                  isManagedGarageAssetURL(resolvedURL) else {
+                continue
+            }
+
+            urls.insert(resolvedURL.standardizedFileURL)
+        }
+
+        return urls
+    }
+
+    private static func isManagedGarageAssetURL(_ url: URL) -> Bool {
+        guard let garageRootURL = try? garageDirectoryURL(for: .legacyRoot) else {
+            return false
+        }
+
+        let standardizedURL = url.standardizedFileURL
+        let standardizedRootURL = garageRootURL.standardizedFileURL
+        let rootPath = standardizedRootURL.path
+        let candidatePath = standardizedURL.path
+
+        return candidatePath == rootPath || candidatePath.hasPrefix(rootPath + "/")
     }
 
     private static func garageDirectoryURL(for kind: GarageStoredAssetKind) throws -> URL {
@@ -3331,6 +3418,12 @@ enum GarageSwingDomain: String, Codable, CaseIterable, Hashable {
     case knee
     case head
 
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = (try? container.decode(String.self)) ?? ""
+        self = GarageSwingDomain(rawValue: rawValue) ?? .tempo
+    }
+
     var title: String {
         switch self {
         case .tempo:
@@ -3476,6 +3569,12 @@ enum GarageMetricGrade: String, Codable, Hashable {
     case good
     case fair
     case needsWork
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = (try? container.decode(String.self)) ?? ""
+        self = GarageMetricGrade(rawValue: rawValue) ?? .needsWork
+    }
 
     static func from(score: Double) -> GarageMetricGrade {
         switch score {
