@@ -319,6 +319,22 @@ enum GarageAnalysisProgressStep: Equatable {
     }
 }
 
+struct GarageAnalysisProgressUpdate: Equatable {
+    let step: GarageAnalysisProgressStep
+    let frameCount: Int
+    let totalFrames: Int
+
+    init(
+        step: GarageAnalysisProgressStep,
+        frameCount: Int = 0,
+        totalFrames: Int = 0
+    ) {
+        self.step = step
+        self.totalFrames = max(totalFrames, 0)
+        self.frameCount = min(max(frameCount, 0), self.totalFrames == 0 ? max(frameCount, 0) : self.totalFrames)
+    }
+}
+
 struct GarageVideoAssetMetadata: Equatable {
     let duration: Double
     let frameRate: Double
@@ -1742,9 +1758,9 @@ enum GarageAnalysisPipeline {
 
     static func analyzeVideo(
         at videoURL: URL,
-        progress: (@MainActor @Sendable (GarageAnalysisProgressStep) async -> Void)? = nil
+        progress: (@MainActor @Sendable (GarageAnalysisProgressUpdate) async -> Void)? = nil
     ) async throws -> GarageAnalysisOutput {
-        await progress?(.loadingVideo)
+        await progress?(GarageAnalysisProgressUpdate(step: .loadingVideo))
         let asset = AVURLAsset(url: videoURL)
         let tracks = try await asset.loadTracks(withMediaType: .video)
         guard let videoTrack = tracks.first else {
@@ -1754,10 +1770,19 @@ enum GarageAnalysisPipeline {
         let duration = try await asset.load(.duration)
         let nominalFrameRate = try await videoTrack.load(.nominalFrameRate)
         let samplingFrameRate = resolvedSamplingFrameRate(from: nominalFrameRate)
-        await progress?(.samplingFrames)
         let timestamps = sampledTimestamps(duration: duration, frameRate: samplingFrameRate)
-        await progress?(.detectingBody)
-        let extraction = try await extractPoseFrames(from: asset, timestamps: timestamps)
+        let totalFrames = timestamps.count
+        await progress?(GarageAnalysisProgressUpdate(step: .samplingFrames, totalFrames: totalFrames))
+        await progress?(GarageAnalysisProgressUpdate(step: .detectingBody, totalFrames: totalFrames))
+        let extraction = try await extractPoseFrames(from: asset, timestamps: timestamps) { processedFrameCount in
+            await progress?(
+                GarageAnalysisProgressUpdate(
+                    step: .detectingBody,
+                    frameCount: processedFrameCount,
+                    totalFrames: totalFrames
+                )
+            )
+        }
         let extractedFrames = extraction.frames
         let smoothedFrames = smooth(frames: extractedFrames)
 
@@ -1765,7 +1790,13 @@ enum GarageAnalysisPipeline {
             throw GarageAnalysisError.insufficientPoseFrames
         }
 
-        await progress?(.mappingCheckpoints)
+        await progress?(
+            GarageAnalysisProgressUpdate(
+                step: .mappingCheckpoints,
+                frameCount: totalFrames,
+                totalFrames: totalFrames
+            )
+        )
         let keyFrames = detectKeyFrames(from: smoothedFrames)
         let handAnchors = deriveHandAnchors(from: smoothedFrames, keyFrames: keyFrames)
         let pathPoints = generatePathPoints(from: smoothedFrames, samplesPerSegment: 8)
@@ -1815,7 +1846,7 @@ enum GarageAnalysisPipeline {
         return min(max(baseRate, 30), 60)
     }
 
-    private static func sampledTimestamps(duration: CMTime, frameRate: Double) -> [Double] {
+    static func sampledTimestamps(duration: CMTime, frameRate: Double) -> [Double] {
         let seconds = max(CMTimeGetSeconds(duration), 0)
         guard seconds > 0 else { return [] }
 
@@ -1836,7 +1867,8 @@ enum GarageAnalysisPipeline {
 
     private static func extractPoseFrames(
         from asset: AVAsset,
-        timestamps: [Double]
+        timestamps: [Double],
+        progress: (@MainActor @Sendable (Int) async -> Void)? = nil
     ) async throws -> (frames: [SwingFrame], metadata: GaragePoseExtractionMetadata) {
         guard timestamps.isEmpty == false else {
             return (
@@ -1848,7 +1880,11 @@ enum GarageAnalysisPipeline {
         // The zero-copy AVAssetReader path has been the most likely source of on-device
         // allocator aborts during Garage import. Prefer the more conservative generator path
         // until the lower-level memory issue is isolated.
-        let fallbackFrames = try await extractPoseFramesUsingGenerator(from: asset, timestamps: timestamps)
+        let fallbackFrames = try await extractPoseFramesUsingGenerator(
+            from: asset,
+            timestamps: timestamps,
+            progress: progress
+        )
         return (
             fallbackFrames,
             GaragePoseExtractionMetadata(
@@ -1858,7 +1894,11 @@ enum GarageAnalysisPipeline {
         )
     }
 
-    private static func extractPoseFramesZeroCopy(from asset: AVAsset, timestamps: [Double]) async throws -> [SwingFrame] {
+    private static func extractPoseFramesZeroCopy(
+        from asset: AVAsset,
+        timestamps: [Double],
+        progress: (@MainActor @Sendable (Int) async -> Void)? = nil
+    ) async throws -> [SwingFrame] {
         let tracks = try await asset.loadTracks(withMediaType: .video)
         guard let videoTrack = tracks.first else {
             throw GarageAnalysisError.missingVideoTrack
@@ -1886,6 +1926,7 @@ enum GarageAnalysisPipeline {
         var nextTimestampIndex = 0
 
         while let sampleBuffer = trackOutput.copyNextSampleBuffer(), nextTimestampIndex < timestamps.count {
+            let priorTimestampIndex = nextTimestampIndex
             let extractedFrame: SwingFrame? = try autoreleasepool {
                 try Task.checkCancellation()
                 let presentationTimestamp = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
@@ -1924,6 +1965,9 @@ enum GarageAnalysisPipeline {
             if let extractedFrame {
                 frames.append(extractedFrame)
             }
+            if nextTimestampIndex != priorTimestampIndex {
+                await progress?(nextTimestampIndex)
+            }
             await Task.yield()
         }
 
@@ -1931,10 +1975,16 @@ enum GarageAnalysisPipeline {
             throw error
         }
 
+        await progress?(timestamps.count)
+
         return frames
     }
 
-    private static func extractPoseFramesUsingGenerator(from asset: AVAsset, timestamps: [Double]) async throws -> [SwingFrame] {
+    private static func extractPoseFramesUsingGenerator(
+        from asset: AVAsset,
+        timestamps: [Double],
+        progress: (@MainActor @Sendable (Int) async -> Void)? = nil
+    ) async throws -> [SwingFrame] {
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 960, height: 960)
@@ -1942,7 +1992,7 @@ enum GarageAnalysisPipeline {
         generator.requestedTimeToleranceBefore = .zero
 
         var frames: [SwingFrame] = []
-        for timestamp in timestamps {
+        for (index, timestamp) in timestamps.enumerated() {
             let extractedFrame: SwingFrame? = try autoreleasepool {
                 try Task.checkCancellation()
                 let time = CMTime(seconds: timestamp, preferredTimescale: 600)
@@ -1956,6 +2006,7 @@ enum GarageAnalysisPipeline {
             if let extractedFrame {
                 frames.append(extractedFrame)
             }
+            await progress?(index + 1)
             await Task.yield()
         }
 

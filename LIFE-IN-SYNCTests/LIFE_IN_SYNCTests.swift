@@ -6,6 +6,7 @@
 //
 
 import CoreGraphics
+import CoreMedia
 import Foundation
 import Testing
 @testable import LIFE_IN_SYNC
@@ -41,6 +42,63 @@ struct LIFE_IN_SYNCTests {
 
         #expect(record.mediaFilename == "swing.mov")
         #expect(record.notes == "Ball started left.")
+    }
+
+    @Test func swingRecordDefaultsImportStatusToComplete() async throws {
+        let record = SwingRecord(title: "Baseline import")
+
+        #expect(record.importStatus == .complete)
+        #expect(record.isImportComplete)
+    }
+
+    @Test func swingRecordSupportsPendingToCompleteImportTransition() async throws {
+        let record = SwingRecord(title: "Pending import", importStatus: .pending)
+
+        #expect(record.importStatus == .pending)
+        #expect(record.isImportComplete == false)
+
+        record.importStatus = .complete
+
+        #expect(record.importStatus == .complete)
+        #expect(record.isImportComplete)
+    }
+
+    @Test func garageRetryClassifierOnlyRetriesCodeNegative54() async throws {
+        let retryError = NSError(domain: "com.apple.SwiftData", code: -54)
+        let wrappedRetryError = NSError(
+            domain: "Garage.Import",
+            code: 1001,
+            userInfo: [NSUnderlyingErrorKey: retryError]
+        )
+        let nonRetryError = NSError(domain: "com.apple.SwiftData", code: -1)
+
+        #expect(garageImportRetryErrorCode(from: retryError) == -54)
+        #expect(garageImportRetryErrorCode(from: wrappedRetryError) == -54)
+        #expect(garageShouldRetryImportAfterFailure(retryError))
+        #expect(garageShouldRetryImportAfterFailure(wrappedRetryError))
+        #expect(garageShouldRetryImportAfterFailure(nonRetryError) == false)
+    }
+
+    @Test func garageProgressUpdatesTrackSampledFrameTotals() async throws {
+        let timestamps = GarageAnalysisPipeline.sampledTimestamps(
+            duration: CMTime(seconds: 0.12, preferredTimescale: 600),
+            frameRate: 30
+        )
+        let totalFrames = timestamps.count
+        let samplingUpdate = GarageAnalysisProgressUpdate(step: .samplingFrames, totalFrames: totalFrames)
+        let extractionUpdates = timestamps.indices.map { index in
+            GarageAnalysisProgressUpdate(
+                step: .detectingBody,
+                frameCount: index + 1,
+                totalFrames: totalFrames
+            )
+        }
+
+        #expect(totalFrames > 0)
+        #expect(samplingUpdate.totalFrames == totalFrames)
+        #expect(samplingUpdate.frameCount == 0)
+        #expect(extractionUpdates.map(\.frameCount) == Array(1...totalFrames))
+        #expect(extractionUpdates.last?.totalFrames == totalFrames)
     }
 
     @Test func garagePathGenerationIncludesEndpointsAndIntermediateSamples() async throws {

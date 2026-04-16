@@ -83,6 +83,18 @@ enum KeyframeValidationStatus: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum GarageImportStatus: String, Codable, CaseIterable, Identifiable {
+    case pending
+    case retrying
+    case complete
+
+    var id: String { rawValue }
+
+    var isComplete: Bool {
+        self == .complete
+    }
+}
+
 enum SwingJointName: String, Codable, CaseIterable, Identifiable {
     case nose
     case leftShoulder
@@ -518,6 +530,7 @@ final class StudyEntry {
 final class SwingRecord {
     var title: String
     var createdAt: Date
+    var importStatus: GarageImportStatus = GarageImportStatus.complete
     var clubType: String = "7 Iron"
     var isLeftHanded: Bool = false
     var cameraAngle: String = "Down the Line"
@@ -539,6 +552,7 @@ final class SwingRecord {
     init(
         title: String,
         createdAt: Date = .now,
+        importStatus: GarageImportStatus = .complete,
         clubType: String = "7 Iron",
         isLeftHanded: Bool = false,
         cameraAngle: String = "Down the Line",
@@ -559,6 +573,7 @@ final class SwingRecord {
     ) {
         self.title = title
         self.createdAt = createdAt
+        self.importStatus = importStatus
         self.clubType = clubType
         self.isLeftHanded = isLeftHanded
         self.cameraAngle = cameraAngle
@@ -584,6 +599,10 @@ final class SwingRecord {
 
     var preferredExportFilename: String? {
         normalizedFilename(exportAssetFilename)
+    }
+
+    var isImportComplete: Bool {
+        importStatus.isComplete
     }
 
     var isUsingLegacySingleAsset: Bool {
