@@ -154,7 +154,7 @@ struct LIFE_IN_SYNCTests {
         #expect(decoded.highlights == ["Legacy-safe decode"])
         #expect(decoded.summary == "Synthetic analysis payload.")
         #expect(decoded.scorecard == nil)
-        #expect(decoded.syncFlow?.status == .unavailable)
+        #expect(decoded.syncFlow == nil)
         #expect(decoded.recoveredFromCorruption)
         #expect(decoded.recoveryDiagnostics.isEmpty == false)
     }
@@ -169,7 +169,7 @@ struct LIFE_IN_SYNCTests {
         #expect(decoded.recoveredFromCorruption)
         #expect(normalized.recoveredFromCorruption == false)
         #expect(normalized.recoveryDiagnostics.isEmpty)
-        #expect(normalized.syncFlow?.status == .unavailable)
+        #expect(normalized.syncFlow == nil)
     }
 
     @Test func garageResolvedSamplingFrameRateNeverExceedsThirtyFPS() async throws {
@@ -200,6 +200,76 @@ struct LIFE_IN_SYNCTests {
         #expect(decoded.scorecard == nil)
         #expect(decoded.recoveredFromCorruption)
         #expect(decoded.recoveryDiagnostics.contains(where: { $0.contains("scorecard") }))
+    }
+
+    @Test func analysisResultDropsSyncFlowWhenEnumsAreUnknown() async throws {
+        let json = """
+        {
+          "issues": [],
+          "highlights": ["Legacy-safe decode"],
+          "summary": "Synthetic analysis payload.",
+          "syncFlow": {
+            "status": "mystery",
+            "headline": "Ready",
+            "primaryIssue": null,
+            "markers": [],
+            "consequence": null,
+            "summary": "Synthetic sync flow."
+          }
+        }
+        """
+        let decoded = try JSONDecoder().decode(AnalysisResult.self, from: Data(json.utf8))
+
+        #expect(decoded.syncFlow == nil)
+        #expect(decoded.recoveredFromCorruption)
+        #expect(decoded.recoveryDiagnostics.contains(where: { $0.contains("syncFlow") }))
+    }
+
+    @Test func garageLongClipTrimHelpersRequireManualWindowAndClampBounds() async throws {
+        #expect(garageRequiresManualTrim(for: 47.26))
+        #expect(garageRequiresManualTrim(for: 7.99) == false)
+
+        let defaultWindow = garageDefaultTrimWindow(for: 47.26)
+        #expect(abs(defaultWindow.lowerBound - 21.63) < 0.02)
+        #expect(abs(defaultWindow.upperBound - 25.63) < 0.02)
+
+        let normalized = garageNormalizedTrimWindow(start: 0.2, end: 12.0, duration: 47.26)
+        #expect(abs((normalized.upperBound - normalized.lowerBound) - garageMaximumTrimWindowDuration) < 0.01)
+
+        let shortClipWindow = garageNormalizedTrimWindow(start: 0, end: 0.2, duration: 2.0)
+        #expect(abs((shortClipWindow.upperBound - shortClipWindow.lowerBound) - garageMinimumTrimWindowDuration) < 0.01)
+    }
+
+    @Test func garageDerivedPayloadRoundTripsAndDrivesReviewAvailability() async throws {
+        let frames = makeSyntheticSwingFrames()
+        let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames)
+        let anchors = GarageAnalysisPipeline.deriveHandAnchors(from: frames, keyFrames: keyFrames)
+        let pathPoints = GarageAnalysisPipeline.generatePathPoints(from: anchors, samplesPerSegment: 4)
+        let filename = "derived-ready.mov"
+        makePersistedGarageVideoFixture(named: filename)
+
+        let record = SwingRecord(
+            title: "Derived Ready",
+            reviewMasterFilename: filename,
+            frameRate: 60,
+            swingFrames: frames,
+            keyFrames: keyFrames,
+            handAnchors: anchors,
+            pathPoints: pathPoints
+        )
+        record.persistDerivedPayload(
+            GarageDerivedPayload(
+                frameRate: 60,
+                swingFrames: frames,
+                keyFrames: keyFrames,
+                handAnchors: anchors,
+                pathPoints: pathPoints,
+                analysisResult: makeGarageAnalysisResult(perspectivePayload: .dtl)
+            )
+        )
+
+        #expect(record.decodedDerivedPayload?.swingFrames.count == frames.count)
+        #expect(record.reviewAvailability == .ready)
     }
 
     @Test func garagePathGenerationIncludesEndpointsAndIntermediateSamples() async throws {
@@ -453,6 +523,20 @@ struct LIFE_IN_SYNCTests {
                 issues: [],
                 highlights: ["Synthetic baseline"],
                 summary: "Processed synthetic swing frames."
+            )
+        )
+        record.persistDerivedPayload(
+            GarageDerivedPayload(
+                frameRate: 60,
+                swingFrames: frames,
+                keyFrames: keyFrames,
+                handAnchors: anchors,
+                pathPoints: pathPoints,
+                analysisResult: AnalysisResult(
+                    issues: [],
+                    highlights: ["Synthetic baseline"],
+                    summary: "Processed synthetic swing frames."
+                )
             )
         )
 
@@ -902,7 +986,7 @@ private func makeWorkflowRecord(
     let frames = makeSyntheticSwingFrames()
     let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames)
 
-    return SwingRecord(
+    let record = SwingRecord(
         title: "Workflow Record",
         mediaFilename: filename,
         frameRate: 60,
@@ -917,6 +1001,21 @@ private func makeWorkflowRecord(
             summary: "Processed synthetic swing frames."
         )
     )
+    record.persistDerivedPayload(
+        GarageDerivedPayload(
+            frameRate: 60,
+            swingFrames: frames,
+            keyFrames: keyFrames,
+            handAnchors: anchors,
+            pathPoints: pathPoints,
+            analysisResult: AnalysisResult(
+                issues: [],
+                highlights: ["Workflow baseline"],
+                summary: "Processed synthetic swing frames."
+            )
+        )
+    )
+    return record
 }
 
 @MainActor

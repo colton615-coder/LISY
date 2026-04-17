@@ -177,6 +177,63 @@ private struct GaragePreFlightSelection: Equatable {
     var clubType: String = "7 Iron"
     var isLeftHanded: Bool = false
     var cameraAngle: String = "Down the Line"
+    var trimStartSeconds: Double = 0
+    var trimEndSeconds: Double = 0
+    var hasConfirmedTrimWindow = false
+}
+
+let garageLongClipTrimThreshold = 8.0
+let garageDefaultTrimWindowDuration = 4.0
+let garageMinimumTrimWindowDuration = 1.5
+let garageMaximumTrimWindowDuration = 6.0
+
+func garageRequiresManualTrim(for duration: Double) -> Bool {
+    duration > garageLongClipTrimThreshold
+}
+
+func garageDefaultTrimWindow(for duration: Double) -> ClosedRange<Double> {
+    let safeDuration = max(duration, 0)
+    guard safeDuration > 0 else { return 0...0 }
+
+    let preferredWindow = min(max(garageDefaultTrimWindowDuration, garageMinimumTrimWindowDuration), min(garageMaximumTrimWindowDuration, safeDuration))
+    let midpoint = safeDuration / 2
+    let start = max(min(midpoint - (preferredWindow / 2), safeDuration - preferredWindow), 0)
+    let end = min(start + preferredWindow, safeDuration)
+    return start...end
+}
+
+func garageNormalizedTrimWindow(start: Double, end: Double, duration: Double) -> ClosedRange<Double> {
+    let safeDuration = max(duration, 0)
+    guard safeDuration > 0 else { return 0...0 }
+
+    let minimumWindow = min(garageMinimumTrimWindowDuration, safeDuration)
+    let maximumWindow = min(garageMaximumTrimWindowDuration, safeDuration)
+
+    var lowerBound = min(max(start, 0), safeDuration)
+    var upperBound = min(max(end, 0), safeDuration)
+    if upperBound < lowerBound {
+        swap(&lowerBound, &upperBound)
+    }
+
+    var windowLength = upperBound - lowerBound
+    if windowLength < minimumWindow {
+        upperBound = min(lowerBound + minimumWindow, safeDuration)
+        lowerBound = max(upperBound - minimumWindow, 0)
+        windowLength = upperBound - lowerBound
+    }
+
+    if windowLength > maximumWindow {
+        upperBound = min(lowerBound + maximumWindow, safeDuration)
+        lowerBound = max(upperBound - maximumWindow, 0)
+    }
+
+    return lowerBound...upperBound
+}
+
+private extension GaragePreFlightSelection {
+    var trimDuration: Double {
+        max(trimEndSeconds - trimStartSeconds, 0)
+    }
 }
 
 
@@ -424,40 +481,29 @@ struct GarageView: View {
             selectedVideoItem = nil
             route = .analyzer(.records)
         }) {
-            GaragePreFlightSheet(
-                initialSelection: pendingPreFlightSelection,
-                onClose: {
-                    isShowingPreFlight = false
-                    stagedMovie = nil
-                    selectedVideoItem = nil
-                    route = .analyzer(.records)
-                },
-                onStartAnalysis: { selection in
-                    guard let stagedMovie else { return }
-                    pendingPreFlightSelection = selection
-                    isShowingPreFlight = false
-                    importSelectedVideo(stagedMovie, selection: selection)
-                    self.stagedMovie = nil
-                }
-            )
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
+            if let stagedMovie {
+                GaragePreFlightSheet(
+                    movie: stagedMovie,
+                    initialSelection: pendingPreFlightSelection,
+                    onClose: {
+                        isShowingPreFlight = false
+                        self.stagedMovie = nil
+                        selectedVideoItem = nil
+                        route = .analyzer(.records)
+                    },
+                    onStartAnalysis: { selection in
+                        pendingPreFlightSelection = selection
+                        isShowingPreFlight = false
+                        importSelectedVideo(stagedMovie, selection: selection)
+                        self.stagedMovie = nil
+                    }
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
         }
         .onChange(of: reviewableSwingRecords.map(garageRecordSelectionKey)) { _, keys in
-            guard case let .analyzer(analyzerRoute) = route,
-                  case let .review(recordKey) = analyzerRoute.normalizedForPresentation else {
-                return
-            }
-
-            guard keys.isEmpty == false else {
-                route = .analyzer(.records)
-                return
-            }
-
-            if let recordKey,
-               keys.contains(recordKey) == false {
-                route = .analyzer(.review(recordKey: keys.first))
-            }
+            handleReviewableRecordKeysChange(keys)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if importPresentationState == nil {
@@ -517,9 +563,31 @@ struct GarageView: View {
     }
 
     @MainActor
+    private func handleReviewableRecordKeysChange(_ keys: [String]) {
+        guard case let .analyzer(analyzerRoute) = route else { return }
+
+        let recordKey: String?
+        switch analyzerRoute.normalizedForPresentation {
+        case let .review(candidateKey):
+            recordKey = candidateKey
+        default:
+            return
+        }
+
+        if keys.isEmpty {
+            route = .analyzer(.records)
+            return
+        }
+
+        guard let recordKey else { return }
+        guard keys.contains(recordKey) == false else { return }
+        route = .analyzer(.review(recordKey: keys.first))
+    }
+
+    @MainActor
     private func recoverAndNormalizePersistedAnalysisPayloadsIfNeeded() async {
         guard hasNormalizedPersistedAnalysisPayloads == false else { return }
-        let candidates = persistedSwingRecords().filter { $0.analysisResult != nil }
+        let candidates = persistedSwingRecords()
 
         guard candidates.isEmpty == false else {
             hasNormalizedPersistedAnalysisPayloads = true
@@ -528,20 +596,32 @@ struct GarageView: View {
 
         var didTouchPayload = false
         for record in candidates {
-            guard let analysisResult = record.analysisResult else { continue }
-
-            if analysisResult.recoveredFromCorruption {
-                let diagnostics = analysisResult.recoveryDiagnostics.joined(separator: ",")
-                NSLog(
-                    "%@",
-                    "Garage analysis payload recovered. recordID=\(String(describing: record.persistentModelID)) title=\(record.title) diagnostics=\(diagnostics)"
-                )
+            if record.decodedDerivedPayload != nil {
+                continue
             }
 
-            let normalizedResult = analysisResult.normalizedForPersistence
-            if normalizedResult != analysisResult {
-                record.analysisResult = normalizedResult
+            if let legacyPayload = record.legacyDerivedPayloadFallback {
+                record.persistDerivedPayload(legacyPayload)
                 didTouchPayload = true
+                if record.repairReason != nil {
+                    NSLog(
+                        "%@",
+                        "Garage repair resolved. recordID=\(String(describing: record.persistentModelID)) title=\(record.title) reason=legacy_payload_migrated"
+                    )
+                }
+                continue
+            }
+
+            if record.hasLegacyDerivedContent || record.derivedPayloadData != nil {
+                let reason: GarageRepairReason = record.hasLegacyDerivedContent ? .legacyReviewPayload : .corruptedDerivedPayload
+                if record.repairReason != reason {
+                    record.clearDerivedPayload(repairReason: reason)
+                    didTouchPayload = true
+                }
+                NSLog(
+                    "%@",
+                    "Garage recovery quarantined derived payload. recordID=\(String(describing: record.persistentModelID)) title=\(record.title) reason=\(reason.rawValue)"
+                )
             }
         }
 
@@ -629,6 +709,9 @@ struct GarageView: View {
                     }
                 ),
                 viewportHeight: size.height,
+                onRequestReanalysis: { record in
+                    repairRecord(record)
+                },
                 onBackToRecords: {
                     route = .analyzer(.records)
                 }
@@ -708,7 +791,22 @@ struct GarageView: View {
             var pendingRecordID: PersistentIdentifier?
 
             do {
-                let reviewMasterURL = try GarageMediaStore.persistReviewMaster(from: sourceMovieURL)
+                let resolvedDuration = (await GarageMediaStore.assetMetadata(for: sourceMovieURL))?.duration ?? 0
+                let reviewMasterURL: URL
+                if garageRequiresManualTrim(for: resolvedDuration) {
+                    let trimWindow = garageNormalizedTrimWindow(
+                        start: selection.trimStartSeconds,
+                        end: selection.trimEndSeconds == 0 ? garageDefaultTrimWindow(for: resolvedDuration).upperBound : selection.trimEndSeconds,
+                        duration: resolvedDuration
+                    )
+                    reviewMasterURL = try await GarageMediaStore.persistTrimmedReviewMaster(
+                        from: sourceMovieURL,
+                        startTime: trimWindow.lowerBound,
+                        endTime: trimWindow.upperBound
+                    )
+                } else {
+                    reviewMasterURL = try GarageMediaStore.persistReviewMaster(from: sourceMovieURL)
+                }
                 let resolvedTitle = garageSuggestedRecordTitle(for: displayName, fallbackURL: reviewMasterURL)
                 let reviewMasterBookmark = GarageMediaStore.bookmarkData(for: reviewMasterURL)
 
@@ -784,6 +882,16 @@ struct GarageView: View {
                         pendingRecord.handAnchors = output.handAnchors
                         pendingRecord.pathPoints = output.pathPoints
                         pendingRecord.analysisResult = normalizedAnalysisResult
+                        pendingRecord.persistDerivedPayload(
+                            GarageDerivedPayload(
+                                frameRate: output.frameRate,
+                                swingFrames: output.swingFrames,
+                                keyFrames: approvedKeyFrames,
+                                handAnchors: output.handAnchors,
+                                pathPoints: output.pathPoints,
+                                analysisResult: normalizedAnalysisResult
+                            )
+                        )
                     }
 
                     try modelContext.save()
@@ -866,6 +974,76 @@ struct GarageView: View {
                         try? modelContext.save()
                     }
                     route = .analyzer(.importing(.failure(failureMessage)))
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func repairRecord(_ record: SwingRecord) {
+        guard let reviewMasterURL = GarageMediaStore.resolvedReviewVideoURL(for: record) else {
+            record.clearDerivedPayload(repairReason: .missingReviewVideo)
+            try? modelContext.save()
+            return
+        }
+
+        route = .analyzer(.importing(.analyzing(step: .loadingVideo, frameCount: 0, totalFrames: 0)))
+        let recordID = record.persistentModelID
+
+        Task {
+            do {
+                let output = try await GarageAnalysisPipeline.analyzeVideo(at: reviewMasterURL) { progress in
+                    await MainActor.run {
+                        presentImportProgress(progress)
+                    }
+                }
+                let approvedKeyFrames = GarageAnalysisPipeline.autoApprovedKeyFrames(
+                    from: output.keyFrames,
+                    reviewReport: output.handPathReviewReport
+                )
+                let validationStatus: KeyframeValidationStatus = output.handPathReviewReport.requiresManualReview ? .pending : .approved
+                let normalizedAnalysisResult = output.analysisResult.normalizedForPersistence
+
+                await MainActor.run {
+                    guard let repairedRecord = pendingRecord(for: recordID) else { return }
+                    repairedRecord.importStatus = .complete
+                    repairedRecord.frameRate = output.frameRate
+                    repairedRecord.swingFrames = output.swingFrames
+                    repairedRecord.keyFrames = approvedKeyFrames
+                    repairedRecord.keyframeValidationStatus = validationStatus
+                    repairedRecord.handAnchors = output.handAnchors
+                    repairedRecord.pathPoints = output.pathPoints
+                    repairedRecord.analysisResult = normalizedAnalysisResult
+                    repairedRecord.persistDerivedPayload(
+                        GarageDerivedPayload(
+                            frameRate: output.frameRate,
+                            swingFrames: output.swingFrames,
+                            keyFrames: approvedKeyFrames,
+                            handAnchors: output.handAnchors,
+                            pathPoints: output.pathPoints,
+                            analysisResult: normalizedAnalysisResult
+                        )
+                    )
+                    do {
+                        try modelContext.save()
+                        NSLog(
+                            "%@",
+                            "Garage repair completed. recordID=\(String(describing: repairedRecord.persistentModelID)) title=\(repairedRecord.title)"
+                        )
+                        route = .analyzer(.review(recordKey: garageRecordSelectionKey(for: repairedRecord)))
+                    } catch {
+                        route = .analyzer(.importing(.failure(error.localizedDescription)))
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    guard let repairedRecord = pendingRecord(for: recordID) else {
+                        route = .analyzer(.importing(.failure(error.localizedDescription)))
+                        return
+                    }
+                    repairedRecord.clearDerivedPayload(repairReason: .corruptedDerivedPayload)
+                    try? modelContext.save()
+                    route = .analyzer(.importing(.failure(error.localizedDescription)))
                 }
             }
         }
@@ -1053,7 +1231,7 @@ private struct SwingRecordCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 VStack(spacing: 10) {
-                    GarageMiniScoreGauge(score: record.analysisResult?.scorecard?.totalScore)
+                    GarageMiniScoreGauge(score: record.derivedAnalysisResult?.scorecard?.totalScore)
 
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.bold))
@@ -1121,13 +1299,16 @@ private struct GarageRecordStripThumbnail: View {
     }
 
     private var preferredThumbnailTimestamp: Double {
-        if let impactIndex = record.keyFrames.first(where: { $0.phase == .impact })?.frameIndex,
-           record.swingFrames.indices.contains(impactIndex) {
-            return record.swingFrames[impactIndex].timestamp
+        let keyFrames = record.derivedKeyFrames
+        let swingFrames = record.derivedSwingFrames
+
+        if let impactIndex = keyFrames.first(where: { $0.phase == .impact })?.frameIndex,
+           swingFrames.indices.contains(impactIndex) {
+            return swingFrames[impactIndex].timestamp
         }
 
-        if record.swingFrames.isEmpty == false {
-            return record.swingFrames[record.swingFrames.count / 2].timestamp
+        if swingFrames.isEmpty == false {
+            return swingFrames[swingFrames.count / 2].timestamp
         }
 
         return 0
@@ -1200,6 +1381,7 @@ private struct GarageReviewTab: View {
     let records: [SwingRecord]
     @Binding var selectedRecordKey: String?
     let viewportHeight: CGFloat
+    let onRequestReanalysis: (SwingRecord) -> Void
     let onBackToRecords: () -> Void
 
     private var selectedRecord: SwingRecord? {
@@ -1213,11 +1395,38 @@ private struct GarageReviewTab: View {
     var body: some View {
         Group {
             if let selectedRecord {
-                GarageFocusedReviewWorkspace(
-                    record: selectedRecord,
-                    viewportHeight: viewportHeight,
-                    onExitReview: onBackToRecords
-                )
+                switch selectedRecord.reviewAvailability {
+                case .ready:
+                    GarageFocusedReviewWorkspace(
+                        record: selectedRecord,
+                        viewportHeight: viewportHeight,
+                        onExitReview: onBackToRecords
+                    )
+                case .needsReanalysis:
+                    GarageRepairSurface(
+                        record: selectedRecord,
+                        onReanalyze: {
+                            onRequestReanalysis(selectedRecord)
+                        },
+                        onBackToRecords: onBackToRecords
+                    )
+                case .missingVideo:
+                    GarageAnalysisUnavailablePanel(
+                        title: "Review Media Missing",
+                        message: "This swing still exists, but the saved review video is gone. Re-import the clip to restore the premium review flow.",
+                        actionTitle: "Back To Records",
+                        action: onBackToRecords
+                    )
+                case .unavailable:
+                    GarageAnalysisUnavailablePanel(
+                        title: "Analysis Unavailable",
+                        message: "Garage quarantined unstable derived review data for this record so the app can stay up. Re-run analysis to rebuild the review package.",
+                        actionTitle: "Re-analyze Swing",
+                        action: {
+                            onRequestReanalysis(selectedRecord)
+                        }
+                    )
+                }
             } else {
                 ModuleEmptyStateCard(
                     theme: AppModule.garage.theme,
@@ -1246,6 +1455,107 @@ private struct GarageReviewTab: View {
         }
 
         selectedRecordKey = records.first.map(garageRecordSelectionKey)
+    }
+}
+
+private struct GarageRepairSurface: View {
+    let record: SwingRecord
+    let onReanalyze: () -> Void
+    let onBackToRecords: () -> Void
+
+    var body: some View {
+        GarageAnalysisUnavailablePanel(
+            title: "Swing Recovery Ready",
+            message: "Garage preserved this record and its video, but the old derived review payload is no longer trusted. Re-run analysis to rebuild scorecards, SyncFlow, and checkpoint telemetry safely.",
+            actionTitle: "Re-analyze Swing",
+            action: onReanalyze,
+            secondaryTitle: "Back To Records",
+            secondaryAction: onBackToRecords,
+            diagnostics: record.repairReason?.rawValue
+        )
+    }
+}
+
+private struct GarageAnalysisUnavailablePanel: View {
+    let title: String
+    let message: String
+    let actionTitle: String
+    let action: () -> Void
+    var secondaryTitle: String? = nil
+    var secondaryAction: (() -> Void)? = nil
+    var diagnostics: String? = nil
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Spacer(minLength: 0)
+
+            VStack(alignment: .leading, spacing: 18) {
+                Text("GARAGE RECOVERY")
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .tracking(2.2)
+                    .foregroundStyle(ModuleTheme.electricCyan.opacity(0.84))
+
+                Text(title)
+                    .font(.system(size: 28, weight: .black, design: .monospaced))
+                    .foregroundStyle(Color.white)
+
+                Text(message)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(AppModule.garage.theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let diagnostics, diagnostics.isEmpty == false {
+                    Text("Diagnostics: \(diagnostics)")
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(AppModule.garage.theme.textMuted)
+                }
+
+                Button(action: action) {
+                    Text(actionTitle)
+                        .font(.system(size: 18, weight: .black, design: .monospaced))
+                        .foregroundStyle(Color.white)
+                        .frame(maxWidth: .infinity, minHeight: 58)
+                        .background(
+                            GarageRaisedPanelBackground(
+                                shape: RoundedRectangle(cornerRadius: 20, style: .continuous),
+                                fill: ModuleTheme.garageSurface.opacity(0.98),
+                                stroke: ModuleTheme.electricCyan.opacity(0.55),
+                                glow: ModuleTheme.electricCyan
+                            )
+                        )
+                }
+                .buttonStyle(.plain)
+
+                if let secondaryTitle, let secondaryAction {
+                    Button(secondaryTitle, action: secondaryAction)
+                        .font(.system(size: 15, weight: .bold, design: .monospaced))
+                        .foregroundStyle(AppModule.garage.theme.textPrimary)
+                        .frame(maxWidth: .infinity, minHeight: 50)
+                        .background(
+                            GarageInsetPanelBackground(
+                                shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
+                                fill: garageReviewSurfaceDark,
+                                stroke: Color.white.opacity(0.08)
+                            )
+                        )
+                        .buttonStyle(.plain)
+                }
+            }
+            .padding(24)
+            .background(
+                GarageRaisedPanelBackground(
+                    shape: RoundedRectangle(cornerRadius: 30, style: .continuous),
+                    fill: garageReviewSurfaceDark.opacity(0.98),
+                    stroke: ModuleTheme.electricCyan.opacity(0.24),
+                    glow: ModuleTheme.electricCyan
+                )
+            )
+            .padding(.horizontal, ModuleSpacing.large)
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(garageReviewBackground.ignoresSafeArea())
     }
 }
 
@@ -1708,19 +2018,43 @@ private struct GarageFocusedReviewWorkspace: View {
         GarageMediaStore.reviewFrameSource(for: record)
     }
 
+    private var derivedPayload: GarageDerivedPayload? {
+        record.presentationDerivedPayload
+    }
+
+    private var swingFrames: [SwingFrame] {
+        derivedPayload?.swingFrames ?? record.derivedSwingFrames
+    }
+
+    private var keyFrames: [KeyFrame] {
+        derivedPayload?.keyFrames ?? record.derivedKeyFrames
+    }
+
+    private var handAnchors: [HandAnchor] {
+        derivedPayload?.handAnchors ?? record.derivedHandAnchors
+    }
+
+    private var pathPoints: [PathPoint] {
+        derivedPayload?.pathPoints ?? record.derivedPathPoints
+    }
+
+    private var analysisResult: AnalysisResult? {
+        derivedPayload?.analysisResult ?? record.derivedAnalysisResult
+    }
+
     private var orderedKeyframes: [GarageTimelineMarker] {
-        record.keyFrames
+        keyFrames
             .sorted { lhs, rhs in
                 (SwingPhase.allCases.firstIndex(of: lhs.phase) ?? 0) < (SwingPhase.allCases.firstIndex(of: rhs.phase) ?? 0)
             }
             .compactMap { keyFrame in
-                guard record.swingFrames.indices.contains(keyFrame.frameIndex) else {
+                guard swingFrames.indices.contains(keyFrame.frameIndex) else {
                     return nil
                 }
 
                 return GarageTimelineMarker(
                     keyFrame: keyFrame,
-                    timestamp: record.swingFrames[keyFrame.frameIndex].timestamp
+                    timestamp: swingFrames[keyFrame.frameIndex].timestamp
                 )
             }
     }
@@ -1730,7 +2064,7 @@ private struct GarageFocusedReviewWorkspace: View {
     }
 
     private var selectedKeyFrame: KeyFrame? {
-        record.keyFrames.first(where: { $0.phase == selectedPhase })
+        keyFrames.first(where: { $0.phase == selectedPhase })
     }
 
     private var selectedCheckpointStatus: KeyframeValidationStatus {
@@ -1738,7 +2072,7 @@ private struct GarageFocusedReviewWorkspace: View {
     }
 
     private var selectedAnchor: HandAnchor? {
-        record.handAnchors.first(where: { $0.phase == selectedPhase })
+        handAnchors.first(where: { $0.phase == selectedPhase })
     }
 
     private var predictedAnchorPoint: CGPoint? {
@@ -1791,21 +2125,21 @@ private struct GarageFocusedReviewWorkspace: View {
     }
 
     private var currentFrameIndex: Int? {
-        guard record.swingFrames.isEmpty == false else {
+        guard swingFrames.isEmpty == false else {
             return nil
         }
 
-        return record.swingFrames.enumerated().min { lhs, rhs in
+        return swingFrames.enumerated().min { lhs, rhs in
             abs(lhs.element.timestamp - currentTime) < abs(rhs.element.timestamp - currentTime)
         }?.offset
     }
 
     private var currentFrame: SwingFrame? {
-        guard let currentFrameIndex, record.swingFrames.indices.contains(currentFrameIndex) else {
+        guard let currentFrameIndex, swingFrames.indices.contains(currentFrameIndex) else {
             return nil
         }
 
-        return record.swingFrames[currentFrameIndex]
+        return swingFrames[currentFrameIndex]
     }
 
     private var currentFrameTimestamp: Double? {
@@ -1817,11 +2151,11 @@ private struct GarageFocusedReviewWorkspace: View {
     }
 
     private var handPathReviewReport: GarageHandPathReviewReport {
-        GarageAnalysisPipeline.handPathReviewReport(for: record.swingFrames, keyFrames: record.keyFrames)
+        GarageAnalysisPipeline.handPathReviewReport(for: swingFrames, keyFrames: keyFrames)
     }
 
     private var syncFlowReport: GarageSyncFlowReport? {
-        record.analysisResult?.syncFlow
+        analysisResult?.syncFlow
     }
 
     private var summaryPresentation: GarageReviewSummaryPresentation {
@@ -1835,8 +2169,8 @@ private struct GarageFocusedReviewWorkspace: View {
     }
 
     private var swingScorecard: GarageSwingScorecard? {
-        record.analysisResult?.scorecard
-            ?? GarageScorecardEngine.generate(frames: record.swingFrames, keyFrames: record.keyFrames)
+        analysisResult?.scorecard
+            ?? GarageScorecardEngine.generate(frames: swingFrames, keyFrames: keyFrames)
     }
 
     private var step2Presentation: GarageStep2Presentation {
@@ -1865,7 +2199,7 @@ private struct GarageFocusedReviewWorkspace: View {
     }
 
     private var fullHandPathSamples: [GarageHandPathSample] {
-        garageHandPathSamples(from: record.swingFrames, keyFrames: record.keyFrames)
+        garageHandPathSamples(from: swingFrames, keyFrames: keyFrames)
     }
 
     private var requiresFallbackReview: Bool {
@@ -1881,7 +2215,7 @@ private struct GarageFocusedReviewWorkspace: View {
     }
 
     private var filmstripFrames: [GarageFilmstripFrame] {
-        record.swingFrames.enumerated().map { index, frame in
+        swingFrames.enumerated().map { index, frame in
             GarageFilmstripFrame(index: index, timestamp: frame.timestamp)
         }
     }
@@ -1935,7 +2269,7 @@ private struct GarageFocusedReviewWorkspace: View {
                 isLoadingFrame: isLoadingFrame,
                 currentFrame: currentFrame,
                 currentFrameIndex: currentFrameIndex,
-                totalFrameCount: record.swingFrames.count,
+                totalFrameCount: swingFrames.count,
                 selectedAnchor: displayedAnchor,
                 highlightTint: selectedAnchorTint,
                 showsAnchorGuides: isDraggingAnchor,
@@ -1984,7 +2318,7 @@ private struct GarageFocusedReviewWorkspace: View {
                         markers: orderedKeyframes,
                         selectedPhase: selectedPhase,
                         currentFrameIndex: currentFrameIndex,
-                        totalFrameCount: record.swingFrames.count,
+                        totalFrameCount: swingFrames.count,
                         onSelectPhase: selectPhase,
                         reviewRecoveryTitle: reviewRecoveryTitle,
                         reviewRecoveryBody: reviewRecoveryBody,
@@ -2037,7 +2371,7 @@ private struct GarageFocusedReviewWorkspace: View {
                 GarageSlowMotionPlaybackSheet(
                     videoURL: reviewVideoURL,
                     pathSamples: fullHandPathSamples,
-                    frames: record.swingFrames,
+                    frames: swingFrames,
                     syncFlow: syncFlowReport,
                     initialMode: .handPath
                 )
@@ -2048,7 +2382,7 @@ private struct GarageFocusedReviewWorkspace: View {
                 GarageSkeletonReviewView(
                     videoURL: reviewVideoURL,
                     pathSamples: fullHandPathSamples,
-                    frames: record.swingFrames,
+                    frames: swingFrames,
                     syncFlow: syncFlowReport
                 )
             }
@@ -2110,7 +2444,7 @@ private struct GarageFocusedReviewWorkspace: View {
     private func seekToSelectedCheckpoint() {
         if let selectedMarker {
             currentTime = selectedMarker.timestamp
-        } else if let firstTimestamp = record.swingFrames.first?.timestamp {
+        } else if let firstTimestamp = swingFrames.first?.timestamp {
             currentTime = firstTimestamp
         } else {
             currentTime = 0
@@ -2124,7 +2458,7 @@ private struct GarageFocusedReviewWorkspace: View {
 
     private var canStepForward: Bool {
         guard let currentFrameIndex else { return false }
-        return currentFrameIndex < record.swingFrames.count - 1
+        return currentFrameIndex < swingFrames.count - 1
     }
 
     private var primaryActionEnabled: Bool {
@@ -2137,9 +2471,9 @@ private struct GarageFocusedReviewWorkspace: View {
     }
 
     private func setCurrentFrameIndex(_ index: Int) {
-        guard record.swingFrames.isEmpty == false else { return }
-        let clampedIndex = min(max(index, 0), record.swingFrames.count - 1)
-        currentTime = record.swingFrames[clampedIndex].timestamp
+        guard swingFrames.isEmpty == false else { return }
+        let clampedIndex = min(max(index, 0), swingFrames.count - 1)
+        currentTime = swingFrames[clampedIndex].timestamp
         if reviewSurface == .summary, let nearestPhase = nearestPhase(for: clampedIndex) {
             selectedPhase = nearestPhase
         }
@@ -2232,7 +2566,7 @@ private struct GarageFocusedReviewWorkspace: View {
 
         var mergedAnchors = GarageAnalysisPipeline.mergedHandAnchors(
             preserving: record.handAnchors,
-            from: record.swingFrames,
+            from: swingFrames,
             keyFrames: record.keyFrames
         )
         mergedAnchors = GarageAnalysisPipeline.upsertingHandAnchor(
@@ -2248,6 +2582,7 @@ private struct GarageFocusedReviewWorkspace: View {
         record.handAnchors = mergedAnchors
         record.pathPoints = GarageAnalysisPipeline.generatePathPoints(from: record.handAnchors, samplesPerSegment: 16)
         record.refreshKeyframeValidationStatus()
+        syncDerivedPayloadFromLegacy()
         try? modelContext.save()
     }
 
@@ -2294,7 +2629,21 @@ private struct GarageFocusedReviewWorkspace: View {
 
         record.keyFrames = autoApprovedKeyFrames
         record.refreshKeyframeValidationStatus()
+        syncDerivedPayloadFromLegacy()
         try? modelContext.save()
+    }
+
+    private func syncDerivedPayloadFromLegacy() {
+        record.persistDerivedPayload(
+            GarageDerivedPayload(
+                frameRate: record.frameRate,
+                swingFrames: record.swingFrames,
+                keyFrames: record.keyFrames,
+                handAnchors: record.handAnchors,
+                pathPoints: record.pathPoints,
+                analysisResult: analysisResult
+            )
+        )
     }
 
     private func syncReviewSession() {
@@ -4450,8 +4799,10 @@ private final class GarageSlowMotionPlaybackController: ObservableObject {
             object: item,
             queue: .main
         ) { [weak self] _ in
-            self?.player.pause()
-            self?.isPlaying = false
+            Task { @MainActor [weak self] in
+                self?.player.pause()
+                self?.isPlaying = false
+            }
         }
     }
 
@@ -4549,11 +4900,17 @@ private func garageSuggestedRecordTitle(for filename: String, fallbackURL: URL) 
 }
 
 private struct GaragePreFlightSheet: View {
+    let movie: GaragePickedMovie
     let initialSelection: GaragePreFlightSelection
     let onClose: () -> Void
     let onStartAnalysis: (GaragePreFlightSelection) -> Void
 
-    @State private var selection = GaragePreFlightSelection()
+    @StateObject private var playbackController: GarageSlowMotionPlaybackController
+    @State private var selection: GaragePreFlightSelection
+    @State private var videoDuration = 0.0
+    @State private var videoFrameRate = 0.0
+    @State private var naturalSize = CGSize.zero
+
     private let clubOptions = [
         "Driver", "3 Wood", "5 Wood",
         "3 Hybrid", "4 Hybrid", "5 Hybrid",
@@ -4565,201 +4922,61 @@ private struct GaragePreFlightSheet: View {
     private let handednessOptions: [(label: String, value: Bool)] = [("Righty", false), ("Lefty", true)]
     private let clubColumns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
 
+    init(
+        movie: GaragePickedMovie,
+        initialSelection: GaragePreFlightSelection,
+        onClose: @escaping () -> Void,
+        onStartAnalysis: @escaping (GaragePreFlightSelection) -> Void
+    ) {
+        self.movie = movie
+        self.initialSelection = initialSelection
+        self.onClose = onClose
+        self.onStartAnalysis = onStartAnalysis
+        _selection = State(initialValue: initialSelection)
+        _playbackController = StateObject(wrappedValue: GarageSlowMotionPlaybackController(url: movie.url))
+    }
+
+    private var requiresManualTrim: Bool {
+        garageRequiresManualTrim(for: videoDuration)
+    }
+
+    private var trimWindow: ClosedRange<Double> {
+        garageNormalizedTrimWindow(
+            start: selection.trimStartSeconds,
+            end: selection.trimEndSeconds,
+            duration: videoDuration
+        )
+    }
+
+    private var canStartAnalysis: Bool {
+        requiresManualTrim == false || selection.hasConfirmedTrimWindow
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
                 AppModule.garage.theme.backgroundBottom
-                .overlay(
-                    RadialGradient(
-                        colors: [
-                            ModuleTheme.electricCyan.opacity(0.16),
-                            Color.clear
-                        ],
-                        center: .top,
-                        startRadius: 40,
-                        endRadius: 360
+                    .overlay(
+                        RadialGradient(
+                            colors: [
+                                ModuleTheme.electricCyan.opacity(0.16),
+                                Color.clear
+                            ],
+                            center: .top,
+                            startRadius: 40,
+                            endRadius: 360
+                        )
                     )
-                )
-                .ignoresSafeArea()
+                    .ignoresSafeArea()
 
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: ModuleSpacing.large) {
-                        VStack(alignment: .leading, spacing: 14) {
-                            Text("FULL BAG CALIBRATION")
-                                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                .tracking(2.4)
-                                .foregroundStyle(ModuleTheme.electricCyan.opacity(0.82))
-
-                            Text("Pre-Flight Setup")
-                                .font(.system(size: 32, weight: .black, design: .monospaced))
-                                .foregroundStyle(Color.white)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.82)
-
-                            Text("Dial in the exact club, handedness, and capture angle before the AI starts the heavy pass.")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(AppModule.garage.theme.textSecondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .padding(24)
-                        .background(
-                            GarageRaisedPanelBackground(
-                                shape: RoundedRectangle(cornerRadius: 30, style: .continuous),
-                                fill: garageReviewSurfaceDark.opacity(0.98),
-                                stroke: ModuleTheme.electricCyan.opacity(0.24),
-                                glow: ModuleTheme.electricCyan
-                            )
-                        )
-
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Handedness")
-                                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                .tracking(1.8)
-                                .foregroundStyle(AppModule.garage.theme.textMuted)
-
-                            HStack(spacing: 10) {
-                                ForEach(handednessOptions, id: \.label) { option in
-                                    preflightRowButton(
-                                        title: option.label,
-                                        isSelected: selection.isLeftHanded == option.value,
-                                        shape: Capsule()
-                                    ) {
-                                        selection.isLeftHanded = option.value
-                                    }
-                                }
-                            }
-                        }
-                        .padding(20)
-                        .background(
-                            GarageRaisedPanelBackground(
-                                shape: RoundedRectangle(cornerRadius: 24, style: .continuous),
-                                fill: garageReviewSurfaceDark.opacity(0.94),
-                                stroke: Color.white.opacity(0.07)
-                            )
-                        )
-
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Club Grid")
-                                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                .tracking(1.8)
-                                .foregroundStyle(AppModule.garage.theme.textMuted)
-
-                            Text("All 14 clubs, centered for a full-bag intake.")
-                                .font(.headline.weight(.semibold))
-                                .foregroundStyle(Color.white)
-
-                            LazyVGrid(columns: clubColumns, spacing: 9) {
-                                ForEach(clubOptions, id: \.self) { club in
-                                    Button {
-                                        selection.clubType = club
-                                    } label: {
-                                        Text(club)
-                                            .font(.system(size: 14, weight: .bold, design: .monospaced))
-                                            .foregroundStyle(selection.clubType == club ? ModuleTheme.electricCyan : AppModule.garage.theme.textPrimary.opacity(0.9))
-                                            .lineLimit(1)
-                                            .minimumScaleFactor(0.8)
-                                            .fixedSize(horizontal: false, vertical: true)
-                                            .frame(maxWidth: .infinity, minHeight: 50)
-                                            .padding(.horizontal, 10)
-                                            .background(
-                                                GarageInsetPanelBackground(
-                                                    shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
-                                                    fill: selection.clubType == club ? garageReviewSurface : garageReviewSurfaceDark,
-                                                    stroke: selection.clubType == club ? ModuleTheme.electricCyan.opacity(0.42) : Color.white.opacity(0.08)
-                                                )
-                                            )
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                                    .stroke(
-                                                        selection.clubType == club ? ModuleTheme.electricCyan.opacity(0.72) : Color.clear,
-                                                        lineWidth: 0.5
-                                                    )
-                                            )
-                                            .shadow(
-                                                color: selection.clubType == club ? ModuleTheme.electricCyan.opacity(0.24) : .clear,
-                                                radius: selection.clubType == club ? 10 : 0,
-                                                x: 0,
-                                                y: 0
-                                            )
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                        .padding(22)
-                        .background(
-                            GarageRaisedPanelBackground(
-                                shape: RoundedRectangle(cornerRadius: 30, style: .continuous),
-                                fill: garageReviewSurfaceDark.opacity(0.98),
-                                stroke: ModuleTheme.electricCyan.opacity(0.24),
-                                glow: ModuleTheme.electricCyan
-                            )
-                        )
-
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Camera Angle")
-                                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                .tracking(1.8)
-                                .foregroundStyle(AppModule.garage.theme.textMuted)
-
-                            HStack(spacing: 10) {
-                                ForEach(cameraOptions, id: \.self) { option in
-                                    preflightRowButton(
-                                        title: option,
-                                        isSelected: selection.cameraAngle == option,
-                                        shape: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    ) {
-                                        selection.cameraAngle = option
-                                    }
-                                }
-                            }
-                        }
-                        .padding(20)
-                        .background(
-                            GarageRaisedPanelBackground(
-                                shape: RoundedRectangle(cornerRadius: 24, style: .continuous),
-                                fill: garageReviewSurfaceDark.opacity(0.94),
-                                stroke: Color.white.opacity(0.07)
-                            )
-                        )
-
-                        VStack(alignment: .leading, spacing: 14) {
-                            Text("The robot stays idle until you tap start.")
-                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                                .foregroundStyle(ModuleTheme.electricCyan.opacity(0.92))
-                                .fixedSize(horizontal: false, vertical: true)
-
-                            Button {
-                                onStartAnalysis(selection)
-                            } label: {
-                                Text("Start AI Analysis")
-                                    .font(.system(size: 22, weight: .black, design: .monospaced))
-                                    .foregroundStyle(Color.white)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.8)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .frame(maxWidth: .infinity, minHeight: 66)
-                                    .padding(.horizontal, 18)
-                                    .background(
-                                        GarageRaisedPanelBackground(
-                                            shape: RoundedRectangle(cornerRadius: 24, style: .continuous),
-                                            fill: ModuleTheme.garageSurface.opacity(0.98),
-                                            stroke: ModuleTheme.electricCyan.opacity(0.55),
-                                            glow: ModuleTheme.electricCyan
-                                        )
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(22)
-                        .background(
-                            GarageRaisedPanelBackground(
-                                shape: RoundedRectangle(cornerRadius: 30, style: .continuous),
-                                fill: garageReviewSurfaceDark.opacity(0.98),
-                                stroke: ModuleTheme.electricCyan.opacity(0.26),
-                                glow: ModuleTheme.electricCyan
-                            )
-                        )
+                        headerCard
+                        previewCard
+                        handednessCard
+                        clubGridCard
+                        cameraAngleCard
+                        actionCard
                     }
                     .padding(ModuleSpacing.large)
                     .padding(.bottom, ModuleSpacing.large)
@@ -4783,9 +5000,442 @@ private struct GaragePreFlightSheet: View {
                 }
             }
         }
-        .onAppear {
-            selection = initialSelection
+        .task {
+            await loadMetadata()
         }
+        .onDisappear {
+            playbackController.stop()
+        }
+    }
+
+    private var headerCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("FULL BAG CALIBRATION")
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .tracking(2.4)
+                .foregroundStyle(ModuleTheme.electricCyan.opacity(0.82))
+
+            Text("Pre-Flight Setup")
+                .font(.system(size: 32, weight: .black, design: .monospaced))
+                .foregroundStyle(Color.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+
+            Text(requiresManualTrim
+                 ? "Select the swing window before analysis starts. Long clips now require an exact trim so Garage analyzes the real motion instead of guessing."
+                 : "Dial in the exact club, handedness, and capture angle before the AI starts the heavy pass.")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(AppModule.garage.theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(24)
+        .background(
+            GarageRaisedPanelBackground(
+                shape: RoundedRectangle(cornerRadius: 30, style: .continuous),
+                fill: garageReviewSurfaceDark.opacity(0.98),
+                stroke: ModuleTheme.electricCyan.opacity(0.24),
+                glow: ModuleTheme.electricCyan
+            )
+        )
+    }
+
+    private var previewCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Review Master Preview")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .tracking(1.8)
+                .foregroundStyle(AppModule.garage.theme.textMuted)
+
+            ZStack(alignment: .bottomTrailing) {
+                GarageSlowMotionPlayerView(player: playbackController.player)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 240)
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                    )
+
+                if requiresManualTrim {
+                    Text("TRIM REQUIRED")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Color.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule()
+                                .fill(ModuleTheme.electricCyan.opacity(0.18))
+                                .overlay(
+                                    Capsule()
+                                        .stroke(ModuleTheme.electricCyan.opacity(0.46), lineWidth: 0.5)
+                                )
+                        )
+                        .padding(12)
+                }
+            }
+
+            HStack(spacing: 12) {
+                telemetryChip(title: "FILE", value: movie.displayName)
+                telemetryChip(title: "DURATION", value: garageTrimLabel(for: videoDuration))
+            }
+
+            HStack(spacing: 12) {
+                telemetryChip(title: "FPS", value: videoFrameRate > 0 ? String(format: "%.1f", videoFrameRate) : "--")
+                telemetryChip(title: "SIZE", value: naturalSize.width > 0 ? "\(Int(naturalSize.width))×\(Int(naturalSize.height))" : "--")
+            }
+
+            HStack(spacing: 12) {
+                Button {
+                    playbackController.togglePlayback()
+                } label: {
+                    Label(playbackController.isPlaying ? "Pause" : "Preview", systemImage: playbackController.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Color.white)
+                        .frame(maxWidth: .infinity, minHeight: 46)
+                        .background(
+                            GarageInsetPanelBackground(
+                                shape: RoundedRectangle(cornerRadius: 16, style: .continuous),
+                                fill: garageReviewSurface,
+                                stroke: Color.white.opacity(0.08)
+                            )
+                        )
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    playbackController.seek(trimWindow.lowerBound)
+                } label: {
+                    Label("Jump To Start", systemImage: "arrow.counterclockwise")
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundStyle(AppModule.garage.theme.textPrimary)
+                        .frame(maxWidth: .infinity, minHeight: 46)
+                        .background(
+                            GarageInsetPanelBackground(
+                                shape: RoundedRectangle(cornerRadius: 16, style: .continuous),
+                                fill: garageReviewSurfaceDark,
+                                stroke: Color.white.opacity(0.08)
+                            )
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+
+            if requiresManualTrim {
+                manualTrimCard
+            }
+        }
+        .padding(22)
+        .background(
+            GarageRaisedPanelBackground(
+                shape: RoundedRectangle(cornerRadius: 30, style: .continuous),
+                fill: garageReviewSurfaceDark.opacity(0.98),
+                stroke: ModuleTheme.electricCyan.opacity(0.24),
+                glow: ModuleTheme.electricCyan
+            )
+        )
+    }
+
+    private var manualTrimCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Swing Window")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(Color.white)
+
+            Text("Select the swing window before analysis starts.")
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .foregroundStyle(ModuleTheme.electricCyan.opacity(0.92))
+
+            HStack(spacing: 12) {
+                telemetryChip(title: "START", value: garageTrimLabel(for: trimWindow.lowerBound))
+                telemetryChip(title: "END", value: garageTrimLabel(for: trimWindow.upperBound))
+                telemetryChip(title: "WINDOW", value: garageTrimLabel(for: trimWindow.upperBound - trimWindow.lowerBound))
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Trim Start")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundStyle(AppModule.garage.theme.textMuted)
+
+                Slider(
+                    value: Binding(
+                        get: { trimWindow.lowerBound },
+                        set: { updateTrimStart($0) }
+                    ),
+                    in: 0...max(videoDuration - garageMinimumTrimWindowDuration, 0)
+                )
+                .tint(ModuleTheme.electricCyan)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Trim End")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundStyle(AppModule.garage.theme.textMuted)
+
+                Slider(
+                    value: Binding(
+                        get: { trimWindow.upperBound },
+                        set: { updateTrimEnd($0) }
+                    ),
+                    in: garageMinimumTrimWindowDuration...max(videoDuration, garageMinimumTrimWindowDuration)
+                )
+                .tint(Color(hex: "#1AD0C8"))
+            }
+
+            Button {
+                selection.trimStartSeconds = trimWindow.lowerBound
+                selection.trimEndSeconds = trimWindow.upperBound
+                selection.hasConfirmedTrimWindow = true
+                playbackController.seek(trimWindow.lowerBound)
+            } label: {
+                Text(selection.hasConfirmedTrimWindow ? "Trim Confirmed" : "Confirm Swing Window")
+                    .font(.system(size: 16, weight: .black, design: .monospaced))
+                    .foregroundStyle(Color.white)
+                    .frame(maxWidth: .infinity, minHeight: 54)
+                    .background(
+                        GarageRaisedPanelBackground(
+                            shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
+                            fill: ModuleTheme.garageSurface.opacity(0.98),
+                            stroke: ModuleTheme.electricCyan.opacity(0.48),
+                            glow: ModuleTheme.electricCyan
+                        )
+                    )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(18)
+        .background(
+            GarageInsetPanelBackground(
+                shape: RoundedRectangle(cornerRadius: 24, style: .continuous),
+                fill: garageReviewSurfaceDark,
+                stroke: Color.white.opacity(0.07)
+            )
+        )
+    }
+
+    private var handednessCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Handedness")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .tracking(1.8)
+                .foregroundStyle(AppModule.garage.theme.textMuted)
+
+            HStack(spacing: 10) {
+                ForEach(handednessOptions, id: \.label) { option in
+                    preflightRowButton(
+                        title: option.label,
+                        isSelected: selection.isLeftHanded == option.value,
+                        shape: Capsule()
+                    ) {
+                        selection.isLeftHanded = option.value
+                    }
+                }
+            }
+        }
+        .padding(20)
+        .background(
+            GarageRaisedPanelBackground(
+                shape: RoundedRectangle(cornerRadius: 24, style: .continuous),
+                fill: garageReviewSurfaceDark.opacity(0.94),
+                stroke: Color.white.opacity(0.07)
+            )
+        )
+    }
+
+    private var clubGridCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Club Grid")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .tracking(1.8)
+                .foregroundStyle(AppModule.garage.theme.textMuted)
+
+            Text("All 14 clubs, centered for a full-bag intake.")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(Color.white)
+
+            LazyVGrid(columns: clubColumns, spacing: 9) {
+                ForEach(clubOptions, id: \.self) { club in
+                    Button {
+                        selection.clubType = club
+                    } label: {
+                        Text(club)
+                            .font(.system(size: 14, weight: .bold, design: .monospaced))
+                            .foregroundStyle(selection.clubType == club ? ModuleTheme.electricCyan : AppModule.garage.theme.textPrimary.opacity(0.9))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, minHeight: 50)
+                            .padding(.horizontal, 10)
+                            .background(
+                                GarageInsetPanelBackground(
+                                    shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
+                                    fill: selection.clubType == club ? garageReviewSurface : garageReviewSurfaceDark,
+                                    stroke: selection.clubType == club ? ModuleTheme.electricCyan.opacity(0.42) : Color.white.opacity(0.08)
+                                )
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                    .stroke(
+                                        selection.clubType == club ? ModuleTheme.electricCyan.opacity(0.72) : Color.clear,
+                                        lineWidth: 0.5
+                                    )
+                            )
+                            .shadow(
+                                color: selection.clubType == club ? ModuleTheme.electricCyan.opacity(0.24) : .clear,
+                                radius: selection.clubType == club ? 10 : 0,
+                                x: 0,
+                                y: 0
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(22)
+        .background(
+            GarageRaisedPanelBackground(
+                shape: RoundedRectangle(cornerRadius: 30, style: .continuous),
+                fill: garageReviewSurfaceDark.opacity(0.98),
+                stroke: ModuleTheme.electricCyan.opacity(0.24),
+                glow: ModuleTheme.electricCyan
+            )
+        )
+    }
+
+    private var cameraAngleCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Camera Angle")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .tracking(1.8)
+                .foregroundStyle(AppModule.garage.theme.textMuted)
+
+            HStack(spacing: 10) {
+                ForEach(cameraOptions, id: \.self) { option in
+                    preflightRowButton(
+                        title: option,
+                        isSelected: selection.cameraAngle == option,
+                        shape: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    ) {
+                        selection.cameraAngle = option
+                    }
+                }
+            }
+        }
+        .padding(20)
+        .background(
+            GarageRaisedPanelBackground(
+                shape: RoundedRectangle(cornerRadius: 24, style: .continuous),
+                fill: garageReviewSurfaceDark.opacity(0.94),
+                stroke: Color.white.opacity(0.07)
+            )
+        )
+    }
+
+    private var actionCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(canStartAnalysis
+                 ? "The robot stays idle until you tap start."
+                 : "Long clip selected. Confirm the swing window to unlock the AI run.")
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .foregroundStyle(ModuleTheme.electricCyan.opacity(0.92))
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                selection.trimStartSeconds = trimWindow.lowerBound
+                selection.trimEndSeconds = trimWindow.upperBound
+                onStartAnalysis(selection)
+            } label: {
+                Text("Start AI Analysis")
+                    .font(.system(size: 22, weight: .black, design: .monospaced))
+                    .foregroundStyle(Color.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, minHeight: 66)
+                    .padding(.horizontal, 18)
+                    .background(
+                        GarageRaisedPanelBackground(
+                            shape: RoundedRectangle(cornerRadius: 24, style: .continuous),
+                            fill: canStartAnalysis ? ModuleTheme.garageSurface.opacity(0.98) : ModuleTheme.garageSurfaceInset.opacity(0.86),
+                            stroke: canStartAnalysis ? ModuleTheme.electricCyan.opacity(0.55) : Color.white.opacity(0.12),
+                            glow: canStartAnalysis ? ModuleTheme.electricCyan : Color.clear
+                        )
+                    )
+                    .opacity(canStartAnalysis ? 1 : 0.62)
+            }
+            .buttonStyle(.plain)
+            .disabled(canStartAnalysis == false)
+        }
+        .padding(22)
+        .background(
+            GarageRaisedPanelBackground(
+                shape: RoundedRectangle(cornerRadius: 30, style: .continuous),
+                fill: garageReviewSurfaceDark.opacity(0.98),
+                stroke: ModuleTheme.electricCyan.opacity(0.26),
+                glow: ModuleTheme.electricCyan
+            )
+        )
+    }
+
+    private func loadMetadata() async {
+        selection = initialSelection
+        guard let metadata = await GarageMediaStore.assetMetadata(for: movie.url) else { return }
+        videoDuration = metadata.duration
+        videoFrameRate = metadata.frameRate
+        naturalSize = metadata.naturalSize
+        playbackController.updateDurationFromMetadata(metadata.duration)
+
+        if requiresManualTrim {
+            let defaultWindow = garageDefaultTrimWindow(for: metadata.duration)
+            selection.trimStartSeconds = defaultWindow.lowerBound
+            selection.trimEndSeconds = defaultWindow.upperBound
+            selection.hasConfirmedTrimWindow = false
+            playbackController.seek(defaultWindow.lowerBound)
+        } else {
+            selection.trimStartSeconds = 0
+            selection.trimEndSeconds = metadata.duration
+            selection.hasConfirmedTrimWindow = true
+        }
+    }
+
+    private func updateTrimStart(_ value: Double) {
+        let normalized = garageNormalizedTrimWindow(start: value, end: trimWindow.upperBound, duration: videoDuration)
+        selection.trimStartSeconds = normalized.lowerBound
+        selection.trimEndSeconds = normalized.upperBound
+        selection.hasConfirmedTrimWindow = false
+        playbackController.seek(normalized.lowerBound)
+    }
+
+    private func updateTrimEnd(_ value: Double) {
+        let normalized = garageNormalizedTrimWindow(start: trimWindow.lowerBound, end: value, duration: videoDuration)
+        selection.trimStartSeconds = normalized.lowerBound
+        selection.trimEndSeconds = normalized.upperBound
+        selection.hasConfirmedTrimWindow = false
+    }
+
+    private func garageTrimLabel(for seconds: Double) -> String {
+        guard seconds.isFinite else { return "--" }
+        return String(format: "%.2fs", max(seconds, 0))
+    }
+    private func telemetryChip(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundStyle(AppModule.garage.theme.textMuted)
+            Text(value)
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundStyle(Color.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(
+            GarageInsetPanelBackground(
+                shape: RoundedRectangle(cornerRadius: 16, style: .continuous),
+                fill: garageReviewSurfaceDark,
+                stroke: Color.white.opacity(0.08)
+            )
+        )
     }
 
     private func preflightRowButton<S: Shape>(
@@ -5163,7 +5813,7 @@ private struct GarageCommandCenterView: View {
     }
 
     private var heroScore: Int {
-        latestRecord?.analysisResult?.scorecard?.totalScore ?? fallbackScore
+        latestRecord?.derivedAnalysisResult?.scorecard?.totalScore ?? fallbackScore
     }
 
     private var normalizedHeroScore: Double {
@@ -5175,11 +5825,11 @@ private struct GarageCommandCenterView: View {
     }
 
     private var issueTitle: String {
-        latestRecord?.analysisResult?.syncFlow?.primaryIssue?.title ?? fallbackIssueTitle
+        latestRecord?.derivedAnalysisResult?.syncFlow?.primaryIssue?.title ?? fallbackIssueTitle
     }
 
     private var issueDetail: String {
-        latestRecord?.analysisResult?.syncFlow?.primaryIssue?.detail ?? fallbackIssueDetail
+        latestRecord?.derivedAnalysisResult?.syncFlow?.primaryIssue?.detail ?? fallbackIssueDetail
     }
 
     var body: some View {

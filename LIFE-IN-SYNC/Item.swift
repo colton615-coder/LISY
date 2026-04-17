@@ -475,6 +475,31 @@ struct AnalysisResult: Codable, Hashable {
     }
 }
 
+struct GarageDerivedPayload: Codable, Hashable {
+    static let currentVersion = 1
+
+    var frameRate: Double
+    var swingFrames: [SwingFrame]
+    var keyFrames: [KeyFrame]
+    var handAnchors: [HandAnchor]
+    var pathPoints: [PathPoint]
+    var analysisResult: AnalysisResult?
+}
+
+enum GarageReviewAvailability: String, Equatable {
+    case ready
+    case needsReanalysis
+    case missingVideo
+    case unavailable
+}
+
+enum GarageRepairReason: String, Codable, Equatable {
+    case legacyReviewPayload
+    case corruptedDerivedPayload
+    case missingDerivedPayload
+    case missingReviewVideo
+}
+
 @Model
 final class CompletionRecord {
     var completedAt: Date
@@ -677,6 +702,9 @@ final class SwingRecord {
     var handAnchors: [HandAnchor]
     var pathPoints: [PathPoint]
     var analysisResult: AnalysisResult?
+    var derivedPayloadVersion: Int
+    var derivedPayloadData: Data?
+    private var repairReasonCode: String?
 
     init(
         title: String,
@@ -698,7 +726,10 @@ final class SwingRecord {
         keyframeValidationStatus: KeyframeValidationStatus = .pending,
         handAnchors: [HandAnchor] = [],
         pathPoints: [PathPoint] = [],
-        analysisResult: AnalysisResult? = nil
+        analysisResult: AnalysisResult? = nil,
+        derivedPayloadVersion: Int = 0,
+        derivedPayloadData: Data? = nil,
+        repairReason: GarageRepairReason? = nil
     ) {
         self.title = title
         self.createdAt = createdAt
@@ -720,6 +751,9 @@ final class SwingRecord {
         self.handAnchors = handAnchors
         self.pathPoints = pathPoints
         self.analysisResult = analysisResult
+        self.derivedPayloadVersion = derivedPayloadVersion
+        self.derivedPayloadData = derivedPayloadData
+        self.repairReasonCode = repairReason?.rawValue
     }
 
     var preferredReviewFilename: String? {
@@ -728,6 +762,105 @@ final class SwingRecord {
 
     var preferredExportFilename: String? {
         normalizedFilename(exportAssetFilename)
+    }
+
+    var repairReason: GarageRepairReason? {
+        guard let repairReasonCode else { return nil }
+        return GarageRepairReason(rawValue: repairReasonCode)
+    }
+
+    @MainActor
+    var decodedDerivedPayload: GarageDerivedPayload? {
+        guard let derivedPayloadData else { return nil }
+
+        do {
+            return try JSONDecoder().decode(GarageDerivedPayload.self, from: derivedPayloadData)
+        } catch {
+            let nsError = error as NSError
+            NSLog(
+                "%@",
+                "Garage derived payload decode failed. recordID=\(String(describing: persistentModelID)) domain=\(nsError.domain) code=\(nsError.code) description=\(nsError.localizedDescription)"
+            )
+            return nil
+        }
+    }
+
+    @MainActor
+    var legacyDerivedPayloadFallback: GarageDerivedPayload? {
+        guard hasLegacyDerivedContent else { return nil }
+        return GarageDerivedPayload(
+            frameRate: frameRate,
+            swingFrames: swingFrames,
+            keyFrames: keyFrames,
+            handAnchors: handAnchors,
+            pathPoints: pathPoints,
+            analysisResult: nil
+        )
+    }
+
+    @MainActor
+    var presentationDerivedPayload: GarageDerivedPayload? {
+        decodedDerivedPayload ?? legacyDerivedPayloadFallback
+    }
+
+    @MainActor
+    var derivedFrameRate: Double {
+        presentationDerivedPayload?.frameRate ?? 0
+    }
+
+    @MainActor
+    var derivedSwingFrames: [SwingFrame] {
+        presentationDerivedPayload?.swingFrames ?? []
+    }
+
+    @MainActor
+    var derivedKeyFrames: [KeyFrame] {
+        presentationDerivedPayload?.keyFrames ?? []
+    }
+
+    @MainActor
+    var derivedHandAnchors: [HandAnchor] {
+        presentationDerivedPayload?.handAnchors ?? []
+    }
+
+    @MainActor
+    var derivedPathPoints: [PathPoint] {
+        presentationDerivedPayload?.pathPoints ?? []
+    }
+
+    @MainActor
+    var derivedAnalysisResult: AnalysisResult? {
+        decodedDerivedPayload?.analysisResult
+    }
+
+    @MainActor
+    var reviewAvailability: GarageReviewAvailability {
+        let hasVideoReference = preferredReviewFilename != nil
+            || preferredExportFilename != nil
+            || reviewMasterBookmark != nil
+            || mediaFileBookmark != nil
+            || exportAssetBookmark != nil
+
+        if let repairReason {
+            switch repairReason {
+            case .legacyReviewPayload, .corruptedDerivedPayload, .missingDerivedPayload:
+                return hasVideoReference ? .needsReanalysis : .missingVideo
+            case .missingReviewVideo:
+                return .missingVideo
+            }
+        }
+
+        if let payload = presentationDerivedPayload,
+           payload.swingFrames.isEmpty == false,
+           payload.keyFrames.isEmpty == false {
+            return hasVideoReference ? .ready : .missingVideo
+        }
+
+        if hasVideoReference {
+            return .needsReanalysis
+        }
+
+        return .unavailable
     }
 
     var resolvedImportStatus: GarageImportStatus {
@@ -758,6 +891,38 @@ final class SwingRecord {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    var hasLegacyDerivedContent: Bool {
+        frameRate > 0
+            || swingFrames.isEmpty == false
+            || keyFrames.isEmpty == false
+            || handAnchors.isEmpty == false
+            || pathPoints.isEmpty == false
+    }
+
+    @MainActor
+    func persistDerivedPayload(_ payload: GarageDerivedPayload) {
+        derivedPayloadVersion = GarageDerivedPayload.currentVersion
+        derivedPayloadData = try? JSONEncoder().encode(payload)
+        repairReasonCode = nil
+    }
+
+    @MainActor
+    func clearDerivedPayload(repairReason: GarageRepairReason) {
+        derivedPayloadVersion = 0
+        derivedPayloadData = nil
+        repairReasonCode = repairReason.rawValue
+    }
+
+    @MainActor
+    func clearLegacyDerivedReviewData() {
+        frameRate = 0
+        swingFrames = []
+        keyFrames = []
+        handAnchors = []
+        pathPoints = []
+        analysisResult = nil
     }
 
     func reviewStatus(for phase: SwingPhase) -> KeyframeValidationStatus {

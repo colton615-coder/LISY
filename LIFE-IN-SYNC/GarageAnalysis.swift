@@ -217,8 +217,14 @@ enum GarageSyncFlowStatus: String, Codable, Hashable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        let rawValue = (try? container.decode(String.self)) ?? ""
-        self = GarageSyncFlowStatus(rawValue: rawValue) ?? .unavailable
+        let rawValue = try container.decode(String.self)
+        guard let decodedValue = GarageSyncFlowStatus(rawValue: rawValue) else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unsupported GarageSyncFlowStatus value: \(rawValue)"
+            )
+        }
+        self = decodedValue
     }
 }
 
@@ -524,10 +530,10 @@ struct GarageCoachingReport: Equatable {
 
 enum GarageInsights {
     static func report(for record: SwingRecord) -> GarageInsightReport {
-        let baseSummary = record.analysisResult?.summary ?? "Swing analysis is in progress."
-        let baseHighlights = record.analysisResult?.highlights ?? []
+        let baseSummary = record.derivedAnalysisResult?.summary ?? "Swing analysis is in progress."
+        let baseHighlights = record.derivedAnalysisResult?.highlights ?? []
         var highlights = baseHighlights
-        var issues = record.analysisResult?.issues ?? []
+        var issues = record.derivedAnalysisResult?.issues ?? []
 
         let keyframeCount = record.keyFrames.count
         let anchorCount = record.handAnchors.count
@@ -966,7 +972,7 @@ enum GarageCoaching {
     static func report(for record: SwingRecord) -> GarageCoachingReport {
         let insightReport = GarageInsights.report(for: record)
         let reliabilityReport = GarageReliability.report(for: record)
-        let syncFlow = record.analysisResult?.syncFlow
+        let syncFlow = record.derivedAnalysisResult?.syncFlow
 
         if reliabilityReport.status == .provisional {
             return GarageCoachingReport(
@@ -1391,6 +1397,75 @@ enum GarageMediaStore {
             return destinationURL
         } catch {
             throw GarageAnalysisError.failedToPersistVideo
+        }
+    }
+
+    static func persistTrimmedReviewMaster(from sourceURL: URL, startTime: Double, endTime: Double) async throws -> URL {
+        let asset = AVURLAsset(url: sourceURL)
+        let duration = try await asset.load(.duration)
+        let totalSeconds = duration.seconds
+        guard totalSeconds.isFinite, totalSeconds > 0 else {
+            throw GarageAnalysisError.failedToPersistVideo
+        }
+
+        let clampedStart = min(max(startTime, 0), max(totalSeconds - 0.1, 0))
+        let clampedEnd = min(max(endTime, clampedStart + 0.1), totalSeconds)
+        guard clampedEnd > clampedStart else {
+            throw GarageAnalysisError.failedToPersistVideo
+        }
+
+        let directoryURL = try garageDirectoryURL(for: .reviewMaster)
+        let destinationURL = directoryURL.appendingPathComponent("\(UUID().uuidString).mp4")
+        if FileManager.default.fileExists(atPath: destinationURL.path) {
+            try FileManager.default.removeItem(at: destinationURL)
+        }
+
+        guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) else {
+            throw GarageAnalysisError.failedToPersistVideo
+        }
+
+        let preferredFileType: AVFileType
+        if exportSession.supportedFileTypes.contains(.mp4) {
+            preferredFileType = .mp4
+        } else if exportSession.supportedFileTypes.contains(.mov) {
+            preferredFileType = .mov
+        } else if let fallback = exportSession.supportedFileTypes.first {
+            preferredFileType = fallback
+        } else {
+            throw GarageAnalysisError.failedToPersistVideo
+        }
+
+        let finalizedURL: URL
+        if preferredFileType == .mp4 {
+            finalizedURL = destinationURL
+        } else {
+            finalizedURL = directoryURL.appendingPathComponent("\(UUID().uuidString).mov")
+        }
+
+        if FileManager.default.fileExists(atPath: finalizedURL.path) {
+            try FileManager.default.removeItem(at: finalizedURL)
+        }
+
+        exportSession.outputURL = finalizedURL
+        exportSession.outputFileType = preferredFileType
+        exportSession.shouldOptimizeForNetworkUse = true
+        exportSession.timeRange = CMTimeRange(
+            start: CMTime(seconds: clampedStart, preferredTimescale: 600),
+            end: CMTime(seconds: clampedEnd, preferredTimescale: 600)
+        )
+
+        await withCheckedContinuation { continuation in
+            exportSession.exportAsynchronously {
+                continuation.resume()
+            }
+        }
+
+        switch exportSession.status {
+        case .completed:
+            return finalizedURL
+        default:
+            try? FileManager.default.removeItem(at: finalizedURL)
+            throw exportSession.error ?? GarageAnalysisError.failedToPersistVideo
         }
     }
 
@@ -3592,23 +3667,6 @@ struct GarageSwingTimestamps: Codable, Hashable {
             if let value = try? nestedContainer.decodeIfPresent(String.self, forKey: .seconds),
                let numericValue = Double(value.trimmingCharacters(in: .whitespacesAndNewlines)) {
                 return numericValue
-            }
-        }
-
-        if let nestedDecoder = try? container.superDecoder(forKey: key) {
-            if let singleValueContainer = try? nestedDecoder.singleValueContainer() {
-                if let value = try? singleValueContainer.decode(Double.self) {
-                    return value
-                }
-                if let value = try? singleValueContainer.decode(Int.self) {
-                    return Double(value)
-                }
-                if let value = try? singleValueContainer.decode(String.self) {
-                    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if let numericValue = Double(trimmed) {
-                        return numericValue
-                    }
-                }
             }
         }
 
