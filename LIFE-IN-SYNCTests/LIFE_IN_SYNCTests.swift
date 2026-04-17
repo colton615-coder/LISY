@@ -178,17 +178,28 @@ struct LIFE_IN_SYNCTests {
         #expect(GarageAnalysisPipeline.resolvedSamplingFrameRate(from: 24) == 24)
     }
 
-    @Test func garageSampledTimestampsCapAtOneHundredTwentyFramesAndKeepCenteredWindow() async throws {
+    @Test func garageSampledTimestampsCapAtOneHundredTwentyFramesAndPreserveClipCoverage() async throws {
         let timestamps = GarageAnalysisPipeline.sampledTimestamps(
             duration: CMTime(seconds: 10, preferredTimescale: 600),
             frameRate: 30
         )
 
         #expect(timestamps.count == 120)
-        #expect((timestamps.first ?? 0) > 2.8)
-        #expect((timestamps.first ?? 0) < 3.2)
-        #expect((timestamps.last ?? 0) > 6.8)
-        #expect((timestamps.last ?? 0) < 7.2)
+        #expect((timestamps.first ?? -1) == 0)
+        #expect((timestamps.last ?? 0) >= 9.9)
+        #expect((timestamps.last ?? 0) <= 10.0)
+        #expect(timestamps.contains(where: { $0 >= 4.9 && $0 <= 5.1 }))
+    }
+
+    @Test func analysisResultDropsScorecardWhenTimestampsAreUnreadable() async throws {
+        let decoded = try JSONDecoder().decode(
+            AnalysisResult.self,
+            from: makeGarageAnalysisResultJSON(startJSON: #""broken""#)
+        )
+
+        #expect(decoded.scorecard == nil)
+        #expect(decoded.recoveredFromCorruption)
+        #expect(decoded.recoveryDiagnostics.contains(where: { $0.contains("scorecard") }))
     }
 
     @Test func garagePathGenerationIncludesEndpointsAndIntermediateSamples() async throws {
@@ -953,7 +964,10 @@ private func makeGarageAnalysisResult(perspectivePayload: GarageCameraPerspectiv
 @MainActor
 private func makeGarageAnalysisResultJSON(
     perspectiveJSON: String = #""dtl""#,
-    omitPerspective: Bool = false
+    omitPerspective: Bool = false,
+    startJSON: String = "0.0",
+    topJSON: String = "0.5",
+    impactJSON: String = "1.0"
 ) -> Data {
     let perspectiveField = omitPerspective ? "" : #""perspective":\#(perspectiveJSON),"#
     let json = """
@@ -964,9 +978,9 @@ private func makeGarageAnalysisResultJSON(
       "scorecard": {
         "timestamps": {
           \(perspectiveField)
-          "start": 0.0,
-          "top": 0.5,
-          "impact": 1.0
+          "start": \(startJSON),
+          "top": \(topJSON),
+          "impact": \(impactJSON)
         },
         "metrics": {
           "tempo": { "ratio": 3.0 },

@@ -519,45 +519,7 @@ struct GarageView: View {
     @MainActor
     private func recoverAndNormalizePersistedAnalysisPayloadsIfNeeded() async {
         guard hasNormalizedPersistedAnalysisPayloads == false else { return }
-
-        let corruptedRecords = swingRecords.compactMap { record -> (SwingRecord, AnalysisResult)? in
-            guard let analysisResult = record.analysisResult,
-                  analysisResult.recoveredFromCorruption else {
-                return nil
-            }
-            return (record, analysisResult)
-        }
-
-        if corruptedRecords.isEmpty == false {
-            for (record, analysisResult) in corruptedRecords {
-                let removedAssets = GarageMediaStore.purgeManagedAssets(for: record)
-                let diagnostics = analysisResult.recoveryDiagnostics.joined(separator: ",")
-
-                NSLog(
-                    "%@",
-                    "Garage corrupted swing purge. recordID=\(String(describing: record.persistentModelID)) title=\(record.title) diagnostics=\(diagnostics) removedAssets=\(removedAssets.joined(separator: ","))"
-                )
-
-                modelContext.delete(record)
-            }
-
-            do {
-                try modelContext.save()
-            } catch {
-                let nsError = error as NSError
-                NSLog(
-                    "%@",
-                    "Garage corrupted swing purge save failed. domain=\(nsError.domain) code=\(nsError.code) description=\(nsError.localizedDescription)"
-                )
-                hasNormalizedPersistedAnalysisPayloads = false
-                return
-            }
-        }
-
-        let candidates = persistedSwingRecords().filter { record in
-            guard let analysisResult = record.analysisResult else { return false }
-            return analysisResult.recoveredFromCorruption == false
-        }
+        let candidates = persistedSwingRecords().filter { $0.analysisResult != nil }
 
         guard candidates.isEmpty == false else {
             hasNormalizedPersistedAnalysisPayloads = true
@@ -567,16 +529,36 @@ struct GarageView: View {
         var didTouchPayload = false
         for record in candidates {
             guard let analysisResult = record.analysisResult else { continue }
-            record.analysisResult = analysisResult.normalizedForPersistence
-            didTouchPayload = true
+
+            if analysisResult.recoveredFromCorruption {
+                let diagnostics = analysisResult.recoveryDiagnostics.joined(separator: ",")
+                NSLog(
+                    "%@",
+                    "Garage analysis payload recovered. recordID=\(String(describing: record.persistentModelID)) title=\(record.title) diagnostics=\(diagnostics)"
+                )
+            }
+
+            let normalizedResult = analysisResult.normalizedForPersistence
+            if normalizedResult != analysisResult {
+                record.analysisResult = normalizedResult
+                didTouchPayload = true
+            }
         }
 
-        guard didTouchPayload else { return }
+        guard didTouchPayload else {
+            hasNormalizedPersistedAnalysisPayloads = true
+            return
+        }
 
         do {
             try modelContext.save()
             hasNormalizedPersistedAnalysisPayloads = true
         } catch {
+            let nsError = error as NSError
+            NSLog(
+                "%@",
+                "Garage analysis normalization save failed. domain=\(nsError.domain) code=\(nsError.code) description=\(nsError.localizedDescription)"
+            )
             hasNormalizedPersistedAnalysisPayloads = false
         }
     }

@@ -231,8 +231,14 @@ enum GarageSyncFlowSegment: String, Codable, Hashable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        let rawValue = (try? container.decode(String.self)) ?? ""
-        self = GarageSyncFlowSegment(rawValue: rawValue) ?? .base
+        let rawValue = try container.decode(String.self)
+        guard let decodedValue = GarageSyncFlowSegment(rawValue: rawValue) else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unsupported GarageSyncFlowSegment value: \(rawValue)"
+            )
+        }
+        self = decodedValue
     }
 }
 
@@ -244,8 +250,14 @@ enum GarageSyncFlowIssueKind: String, Codable, Hashable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        let rawValue = (try? container.decode(String.self)) ?? ""
-        self = GarageSyncFlowIssueKind(rawValue: rawValue) ?? .earlyExtension
+        let rawValue = try container.decode(String.self)
+        guard let decodedValue = GarageSyncFlowIssueKind(rawValue: rawValue) else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unsupported GarageSyncFlowIssueKind value: \(rawValue)"
+            )
+        }
+        self = decodedValue
     }
 
     var riskPhrase: String {
@@ -1953,11 +1965,37 @@ enum GarageAnalysisPipeline {
         }
 
         if timestamps.count > maximumSampledFrameCount {
-            let startIndex = max((timestamps.count - maximumSampledFrameCount) / 2, 0)
-            timestamps = Array(timestamps[startIndex..<(startIndex + maximumSampledFrameCount)])
+            timestamps = evenlyDistributedSamples(
+                from: timestamps,
+                maximumCount: maximumSampledFrameCount
+            )
         }
 
         return timestamps
+    }
+
+    private static func evenlyDistributedSamples(
+        from timestamps: [Double],
+        maximumCount: Int
+    ) -> [Double] {
+        guard timestamps.count > maximumCount, maximumCount > 1 else {
+            return timestamps
+        }
+
+        let lastSourceIndex = timestamps.count - 1
+        let step = Double(lastSourceIndex) / Double(maximumCount - 1)
+
+        return (0..<maximumCount).map { sampleIndex in
+            if sampleIndex == maximumCount - 1 {
+                return timestamps[lastSourceIndex]
+            }
+
+            let sourceIndex = min(
+                Int((Double(sampleIndex) * step).rounded(.down)),
+                lastSourceIndex
+            )
+            return timestamps[sourceIndex]
+        }
     }
 
     private static func extractPoseFrames(
@@ -3420,8 +3458,14 @@ enum GarageSwingDomain: String, Codable, CaseIterable, Hashable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        let rawValue = (try? container.decode(String.self)) ?? ""
-        self = GarageSwingDomain(rawValue: rawValue) ?? .tempo
+        let rawValue = try container.decode(String.self)
+        guard let decodedValue = GarageSwingDomain(rawValue: rawValue) else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unsupported GarageSwingDomain value: \(rawValue)"
+            )
+        }
+        self = decodedValue
     }
 
     var title: String {
@@ -3475,9 +3519,17 @@ struct GarageSwingTimestamps: Codable, Hashable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         perspective = try container.decodeIfPresent(GarageCameraPerspective.self, forKey: .perspective) ?? .dtl
-        start = GarageSwingTimestamps.decodeTimestampValue(from: container, forKey: .start) ?? 0
-        top = GarageSwingTimestamps.decodeTimestampValue(from: container, forKey: .top) ?? start
-        impact = GarageSwingTimestamps.decodeTimestampValue(from: container, forKey: .impact) ?? top
+        start = try GarageSwingTimestamps.decodeRequiredTimestampValue(from: container, forKey: .start)
+        top = try GarageSwingTimestamps.decodeRequiredTimestampValue(from: container, forKey: .top)
+        impact = try GarageSwingTimestamps.decodeRequiredTimestampValue(from: container, forKey: .impact)
+
+        guard start <= top, top <= impact else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .impact,
+                in: container,
+                debugDescription: "Garage swing timestamps must be monotonic."
+            )
+        }
     }
 
     func encode(to encoder: Encoder) throws {
@@ -3562,6 +3614,21 @@ struct GarageSwingTimestamps: Codable, Hashable {
 
         return nil
     }
+
+    private static func decodeRequiredTimestampValue(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys
+    ) throws -> Double {
+        if let value = decodeTimestampValue(from: container, forKey: key) {
+            return value
+        }
+
+        throw DecodingError.dataCorruptedError(
+            forKey: key,
+            in: container,
+            debugDescription: "Missing or invalid Garage swing timestamp."
+        )
+    }
 }
 
 enum GarageMetricGrade: String, Codable, Hashable {
@@ -3572,8 +3639,14 @@ enum GarageMetricGrade: String, Codable, Hashable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        let rawValue = (try? container.decode(String.self)) ?? ""
-        self = GarageMetricGrade(rawValue: rawValue) ?? .needsWork
+        let rawValue = try container.decode(String.self)
+        guard let decodedValue = GarageMetricGrade(rawValue: rawValue) else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unsupported GarageMetricGrade value: \(rawValue)"
+            )
+        }
+        self = decodedValue
     }
 
     static func from(score: Double) -> GarageMetricGrade {
