@@ -47,7 +47,11 @@ enum LISYMigrationPlan: SchemaMigrationPlan {
                         if let legacyPayload = record.legacyDerivedPayloadFallback {
                             record.persistDerivedPayload(legacyPayload)
                         } else if record.repairReason == nil {
-                            record.clearDerivedPayload(repairReason: .missingDerivedPayload)
+                            record.clearDerivedPayload(
+                                repairReason: record.derivedPayloadData != nil
+                                    ? .corruptedDerivedPayload
+                                    : .missingDerivedPayload
+                            )
                         }
                     }
 
