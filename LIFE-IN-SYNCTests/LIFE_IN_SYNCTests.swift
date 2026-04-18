@@ -5,8 +5,10 @@
 //  Created by Colton Thomas on 3/31/26.
 //
 
+import AVFoundation
 import CoreGraphics
 import CoreMedia
+import CoreVideo
 import Foundation
 import Testing
 @testable import LIFE_IN_SYNC
@@ -159,7 +161,7 @@ struct LIFE_IN_SYNCTests {
         #expect(decoded.recoveryDiagnostics.isEmpty == false)
     }
 
-    @Test func analysisResultNormalizationClearsRecoveryDiagnostics() async throws {
+    @Test func analysisResultNormalizationPreservesRecoveryDiagnostics() async throws {
         let decoded = try JSONDecoder().decode(
             AnalysisResult.self,
             from: makeMalformedGarageAnalysisResultJSON()
@@ -167,8 +169,8 @@ struct LIFE_IN_SYNCTests {
         let normalized = decoded.normalizedForPersistence
 
         #expect(decoded.recoveredFromCorruption)
-        #expect(normalized.recoveredFromCorruption == false)
-        #expect(normalized.recoveryDiagnostics.isEmpty)
+        #expect(normalized.recoveredFromCorruption)
+        #expect(normalized.recoveryDiagnostics == decoded.recoveryDiagnostics)
         #expect(normalized.syncFlow == nil)
     }
 
@@ -238,6 +240,31 @@ struct LIFE_IN_SYNCTests {
 
         let shortClipWindow = garageNormalizedTrimWindow(start: 0, end: 0.2, duration: 2.0)
         #expect(abs((shortClipWindow.upperBound - shortClipWindow.lowerBound) - garageMinimumTrimWindowDuration) < 0.01)
+    }
+
+    @Test func garageAutomaticWorkingRangeTargetsMotionWithoutFixedFourSecondClamp() async throws {
+        let frames = scaledSwingFrames(makePrerollSwingFrames(), targetDuration: 18)
+        let workingRange = try #require(GarageAnalysisPipeline.automaticWorkingRange(for: frames, duration: 18))
+        let keyFrames = GarageAnalysisPipeline.detectKeyFrames(from: frames)
+        let impactIndex = try #require(keyFrames.first(where: { $0.phase == .impact })?.frameIndex)
+        let impactTimestamp = frames[impactIndex].timestamp
+
+        #expect(workingRange.lowerBound > 0.5)
+        #expect(workingRange.upperBound <= 18)
+        #expect(workingRange.contains(impactTimestamp))
+        #expect(abs((workingRange.upperBound - workingRange.lowerBound) - 4.0) > 0.25)
+    }
+
+    @Test func garageMediaStoreRecreatesReviewMasterAndExportDirectories() async throws {
+        try removeGarageManagedAssetDirectory()
+        let sourceVideoURL = try await makeGaragePlayableVideoFixture()
+        let reviewMasterURL = try GarageMediaStore.persistReviewMaster(from: sourceVideoURL)
+        let exportURL = try #require(await GarageMediaStore.createExportDerivative(from: reviewMasterURL))
+
+        #expect(FileManager.default.fileExists(atPath: reviewMasterURL.path))
+        #expect(FileManager.default.fileExists(atPath: exportURL.path))
+        #expect(reviewMasterURL.path.contains("/GarageSwingVideos/ReviewMasters/"))
+        #expect(exportURL.path.contains("/GarageSwingVideos/Exports/"))
     }
 
     @Test func garageDerivedPayloadRoundTripsAndDrivesReviewAvailability() async throws {
@@ -1204,4 +1231,122 @@ private func makePersistedGarageExportFixture(named filename: String) {
 
     try? fileManager.createDirectory(at: exportsURL, withIntermediateDirectories: true)
     fileManager.createFile(atPath: fileURL.path, contents: Data())
+}
+
+@MainActor
+private func removeGarageManagedAssetDirectory() throws {
+    let fileManager = FileManager.default
+    let baseURL = try fileManager.url(
+        for: .applicationSupportDirectory,
+        in: .userDomainMask,
+        appropriateFor: nil,
+        create: true
+    )
+    let garageURL = baseURL.appendingPathComponent("GarageSwingVideos", isDirectory: true)
+
+    if fileManager.fileExists(atPath: garageURL.path) {
+        try fileManager.removeItem(at: garageURL)
+    }
+}
+
+private func scaledSwingFrames(_ frames: [SwingFrame], targetDuration: Double) -> [SwingFrame] {
+    guard let lastTimestamp = frames.last?.timestamp, lastTimestamp > 0 else {
+        return frames
+    }
+
+    let scale = targetDuration / lastTimestamp
+    return frames.map { frame in
+        SwingFrame(
+            timestamp: frame.timestamp * scale,
+            joints: frame.joints,
+            confidence: frame.confidence
+        )
+    }
+}
+
+private func makeGaragePlayableVideoFixture() async throws -> URL {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("garage-playable-\(UUID().uuidString).mov")
+    let writer = try AVAssetWriter(url: url, fileType: .mov)
+    let size = CGSize(width: 32, height: 32)
+    let settings: [String: Any] = [
+        AVVideoCodecKey: AVVideoCodecType.h264,
+        AVVideoWidthKey: size.width,
+        AVVideoHeightKey: size.height
+    ]
+    let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
+    input.expectsMediaDataInRealTime = false
+
+    let attributes: [String: Any] = [
+        kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32ARGB),
+        kCVPixelBufferWidthKey as String: Int(size.width),
+        kCVPixelBufferHeightKey as String: Int(size.height)
+    ]
+    let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+        assetWriterInput: input,
+        sourcePixelBufferAttributes: attributes
+    )
+
+    guard writer.canAdd(input) else {
+        throw NSError(domain: "GarageTests", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unable to attach test writer input."])
+    }
+
+    writer.add(input)
+    guard writer.startWriting() else {
+        throw writer.error ?? NSError(domain: "GarageTests", code: 5, userInfo: [NSLocalizedDescriptionKey: "Unable to start test writer."])
+    }
+    writer.startSession(atSourceTime: .zero)
+
+    while input.isReadyForMoreMediaData == false {
+        await Task.yield()
+    }
+
+    let firstFrame = try makeFilledPixelBuffer(size: size, color: 0x2C)
+    let secondFrame = try makeFilledPixelBuffer(size: size, color: 0x66)
+
+    guard adaptor.append(firstFrame, withPresentationTime: .zero) else {
+        throw writer.error ?? NSError(domain: "GarageTests", code: 6, userInfo: [NSLocalizedDescriptionKey: "Unable to append first test frame."])
+    }
+    guard adaptor.append(secondFrame, withPresentationTime: CMTime(seconds: 0.2, preferredTimescale: 600)) else {
+        throw writer.error ?? NSError(domain: "GarageTests", code: 7, userInfo: [NSLocalizedDescriptionKey: "Unable to append second test frame."])
+    }
+
+    input.markAsFinished()
+
+    await withCheckedContinuation { continuation in
+        writer.finishWriting {
+            continuation.resume()
+        }
+    }
+
+    guard writer.status == .completed else {
+        throw writer.error ?? NSError(domain: "GarageTests", code: 2, userInfo: [NSLocalizedDescriptionKey: "Playable video fixture export failed."])
+    }
+
+    return url
+}
+
+private func makeFilledPixelBuffer(size: CGSize, color: UInt8) throws -> CVPixelBuffer {
+    var maybeBuffer: CVPixelBuffer?
+    let status = CVPixelBufferCreate(
+        kCFAllocatorDefault,
+        Int(size.width),
+        Int(size.height),
+        kCVPixelFormatType_32ARGB,
+        nil,
+        &maybeBuffer
+    )
+
+    guard status == kCVReturnSuccess, let buffer = maybeBuffer else {
+        throw NSError(domain: "GarageTests", code: 3, userInfo: [NSLocalizedDescriptionKey: "Unable to allocate pixel buffer."])
+    }
+
+    CVPixelBufferLockBaseAddress(buffer, [])
+    defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+
+    guard let baseAddress = CVPixelBufferGetBaseAddress(buffer) else {
+        throw NSError(domain: "GarageTests", code: 4, userInfo: [NSLocalizedDescriptionKey: "Pixel buffer missing base address."])
+    }
+
+    memset(baseAddress, Int32(color), CVPixelBufferGetDataSize(buffer))
+    return buffer
 }

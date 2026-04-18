@@ -156,34 +156,40 @@ private struct SessionAnalysisMiniCard: View {
 private struct GolfMetricCard: View {
     let metric: GarageCoachingPresentation.MetricTile
 
+    private var isPrimaryMetric: Bool {
+        metric.id == "reliability" || metric.id == "score"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top) {
-                Image(systemName: metric.systemImage)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(metric.status.tint)
+            HStack(alignment: .top, spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: metric.systemImage)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(metric.status.tint)
+
+                    Text(metric.title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppModule.garage.theme.textSecondary)
+                        .lineLimit(1)
+                }
 
                 Spacer(minLength: 0)
 
-                Text(metric.status.label)
-                    .font(.caption2.weight(.bold))
-                    .tracking(0.8)
-                    .foregroundStyle(metric.status.tint)
-                    .lineLimit(1)
+                GarageCoachingBadge(
+                    title: metric.status.label,
+                    tint: metric.status.tint
+                )
             }
 
             Spacer(minLength: 0)
 
             Text(metric.value)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
-                .foregroundStyle(AppModule.garage.theme.textPrimary)
+                .font(.system(size: isPrimaryMetric ? 28 : 22, weight: .bold, design: .rounded))
+                .foregroundStyle(isPrimaryMetric ? ModuleTheme.electricCyan : AppModule.garage.theme.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
-
-            Text(metric.title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(AppModule.garage.theme.textSecondary)
-                .lineLimit(1)
+                .shadow(color: isPrimaryMetric ? ModuleTheme.electricCyan.opacity(0.24) : .clear, radius: 10, x: 0, y: 0)
 
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
@@ -217,9 +223,12 @@ private struct GarageCoachingBadge: View {
     var body: some View {
         Text(title)
             .font(.caption2.weight(.bold))
+            .tracking(0.8)
             .foregroundStyle(AppModule.garage.theme.textPrimary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
             .background(
                 Capsule()
                     .fill(tint.opacity(0.10))

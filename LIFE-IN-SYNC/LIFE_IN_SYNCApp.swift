@@ -4,13 +4,11 @@ import SwiftUI
 @main
 struct LifeInSyncApp: App {
     private var sharedModelContainer: ModelContainer = {
-        let schema = Schema(LISYSchemaV2.models)
-        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let configuration = ModelConfiguration(schema: LISYPersistence.schema, isStoredInMemoryOnly: false)
 
         do {
             return try ModelContainer(
-                for: schema,
-                migrationPlan: LISYMigrationPlan.self,
+                for: LISYPersistence.schema,
                 configurations: [configuration]
             )
         } catch {

@@ -1,6 +1,6 @@
 import SwiftData
 
-/// Centralized model list so schema versions stay aligned for non-breaking model additions.
+/// Centralized model list so app, previews, and future persistence helpers share one schema source of truth.
 enum LISYModelRegistry {
     static let models: [any PersistentModel.Type] = [
         CompletionRecord.self,
@@ -20,46 +20,6 @@ enum LISYModelRegistry {
     ]
 }
 
-enum LISYSchemaV1: VersionedSchema {
-    static var versionIdentifier: Schema.Version = .init(1, 0, 0)
-    static var models: [any PersistentModel.Type] { LISYModelRegistry.models }
-}
-
-enum LISYSchemaV2: VersionedSchema {
-    static var versionIdentifier: Schema.Version = .init(2, 0, 0)
-    static var models: [any PersistentModel.Type] { LISYModelRegistry.models }
-}
-
-enum LISYMigrationPlan: SchemaMigrationPlan {
-    static var schemas: [any VersionedSchema.Type] {
-        [LISYSchemaV1.self, LISYSchemaV2.self]
-    }
-
-    static var stages: [MigrationStage] {
-        [
-            .custom(
-                fromVersion: LISYSchemaV1.self,
-                toVersion: LISYSchemaV2.self,
-                willMigrate: { _ in },
-                didMigrate: { context in
-                    let records = try context.fetch(FetchDescriptor<SwingRecord>())
-                    for record in records where record.decodedDerivedPayload == nil {
-                        if let legacyPayload = record.legacyDerivedPayloadFallback {
-                            record.persistDerivedPayload(legacyPayload)
-                        } else if record.repairReason == nil {
-                            record.clearDerivedPayload(
-                                repairReason: record.derivedPayloadData != nil
-                                    ? .corruptedDerivedPayload
-                                    : .missingDerivedPayload
-                            )
-                        }
-                    }
-
-                    if context.hasChanges {
-                        try context.save()
-                    }
-                }
-            )
-        ]
-    }
+enum LISYPersistence {
+    static let schema = Schema(LISYModelRegistry.models)
 }

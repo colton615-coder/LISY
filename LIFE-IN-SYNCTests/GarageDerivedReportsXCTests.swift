@@ -334,6 +334,25 @@ final class GarageDerivedReportsXCTests: XCTestCase {
         XCTAssertEqual(GarageReviewMode.skeleton.title, "SyncFlow")
     }
 
+    func testGarageCoachingPresentationKeepsScoreAndReliabilityCardsAvailable() {
+        let presentation = GarageCoachingPresentation.make(
+            report: GarageCoachingReport(
+                headline: "Stable session",
+                confidenceLabel: GarageReliabilityStatus.trusted.rawValue,
+                cues: [],
+                blockers: [],
+                nextBestAction: "Keep collecting swings."
+            ),
+            selectedPhase: .impact,
+            reliabilityStatus: .trusted,
+            scorecard: nil,
+            stabilityScore: 84
+        )
+
+        XCTAssertEqual(presentation.snapshots.first(where: { $0.id == "score" })?.caption, "swing score")
+        XCTAssertEqual(presentation.metrics.first(where: { $0.id == "reliability" })?.value, GarageReliabilityStatus.trusted.rawValue.uppercased())
+    }
+
     func testSyncFlowDetectsEarlyHandsAndMapsReleaseTimingRisk() throws {
         let frames = makeSyncFlowEarlyHandsFrames()
         let keyFrames = makeSyncFlowKeyFrames()

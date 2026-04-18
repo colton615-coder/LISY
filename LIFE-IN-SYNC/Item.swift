@@ -419,13 +419,15 @@ struct AnalysisResult: Codable, Hashable {
     }
 
     var normalizedForPersistence: AnalysisResult {
-        AnalysisResult(
+        var normalized = AnalysisResult(
             issues: issues,
             highlights: highlights,
             summary: summary,
             scorecard: scorecard?.normalizedForPersistence,
             syncFlow: syncFlow
         )
+        normalized.recoveryDiagnostics = recoveryDiagnostics
+        return normalized
     }
 
     private static func decodeValueLossy<T: Decodable>(
@@ -769,7 +771,6 @@ final class SwingRecord {
         return GarageRepairReason(rawValue: repairReasonCode)
     }
 
-    @MainActor
     var decodedDerivedPayload: GarageDerivedPayload? {
         guard let derivedPayloadData else { return nil }
 
@@ -785,7 +786,6 @@ final class SwingRecord {
         }
     }
 
-    @MainActor
     var legacyDerivedPayloadFallback: GarageDerivedPayload? {
         guard hasLegacyDerivedContent else { return nil }
         return GarageDerivedPayload(
@@ -794,46 +794,38 @@ final class SwingRecord {
             keyFrames: keyFrames,
             handAnchors: handAnchors,
             pathPoints: pathPoints,
-            analysisResult: nil
+            analysisResult: analysisResult
         )
     }
 
-    @MainActor
     var presentationDerivedPayload: GarageDerivedPayload? {
         decodedDerivedPayload ?? legacyDerivedPayloadFallback
     }
 
-    @MainActor
     var derivedFrameRate: Double {
         presentationDerivedPayload?.frameRate ?? 0
     }
 
-    @MainActor
     var derivedSwingFrames: [SwingFrame] {
         presentationDerivedPayload?.swingFrames ?? []
     }
 
-    @MainActor
     var derivedKeyFrames: [KeyFrame] {
         presentationDerivedPayload?.keyFrames ?? []
     }
 
-    @MainActor
     var derivedHandAnchors: [HandAnchor] {
         presentationDerivedPayload?.handAnchors ?? []
     }
 
-    @MainActor
     var derivedPathPoints: [PathPoint] {
         presentationDerivedPayload?.pathPoints ?? []
     }
 
-    @MainActor
     var derivedAnalysisResult: AnalysisResult? {
-        decodedDerivedPayload?.analysisResult
+        presentationDerivedPayload?.analysisResult ?? analysisResult
     }
 
-    @MainActor
     var reviewAvailability: GarageReviewAvailability {
         let hasVideoReference = preferredReviewFilename != nil
             || preferredExportFilename != nil
@@ -899,23 +891,21 @@ final class SwingRecord {
             || keyFrames.isEmpty == false
             || handAnchors.isEmpty == false
             || pathPoints.isEmpty == false
+            || analysisResult != nil
     }
 
-    @MainActor
     func persistDerivedPayload(_ payload: GarageDerivedPayload) {
         derivedPayloadVersion = GarageDerivedPayload.currentVersion
         derivedPayloadData = try? JSONEncoder().encode(payload)
         repairReasonCode = nil
     }
 
-    @MainActor
     func clearDerivedPayload(repairReason: GarageRepairReason) {
         derivedPayloadVersion = 0
         derivedPayloadData = nil
         repairReasonCode = repairReason.rawValue
     }
 
-    @MainActor
     func clearLegacyDerivedReviewData() {
         frameRate = 0
         swingFrames = []

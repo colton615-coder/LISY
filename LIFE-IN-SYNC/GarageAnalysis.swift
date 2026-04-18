@@ -529,6 +529,7 @@ struct GarageCoachingReport: Equatable {
 }
 
 enum GarageInsights {
+    @MainActor
     static func report(for record: SwingRecord) -> GarageInsightReport {
         let baseSummary = record.derivedAnalysisResult?.summary ?? "Swing analysis is in progress."
         let baseHighlights = record.derivedAnalysisResult?.highlights ?? []
@@ -969,6 +970,7 @@ enum GarageReliability {
 }
 
 enum GarageCoaching {
+    @MainActor
     static func report(for record: SwingRecord) -> GarageCoachingReport {
         let insightReport = GarageInsights.report(for: record)
         let reliabilityReport = GarageReliability.report(for: record)
@@ -1200,6 +1202,7 @@ enum GarageCoaching {
 }
 
 enum GarageWorkflow {
+    @MainActor
     static func progress(for record: SwingRecord) -> GarageWorkflowProgress {
         let insightReport = GarageInsights.report(for: record)
         let reliabilityReport = GarageReliability.report(for: record)
@@ -1384,7 +1387,7 @@ enum GarageMediaStore {
     }
 
     static func persistReviewMaster(from sourceURL: URL) throws -> URL {
-        let directoryURL = try garageDirectoryURL(for: .reviewMaster)
+        let directoryURL = try preparedGarageDirectoryURL(for: .reviewMaster)
         let ext = sourceURL.pathExtension.isEmpty ? "mov" : sourceURL.pathExtension
         let destinationURL = directoryURL.appendingPathComponent("\(UUID().uuidString).\(ext)")
 
@@ -1396,6 +1399,12 @@ enum GarageMediaStore {
             try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
             return destinationURL
         } catch {
+            logPersistenceError(
+                error,
+                action: "copy_review_master",
+                sourceURL: sourceURL,
+                destinationURL: destinationURL
+            )
             throw GarageAnalysisError.failedToPersistVideo
         }
     }
@@ -1414,7 +1423,7 @@ enum GarageMediaStore {
             throw GarageAnalysisError.failedToPersistVideo
         }
 
-        let directoryURL = try garageDirectoryURL(for: .reviewMaster)
+        let directoryURL = try preparedGarageDirectoryURL(for: .reviewMaster)
         let destinationURL = directoryURL.appendingPathComponent("\(UUID().uuidString).mp4")
         if FileManager.default.fileExists(atPath: destinationURL.path) {
             try FileManager.default.removeItem(at: destinationURL)
@@ -1465,6 +1474,14 @@ enum GarageMediaStore {
             return finalizedURL
         default:
             try? FileManager.default.removeItem(at: finalizedURL)
+            if let exportError = exportSession.error {
+                logPersistenceError(
+                    exportError,
+                    action: "export_trimmed_review_master",
+                    sourceURL: sourceURL,
+                    destinationURL: finalizedURL
+                )
+            }
             throw exportSession.error ?? GarageAnalysisError.failedToPersistVideo
         }
     }
@@ -1478,7 +1495,7 @@ enum GarageMediaStore {
             return nil
         }
 
-        guard let directoryURL = try? garageDirectoryURL(for: .exportAsset) else {
+        guard let directoryURL = try? preparedGarageDirectoryURL(for: .exportAsset) else {
             return nil
         }
 
@@ -1502,6 +1519,14 @@ enum GarageMediaStore {
             return destinationURL
         default:
             try? FileManager.default.removeItem(at: destinationURL)
+            if let exportError = exportSession.error {
+                logPersistenceError(
+                    exportError,
+                    action: "export_derivative",
+                    sourceURL: reviewMasterURL,
+                    destinationURL: destinationURL
+                )
+            }
             return nil
         }
     }
@@ -1750,6 +1775,15 @@ enum GarageMediaStore {
         return candidatePath == rootPath || candidatePath.hasPrefix(rootPath + "/")
     }
 
+    private static func preparedGarageDirectoryURL(for kind: GarageStoredAssetKind) throws -> URL {
+        let garageURL = try garageDirectoryURL(for: kind)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: garageURL.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            throw GarageAnalysisError.failedToPersistVideo
+        }
+        return garageURL
+    }
+
     private static func garageDirectoryURL(for kind: GarageStoredAssetKind) throws -> URL {
         let baseURL = try FileManager.default.url(
             for: .applicationSupportDirectory,
@@ -1771,6 +1805,25 @@ enum GarageMediaStore {
             try FileManager.default.createDirectory(at: garageURL, withIntermediateDirectories: true)
         }
         return garageURL
+    }
+
+    private static func logPersistenceError(
+        _ error: Error,
+        action: String,
+        sourceURL: URL?,
+        destinationURL: URL?
+    ) {
+        let nsError = error as NSError
+        let components = [
+            "Garage media persistence failed.",
+            "action=\(action)",
+            "domain=\(nsError.domain)",
+            "code=\(nsError.code)",
+            "source=\(sourceURL?.path ?? "nil")",
+            "destination=\(destinationURL?.path ?? "nil")",
+            nsError.localizedDescription
+        ]
+        NSLog("%@", components.joined(separator: " "))
     }
 
     nonisolated private static func normalizedDisplayImage(from image: CGImage) -> CGImage? {
@@ -1932,6 +1985,11 @@ enum GarageAnalysisPipeline {
 
     private static let maximumSamplingFrameRate = 30.0
     private static let maximumSampledFrameCount = 120
+    private static let automaticWorkingRangeThreshold = 8.0
+    private static let automaticWorkingRangeFrameRate = 12.0
+    private static let automaticWorkingRangeLeadPadding = 0.35
+    private static let automaticWorkingRangeTrailPadding = 0.55
+    private static let automaticWorkingRangeMinimumDuration = 2.4
 
     static func analyzeVideo(
         at videoURL: URL,
@@ -1947,7 +2005,16 @@ enum GarageAnalysisPipeline {
         let duration = try await asset.load(.duration)
         let nominalFrameRate = try await videoTrack.load(.nominalFrameRate)
         let samplingFrameRate = resolvedSamplingFrameRate(from: nominalFrameRate)
-        let timestamps = sampledTimestamps(duration: duration, frameRate: samplingFrameRate)
+        let workingRange = try await automaticWorkingRangeIfNeeded(
+            for: asset,
+            duration: duration,
+            nominalFrameRate: nominalFrameRate
+        )
+        let timestamps = sampledTimestamps(
+            duration: duration,
+            frameRate: samplingFrameRate,
+            timeRange: workingRange
+        )
         let totalFrames = timestamps.count
         await progress?(GarageAnalysisProgressUpdate(step: .samplingFrames, totalFrames: totalFrames))
         await progress?(GarageAnalysisProgressUpdate(step: .detectingBody, totalFrames: totalFrames))
@@ -2023,20 +2090,37 @@ enum GarageAnalysisPipeline {
         return min(baseRate, maximumSamplingFrameRate)
     }
 
-    static func sampledTimestamps(duration: CMTime, frameRate: Double) -> [Double] {
+    static func sampledTimestamps(
+        duration: CMTime,
+        frameRate: Double,
+        timeRange: ClosedRange<Double>? = nil
+    ) -> [Double] {
         let seconds = max(CMTimeGetSeconds(duration), 0)
         guard seconds > 0 else { return [] }
 
+        let boundedRange: ClosedRange<Double>
+        if let timeRange {
+            let start = min(max(timeRange.lowerBound, 0), seconds)
+            let end = min(max(timeRange.upperBound, start), seconds)
+            boundedRange = start...end
+        } else {
+            boundedRange = 0...seconds
+        }
+
         let interval = 1 / max(frameRate, 1)
         var timestamps: [Double] = []
-        var current: Double = 0
-        while current < seconds {
+        var current: Double = boundedRange.lowerBound
+        while current < boundedRange.upperBound {
             timestamps.append(current)
             current += interval
         }
 
-        if let last = timestamps.last, seconds - last > 0.01 {
-            timestamps.append(seconds)
+        if timestamps.isEmpty {
+            timestamps.append(boundedRange.lowerBound)
+        }
+
+        if let last = timestamps.last, boundedRange.upperBound - last > 0.01 {
+            timestamps.append(boundedRange.upperBound)
         }
 
         if timestamps.count > maximumSampledFrameCount {
@@ -2047,6 +2131,76 @@ enum GarageAnalysisPipeline {
         }
 
         return timestamps
+    }
+
+    static func automaticWorkingRange(
+        for frames: [SwingFrame],
+        duration: Double
+    ) -> ClosedRange<Double>? {
+        let safeDuration = max(duration, 0)
+        guard safeDuration > automaticWorkingRangeThreshold else {
+            return nil
+        }
+
+        guard frames.count >= SwingPhase.allCases.count else {
+            return nil
+        }
+
+        let keyFrames = detectKeyFrames(from: frames)
+        guard
+            let addressFrame = timestamp(for: .address, keyFrames: keyFrames, frames: frames),
+            let impactFrame = timestamp(for: .impact, keyFrames: keyFrames, frames: frames)
+        else {
+            return nil
+        }
+
+        let finishFrame = timestamp(for: .followThrough, keyFrames: keyFrames, frames: frames) ?? impactFrame
+        let windowStart = max(addressFrame - automaticWorkingRangeLeadPadding, 0)
+        let paddedEnd = min(max(finishFrame, impactFrame) + automaticWorkingRangeTrailPadding, safeDuration)
+        let midpoint = (windowStart + paddedEnd) / 2
+        let minimumHalfWindow = automaticWorkingRangeMinimumDuration / 2
+        let expandedStart = max(min(windowStart, midpoint - minimumHalfWindow), 0)
+        let expandedEnd = min(max(paddedEnd, midpoint + minimumHalfWindow), safeDuration)
+
+        guard expandedEnd > expandedStart else {
+            return nil
+        }
+
+        if expandedStart <= 0.05, expandedEnd >= safeDuration - 0.05 {
+            return nil
+        }
+
+        return expandedStart...expandedEnd
+    }
+
+    private static func automaticWorkingRangeIfNeeded(
+        for asset: AVURLAsset,
+        duration: CMTime,
+        nominalFrameRate: Float
+    ) async throws -> ClosedRange<Double>? {
+        let totalDuration = max(CMTimeGetSeconds(duration), 0)
+        guard totalDuration > automaticWorkingRangeThreshold else {
+            return nil
+        }
+
+        let coarseFrameRate = min(resolvedSamplingFrameRate(from: nominalFrameRate), automaticWorkingRangeFrameRate)
+        let coarseTimestamps = sampledTimestamps(duration: duration, frameRate: coarseFrameRate)
+        let extraction = try await extractPoseFrames(from: asset, timestamps: coarseTimestamps, progress: nil)
+        let smoothedFrames = smooth(frames: extraction.frames)
+
+        return automaticWorkingRange(for: smoothedFrames, duration: totalDuration)
+    }
+
+    private static func timestamp(
+        for phase: SwingPhase,
+        keyFrames: [KeyFrame],
+        frames: [SwingFrame]
+    ) -> Double? {
+        guard let frameIndex = keyFrames.first(where: { $0.phase == phase })?.frameIndex,
+              frames.indices.contains(frameIndex) else {
+            return nil
+        }
+        return frames[frameIndex].timestamp
     }
 
     private static func evenlyDistributedSamples(
