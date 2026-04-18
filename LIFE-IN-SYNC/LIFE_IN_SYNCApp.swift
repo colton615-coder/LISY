@@ -9,7 +9,7 @@ struct LifeInSyncApp: App {
 
         do {
             return try ModelContainer(
-                for: LISYSchemaV2.self,
+                for: schema,
                 migrationPlan: LISYMigrationPlan.self,
                 configurations: [configuration]
             )
