@@ -149,19 +149,7 @@ enum PreviewCatalog {
     private static func makeContainer(seed: SeedStyle = .empty) -> ModelContainer {
         do {
             let container = try ModelContainer(
-                for: Schema([
-                    Habit.self,
-                    HabitEntry.self,
-                    TaskItem.self,
-                    CalendarEvent.self,
-                    SupplyItem.self,
-                    ExpenseRecord.self,
-                    BudgetRecord.self,
-                    WorkoutTemplate.self,
-                    WorkoutSession.self,
-                    StudyEntry.self,
-                    SwingRecord.self
-                ]),
+                for: Schema(LISYSchemaV2.models),
                 configurations: ModelConfiguration(isStoredInMemoryOnly: true)
             )
 
