@@ -3121,6 +3121,9 @@ private struct GarageReviewSummaryControls: View {
             case let .ready(score, metrics):
                 GarageStep2ScoreSummaryCard(presentation: score)
                 if metrics.isEmpty == false {
+                    GarageStep2MetricGrid(metrics: metrics)
+                }
+                if metrics.isEmpty == false {
                     GarageCoachingReportView(presentation: coachingPresentation)
                 }
             case let .unavailable(presentation):
@@ -3184,58 +3187,40 @@ private struct GarageReviewActionDock: View {
     let onConfirm: () -> Void
 
     var body: some View {
-        HStack(spacing: 16) {
-            GarageFrameStepButton(
-                accessibilityLabel: "Previous frame",
-                systemImage: "chevron.left",
-                isEnabled: canStepBackward,
-                action: onStepBackward
-            )
-
-            Spacer(minLength: 0)
-
-            Button(action: onConfirm) {
-                Label("Confirm Frame", systemImage: "checkmark")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(garageReviewCanvasFill)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 11)
-                    .background(
-                        GarageRaisedPanelBackground(
-                            shape: Capsule(),
-                            fill: garageReviewAccent,
-                            stroke: garageReviewAccent.opacity(0.38),
-                            glow: garageReviewAccent
-                        )
+        GarageDockSurface {
+            HStack(spacing: 12) {
+                HStack(spacing: 10) {
+                    GarageFrameStepButton(
+                        accessibilityLabel: "Previous frame",
+                        systemImage: "chevron.left",
+                        isEnabled: canStepBackward,
+                        action: onStepBackward
                     )
+
+                    GarageFrameStepButton(
+                        accessibilityLabel: "Next frame",
+                        systemImage: "chevron.right",
+                        isEnabled: canStepForward,
+                        action: onStepForward
+                    )
+                }
+                .padding(6)
+                .background(
+                    GarageInsetPanelBackground(
+                        shape: Capsule(),
+                        fill: garageReviewSurfaceDark,
+                        stroke: garageReviewStroke.opacity(0.85)
+                    )
+                )
+
+                GarageDockWideButton(
+                    title: "Confirm Frame",
+                    systemImage: "checkmark.circle.fill",
+                    isPrimary: true,
+                    isEnabled: canConfirm,
+                    action: onConfirm
+                )
             }
-            .buttonStyle(.plain)
-            .disabled(canConfirm == false)
-            .opacity(canConfirm ? 1 : 0.45)
-
-            Spacer(minLength: 0)
-
-            GarageFrameStepButton(
-                accessibilityLabel: "Next frame",
-                systemImage: "chevron.right",
-                isEnabled: canStepForward,
-                action: onStepForward
-            )
-        }
-        .padding(.horizontal, ModuleSpacing.medium)
-        .padding(.top, 10)
-        .padding(.bottom, 10)
-        .background(
-            GarageRaisedPanelBackground(
-                shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous),
-                fill: garageReviewSurface
-            )
-            .ignoresSafeArea(edges: .bottom)
-        )
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(garageReviewStroke.opacity(0.9))
-                .frame(height: 1)
         }
     }
 }
@@ -3246,30 +3231,32 @@ private struct GarageSummaryPrimaryActionBar: View {
     let onSkeletonReview: () -> Void
 
     var body: some View {
-        VStack(spacing: 8) {
-            Button(action: onContinue) {
-                Text(canContinue ? "Review Hand Path" : "Slow Motion Review Unavailable")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(canContinue ? garageReviewCanvasFill : garageReviewMutedText)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 52)
-                    .background(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(canContinue ? garageReviewAccent : garageReviewSurfaceRaised)
-                    )
-            }
-            .buttonStyle(.plain)
-            .disabled(canContinue == false)
-            .opacity(canContinue ? 1 : 0.78)
+        GarageDockSurface {
+            GarageDockWideButton(
+                title: canContinue ? "Review Hand Path" : "Slow Motion Review Unavailable",
+                systemImage: canContinue ? "play.fill" : "exclamationmark.triangle.fill",
+                isPrimary: true,
+                isEnabled: canContinue,
+                action: onContinue
+            )
 
-            Button(action: onSkeletonReview) {
-                Text("Review SyncFlow")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(garageReviewReadableText)
-            }
-            .buttonStyle(.plain)
-            .disabled(canContinue == false)
-            .opacity(canContinue ? 1 : 0.6)
+            GarageDockWideButton(
+                title: "Review SyncFlow",
+                systemImage: "figure.walk",
+                isPrimary: false,
+                isEnabled: canContinue,
+                action: onSkeletonReview
+            )
+        }
+    }
+}
+
+private struct GarageDockSurface<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(spacing: 12) {
+            content
         }
         .padding(.horizontal, ModuleSpacing.large)
         .padding(.top, 12)
@@ -3279,13 +3266,75 @@ private struct GarageSummaryPrimaryActionBar: View {
                 shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous),
                 fill: garageReviewSurface
             )
+            .overlay(alignment: .top) {
+                Rectangle()
+                    .fill(garageReviewStroke.opacity(0.92))
+                    .frame(height: 1)
+            }
+            .overlay(alignment: .top) {
+                LinearGradient(
+                    colors: [garageReviewShadowLight.opacity(0.22), .clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 20)
+                .clipShape(RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
+            }
             .ignoresSafeArea(edges: .bottom)
         )
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(garageReviewStroke.opacity(0.9))
-                .frame(height: 1)
+    }
+}
+
+private struct GarageDockWideButton: View {
+    let title: String
+    let systemImage: String
+    let isPrimary: Bool
+    let isEnabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.subheadline.weight(.bold))
+
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(foregroundStyle)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+            .background(buttonBackground)
         }
+        .buttonStyle(.plain)
+        .disabled(isEnabled == false)
+        .opacity(isEnabled ? 1 : 0.7)
+    }
+
+    private var foregroundStyle: Color {
+        if isEnabled == false {
+            return garageReviewMutedText
+        }
+
+        return isPrimary ? garageReviewCanvasFill : garageReviewReadableText
+    }
+
+    @ViewBuilder
+    private var buttonBackground: some View {
+        GarageRaisedPanelBackground(
+            shape: RoundedRectangle(cornerRadius: 20, style: .continuous),
+            fill: isPrimary
+                ? garageReviewAccent
+                : (isEnabled ? garageReviewSurfaceRaised : garageReviewSurfaceDark),
+            stroke: isPrimary
+                ? garageReviewAccent.opacity(0.42)
+                : garageReviewStroke.opacity(isEnabled ? 0.95 : 0.6),
+            glow: isPrimary && isEnabled ? garageReviewAccent : nil
+        )
     }
 }
 
@@ -3816,17 +3865,21 @@ private struct GarageStep2ScoreSummaryCard: View {
 private struct GarageStep2MetricGrid: View {
     let metrics: [GarageStep2MetricPresentation]
 
-    private let columns = [
-        GridItem(.flexible(), spacing: 10),
-        GridItem(.flexible(), spacing: 10)
-    ]
-
     var body: some View {
-        LazyVGrid(columns: columns, spacing: 10) {
-            ForEach(metrics) { metric in
-                GarageStep2MetricCard(metric: metric)
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(metricRows.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: 10) {
+                    ForEach(row) { metric in
+                        GarageStep2MetricCard(metric: metric)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+
+    private var metricRows: [[GarageStep2MetricPresentation]] {
+        metrics.garageChunked(into: 2)
     }
 }
 
@@ -3918,6 +3971,16 @@ private extension GarageMetricGrade {
             Color(red: 0.89, green: 0.71, blue: 0.32)
         case .needsWork:
             Color(red: 0.86, green: 0.44, blue: 0.44)
+        }
+    }
+}
+
+private extension Array {
+    func garageChunked(into size: Int) -> [[Element]] {
+        guard size > 0, isEmpty == false else { return [] }
+
+        return stride(from: 0, to: count, by: size).map { index in
+            Array(self[index..<Swift.min(index + size, count)])
         }
     }
 }
@@ -4616,12 +4679,13 @@ private struct GarageFrameStepButton: View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.subheadline.weight(.bold))
-                .frame(width: 36, height: 36)
+                .frame(width: 42, height: 42)
                 .foregroundStyle(isEnabled ? garageReviewReadableText : garageReviewMutedText.opacity(0.8))
                 .background(
                     GarageRaisedPanelBackground(
                         shape: Circle(),
-                        fill: garageReviewSurfaceRaised
+                        fill: isEnabled ? garageReviewSurfaceRaised : garageReviewSurface,
+                        stroke: isEnabled ? garageReviewStroke.opacity(0.95) : garageReviewStroke.opacity(0.6)
                     )
                 )
         }
@@ -4826,9 +4890,18 @@ private struct GarageSlowMotionPlaybackSheet: View {
                 Button {
                     reviewMode = .skeleton
                 } label: {
-                    Text("Open SyncFlow Review")
+                    Label("Open SyncFlow Review", systemImage: "figure.walk")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(garageReviewReadableText)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .background(
+                            GarageRaisedPanelBackground(
+                                shape: Capsule(),
+                                fill: garageReviewSurfaceRaised,
+                                stroke: garageReviewStroke.opacity(0.92)
+                            )
+                        )
                 }
                 .buttonStyle(.plain)
             }
@@ -4896,47 +4969,24 @@ private struct GaragePlaybackActionBar: View {
     let onFinish: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            Button(action: onRecheck) {
-                Text("Recheck Frames")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(garageReviewReadableText)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 52)
-                    .background(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(garageReviewStroke, lineWidth: 1)
-                    )
-            }
-            .buttonStyle(.plain)
+        GarageDockSurface {
+            HStack(spacing: 12) {
+                GarageDockWideButton(
+                    title: "Recheck Frames",
+                    systemImage: "arrow.counterclockwise",
+                    isPrimary: false,
+                    isEnabled: true,
+                    action: onRecheck
+                )
 
-            Button(action: onFinish) {
-                Text("Finish Review")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(garageReviewCanvasFill)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 52)
-                    .background(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(garageReviewAccent)
-                    )
+                GarageDockWideButton(
+                    title: "Finish Review",
+                    systemImage: "checkmark.circle.fill",
+                    isPrimary: true,
+                    isEnabled: true,
+                    action: onFinish
+                )
             }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, ModuleSpacing.large)
-        .padding(.top, 12)
-        .padding(.bottom, 10)
-        .background(
-            GarageRaisedPanelBackground(
-                shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous),
-                fill: garageReviewSurface
-            )
-            .ignoresSafeArea(edges: .bottom)
-        )
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(garageReviewStroke.opacity(0.9))
-                .frame(height: 1)
         }
     }
 }
@@ -4954,49 +5004,80 @@ private struct GaragePlaybackControlRow: View {
     @State private var isScrubbing = false
 
     var body: some View {
-        VStack(spacing: 10) {
-            Slider(
-                value: Binding(
-                    get: { scrubTime },
-                    set: { scrubTime = $0 }
-                ),
-                in: 0...sliderMaxValue,
-                onEditingChanged: handleScrubEditingChanged
+        VStack(spacing: 14) {
+            GaragePlaybackScrubber(
+                duration: duration,
+                scrubTime: $scrubTime,
+                onScrub: onScrub,
+                onScrubEditingChanged: handleScrubEditingChanged
             )
-            .tint(garageReviewAccent)
 
-            HStack(spacing: 14) {
+            HStack(spacing: 12) {
                 Button(action: onTogglePlayPause) {
                     Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(garageReviewReadableText)
-                        .frame(width: 36, height: 36)
-                        .background(Color.white.opacity(0.08), in: Circle())
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(isPlaying ? garageReviewCanvasFill : garageReviewReadableText)
+                        .frame(width: 50, height: 50)
+                        .background(
+                            GarageRaisedPanelBackground(
+                                shape: Circle(),
+                                fill: isPlaying ? garageReviewAccent : garageReviewSurfaceRaised,
+                                stroke: isPlaying ? garageReviewAccent.opacity(0.4) : garageReviewStroke.opacity(0.95),
+                                glow: isPlaying ? garageReviewAccent : nil
+                            )
+                        )
                 }
                 .accessibilityLabel(isPlaying ? "Pause" : "Play")
                 .buttonStyle(.plain)
-                .accessibilityLabel(isPlaying ? "Pause" : "Play")
                 .accessibilityValue(speedLabel(for: Double(selectedSpeed)))
 
-                ForEach([1.0, 0.5, 0.25], id: \.self) { speed in
-                    let speedValue = Float(speed)
-                    Button {
-                        onSelectSpeed(speedValue)
-                    } label: {
-                        Text(speedLabel(for: speed))
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(selectedSpeed == speedValue ? garageReviewReadableText : garageReviewMutedText)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(
-                                Capsule()
-                                    .fill(selectedSpeed == speedValue ? garageReviewAccent.opacity(0.2) : Color.white.opacity(0.06))
-                            )
+                HStack(spacing: 8) {
+                    ForEach([1.0, 0.5, 0.25], id: \.self) { speed in
+                        let speedValue = Float(speed)
+                        Button {
+                            onSelectSpeed(speedValue)
+                        } label: {
+                            Text(speedLabel(for: speed))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(selectedSpeed == speedValue ? garageReviewReadableText : garageReviewMutedText)
+                                .padding(.horizontal, 12)
+                                .frame(minHeight: 36)
+                                .background(
+                                    Capsule()
+                                        .fill(selectedSpeed == speedValue ? garageReviewAccent.opacity(0.18) : Color.clear)
+                                        .overlay(
+                                            Capsule()
+                                                .stroke(
+                                                    selectedSpeed == speedValue
+                                                        ? garageReviewAccent.opacity(0.38)
+                                                        : garageReviewStroke.opacity(0.85),
+                                                    lineWidth: 0.9
+                                                )
+                                        )
+                                )
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
+                .padding(6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    GarageInsetPanelBackground(
+                        shape: Capsule(),
+                        fill: garageReviewSurfaceDark,
+                        stroke: garageReviewStroke.opacity(0.85)
+                    )
+                )
             }
         }
+        .padding(16)
+        .background(
+            GarageRaisedPanelBackground(
+                shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous),
+                fill: garageReviewSurface,
+                stroke: garageReviewStroke.opacity(0.9)
+            )
+        )
         .onAppear {
             scrubTime = clampedCurrentTime
         }
@@ -5022,10 +5103,178 @@ private struct GaragePlaybackControlRow: View {
     private func handleScrubEditingChanged(_ isEditing: Bool) {
         isScrubbing = isEditing
         onScrubEditingChanged(isEditing)
-        if isEditing == false {
-            onScrub(scrubTime)
+    }
+}
+
+private struct GaragePlaybackScrubber: View {
+    let duration: Double
+    @Binding var scrubTime: Double
+    let onScrub: (Double) -> Void
+    let onScrubEditingChanged: (Bool) -> Void
+
+    @State private var isDragging = false
+
+    private let outerInset: CGFloat = 14
+    private let thumbSize: CGFloat = 18
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Text(garageFormattedPlaybackTime(displayTime))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(garageReviewReadableText)
+                    .monospacedDigit()
+
+                Spacer(minLength: 0)
+
+                Text(garageFormattedPlaybackTime(safeDuration))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(garageReviewMutedText)
+                    .monospacedDigit()
+            }
+
+            GeometryReader { proxy in
+                let trackWidth = max(proxy.size.width - (outerInset * 2), 1)
+
+                ZStack {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(garageReviewSurfaceDark)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(garageReviewStroke.opacity(0.95), lineWidth: 0.9)
+                        )
+
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(garageReviewTrackFill)
+                            .frame(height: 8)
+                            .overlay(
+                                Capsule()
+                                    .stroke(garageReviewStroke.opacity(0.8), lineWidth: 0.8)
+                            )
+
+                        HStack(spacing: 0) {
+                            ForEach(0...20, id: \.self) { index in
+                                Rectangle()
+                                    .fill(index.isMultiple(of: 2) ? garageReviewReadableText.opacity(0.05) : .clear)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .overlay(alignment: .trailing) {
+                                        Rectangle()
+                                            .fill(garageReviewReadableText.opacity(0.08))
+                                            .frame(width: 1)
+                                    }
+                            }
+                        }
+                        .frame(height: 8)
+                        .clipShape(Capsule())
+
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: [garageReviewAccent.opacity(0.72), garageReviewAccent],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(width: max(trackWidth * progress, thumbSize), height: 8)
+                            .shadow(color: garageReviewAccent.opacity(0.32), radius: 8, x: 0, y: 0)
+
+                        Circle()
+                            .fill(garageReviewAccent)
+                            .frame(width: thumbSize, height: thumbSize)
+                            .overlay(
+                                Circle()
+                                    .stroke(garageReviewReadableText.opacity(0.28), lineWidth: 1)
+                            )
+                            .shadow(color: garageReviewAccent.opacity(0.55), radius: 8, x: 0, y: 0)
+                            .offset(x: max(0, (trackWidth * progress) - (thumbSize / 2)))
+                    }
+                    .padding(.horizontal, outerInset)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            guard abs(value.translation.width) >= abs(value.translation.height) || abs(value.translation.height) < 6 else {
+                                return
+                            }
+
+                            if isDragging == false {
+                                isDragging = true
+                                onScrubEditingChanged(true)
+                            }
+
+                            let updatedTime = time(for: value.location.x, width: proxy.size.width)
+                            scrubTime = updatedTime
+                            onScrub(updatedTime)
+                        }
+                        .onEnded { value in
+                            guard isDragging else { return }
+                            let updatedTime = time(for: value.location.x, width: proxy.size.width)
+                            scrubTime = updatedTime
+                            onScrub(updatedTime)
+                            isDragging = false
+                            onScrubEditingChanged(false)
+                        }
+                )
+            }
+            .frame(height: 36)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Playback scrubber")
+            .accessibilityValue("\(garageFormattedPlaybackTime(displayTime)) of \(garageFormattedPlaybackTime(safeDuration))")
+            .accessibilityAdjustableAction { direction in
+                let step = max(safeDuration / 20, 0.1)
+                switch direction {
+                case .increment:
+                    adjustScrubTime(by: step)
+                case .decrement:
+                    adjustScrubTime(by: -step)
+                @unknown default:
+                    break
+                }
+            }
         }
     }
+
+    private var safeDuration: Double {
+        guard duration.isFinite, duration > 0 else { return 0 }
+        return duration
+    }
+
+    private var displayTime: Double {
+        min(max(scrubTime, 0), max(safeDuration, 0))
+    }
+
+    private var progress: CGFloat {
+        guard safeDuration > 0 else { return 0 }
+        return CGFloat(displayTime / safeDuration)
+    }
+
+    private func time(for locationX: CGFloat, width: CGFloat) -> Double {
+        guard safeDuration > 0 else { return 0 }
+        let clampedX = min(max(locationX - outerInset, 0), max(width - (outerInset * 2), 1))
+        let progress = clampedX / max(width - (outerInset * 2), 1)
+        return safeDuration * progress
+    }
+
+    private func adjustScrubTime(by delta: Double) {
+        let updatedTime = min(max(displayTime + delta, 0), safeDuration)
+        scrubTime = updatedTime
+        onScrub(updatedTime)
+    }
+}
+
+private func garageFormattedPlaybackTime(_ time: Double) -> String {
+    let totalSeconds = Int(max(time.rounded(), 0))
+    let seconds = totalSeconds % 60
+    let minutes = (totalSeconds / 60) % 60
+    let hours = totalSeconds / 3600
+
+    if hours > 0 {
+        return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+    }
+
+    return String(format: "%02d:%02d", minutes, seconds)
 }
 
 private struct GarageSlowMotionVisualizationOverlay: View {

@@ -3,12 +3,6 @@ import SwiftUI
 struct GarageCoachingReportView: View {
     let presentation: GarageCoachingPresentation
 
-    private let columns = [
-        GridItem(.flexible(), spacing: 10),
-        GridItem(.flexible(), spacing: 10),
-        GridItem(.flexible(), spacing: 10)
-    ]
-
     var body: some View {
         GarageTelemetrySurface(isActive: true, cornerRadius: 24, padding: 18) {
             VStack(alignment: .leading, spacing: 14) {
@@ -64,9 +58,14 @@ struct GarageCoachingReportView: View {
     }
 
     private var metricGrid: some View {
-        LazyVGrid(columns: columns, spacing: 10) {
-            ForEach(presentation.metrics) { metric in
-                GolfMetricCard(metric: metric)
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(metricRows.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: 10) {
+                    ForEach(row) { metric in
+                        GolfMetricCard(metric: metric)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -110,6 +109,10 @@ struct GarageCoachingReportView: View {
         default:
             Color(hex: "#FF5F63")
         }
+    }
+
+    private var metricRows: [[GarageCoachingPresentation.MetricTile]] {
+        presentation.metrics.garageChunked(into: 3)
     }
 }
 
@@ -264,6 +267,16 @@ private extension GarageCoachingMetricStatus {
             Color(hex: "#FFCE52")
         case .bad:
             Color(hex: "#FF5F63")
+        }
+    }
+}
+
+private extension Array {
+    func garageChunked(into size: Int) -> [[Element]] {
+        guard size > 0, isEmpty == false else { return [] }
+
+        return stride(from: 0, to: count, by: size).map { index in
+            Array(self[index..<Swift.min(index + size, count)])
         }
     }
 }
