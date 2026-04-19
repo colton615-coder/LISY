@@ -7057,9 +7057,18 @@ private enum GarageImportError: LocalizedError {
 }
 
 
-#Preview("Garage") {
+#Preview("Garage · iPhone 17 Pro") {
     PreviewScreenContainer {
         GarageView()
     }
+    .previewDevice(PreviewDevice(rawValue: "iPhone 17 Pro"))
+    .modelContainer(for: SwingRecord.self, inMemory: true)
+}
+
+#Preview("Garage · iPhone 16 Pro") {
+    PreviewScreenContainer {
+        GarageView()
+    }
+    .previewDevice(PreviewDevice(rawValue: "iPhone 16 Pro"))
     .modelContainer(for: SwingRecord.self, inMemory: true)
 }
