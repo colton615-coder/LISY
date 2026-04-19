@@ -1,0 +1,4 @@
+interface:
+  display_name: "Brainstorming"
+  short_description: "Design-first feature and spec workflow"
+  default_prompt: "Use $brainstorming to turn this idea into an approved design spec before implementation."
