@@ -113,6 +113,129 @@ private enum GarageImportPresentationState: Equatable {
             false
         }
     }
+
+    var tipRotationKey: String {
+        switch self {
+        case .idle:
+            "idle"
+        case .preparing:
+            "preparing"
+        case let .analyzing(step, _, _):
+            "analyzing-\(step.title)"
+        case .failure:
+            "failure"
+        }
+    }
+
+    var telemetryLabel: String {
+        switch self {
+        case .idle:
+            "STANDBY"
+        case .preparing:
+            "SOURCE LINK"
+        case let .analyzing(step, _, _):
+            step.telemetryLabel
+        case .failure:
+            "RECOVERY"
+        }
+    }
+
+    var liveStatusLine: String {
+        switch self {
+        case .idle:
+            ""
+        case .preparing:
+            "Locking the local review master before Garage wakes the analysis stack."
+        case let .analyzing(step, _, _):
+            step.liveStatusLine
+        case .failure:
+            "Garage stopped before review routing. You can retry without leaving Analyzer."
+        }
+    }
+
+    var rotatingTips: [String] {
+        switch self {
+        case .idle:
+            []
+        case .preparing:
+            [
+                "Pinning the selected swing locally so review playback stays reliable.",
+                "Staging the review master first so later export work never blocks analysis.",
+                "Keeping Garage local-first before any downstream swing processing begins."
+            ]
+        case let .analyzing(step, _, _):
+            step.rotatingTips
+        case .failure:
+            []
+        }
+    }
+}
+
+private extension GarageAnalysisProgressStep {
+    var telemetryLabel: String {
+        switch self {
+        case .loadingVideo:
+            "REVIEW MASTER"
+        case .samplingFrames:
+            "FRAME SCAN"
+        case .detectingBody:
+            "POSE TRACK"
+        case .mappingCheckpoints:
+            "CHECKPOINT MAP"
+        case .savingSwing:
+            "PERSISTENCE"
+        }
+    }
+
+    var liveStatusLine: String {
+        switch self {
+        case .loadingVideo:
+            "Staging the review master and priming the Garage analysis pipeline."
+        case .samplingFrames:
+            "Sampling clean review frames so key checkpoints stay anchored to the real swing."
+        case .detectingBody:
+            "Tracking body landmarks and hand path structure across the live motion sequence."
+        case .mappingCheckpoints:
+            "Resolving swing phases, checkpoint timing, and review confidence."
+        case .savingSwing:
+            "Persisting the analyzed swing package now so review can open before export catch-up."
+        }
+    }
+
+    var rotatingTips: [String] {
+        switch self {
+        case .loadingVideo:
+            [
+                "Locking in the review master before any optimization work starts.",
+                "Preserving the source clip first so Garage can always route straight into review.",
+                "Warming the analysis stack around the selected motion window."
+            ]
+        case .samplingFrames:
+            [
+                "Pulling representative frames so checkpoint review starts from stable references.",
+                "Separating noisy frames from the swing window before pose work begins.",
+                "Building a clean frame rail for later keyframe validation."
+            ]
+        case .detectingBody:
+            [
+                "Tracing wrist and shoulder landmarks to stabilize the swing skeleton.",
+                "Watching how the hand path accelerates through transition and impact.",
+                "Measuring posture retention so the coaching layer has trustworthy geometry."
+            ]
+        case .mappingCheckpoints:
+            [
+                "Resolving address, takeaway, top, and impact into a reviewable sequence.",
+                "Cross-checking timing consistency before Garage promotes the checkpoint map.",
+                "Packaging confidence signals so manual review can focus on the real outliers."
+            ]
+        case .savingSwing:
+            [
+                "Saving the analyzed swing now so Analyzer can open immediately.",
+                "Detaching later export optimization from the review path.",
+                "Promoting the review package while the derivative export drops in behind the scenes."
+            ]
+        }
+    }
 }
 
 private enum GarageAnalyzerRoute: Equatable {
@@ -312,6 +435,50 @@ func garageImportRetryErrorCode(from error: Error) -> Int? {
 
 func garageShouldRetryImportAfterFailure(_ error: Error) -> Bool {
     garageImportRetryErrorCode(from: error) == -54
+}
+
+private func garageDiscardDetachedExportDerivative(at exportURL: URL) {
+    guard FileManager.default.fileExists(atPath: exportURL.path) else {
+        return
+    }
+
+    try? FileManager.default.removeItem(at: exportURL)
+}
+
+private func garageBackfillExportDerivative(
+    using modelContainer: ModelContainer,
+    recordID: PersistentIdentifier,
+    reviewMasterURL: URL
+) async {
+    guard let exportURL = await GarageMediaStore.createExportDerivative(from: reviewMasterURL) else {
+        return
+    }
+
+    let backgroundContext = ModelContext(modelContainer)
+
+    guard let savedRecord = backgroundContext.model(for: recordID) as? SwingRecord else {
+        garageDiscardDetachedExportDerivative(at: exportURL)
+        return
+    }
+
+    let exportBookmark = GarageMediaStore.bookmarkData(for: exportURL)
+    savedRecord.exportAssetFilename = exportURL.lastPathComponent
+    savedRecord.exportAssetBookmark = exportBookmark
+
+    do {
+        try backgroundContext.save()
+    } catch {
+        garageDiscardDetachedExportDerivative(at: exportURL)
+
+        let nsError = error as NSError
+        let exportMessage = [
+            "Garage export derivative save failed.",
+            "domain=\(nsError.domain)",
+            "code=\(nsError.code)",
+            nsError.localizedDescription
+        ].joined(separator: " ")
+        NSLog("%@", exportMessage)
+    }
 }
 
 private func garageClubBadgeCode(for clubType: String) -> String {
@@ -755,6 +922,7 @@ struct GarageView: View {
         let clubType = selection.clubType
         let isLeftHanded = selection.isLeftHanded
         let cameraAngle = selection.cameraAngle
+        let modelContainer = modelContext.container
 
         Task {
             var pendingRecordID: PersistentIdentifier?
@@ -865,32 +1033,11 @@ struct GarageView: View {
 
                 if let recordID = pendingRecordID {
                     Task.detached(priority: .utility) {
-                        guard let exportURL = await GarageMediaStore.createExportDerivative(from: reviewMasterURL) else {
-                            return
-                        }
-
-                        await MainActor.run {
-                            guard let savedRecord = pendingRecord(for: recordID) else {
-                                return
-                            }
-
-                            let exportBookmark = GarageMediaStore.bookmarkData(for: exportURL)
-
-                            savedRecord.exportAssetFilename = exportURL.lastPathComponent
-                            savedRecord.exportAssetBookmark = exportBookmark
-                            do {
-                                try modelContext.save()
-                            } catch {
-                                let nsError = error as NSError
-                                let exportMessage = [
-                                    "Garage export derivative save failed.",
-                                    "domain=\(nsError.domain)",
-                                    "code=\(nsError.code)",
-                                    nsError.localizedDescription
-                                ].joined(separator: " ")
-                                NSLog("%@", exportMessage)
-                            }
-                        }
+                        await garageBackfillExportDerivative(
+                            using: modelContainer,
+                            recordID: recordID,
+                            reviewMasterURL: reviewMasterURL
+                        )
                     }
                 }
             } catch {
@@ -5800,17 +5947,12 @@ private struct GarageImportPresentationScreen: View {
     let onRetry: () -> Void
     @State private var currentTipIndex = 0
     @State private var isGlowExpanded = false
+    @State private var isTelemetryBreathing = false
+    @State private var telemetrySweepProgress = 0.0
     @State private var completedImpactMilestones: Set<Int> = []
     @State private var emittedSuccessHaptic = false
 
     private let tipRotationTimer = Timer.publish(every: 3.5, on: .main, in: .common).autoconnect()
-    private let analysisTips = [
-        "Analyzing pelvic rotation baseline...",
-        "Mapping wrist hinge checkpoints...",
-        "Calculating tempo and rhythm ratios...",
-        "Evaluating spinal tilt preservation...",
-        "Generating biomechanical profile..."
-    ]
 
     var body: some View {
         ZStack {
@@ -5863,23 +6005,20 @@ private struct GarageImportPresentationScreen: View {
                         Circle()
                             .trim(from: 0, to: max(progressFraction, 0.035))
                             .stroke(
-                                ModuleTheme.electricCyan.opacity(isGlowExpanded ? 0.22 : 0.12),
+                                ModuleTheme.electricCyan.opacity(isGlowExpanded ? 0.14 : 0.08),
                                 style: StrokeStyle(lineWidth: 8, lineCap: .round, dash: [4, 6])
                             )
                             .frame(width: 148, height: 148)
                             .rotationEffect(.degrees(-90))
-                            .blur(radius: isGlowExpanded ? 12 : 8)
-                            .scaleEffect(isGlowExpanded ? 1.02 : 0.99)
+                            .blur(radius: isGlowExpanded ? 9 : 6)
+                            .scaleEffect(isGlowExpanded ? 1.018 : 0.994)
                             .opacity(state.showsProgress ? 1 : 0)
 
                         Circle()
                             .trim(from: 0, to: max(progressFraction, 0.035))
                             .stroke(
                                 LinearGradient(
-                                    colors: [
-                                        ModuleTheme.electricCyan,
-                                        Color(hex: "#1AD0C8")
-                                    ],
+                                    colors: [garageReviewAccent.opacity(0.86), ModuleTheme.electricCyan],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 ),
@@ -5887,42 +6026,82 @@ private struct GarageImportPresentationScreen: View {
                             )
                             .frame(width: 148, height: 148)
                             .rotationEffect(.degrees(-90))
-                            .shadow(color: ModuleTheme.electricCyan.opacity(isGlowExpanded ? 0.4 : 0.22), radius: 12, x: 0, y: 0)
+                            .shadow(color: ModuleTheme.electricCyan.opacity(isGlowExpanded ? 0.18 : 0.1), radius: 8, x: 0, y: 0)
+
+                        Circle()
+                            .trim(from: 0, to: max(progressFraction * 0.82, 0.025))
+                            .stroke(
+                                ModuleTheme.electricCyan.opacity(isTelemetryBreathing ? 0.12 : 0.06),
+                                style: StrokeStyle(lineWidth: 2.5, lineCap: .round, dash: [2, 6])
+                            )
+                            .frame(width: 132, height: 132)
+                            .rotationEffect(.degrees(-90))
+                            .blur(radius: 2)
 
                         Circle()
                             .fill(garageReviewSurfaceDark.opacity(0.94))
                             .frame(width: 112, height: 112)
 
                         VStack(spacing: 6) {
+                            Text(state.activeStepTitle?.uppercased() ?? state.telemetryLabel)
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .tracking(1.5)
+                                .foregroundStyle(ModuleTheme.electricCyan.opacity(0.88))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+
                             Text("\(progressPercent)%")
                                 .font(.system(size: 34, weight: .black, design: .monospaced))
                                 .foregroundStyle(AppModule.garage.theme.textPrimary)
                                 .contentTransition(.numericText())
 
-                            Text(state.frameProgressLabel ?? "FRAME: 0 / 0")
+                            Text(state.frameProgressLabel ?? "LINKED TO REVIEW MASTER")
                                 .font(.system(size: 13, weight: .bold, design: .monospaced))
                                 .tracking(1.0)
-                                .foregroundStyle(ModuleTheme.electricCyan)
+                                .foregroundStyle(ModuleTheme.electricCyan.opacity(0.92))
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.8)
+                                .contentTransition(.numericText())
                         }
                     }
                 }
 
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("AI ANALYSIS ACTIVE")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .tracking(1.5)
-                        .foregroundStyle(AppModule.garage.theme.textMuted.opacity(0.86))
+                    HStack(spacing: 12) {
+                        Text(state.showsProgress ? "AI ANALYSIS ACTIVE" : "IMPORT STATUS")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .tracking(1.5)
+                            .foregroundStyle(AppModule.garage.theme.textMuted.opacity(0.86))
+
+                        Spacer(minLength: 0)
+
+                        GarageImportSignalBars(
+                            isActive: state.showsProgress,
+                            isExpanded: isTelemetryBreathing
+                        )
+                    }
+
+                    GarageImportTelemetryStrip(
+                        label: state.telemetryLabel,
+                        statusLine: state.liveStatusLine,
+                        progressFraction: progressFraction,
+                        sweepProgress: telemetrySweepProgress,
+                        isActive: state.showsProgress
+                    )
 
                     VStack(alignment: .leading, spacing: 8) {
                         ZStack(alignment: .leading) {
                             if state.showsProgress {
                                 Text(activeAnalysisTip)
-                                    .id(currentTipIndex)
+                                    .id("\(state.tipRotationKey)-\(currentTipIndex)")
                                     .font(.system(size: 16, weight: .bold, design: .monospaced))
                                     .foregroundStyle(AppModule.garage.theme.textPrimary)
-                                    .transition(.opacity)
+                                    .transition(
+                                        .asymmetric(
+                                            insertion: .opacity.combined(with: .move(edge: .bottom)),
+                                            removal: .opacity.combined(with: .move(edge: .top))
+                                        )
+                                    )
                             } else {
                                 Text(state.detail)
                                     .font(.system(size: 15, weight: .semibold, design: .default))
@@ -6001,26 +6180,30 @@ private struct GarageImportPresentationScreen: View {
             .padding(ModuleSpacing.large)
         }
         .onAppear {
-            updateGlowPulse()
+            updateAmbientAnimations()
             triggerProgressHaptics(for: progressPercent)
         }
         .onChange(of: state.showsProgress) { _, _ in
-            updateGlowPulse()
+            updateAmbientAnimations()
             if state.showsProgress == false {
                 completedImpactMilestones = []
                 emittedSuccessHaptic = false
             }
         }
+        .onChange(of: state.tipRotationKey) { _, _ in
+            currentTipIndex = 0
+        }
         .onChange(of: progressPercent) { _, newValue in
             triggerProgressHaptics(for: newValue)
         }
         .onReceive(tipRotationTimer) { _ in
-            guard state.showsProgress, analysisTips.isEmpty == false else {
+            let rotatingTips = state.rotatingTips
+            guard state.showsProgress, rotatingTips.isEmpty == false else {
                 return
             }
 
             withAnimation(.easeInOut(duration: 0.45)) {
-                currentTipIndex = (currentTipIndex + 1) % analysisTips.count
+                currentTipIndex = (currentTipIndex + 1) % rotatingTips.count
             }
         }
     }
@@ -6054,23 +6237,37 @@ private struct GarageImportPresentationScreen: View {
     }
 
     private var activeAnalysisTip: String {
-        guard analysisTips.isEmpty == false else {
+        let rotatingTips = state.rotatingTips
+        guard rotatingTips.isEmpty == false else {
             return state.detail
         }
 
-        let safeIndex = min(max(currentTipIndex, 0), analysisTips.count - 1)
-        return analysisTips[safeIndex]
+        let safeIndex = min(max(currentTipIndex, 0), rotatingTips.count - 1)
+        return rotatingTips[safeIndex]
     }
 
-    private func updateGlowPulse() {
+    private func updateAmbientAnimations() {
         guard state.showsProgress else {
             isGlowExpanded = false
+            isTelemetryBreathing = false
+            telemetrySweepProgress = 0
             return
         }
 
         isGlowExpanded = false
-        withAnimation(.easeInOut(duration: 1.35).repeatForever(autoreverses: true)) {
+        isTelemetryBreathing = false
+        telemetrySweepProgress = 0
+
+        withAnimation(.easeInOut(duration: 1.45).repeatForever(autoreverses: true)) {
             isGlowExpanded = true
+        }
+
+        withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+            isTelemetryBreathing = true
+        }
+
+        withAnimation(.linear(duration: 1.85).repeatForever(autoreverses: false)) {
+            telemetrySweepProgress = 1
         }
     }
 
@@ -6088,6 +6285,104 @@ private struct GarageImportPresentationScreen: View {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             emittedSuccessHaptic = true
         }
+    }
+}
+
+private struct GarageImportTelemetryStrip: View {
+    let label: String
+    let statusLine: String
+    let progressFraction: Double
+    let sweepProgress: Double
+    let isActive: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Text(label)
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .tracking(1.1)
+                    .foregroundStyle(ModuleTheme.electricCyan)
+
+                Spacer(minLength: 0)
+
+                Text("\(Int((progressFraction * 100).rounded()))%")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundStyle(AppModule.garage.theme.textMuted)
+                    .contentTransition(.numericText())
+            }
+
+            GeometryReader { proxy in
+                let width = max(proxy.size.width, 1)
+                let progressWidth = max(width * max(progressFraction, 0.12), 34)
+                let sweepWidth = max(width * 0.28, 72)
+
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(ModuleTheme.garageSurfaceDark.opacity(0.9))
+
+                    Capsule()
+                        .fill(ModuleTheme.electricCyan.opacity(0.1))
+                        .frame(width: min(progressWidth, width))
+
+                    if isActive {
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        ModuleTheme.electricCyan.opacity(0),
+                                        ModuleTheme.electricCyan.opacity(0.24),
+                                        ModuleTheme.electricCyan.opacity(0)
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(width: sweepWidth)
+                            .offset(x: ((width + sweepWidth) * sweepProgress) - sweepWidth)
+                            .blur(radius: 5)
+                    }
+
+                    Capsule()
+                        .stroke(ModuleTheme.electricCyan.opacity(0.18), lineWidth: 0.5)
+                }
+            }
+            .frame(height: 12)
+
+            Text(statusLine)
+                .font(.system(size: 13, weight: .semibold, design: .default))
+                .foregroundStyle(AppModule.garage.theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+private struct GarageImportSignalBars: View {
+    let isActive: Bool
+    let isExpanded: Bool
+
+    private let barHeights: [CGFloat] = [8, 13, 18, 12]
+    private let expandedScales: [CGFloat] = [0.76, 1.04, 0.72, 0.94]
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 4) {
+            ForEach(Array(barHeights.enumerated()), id: \.offset) { index, height in
+                Capsule()
+                    .fill(ModuleTheme.electricCyan.opacity(isActive ? 0.8 : 0.26))
+                    .frame(width: 4, height: height)
+                    .scaleEffect(
+                        x: 1,
+                        y: isActive ? (isExpanded ? expandedScales[index] : 0.58) : 0.42,
+                        anchor: .bottom
+                    )
+                    .animation(
+                        .easeInOut(duration: 0.8)
+                            .delay(Double(index) * 0.08),
+                        value: isExpanded
+                    )
+            }
+        }
+        .frame(height: 20)
+        .allowsHitTesting(false)
     }
 }
 
