@@ -3437,8 +3437,8 @@ private struct GarageDockSurface<Content: View>: View {
             content
         }
         .padding(.horizontal, ModuleSpacing.large)
-        .padding(.top, 12)
-        .padding(.bottom, 10)
+        .padding(.top, 14)
+        .padding(.bottom, 12)
         .background(
             GarageRaisedPanelBackground(
                 shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous),
@@ -3463,6 +3463,11 @@ private struct GarageDockSurface<Content: View>: View {
     }
 }
 
+private enum GarageStep2MetricCardLayout {
+    case standard
+    case capstone
+}
+
 private struct GarageDockWideButton: View {
     let title: String
     let systemImage: String
@@ -3472,47 +3477,109 @@ private struct GarageDockWideButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10) {
-                Image(systemName: systemImage)
-                    .font(.subheadline.weight(.bold))
+            HStack(spacing: 12) {
+                iconCapsule
 
                 Text(title)
                     .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
+                    .lineLimit(2)
                     .minimumScaleFactor(0.82)
+                    .multilineTextAlignment(.leading)
 
                 Spacer(minLength: 0)
             }
             .foregroundStyle(foregroundStyle)
-            .padding(.horizontal, 16)
-            .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, minHeight: 62, alignment: .leading)
             .background(buttonBackground)
         }
         .buttonStyle(.plain)
         .disabled(isEnabled == false)
-        .opacity(isEnabled ? 1 : 0.7)
     }
 
     private var foregroundStyle: Color {
         if isEnabled == false {
-            return garageReviewMutedText
+            return isPrimary ? garageReviewReadableText.opacity(0.78) : garageReviewMutedText.opacity(0.92)
         }
 
         return isPrimary ? garageReviewCanvasFill : garageReviewReadableText
+    }
+
+    private var iconForegroundStyle: Color {
+        if isEnabled == false {
+            return isPrimary ? garageReviewReadableText.opacity(0.68) : garageReviewMutedText.opacity(0.82)
+        }
+
+        return isPrimary ? garageReviewCanvasFill : garageReviewReadableText
+    }
+
+    private var iconCapsuleFill: Color {
+        if isPrimary {
+            return isEnabled ? garageReviewCanvasFill.opacity(0.16) : garageReviewSurfaceRaised.opacity(0.96)
+        }
+
+        return isEnabled ? garageReviewSurfaceDark.opacity(0.92) : garageReviewSurfaceDark.opacity(0.98)
+    }
+
+    private var iconCapsuleStroke: Color {
+        if isPrimary {
+            return isEnabled ? garageReviewCanvasFill.opacity(0.22) : garageReviewStroke.opacity(0.55)
+        }
+
+        return isEnabled ? garageReviewStroke.opacity(0.95) : garageReviewStroke.opacity(0.7)
+    }
+
+    private var iconCapsule: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(iconCapsuleFill)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(iconCapsuleStroke, lineWidth: 0.9)
+                )
+
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(iconForegroundStyle)
+        }
+        .frame(width: 40, height: 40)
+        .shadow(
+            color: isPrimary && isEnabled ? garageReviewAccent.opacity(0.16) : garageReviewShadowDark.opacity(isEnabled ? 0.18 : 0.1),
+            radius: isPrimary && isEnabled ? 8 : 6,
+            x: 0,
+            y: 4
+        )
     }
 
     @ViewBuilder
     private var buttonBackground: some View {
         GarageRaisedPanelBackground(
             shape: RoundedRectangle(cornerRadius: 20, style: .continuous),
-            fill: isPrimary
-                ? garageReviewAccent
-                : (isEnabled ? garageReviewSurfaceRaised : garageReviewSurfaceDark),
-            stroke: isPrimary
-                ? garageReviewAccent.opacity(0.42)
-                : garageReviewStroke.opacity(isEnabled ? 0.95 : 0.6),
+            fill: buttonFill,
+            stroke: buttonStroke,
             glow: isPrimary && isEnabled ? garageReviewAccent : nil
         )
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.white.opacity(isEnabled ? 0.05 : 0.03), lineWidth: 0.5)
+        }
+    }
+
+    private var buttonFill: Color {
+        if isPrimary {
+            return isEnabled ? garageReviewAccent : garageReviewAccent.opacity(0.34)
+        }
+
+        return isEnabled ? garageReviewSurfaceRaised : garageReviewSurfaceDark.opacity(0.98)
+    }
+
+    private var buttonStroke: Color {
+        if isPrimary {
+            return isEnabled ? garageReviewAccent.opacity(0.38) : garageReviewAccent.opacity(0.16)
+        }
+
+        return garageReviewStroke.opacity(isEnabled ? 0.98 : 0.68)
     }
 }
 
@@ -4045,66 +4112,53 @@ private struct GarageStep2MetricGrid: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(metricRows.enumerated()), id: \.offset) { _, row in
-                HStack(spacing: 10) {
-                    ForEach(row) { metric in
-                        GarageStep2MetricCard(metric: metric)
+            if gridMetrics.isEmpty == false {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
+                    ForEach(gridMetrics) { metric in
+                        GarageStep2MetricCard(metric: metric, layout: .standard)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if let capstoneMetric {
+                GarageStep2MetricCard(metric: capstoneMetric, layout: .capstone)
             }
         }
     }
 
-    private var metricRows: [[GarageStep2MetricPresentation]] {
-        metrics.garageChunked(into: 2)
+    private var columns: [GridItem] {
+        [
+            GridItem(.flexible(), spacing: 10),
+            GridItem(.flexible(), spacing: 10)
+        ]
+    }
+
+    private var capstoneMetric: GarageStep2MetricPresentation? {
+        guard metrics.count.isMultiple(of: 2) == false else { return nil }
+        return metrics.last
+    }
+
+    private var gridMetrics: [GarageStep2MetricPresentation] {
+        guard capstoneMetric != nil else { return metrics }
+        return Array(metrics.dropLast())
     }
 }
 
 private struct GarageStep2MetricCard: View {
     let metric: GarageStep2MetricPresentation
+    let layout: GarageStep2MetricCardLayout
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 8) {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(metric.grade.tint)
-                        .frame(width: 7, height: 7)
-
-                    Text(metric.title)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(garageReviewMutedText)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 0)
-
-                Text(metric.grade.label)
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(metric.grade.tint.opacity(0.9))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        Capsule()
-                            .fill(metric.grade.tint.opacity(0.10))
-                            .overlay(
-                                Capsule()
-                                    .stroke(metric.grade.tint.opacity(0.18), lineWidth: 1)
-                            )
-                    )
+        Group {
+            switch layout {
+            case .standard:
+                standardCard
+            case .capstone:
+                capstoneCard
             }
-
-            Text(metric.value)
-                .font(.system(size: 16, weight: .semibold, design: .rounded))
-                .foregroundStyle(garageReviewReadableText)
-                .lineLimit(2)
-                .minimumScaleFactor(0.8)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(layout == .capstone ? 14 : 12)
+        .frame(maxWidth: .infinity, minHeight: layout == .capstone ? 94 : 0, alignment: .leading)
         .background(
             GarageInsetPanelBackground(
                 shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous),
@@ -4112,6 +4166,76 @@ private struct GarageStep2MetricCard: View {
                 stroke: metric.grade.tint.opacity(0.2)
             )
         )
+    }
+
+    private var standardCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            metricHeader(alignment: .top)
+
+            Text(metric.value)
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .foregroundStyle(garageReviewReadableText)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+        }
+    }
+
+    private var capstoneCard: some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 10) {
+                metricHeader(alignment: .center)
+
+                Text(metric.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(garageReviewMutedText.opacity(0.94))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.88)
+            }
+
+            Spacer(minLength: 0)
+
+            Text(metric.value)
+                .font(.system(size: 18, weight: .semibold, design: .rounded))
+                .foregroundStyle(garageReviewReadableText)
+                .multilineTextAlignment(.trailing)
+                .lineLimit(2)
+                .minimumScaleFactor(0.82)
+        }
+    }
+
+    private func metricHeader(alignment: VerticalAlignment) -> some View {
+        HStack(alignment: alignment, spacing: 8) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(metric.grade.tint)
+                    .frame(width: 7, height: 7)
+
+                if layout == .standard {
+                    Text(metric.title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(garageReviewMutedText)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            Text(metric.grade.label)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(metric.grade.tint.opacity(0.9))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule()
+                        .fill(metric.grade.tint.opacity(0.10))
+                        .overlay(
+                            Capsule()
+                                .stroke(metric.grade.tint.opacity(0.18), lineWidth: 1)
+                        )
+                )
+        }
     }
 }
 
@@ -5292,8 +5416,10 @@ private struct GaragePlaybackScrubber: View {
 
     @State private var isDragging = false
 
-    private let outerInset: CGFloat = 14
-    private let thumbSize: CGFloat = 18
+    private let trackInset: CGFloat = 18
+    private let touchInset: CGFloat = 8
+    private let thumbSize: CGFloat = 14
+    private let visibleTrackHeight: CGFloat = 6
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -5312,7 +5438,7 @@ private struct GaragePlaybackScrubber: View {
             }
 
             GeometryReader { proxy in
-                let trackWidth = max(proxy.size.width - (outerInset * 2), 1)
+                let trackWidth = max(proxy.size.width - (trackInset * 2), 1)
 
                 ZStack {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -5325,7 +5451,7 @@ private struct GaragePlaybackScrubber: View {
                     ZStack(alignment: .leading) {
                         Capsule()
                             .fill(garageReviewTrackFill)
-                            .frame(height: 8)
+                            .frame(height: visibleTrackHeight)
                             .overlay(
                                 Capsule()
                                     .stroke(garageReviewStroke.opacity(0.8), lineWidth: 0.8)
@@ -5343,7 +5469,7 @@ private struct GaragePlaybackScrubber: View {
                                     }
                             }
                         }
-                        .frame(height: 8)
+                        .frame(height: visibleTrackHeight)
                         .clipShape(Capsule())
 
                         Capsule()
@@ -5354,7 +5480,7 @@ private struct GaragePlaybackScrubber: View {
                                     endPoint: .trailing
                                 )
                             )
-                            .frame(width: max(trackWidth * progress, thumbSize), height: 8)
+                            .frame(width: max(trackWidth * progress, thumbSize), height: visibleTrackHeight)
                             .shadow(color: garageReviewAccent.opacity(0.32), radius: 8, x: 0, y: 0)
 
                         Circle()
@@ -5367,7 +5493,7 @@ private struct GaragePlaybackScrubber: View {
                             .shadow(color: garageReviewAccent.opacity(0.55), radius: 8, x: 0, y: 0)
                             .offset(x: max(0, (trackWidth * progress) - (thumbSize / 2)))
                     }
-                    .padding(.horizontal, outerInset)
+                    .padding(.horizontal, trackInset)
                 }
                 .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .gesture(
@@ -5396,7 +5522,7 @@ private struct GaragePlaybackScrubber: View {
                         }
                 )
             }
-            .frame(height: 36)
+            .frame(height: 52)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Playback scrubber")
             .accessibilityValue("\(garageFormattedPlaybackTime(displayTime)) of \(garageFormattedPlaybackTime(safeDuration))")
@@ -5430,8 +5556,8 @@ private struct GaragePlaybackScrubber: View {
 
     private func time(for locationX: CGFloat, width: CGFloat) -> Double {
         guard safeDuration > 0 else { return 0 }
-        let clampedX = min(max(locationX - outerInset, 0), max(width - (outerInset * 2), 1))
-        let progress = clampedX / max(width - (outerInset * 2), 1)
+        let clampedX = min(max(locationX - touchInset, 0), max(width - (touchInset * 2), 1))
+        let progress = clampedX / max(width - (touchInset * 2), 1)
         return safeDuration * progress
     }
 
