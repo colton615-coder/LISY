@@ -3290,6 +3290,7 @@ private struct GarageReviewSummaryControls: View {
     let reviewRecoveryTitle: String
     let reviewRecoveryBody: String
     let reviewFrameSource: GarageReviewFrameSourceState
+    @State private var isCoachingExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -3302,11 +3303,17 @@ private struct GarageReviewSummaryControls: View {
                     GarageStep2MetricGrid(metrics: metrics)
                 }
                 if metrics.isEmpty == false {
-                    GarageCoachingReportView(presentation: coachingPresentation)
+                    GarageCoachingDisclosureCard(
+                        presentation: coachingPresentation,
+                        isExpanded: $isCoachingExpanded
+                    )
                 }
             case let .unavailable(presentation):
                 GarageStep2UnavailableCard(presentation: presentation)
-                GarageCoachingReportView(presentation: coachingPresentation)
+                GarageCoachingDisclosureCard(
+                    presentation: coachingPresentation,
+                    isExpanded: $isCoachingExpanded
+                )
             }
             if reviewFrameSource != .video {
                 GarageReviewRecoveryCallout(
@@ -3318,6 +3325,20 @@ private struct GarageReviewSummaryControls: View {
 
         }
         .padding(.bottom, 12)
+        .task(id: coachingResetKey) {
+            isCoachingExpanded = false
+        }
+    }
+
+    private var coachingResetKey: String {
+        [
+            coachingPresentation.headline,
+            coachingPresentation.body,
+            coachingPresentation.confidenceLabel,
+            coachingPresentation.phaseLabel,
+            coachingPresentation.nextBestAction,
+            coachingPresentation.notes.joined(separator: "|")
+        ].joined(separator: "::")
     }
 }
 
@@ -3463,6 +3484,25 @@ private struct GarageDockSurface<Content: View>: View {
     }
 }
 
+private enum GarageImpactWeight {
+    case light
+    case medium
+}
+
+private func garageTriggerImpact(_ weight: GarageImpactWeight) {
+    let style: UIImpactFeedbackGenerator.FeedbackStyle
+    switch weight {
+    case .light:
+        style = .light
+    case .medium:
+        style = .medium
+    }
+
+    let generator = UIImpactFeedbackGenerator(style: style)
+    generator.prepare()
+    generator.impactOccurred()
+}
+
 private enum GarageStep2MetricCardLayout {
     case standard
     case capstone
@@ -3476,7 +3516,11 @@ private struct GarageDockWideButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            guard isEnabled else { return }
+            garageTriggerImpact(isPrimary ? .medium : .light)
+            action()
+        } label: {
             HStack(spacing: 12) {
                 iconCapsule
 
@@ -3580,6 +3624,106 @@ private struct GarageDockWideButton: View {
         }
 
         return garageReviewStroke.opacity(isEnabled ? 0.98 : 0.68)
+    }
+}
+
+private struct GarageCoachingDisclosureCard: View {
+    let presentation: GarageCoachingPresentation
+    @Binding var isExpanded: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                withAnimation(.spring(response: 0.36, dampingFraction: 0.82)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(alignment: .top, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            Text("Coaching Deep Dive")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(garageReviewReadableText)
+
+                            Text(presentation.confidenceLabel.uppercased())
+                                .font(.caption2.weight(.bold))
+                                .tracking(0.8)
+                                .foregroundStyle(coachingConfidenceTint)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    Capsule()
+                                        .fill(coachingConfidenceTint.opacity(0.12))
+                                        .overlay(
+                                            Capsule()
+                                                .stroke(coachingConfidenceTint.opacity(0.28), lineWidth: 0.8)
+                                        )
+                                )
+                        }
+
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(ModuleTheme.electricCyan)
+                                .frame(width: 7, height: 7)
+
+                            Text(presentation.phaseLabel)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(garageReviewMutedText)
+                                .lineLimit(1)
+                        }
+
+                        Text(presentation.headline)
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(garageReviewReadableText)
+                            .lineLimit(1)
+
+                        Text(presentation.body)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(garageReviewMutedText)
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: isExpanded ? "chevron.up.circle.fill" : "chevron.down.circle.fill")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(isExpanded ? ModuleTheme.electricCyan : garageReviewMutedText.opacity(0.92))
+                        .shadow(
+                            color: isExpanded ? ModuleTheme.electricCyan.opacity(0.22) : .clear,
+                            radius: 8,
+                            x: 0,
+                            y: 0
+                        )
+                        .padding(.top, 2)
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    GarageRaisedPanelBackground(
+                        shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous),
+                        fill: garageReviewSurfaceRaised,
+                        stroke: garageReviewStroke.opacity(0.92)
+                    )
+                )
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                GarageCoachingReportView(presentation: presentation)
+                    .transition(.opacity.combined(with: .scale(scale: 0.985, anchor: .top)))
+            }
+        }
+    }
+
+    private var coachingConfidenceTint: Color {
+        switch presentation.confidenceLabel {
+        case GarageReliabilityStatus.trusted.rawValue:
+            Color(hex: "#4DDE8E")
+        case GarageReliabilityStatus.review.rawValue:
+            Color(hex: "#FFCE52")
+        default:
+            Color(hex: "#FF5F63")
+        }
     }
 }
 
@@ -4109,6 +4253,8 @@ private struct GarageStep2ScoreSummaryCard: View {
 
 private struct GarageStep2MetricGrid: View {
     let metrics: [GarageStep2MetricPresentation]
+    @State private var visibleMetricIDs: Set<String> = []
+    @State private var lastAnimatedMetricKey = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -4116,13 +4262,22 @@ private struct GarageStep2MetricGrid: View {
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
                     ForEach(gridMetrics) { metric in
                         GarageStep2MetricCard(metric: metric, layout: .standard)
+                            .opacity(visibleMetricIDs.contains(metric.id) ? 1 : 0)
+                            .scaleEffect(visibleMetricIDs.contains(metric.id) ? 1 : 0.985)
+                            .offset(y: visibleMetricIDs.contains(metric.id) ? 0 : 10)
                     }
                 }
             }
 
             if let capstoneMetric {
                 GarageStep2MetricCard(metric: capstoneMetric, layout: .capstone)
+                    .opacity(visibleMetricIDs.contains(capstoneMetric.id) ? 1 : 0)
+                    .scaleEffect(visibleMetricIDs.contains(capstoneMetric.id) ? 1 : 0.985)
+                    .offset(y: visibleMetricIDs.contains(capstoneMetric.id) ? 0 : 12)
             }
+        }
+        .task(id: metricIdentityKey) {
+            await animateEntranceIfNeeded()
         }
     }
 
@@ -4141,6 +4296,33 @@ private struct GarageStep2MetricGrid: View {
     private var gridMetrics: [GarageStep2MetricPresentation] {
         guard capstoneMetric != nil else { return metrics }
         return Array(metrics.dropLast())
+    }
+
+    private var metricIdentityKey: String {
+        metrics.map(\.id).joined(separator: "::")
+    }
+
+    private var entranceOrderedIDs: [String] {
+        gridMetrics.map(\.id) + (capstoneMetric.map { [$0.id] } ?? [])
+    }
+
+    @MainActor
+    private func animateEntranceIfNeeded() async {
+        guard metricIdentityKey.isEmpty == false else { return }
+        guard lastAnimatedMetricKey != metricIdentityKey else { return }
+
+        lastAnimatedMetricKey = metricIdentityKey
+        visibleMetricIDs = []
+
+        for (index, metricID) in entranceOrderedIDs.enumerated() {
+            if index > 0 {
+                try? await Task.sleep(nanoseconds: 58_000_000)
+            }
+
+            withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
+                visibleMetricIDs.insert(metricID)
+            }
+        }
     }
 }
 
