@@ -422,8 +422,17 @@ private func garageRecordSelectionKey(for record: SwingRecord) -> String {
 
 func garageImportRetryErrorCode(from error: Error) -> Int? {
     let nsError = error as NSError
-    if nsError.code == -54 {
+
+    if garageIsRetryableImportNSError(nsError) {
         return nsError.code
+    }
+
+    if let detailedErrors = nsError.userInfo["NSDetailedErrors"] as? [NSError] {
+        for detailedError in detailedErrors {
+            if let retryCode = garageImportRetryErrorCode(from: detailedError) {
+                return retryCode
+            }
+        }
     }
 
     if let underlyingError = nsError.userInfo[NSUnderlyingErrorKey] as? Error {
@@ -434,7 +443,51 @@ func garageImportRetryErrorCode(from error: Error) -> Int? {
 }
 
 func garageShouldRetryImportAfterFailure(_ error: Error) -> Bool {
-    garageImportRetryErrorCode(from: error) == -54
+    garageImportRetryErrorCode(from: error) != nil
+}
+
+func garageImportFailureMessage(from error: Error) -> String {
+    let nsError = error as NSError
+    var diagnostics: [String] = []
+    var currentError: NSError? = nsError
+
+    while let error = currentError {
+        var segment = "domain=\(error.domain) code=\(error.code) description=\(error.localizedDescription)"
+
+        if let failureReason = error.localizedFailureReason, failureReason.isEmpty == false {
+            segment += " reason=\(failureReason)"
+        }
+
+        if let recoverySuggestion = error.localizedRecoverySuggestion, recoverySuggestion.isEmpty == false {
+            segment += " suggestion=\(recoverySuggestion)"
+        }
+
+        diagnostics.append(segment)
+        currentError = error.userInfo[NSUnderlyingErrorKey] as? NSError
+    }
+
+    guard diagnostics.isEmpty == false else {
+        return "Import failed: \(error.localizedDescription)"
+    }
+
+    return "Import failed: \(diagnostics.joined(separator: " | underlying: "))"
+}
+
+private func garageIsRetryableImportNSError(_ error: NSError) -> Bool {
+    let domain = error.domain.lowercased()
+
+    switch domain {
+    case "com.apple.swiftdata":
+        return error.code == -54
+    case "nscocoaerrordomain":
+        return [4097, 4099, 134110].contains(error.code)
+    case "nssqliteerrordomain":
+        return [5, 6].contains(error.code)
+    case "nsposixerrordomain":
+        return error.code == 16
+    default:
+        return false
+    }
 }
 
 private func garageDiscardDetachedExportDerivative(at exportURL: URL) {
@@ -613,9 +666,15 @@ struct GarageView: View {
     @State private var pendingPreFlightSelection = GaragePreFlightSelection()
     @State private var route: GarageRoute = .hub
     @State private var hasNormalizedPersistedAnalysisPayloads = false
+    @State private var activeImportRecordID: PersistentIdentifier?
+    @State private var recoverableImportRecordID: PersistentIdentifier?
 
     private var reviewableSwingRecords: [SwingRecord] {
-        swingRecords.filter(\.isImportComplete)
+        swingRecords.filter(\.isReviewableRecord)
+    }
+
+    private var analyzerVisibleSwingRecords: [SwingRecord] {
+        swingRecords.filter(\.isAnalyzerVisible)
     }
 
     var body: some View {
@@ -701,6 +760,136 @@ struct GarageView: View {
         return modelContext.registeredModel(for: identifier) ?? (modelContext.model(for: identifier) as? SwingRecord)
     }
 
+    private func performGarageAnalysis(at reviewMasterURL: URL) async throws -> GarageAnalysisOutput {
+        try await GarageAnalysisPipeline.analyzeVideo(at: reviewMasterURL) { progress in
+            await MainActor.run {
+                presentImportProgress(progress)
+            }
+        }
+    }
+
+    private func analyzeReviewMaster(
+        at reviewMasterURL: URL,
+        recordID: PersistentIdentifier?
+    ) async throws -> GarageAnalysisOutput {
+        do {
+            return try await performGarageAnalysis(at: reviewMasterURL)
+        } catch {
+            guard garageShouldRetryImportAfterFailure(error) else {
+                throw error
+            }
+
+            await MainActor.run {
+                if let record = pendingRecord(for: recordID) {
+                    record.importStatus = .retrying
+                    try? modelContext.save()
+                }
+            }
+
+            try await Task.sleep(nanoseconds: 500_000_000)
+            return try await performGarageAnalysis(at: reviewMasterURL)
+        }
+    }
+
+    @MainActor
+    private func finalizeImportedRecord(
+        recordID: PersistentIdentifier?,
+        output: GarageAnalysisOutput
+    ) throws -> String {
+        presentImportProgress(
+            GarageAnalysisProgressUpdate(
+                step: .savingSwing,
+                frameCount: max(output.swingFrames.count, 0),
+                totalFrames: max(output.swingFrames.count, 0)
+            )
+        )
+
+        let approvedKeyFrames = GarageAnalysisPipeline.autoApprovedKeyFrames(
+            from: output.keyFrames,
+            reviewReport: output.handPathReviewReport
+        )
+        let validationStatus: KeyframeValidationStatus = output.handPathReviewReport.requiresManualReview ? .pending : .approved
+
+        guard let savedRecord = pendingRecord(for: recordID) else {
+            throw GarageImportError.unableToLoadSelection
+        }
+
+        savedRecord.applyAnalysisOutput(
+            output,
+            approvedKeyFrames: approvedKeyFrames,
+            validationStatus: validationStatus
+        )
+        try modelContext.save()
+
+        selectedVideoItem = nil
+        pendingImportMovie = nil
+        activeImportRecordID = nil
+        recoverableImportRecordID = nil
+
+        return garageRecordSelectionKey(for: savedRecord)
+    }
+
+    @MainActor
+    private func persistRecoverableImportFailure(
+        recordID: PersistentIdentifier?,
+        message: String
+    ) {
+        activeImportRecordID = nil
+
+        if let record = pendingRecord(for: recordID) {
+            record.markImportFailed()
+            pendingImportMovie = nil
+            recoverableImportRecordID = record.persistentModelID
+            do {
+                try modelContext.save()
+            } catch {
+                let nsError = error as NSError
+                NSLog(
+                    "%@",
+                    "Garage import failure preservation save failed. domain=\(nsError.domain) code=\(nsError.code) description=\(nsError.localizedDescription)"
+                )
+            }
+        } else {
+            recoverableImportRecordID = nil
+        }
+
+        route = .analyzer(.importing(.failure(message)))
+    }
+
+    @MainActor
+    private func persistReanalysisFailure(
+        recordID: PersistentIdentifier?,
+        fallbackStatus: GarageImportStatus,
+        repairReason: GarageRepairReason,
+        message: String
+    ) {
+        activeImportRecordID = nil
+
+        if let record = pendingRecord(for: recordID) {
+            record.importStatus = fallbackStatus
+            if fallbackStatus.isFailed {
+                record.markImportFailed(repairReason: repairReason)
+                recoverableImportRecordID = record.persistentModelID
+            } else {
+                record.clearDerivedPayload(repairReason: repairReason)
+                record.clearLegacyDerivedReviewData()
+                recoverableImportRecordID = nil
+            }
+
+            do {
+                try modelContext.save()
+            } catch {
+                let nsError = error as NSError
+                NSLog(
+                    "%@",
+                    "Garage repair failure save failed. domain=\(nsError.domain) code=\(nsError.code) description=\(nsError.localizedDescription)"
+                )
+            }
+        }
+
+        route = .analyzer(.importing(.failure(message)))
+    }
+
     @MainActor
     private func handleReviewableRecordKeysChange(_ keys: [String]) {
         guard case let .analyzer(analyzerRoute) = route else { return }
@@ -735,6 +924,21 @@ struct GarageView: View {
 
         var didTouchPayload = false
         for record in candidates {
+            if record.reconcileStrandedImportIfNeeded(
+                isActiveImportRecord: activeImportRecordID == record.persistentModelID
+            ) {
+                didTouchPayload = true
+                NSLog(
+                    "%@",
+                    "Garage import reconciliation preserved stranded record. recordID=\(String(describing: record.persistentModelID)) title=\(record.title) reason=import_failed"
+                )
+                continue
+            }
+
+            guard record.isReviewableRecord else {
+                continue
+            }
+
             if record.decodedDerivedPayload != nil {
                 continue
             }
@@ -820,12 +1024,16 @@ struct GarageView: View {
         switch analyzerRoute {
         case .records, .importing:
             GarageRecordsTab(
-                records: reviewableSwingRecords,
+                records: analyzerVisibleSwingRecords,
                 importVideo: {
                     presentAddRecord()
                 },
                 openReview: { record in
-                    route = .analyzer(.review(recordKey: garageRecordSelectionKey(for: record)))
+                    if record.isRecoverableFailedImport {
+                        repairRecord(record)
+                    } else {
+                        route = .analyzer(.review(recordKey: garageRecordSelectionKey(for: record)))
+                    }
                 }
             )
             .safeAreaInset(edge: .bottom) {
@@ -870,6 +1078,11 @@ struct GarageView: View {
 
     @MainActor
     private func retryImport() {
+        if let recoverableImportRecord = pendingRecord(for: recoverableImportRecordID) {
+            repairRecord(recoverableImportRecord)
+            return
+        }
+
         if let pendingImportMovie {
             importSelectedVideo(pendingImportMovie, selection: pendingPreFlightSelection)
             return
@@ -888,6 +1101,7 @@ struct GarageView: View {
     @MainActor
     private func prepareSelectedVideo(_ item: PhotosPickerItem) {
         pendingImportMovie = nil
+        recoverableImportRecordID = nil
         route = .analyzer(.importing(.preparing))
 
         Task {
@@ -915,6 +1129,7 @@ struct GarageView: View {
     private func importSelectedVideo(_ movie: GaragePickedMovie, selection: GaragePreFlightSelection) {
         pendingImportMovie = movie
         pendingPreFlightSelection = selection
+        recoverableImportRecordID = nil
         presentImportProgress(GarageAnalysisProgressUpdate(step: .loadingVideo))
 
         let sourceMovieURL = movie.url
@@ -950,80 +1165,13 @@ struct GarageView: View {
 
                     modelContext.insert(record)
                     try modelContext.save()
+                    activeImportRecordID = record.persistentModelID
                     return record.persistentModelID
                 }
 
-                let output: GarageAnalysisOutput
-                do {
-                    output = try await GarageAnalysisPipeline.analyzeVideo(at: reviewMasterURL) { progress in
-                        await MainActor.run {
-                            presentImportProgress(progress)
-                        }
-                    }
-                } catch {
-                    guard garageShouldRetryImportAfterFailure(error) else {
-                        throw error
-                    }
-
-                    await MainActor.run {
-                        pendingRecord(for: pendingRecordID)?.importStatus = .retrying
-                        try? modelContext.save()
-                    }
-
-                    try await Task.sleep(nanoseconds: 500_000_000)
-
-                    output = try await GarageAnalysisPipeline.analyzeVideo(at: reviewMasterURL) { progress in
-                        await MainActor.run {
-                            presentImportProgress(progress)
-                        }
-                    }
-                }
-
-                let approvedKeyFrames = GarageAnalysisPipeline.autoApprovedKeyFrames(
-                    from: output.keyFrames,
-                    reviewReport: output.handPathReviewReport
-                )
-                let initialValidationStatus: KeyframeValidationStatus = output.handPathReviewReport.requiresManualReview ? .pending : .approved
-
-                let reviewKey = try await MainActor.run { () -> String in
-                    presentImportProgress(
-                        GarageAnalysisProgressUpdate(
-                            step: .savingSwing,
-                            frameCount: max(output.swingFrames.count, 0),
-                            totalFrames: max(output.swingFrames.count, 0)
-                        )
-                    )
-
-                    if let pendingRecord = pendingRecord(for: pendingRecordID) {
-                        pendingRecord.importStatus = .complete
-                        pendingRecord.frameRate = output.frameRate
-                        pendingRecord.swingFrames = output.swingFrames
-                        pendingRecord.keyFrames = approvedKeyFrames
-                        pendingRecord.keyframeValidationStatus = initialValidationStatus
-                        pendingRecord.handAnchors = output.handAnchors
-                        pendingRecord.pathPoints = output.pathPoints
-                        pendingRecord.analysisResult = output.analysisResult
-                        pendingRecord.persistDerivedPayload(
-                            GarageDerivedPayload(
-                                frameRate: output.frameRate,
-                                swingFrames: output.swingFrames,
-                                keyFrames: approvedKeyFrames,
-                                handAnchors: output.handAnchors,
-                                pathPoints: output.pathPoints,
-                                analysisResult: output.analysisResult
-                            )
-                        )
-                    }
-
-                    try modelContext.save()
-                    selectedVideoItem = nil
-                    pendingImportMovie = nil
-
-                    guard let savedRecord = pendingRecord(for: pendingRecordID) else {
-                        throw GarageImportError.unableToLoadSelection
-                    }
-
-                    return garageRecordSelectionKey(for: savedRecord)
+                let output = try await analyzeReviewMaster(at: reviewMasterURL, recordID: pendingRecordID)
+                let reviewKey = try await MainActor.run {
+                    try finalizeImportedRecord(recordID: pendingRecordID, output: output)
                 }
 
                 await MainActor.run {
@@ -1041,37 +1189,11 @@ struct GarageView: View {
                     }
                 }
             } catch {
-                let nsError = error as NSError
-                var diagnostics: [String] = []
-                var currentError: NSError? = nsError
-
-                while let error = currentError {
-                    var segment = "domain=\(error.domain) code=\(error.code) description=\(error.localizedDescription)"
-
-                    if let failureReason = error.localizedFailureReason, failureReason.isEmpty == false {
-                        segment += " reason=\(failureReason)"
-                    }
-
-                    if let recoverySuggestion = error.localizedRecoverySuggestion, recoverySuggestion.isEmpty == false {
-                        segment += " suggestion=\(recoverySuggestion)"
-                    }
-
-                    diagnostics.append(segment)
-                    currentError = error.userInfo[NSUnderlyingErrorKey] as? NSError
-                }
-
-                let failureMessage = diagnostics.isEmpty
-                    ? "Import failed: \(error.localizedDescription)"
-                    : "Import failed: \(diagnostics.joined(separator: " | underlying: "))"
-
+                let failureMessage = garageImportFailureMessage(from: error)
                 NSLog("%@", failureMessage)
 
                 await MainActor.run {
-                    if let pendingRecord = pendingRecord(for: pendingRecordID) {
-                        modelContext.delete(pendingRecord)
-                        try? modelContext.save()
-                    }
-                    route = .analyzer(.importing(.failure(failureMessage)))
+                    persistRecoverableImportFailure(recordID: pendingRecordID, message: failureMessage)
                 }
             }
         }
@@ -1092,68 +1214,59 @@ struct GarageView: View {
 
     @MainActor
     private func repairRecord(_ record: SwingRecord) {
+        let fallbackStatus: GarageImportStatus = record.isRecoverableFailedImport ? .failed : .complete
+        let failureReason: GarageRepairReason = record.isRecoverableFailedImport ? .importFailed : .corruptedDerivedPayload
+
         guard let reviewMasterURL = GarageMediaStore.resolvedReviewVideoURL(for: record) else {
+            record.importStatus = fallbackStatus
             record.clearDerivedPayload(repairReason: .missingReviewVideo)
+            record.clearLegacyDerivedReviewData()
             try? modelContext.save()
+            recoverableImportRecordID = record.isRecoverableFailedImport ? record.persistentModelID : nil
             return
         }
 
         route = .analyzer(.importing(.analyzing(step: .loadingVideo, frameCount: 0, totalFrames: 0)))
         let recordID = record.persistentModelID
+        activeImportRecordID = recordID
+        recoverableImportRecordID = nil
+
+        if record.isRecoverableFailedImport {
+            record.importStatus = .retrying
+            try? modelContext.save()
+        }
 
         Task {
             do {
-                let output = try await GarageAnalysisPipeline.analyzeVideo(at: reviewMasterURL) { progress in
-                    await MainActor.run {
-                        presentImportProgress(progress)
-                    }
-                }
-                let approvedKeyFrames = GarageAnalysisPipeline.autoApprovedKeyFrames(
-                    from: output.keyFrames,
-                    reviewReport: output.handPathReviewReport
-                )
-                let validationStatus: KeyframeValidationStatus = output.handPathReviewReport.requiresManualReview ? .pending : .approved
+                let output = try await analyzeReviewMaster(at: reviewMasterURL, recordID: recordID)
 
                 await MainActor.run {
-                    guard let repairedRecord = pendingRecord(for: recordID) else { return }
-                    repairedRecord.importStatus = .complete
-                    repairedRecord.frameRate = output.frameRate
-                    repairedRecord.swingFrames = output.swingFrames
-                    repairedRecord.keyFrames = approvedKeyFrames
-                    repairedRecord.keyframeValidationStatus = validationStatus
-                    repairedRecord.handAnchors = output.handAnchors
-                    repairedRecord.pathPoints = output.pathPoints
-                    repairedRecord.analysisResult = output.analysisResult
-                    repairedRecord.persistDerivedPayload(
-                        GarageDerivedPayload(
-                            frameRate: output.frameRate,
-                            swingFrames: output.swingFrames,
-                            keyFrames: approvedKeyFrames,
-                            handAnchors: output.handAnchors,
-                            pathPoints: output.pathPoints,
-                            analysisResult: output.analysisResult
-                        )
-                    )
                     do {
-                        try modelContext.save()
+                        let reviewKey = try finalizeImportedRecord(recordID: recordID, output: output)
                         NSLog(
                             "%@",
-                            "Garage repair completed. recordID=\(String(describing: repairedRecord.persistentModelID)) title=\(repairedRecord.title)"
+                            "Garage repair completed. recordID=\(String(describing: recordID))"
                         )
-                        route = .analyzer(.review(recordKey: garageRecordSelectionKey(for: repairedRecord)))
+                        route = .analyzer(.review(recordKey: reviewKey))
                     } catch {
-                        route = .analyzer(.importing(.failure(error.localizedDescription)))
+                        let failureMessage = garageImportFailureMessage(from: error)
+                        persistReanalysisFailure(
+                            recordID: recordID,
+                            fallbackStatus: fallbackStatus,
+                            repairReason: failureReason,
+                            message: failureMessage
+                        )
                     }
                 }
             } catch {
+                let failureMessage = garageImportFailureMessage(from: error)
                 await MainActor.run {
-                    guard let repairedRecord = pendingRecord(for: recordID) else {
-                        route = .analyzer(.importing(.failure(error.localizedDescription)))
-                        return
-                    }
-                    repairedRecord.clearDerivedPayload(repairReason: .corruptedDerivedPayload)
-                    try? modelContext.save()
-                    route = .analyzer(.importing(.failure(error.localizedDescription)))
+                    persistReanalysisFailure(
+                        recordID: recordID,
+                        fallbackStatus: fallbackStatus,
+                        repairReason: failureReason,
+                        message: failureMessage
+                    )
                 }
             }
         }
@@ -1300,6 +1413,27 @@ private struct SwingRecordCard: View {
     let record: SwingRecord
     let openReview: () -> Void
 
+    private var statusTitle: String? {
+        record.isRecoverableFailedImport ? "IMPORT FAILED" : nil
+    }
+
+    private var statusTint: Color {
+        record.isRecoverableFailedImport ? garageReviewFlagged : ModuleTheme.electricCyan
+    }
+
+    private var detailCopy: String {
+        if record.isRecoverableFailedImport {
+            return "Import stopped before review was ready. The review master is still local and ready to retry."
+        }
+
+        let trimmedNotes = record.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedNotes.isEmpty ? "Telemetry ready for review routing." : trimmedNotes
+    }
+
+    private var trailingSymbol: String {
+        record.isRecoverableFailedImport ? "arrow.clockwise" : "chevron.right"
+    }
+
     var body: some View {
         Button(action: openReview) {
             HStack(spacing: 14) {
@@ -1331,9 +1465,26 @@ private struct SwingRecordCard: View {
                             .font(.system(size: 11, weight: .medium, design: .monospaced))
                             .foregroundStyle(AppModule.garage.theme.textMuted)
                             .lineLimit(1)
+
+                        if let statusTitle {
+                            Text(statusTitle)
+                                .font(.system(size: 10, weight: .black, design: .monospaced))
+                                .tracking(1.3)
+                                .foregroundStyle(statusTint)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(garageReviewSurfaceDark)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                .stroke(statusTint.opacity(0.3), lineWidth: 0.5)
+                                        )
+                                )
+                        }
                     }
 
-                    Text(record.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Telemetry ready for review routing." : record.notes)
+                    Text(detailCopy)
                         .font(.footnote)
                         .foregroundStyle(AppModule.garage.theme.textSecondary)
                         .lineLimit(2)
@@ -1343,9 +1494,9 @@ private struct SwingRecordCard: View {
                 VStack(spacing: 10) {
                     GarageMiniScoreGauge(score: record.derivedAnalysisResult?.scorecard?.totalScore)
 
-                    Image(systemName: "chevron.right")
+                    Image(systemName: trailingSymbol)
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(AppModule.garage.theme.textMuted)
+                        .foregroundStyle(record.isRecoverableFailedImport ? statusTint : AppModule.garage.theme.textMuted)
                 }
             }
         }
@@ -1573,11 +1724,38 @@ private struct GarageRepairSurface: View {
     let onReanalyze: () -> Void
     let onBackToRecords: () -> Void
 
+    private var title: String {
+        switch record.repairReason {
+        case .importFailed?:
+            "Import Recovery Ready"
+        default:
+            "Swing Recovery Ready"
+        }
+    }
+
+    private var message: String {
+        switch record.repairReason {
+        case .importFailed?:
+            "Garage preserved this import and its saved review master locally, but the analysis pipeline stopped before the review package was finalized. Retry the saved clip to finish the record without re-importing."
+        default:
+            "Garage preserved this record and its video, but the old derived review payload is no longer trusted. Re-run analysis to rebuild scorecards, SyncFlow, and checkpoint telemetry safely."
+        }
+    }
+
+    private var actionTitle: String {
+        switch record.repairReason {
+        case .importFailed?:
+            "Retry Import"
+        default:
+            "Re-analyze Swing"
+        }
+    }
+
     var body: some View {
         GarageAnalysisUnavailablePanel(
-            title: "Swing Recovery Ready",
-            message: "Garage preserved this record and its video, but the old derived review payload is no longer trusted. Re-run analysis to rebuild scorecards, SyncFlow, and checkpoint telemetry safely.",
-            actionTitle: "Re-analyze Swing",
+            title: title,
+            message: message,
+            actionTitle: actionTitle,
             action: onReanalyze,
             secondaryTitle: "Back To Records",
             secondaryAction: onBackToRecords,

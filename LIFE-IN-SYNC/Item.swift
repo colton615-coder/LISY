@@ -86,12 +86,21 @@ enum KeyframeValidationStatus: String, Codable, CaseIterable, Identifiable {
 enum GarageImportStatus: String, Codable, CaseIterable, Identifiable {
     case pending
     case retrying
+    case failed
     case complete
 
     var id: String { rawValue }
 
     var isComplete: Bool {
         self == .complete
+    }
+
+    var isInFlight: Bool {
+        self == .pending || self == .retrying
+    }
+
+    var isFailed: Bool {
+        self == .failed
     }
 }
 
@@ -500,6 +509,7 @@ enum GarageRepairReason: String, Codable, Equatable {
     case corruptedDerivedPayload
     case missingDerivedPayload
     case missingReviewVideo
+    case importFailed
 }
 
 @Model
@@ -827,15 +837,15 @@ final class SwingRecord {
     }
 
     var reviewAvailability: GarageReviewAvailability {
-        let hasVideoReference = preferredReviewFilename != nil
-            || preferredExportFilename != nil
-            || reviewMasterBookmark != nil
-            || mediaFileBookmark != nil
-            || exportAssetBookmark != nil
+        let hasVideoReference = hasSavedVideoReference
+
+        if resolvedImportStatus.isFailed {
+            return hasVideoReference ? .needsReanalysis : .missingVideo
+        }
 
         if let repairReason {
             switch repairReason {
-            case .legacyReviewPayload, .corruptedDerivedPayload, .missingDerivedPayload:
+            case .legacyReviewPayload, .corruptedDerivedPayload, .missingDerivedPayload, .importFailed:
                 return hasVideoReference ? .needsReanalysis : .missingVideo
             case .missingReviewVideo:
                 return .missingVideo
@@ -859,6 +869,18 @@ final class SwingRecord {
         importStatus ?? .complete
     }
 
+    var isReviewableRecord: Bool {
+        resolvedImportStatus.isComplete
+    }
+
+    var isRecoverableFailedImport: Bool {
+        resolvedImportStatus.isFailed && hasSavedVideoReference
+    }
+
+    var isAnalyzerVisible: Bool {
+        isReviewableRecord || resolvedImportStatus.isFailed
+    }
+
     var resolvedClubType: String {
         normalizedFilename(clubType) ?? "7 Iron"
     }
@@ -872,11 +894,19 @@ final class SwingRecord {
     }
 
     var isImportComplete: Bool {
-        resolvedImportStatus.isComplete
+        isReviewableRecord
     }
 
     var isUsingLegacySingleAsset: Bool {
         normalizedFilename(reviewMasterFilename) == nil && normalizedFilename(mediaFilename) != nil
+    }
+
+    var hasSavedVideoReference: Bool {
+        preferredReviewFilename != nil
+            || preferredExportFilename != nil
+            || reviewMasterBookmark != nil
+            || mediaFileBookmark != nil
+            || exportAssetBookmark != nil
     }
 
     private func normalizedFilename(_ value: String?) -> String? {
@@ -910,9 +940,53 @@ final class SwingRecord {
         frameRate = 0
         swingFrames = []
         keyFrames = []
+        keyframeValidationStatus = .pending
         handAnchors = []
         pathPoints = []
         analysisResult = nil
+    }
+
+    func applyAnalysisOutput(
+        _ output: GarageAnalysisOutput,
+        approvedKeyFrames: [KeyFrame],
+        validationStatus: KeyframeValidationStatus
+    ) {
+        importStatus = .complete
+        frameRate = output.frameRate
+        swingFrames = output.swingFrames
+        keyFrames = approvedKeyFrames
+        keyframeValidationStatus = validationStatus
+        handAnchors = output.handAnchors
+        pathPoints = output.pathPoints
+        analysisResult = output.analysisResult
+        persistDerivedPayload(
+            GarageDerivedPayload(
+                frameRate: output.frameRate,
+                swingFrames: output.swingFrames,
+                keyFrames: approvedKeyFrames,
+                handAnchors: output.handAnchors,
+                pathPoints: output.pathPoints,
+                analysisResult: output.analysisResult
+            )
+        )
+    }
+
+    func markImportFailed(repairReason: GarageRepairReason = .importFailed) {
+        importStatus = .failed
+        exportAssetFilename = nil
+        exportAssetBookmark = nil
+        clearDerivedPayload(repairReason: repairReason)
+        clearLegacyDerivedReviewData()
+    }
+
+    @discardableResult
+    func reconcileStrandedImportIfNeeded(isActiveImportRecord: Bool) -> Bool {
+        guard resolvedImportStatus.isInFlight, isActiveImportRecord == false else {
+            return false
+        }
+
+        markImportFailed()
+        return true
     }
 
     func reviewStatus(for phase: SwingPhase) -> KeyframeValidationStatus {

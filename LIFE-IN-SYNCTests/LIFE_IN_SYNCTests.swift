@@ -65,20 +65,72 @@ struct LIFE_IN_SYNCTests {
         #expect(record.isImportComplete)
     }
 
-    @Test func garageRetryClassifierOnlyRetriesCodeNegative54() async throws {
+    @Test func swingRecordFailedImportsRemainAnalyzerVisibleAndRecoverable() async throws {
+        let record = SwingRecord(
+            title: "Failed import",
+            importStatus: .failed,
+            reviewMasterFilename: "failed-import.mov"
+        )
+        record.clearDerivedPayload(repairReason: .importFailed)
+
+        #expect(record.isImportComplete == false)
+        #expect(record.isReviewableRecord == false)
+        #expect(record.isRecoverableFailedImport)
+        #expect(record.isAnalyzerVisible)
+        #expect(record.reviewAvailability == .needsReanalysis)
+    }
+
+    @Test func swingRecordReconcilesStrandedPendingImportIntoRecoverableFailure() async throws {
+        let record = SwingRecord(
+            title: "Stranded import",
+            importStatus: .pending,
+            reviewMasterFilename: "stranded.mov"
+        )
+        record.frameRate = 30
+        record.analysisResult = makeGarageAnalysisResult(perspectivePayload: .dtl)
+
+        let didReconcile = record.reconcileStrandedImportIfNeeded(isActiveImportRecord: false)
+
+        #expect(didReconcile)
+        #expect(record.importStatus == .failed)
+        #expect(record.repairReason == .importFailed)
+        #expect(record.frameRate == 0)
+        #expect(record.analysisResult == nil)
+        #expect(record.isRecoverableFailedImport)
+    }
+
+    @Test func swingRecordLeavesActiveOrCompleteImportsUntouchedDuringReconciliation() async throws {
+        let activeRecord = SwingRecord(title: "Active import", importStatus: .retrying, reviewMasterFilename: "active.mov")
+        let completeRecord = SwingRecord(title: "Complete import", importStatus: .complete, reviewMasterFilename: "complete.mov")
+
+        #expect(activeRecord.reconcileStrandedImportIfNeeded(isActiveImportRecord: true) == false)
+        #expect(activeRecord.importStatus == .retrying)
+        #expect(completeRecord.reconcileStrandedImportIfNeeded(isActiveImportRecord: false) == false)
+        #expect(completeRecord.importStatus == .complete)
+    }
+
+    @Test func garageRetryClassifierWhitelistsTransientLocalPersistenceFailures() async throws {
         let retryError = NSError(domain: "com.apple.SwiftData", code: -54)
         let wrappedRetryError = NSError(
             domain: "Garage.Import",
             code: 1001,
             userInfo: [NSUnderlyingErrorKey: retryError]
         )
+        let connectionInterruptedError = NSError(domain: NSCocoaErrorDomain, code: 4097)
+        let sqliteLockedError = NSError(domain: "NSSQLiteErrorDomain", code: 5)
         let nonRetryError = NSError(domain: "com.apple.SwiftData", code: -1)
+        let analysisError = NSError(domain: "Garage.Analysis", code: 12)
 
         #expect(garageImportRetryErrorCode(from: retryError) == -54)
         #expect(garageImportRetryErrorCode(from: wrappedRetryError) == -54)
+        #expect(garageImportRetryErrorCode(from: connectionInterruptedError) == 4097)
+        #expect(garageImportRetryErrorCode(from: sqliteLockedError) == 5)
         #expect(garageShouldRetryImportAfterFailure(retryError))
         #expect(garageShouldRetryImportAfterFailure(wrappedRetryError))
+        #expect(garageShouldRetryImportAfterFailure(connectionInterruptedError))
+        #expect(garageShouldRetryImportAfterFailure(sqliteLockedError))
         #expect(garageShouldRetryImportAfterFailure(nonRetryError) == false)
+        #expect(garageShouldRetryImportAfterFailure(analysisError) == false)
     }
 
     @Test func garageProgressUpdatesTrackSampledFrameTotals() async throws {
