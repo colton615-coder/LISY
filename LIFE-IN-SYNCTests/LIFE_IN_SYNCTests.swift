@@ -133,6 +133,128 @@ struct LIFE_IN_SYNCTests {
         #expect(garageShouldRetryImportAfterFailure(analysisError) == false)
     }
 
+    @Test func garageRetryHelperRetriesExactlyOnceForRetryableFailure() async throws {
+        let retryError = NSError(domain: "com.apple.SwiftData", code: -54)
+        var attempts = 0
+        var sleptNanoseconds: [UInt64] = []
+
+        let result: Int = try await garagePerformRetryableOperation(
+            delayNanoseconds: 123,
+            sleep: { value in
+                sleptNanoseconds.append(value)
+            }
+        ) {
+            attempts += 1
+            if attempts == 1 {
+                throw retryError
+            }
+            return 42
+        }
+
+        #expect(result == 42)
+        #expect(attempts == 2)
+        #expect(sleptNanoseconds == [123])
+    }
+
+    @Test func garageRetryHelperDoesNotRetryNonRetryableFailure() async throws {
+        let nonRetryError = NSError(domain: "Garage.Analysis", code: 12)
+        var attempts = 0
+        var sleptNanoseconds: [UInt64] = []
+
+        do {
+            let _: Int = try await garagePerformRetryableOperation(
+                delayNanoseconds: 123,
+                sleep: { value in
+                    sleptNanoseconds.append(value)
+                }
+            ) {
+                attempts += 1
+                throw nonRetryError
+            }
+            Issue.record("Expected non-retryable error to escape immediately.")
+        } catch {
+            #expect((error as NSError).domain == nonRetryError.domain)
+            #expect((error as NSError).code == nonRetryError.code)
+        }
+
+        #expect(attempts == 1)
+        #expect(sleptNanoseconds.isEmpty)
+    }
+
+    @Test func garageRetryHelperStopsAfterSecondRetryableFailure() async throws {
+        let retryError = NSError(domain: "com.apple.SwiftData", code: -54)
+        var attempts = 0
+
+        do {
+            let _: Int = try await garagePerformRetryableOperation(
+                delayNanoseconds: 123,
+                sleep: { _ in }
+            ) {
+                attempts += 1
+                throw retryError
+            }
+            Issue.record("Expected second retryable failure to surface.")
+        } catch {
+            #expect(garageImportRetryErrorCode(from: error) == -54)
+        }
+
+        #expect(attempts == 2)
+    }
+
+    @Test func swingRecordPendingImportFactoryStagesLocalReviewMasterAndExportHydration() async throws {
+        let reviewMasterURL = URL(fileURLWithPath: "/tmp/review-master.mov")
+        let reviewBookmark = Data([1, 2, 3])
+        let exportBookmark = Data([4, 5, 6])
+        let record = SwingRecord.pendingImportRecord(
+            title: "Pending import",
+            clubType: "Driver",
+            isLeftHanded: true,
+            cameraAngle: "Face On",
+            reviewMasterURL: reviewMasterURL,
+            reviewMasterBookmark: reviewBookmark
+        )
+
+        #expect(record.importStatus == .pending)
+        #expect(record.reviewMasterFilename == "review-master.mov")
+        #expect(record.mediaFilename == "review-master.mov")
+        #expect(record.reviewMasterBookmark == reviewBookmark)
+        #expect(record.isImportComplete == false)
+
+        record.hydrateExportDerivative(
+            filename: "review-master-export.mp4",
+            bookmark: exportBookmark
+        )
+
+        #expect(record.exportAssetFilename == "review-master-export.mp4")
+        #expect(record.exportAssetBookmark == exportBookmark)
+        #expect(record.reviewMasterFilename == "review-master.mov")
+        #expect(record.importStatus == .pending)
+    }
+
+    @Test func swingRecordRepairFailureHelperPreservesRecoverableFailedImports() async throws {
+        let record = SwingRecord(
+            title: "Repair target",
+            importStatus: .complete,
+            reviewMasterFilename: "repair.mov",
+            frameRate: 60,
+            swingFrames: makeSyntheticSwingFrames(),
+            keyFrames: GarageAnalysisPipeline.detectKeyFrames(from: makeSyntheticSwingFrames()),
+            analysisResult: makeGarageAnalysisResult(perspectivePayload: .dtl)
+        )
+
+        record.markRepairFailure(
+            fallbackStatus: .failed,
+            repairReason: .importFailed
+        )
+
+        #expect(record.importStatus == .failed)
+        #expect(record.repairReason == .importFailed)
+        #expect(record.swingFrames.isEmpty)
+        #expect(record.keyFrames.isEmpty)
+        #expect(record.analysisResult == nil)
+        #expect(record.isRecoverableFailedImport)
+    }
+
     @Test func garageProgressUpdatesTrackSampledFrameTotals() async throws {
         let timestamps = GarageAnalysisPipeline.sampledTimestamps(
             duration: CMTime(seconds: 0.12, preferredTimescale: 600),
@@ -620,11 +742,14 @@ struct LIFE_IN_SYNCTests {
         )
 
         let report = GarageInsights.report(for: record)
+        let hasAnchorCoverageMetric = report.metrics.contains { metric in
+            metric.title == "Anchor Coverage" && metric.value == "100%"
+        }
 
         #expect(report.isReady)
         #expect(report.metrics.contains(where: { $0.title == "Tempo" }))
         #expect(report.metrics.contains(where: { $0.title == "Impact Return" }))
-        #expect(report.metrics.contains(where: { $0.title == "Anchor Coverage" && $0.value == "100%" }))
+        #expect(hasAnchorCoverageMetric)
         #expect(report.highlights.contains(where: { $0.contains("tempo profile") }))
     }
 

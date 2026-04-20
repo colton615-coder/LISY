@@ -51,7 +51,7 @@ private enum GarageReviewSurface {
     case summary
 }
 
-private enum GarageImportPresentationState: Equatable {
+enum GarageImportPresentationState: Equatable {
     case idle
     case preparing
     case analyzing(step: GarageAnalysisProgressStep, frameCount: Int = 0, totalFrames: Int = 0)
@@ -296,7 +296,7 @@ private enum GarageRoute: Equatable {
     }
 }
 
-private struct GaragePreFlightSelection: Equatable {
+struct GaragePreFlightSelection: Equatable {
     var clubType: String = "7 Iron"
     var isLeftHanded: Bool = false
     var cameraAngle: String = "Down the Line"
@@ -353,7 +353,7 @@ func garageNormalizedTrimWindow(start: Double, end: Double, duration: Double) ->
     return lowerBound...upperBound
 }
 
-private extension GaragePreFlightSelection {
+extension GaragePreFlightSelection {
     var trimDuration: Double {
         max(trimEndSeconds - trimStartSeconds, 0)
     }
@@ -416,7 +416,7 @@ private extension KeyframeValidationStatus {
     }
 }
 
-private func garageRecordSelectionKey(for record: SwingRecord) -> String {
+func garageRecordSelectionKey(for record: SwingRecord) -> String {
     String(describing: record.persistentModelID)
 }
 
@@ -487,50 +487,6 @@ private func garageIsRetryableImportNSError(_ error: NSError) -> Bool {
         return error.code == 16
     default:
         return false
-    }
-}
-
-private func garageDiscardDetachedExportDerivative(at exportURL: URL) {
-    guard FileManager.default.fileExists(atPath: exportURL.path) else {
-        return
-    }
-
-    try? FileManager.default.removeItem(at: exportURL)
-}
-
-private func garageBackfillExportDerivative(
-    using modelContainer: ModelContainer,
-    recordID: PersistentIdentifier,
-    reviewMasterURL: URL
-) async {
-    guard let exportURL = await GarageMediaStore.createExportDerivative(from: reviewMasterURL) else {
-        return
-    }
-
-    let backgroundContext = ModelContext(modelContainer)
-
-    guard let savedRecord = backgroundContext.model(for: recordID) as? SwingRecord else {
-        garageDiscardDetachedExportDerivative(at: exportURL)
-        return
-    }
-
-    let exportBookmark = GarageMediaStore.bookmarkData(for: exportURL)
-    savedRecord.exportAssetFilename = exportURL.lastPathComponent
-    savedRecord.exportAssetBookmark = exportBookmark
-
-    do {
-        try backgroundContext.save()
-    } catch {
-        garageDiscardDetachedExportDerivative(at: exportURL)
-
-        let nsError = error as NSError
-        let exportMessage = [
-            "Garage export derivative save failed.",
-            "domain=\(nsError.domain)",
-            "code=\(nsError.code)",
-            nsError.localizedDescription
-        ].joined(separator: " ")
-        NSLog("%@", exportMessage)
     }
 }
 
@@ -662,12 +618,9 @@ struct GarageView: View {
     @Query(sort: \SwingRecord.createdAt, order: .reverse) private var swingRecords: [SwingRecord]
     @State private var isShowingAddRecord = false
     @State private var selectedVideoItem: PhotosPickerItem?
-    @State private var pendingImportMovie: GaragePickedMovie?
-    @State private var pendingPreFlightSelection = GaragePreFlightSelection()
+    @StateObject private var importCoordinator = GarageImportCoordinator()
     @State private var route: GarageRoute = .hub
     @State private var hasNormalizedPersistedAnalysisPayloads = false
-    @State private var activeImportRecordID: PersistentIdentifier?
-    @State private var recoverableImportRecordID: PersistentIdentifier?
 
     private var reviewableSwingRecords: [SwingRecord] {
         swingRecords.filter(\.isReviewableRecord)
@@ -698,7 +651,13 @@ struct GarageView: View {
         )
         .onChange(of: selectedVideoItem) { _, newItem in
             guard let newItem else { return }
-            prepareSelectedVideo(newItem)
+            selectedVideoItem = nil
+            importCoordinator.prepareSelectedVideo(
+                newItem,
+                inferredSelection: inferredImportSelection(),
+                modelContext: modelContext,
+                navigation: importNavigation
+            )
         }
         .onChange(of: reviewableSwingRecords.map(garageRecordSelectionKey)) { _, keys in
             handleReviewableRecordKeysChange(keys)
@@ -733,161 +692,28 @@ struct GarageView: View {
         )
     }
 
+    private var importNavigation: GarageImportNavigation {
+        GarageImportNavigation(
+            showAnalyzerRecords: {
+                route = .analyzer(.records)
+            },
+            openReview: { reviewKey in
+                hasNormalizedPersistedAnalysisPayloads = true
+                route = .analyzer(.review(recordKey: reviewKey))
+            },
+            presentPicker: {
+                route = .analyzer(.records)
+                isShowingAddRecord = true
+            },
+            didMutatePersistence: {
+                hasNormalizedPersistedAnalysisPayloads = true
+            }
+        )
+    }
+
     private var importPresentationState: GarageImportPresentationState? {
-        guard case let .analyzer(analyzerRoute) = route,
-              case let .importing(state) = analyzerRoute.normalizedForPresentation else {
-            return nil
-        }
-        return state
-    }
-
-    @MainActor
-    private func presentImportProgress(_ progress: GarageAnalysisProgressUpdate) {
-        route = .analyzer(
-            .importing(
-                .analyzing(
-                    step: progress.step,
-                    frameCount: progress.frameCount,
-                    totalFrames: progress.totalFrames
-                )
-            )
-        )
-    }
-
-    @MainActor
-    private func pendingRecord(for identifier: PersistentIdentifier?) -> SwingRecord? {
-        guard let identifier else { return nil }
-        return modelContext.registeredModel(for: identifier) ?? (modelContext.model(for: identifier) as? SwingRecord)
-    }
-
-    private func performGarageAnalysis(at reviewMasterURL: URL) async throws -> GarageAnalysisOutput {
-        try await GarageAnalysisPipeline.analyzeVideo(at: reviewMasterURL) { progress in
-            await MainActor.run {
-                presentImportProgress(progress)
-            }
-        }
-    }
-
-    private func analyzeReviewMaster(
-        at reviewMasterURL: URL,
-        recordID: PersistentIdentifier?
-    ) async throws -> GarageAnalysisOutput {
-        do {
-            return try await performGarageAnalysis(at: reviewMasterURL)
-        } catch {
-            guard garageShouldRetryImportAfterFailure(error) else {
-                throw error
-            }
-
-            await MainActor.run {
-                if let record = pendingRecord(for: recordID) {
-                    record.importStatus = .retrying
-                    try? modelContext.save()
-                }
-            }
-
-            try await Task.sleep(nanoseconds: 500_000_000)
-            return try await performGarageAnalysis(at: reviewMasterURL)
-        }
-    }
-
-    @MainActor
-    private func finalizeImportedRecord(
-        recordID: PersistentIdentifier?,
-        output: GarageAnalysisOutput
-    ) throws -> String {
-        presentImportProgress(
-            GarageAnalysisProgressUpdate(
-                step: .savingSwing,
-                frameCount: max(output.swingFrames.count, 0),
-                totalFrames: max(output.swingFrames.count, 0)
-            )
-        )
-
-        let approvedKeyFrames = GarageAnalysisPipeline.autoApprovedKeyFrames(
-            from: output.keyFrames,
-            reviewReport: output.handPathReviewReport
-        )
-        let validationStatus: KeyframeValidationStatus = output.handPathReviewReport.requiresManualReview ? .pending : .approved
-
-        guard let savedRecord = pendingRecord(for: recordID) else {
-            throw GarageImportError.unableToLoadSelection
-        }
-
-        savedRecord.applyAnalysisOutput(
-            output,
-            approvedKeyFrames: approvedKeyFrames,
-            validationStatus: validationStatus
-        )
-        try modelContext.save()
-
-        selectedVideoItem = nil
-        pendingImportMovie = nil
-        activeImportRecordID = nil
-        recoverableImportRecordID = nil
-
-        return garageRecordSelectionKey(for: savedRecord)
-    }
-
-    @MainActor
-    private func persistRecoverableImportFailure(
-        recordID: PersistentIdentifier?,
-        message: String
-    ) {
-        activeImportRecordID = nil
-
-        if let record = pendingRecord(for: recordID) {
-            record.markImportFailed()
-            pendingImportMovie = nil
-            recoverableImportRecordID = record.persistentModelID
-            do {
-                try modelContext.save()
-            } catch {
-                let nsError = error as NSError
-                NSLog(
-                    "%@",
-                    "Garage import failure preservation save failed. domain=\(nsError.domain) code=\(nsError.code) description=\(nsError.localizedDescription)"
-                )
-            }
-        } else {
-            recoverableImportRecordID = nil
-        }
-
-        route = .analyzer(.importing(.failure(message)))
-    }
-
-    @MainActor
-    private func persistReanalysisFailure(
-        recordID: PersistentIdentifier?,
-        fallbackStatus: GarageImportStatus,
-        repairReason: GarageRepairReason,
-        message: String
-    ) {
-        activeImportRecordID = nil
-
-        if let record = pendingRecord(for: recordID) {
-            record.importStatus = fallbackStatus
-            if fallbackStatus.isFailed {
-                record.markImportFailed(repairReason: repairReason)
-                recoverableImportRecordID = record.persistentModelID
-            } else {
-                record.clearDerivedPayload(repairReason: repairReason)
-                record.clearLegacyDerivedReviewData()
-                recoverableImportRecordID = nil
-            }
-
-            do {
-                try modelContext.save()
-            } catch {
-                let nsError = error as NSError
-                NSLog(
-                    "%@",
-                    "Garage repair failure save failed. domain=\(nsError.domain) code=\(nsError.code) description=\(nsError.localizedDescription)"
-                )
-            }
-        }
-
-        route = .analyzer(.importing(.failure(message)))
+        let state = importCoordinator.importPresentationState
+        return state.isPresented ? state : nil
     }
 
     @MainActor
@@ -925,7 +751,7 @@ struct GarageView: View {
         var didTouchPayload = false
         for record in candidates {
             if record.reconcileStrandedImportIfNeeded(
-                isActiveImportRecord: activeImportRecordID == record.persistentModelID
+                isActiveImportRecord: importCoordinator.activeImportRecordID == record.persistentModelID
             ) {
                 didTouchPayload = true
                 NSLog(
@@ -1030,7 +856,11 @@ struct GarageView: View {
                 },
                 openReview: { record in
                     if record.isRecoverableFailedImport {
-                        repairRecord(record)
+                        importCoordinator.repairRecord(
+                            record,
+                            modelContext: modelContext,
+                            navigation: importNavigation
+                        )
                     } else {
                         route = .analyzer(.review(recordKey: garageRecordSelectionKey(for: record)))
                     }
@@ -1057,7 +887,11 @@ struct GarageView: View {
                 ),
                 viewportHeight: size.height,
                 onRequestReanalysis: { record in
-                    repairRecord(record)
+                    importCoordinator.repairRecord(
+                        record,
+                        modelContext: modelContext,
+                        navigation: importNavigation
+                    )
                 },
                 onBackToRecords: {
                     route = .analyzer(.records)
@@ -1072,131 +906,15 @@ struct GarageView: View {
 
     private func dismissImportPresentation() {
         selectedVideoItem = nil
-        pendingImportMovie = nil
-        route = .analyzer(.records)
+        importCoordinator.dismissImportPresentation(navigation: importNavigation)
     }
 
     @MainActor
     private func retryImport() {
-        if let recoverableImportRecord = pendingRecord(for: recoverableImportRecordID) {
-            repairRecord(recoverableImportRecord)
-            return
-        }
-
-        if let pendingImportMovie {
-            importSelectedVideo(pendingImportMovie, selection: pendingPreFlightSelection)
-            return
-        }
-
-        if let selectedVideoItem {
-            route = .analyzer(.records)
-            prepareSelectedVideo(selectedVideoItem)
-            return
-        }
-
-        route = .analyzer(.records)
-        isShowingAddRecord = true
-    }
-
-    @MainActor
-    private func prepareSelectedVideo(_ item: PhotosPickerItem) {
-        pendingImportMovie = nil
-        recoverableImportRecordID = nil
-        route = .analyzer(.importing(.preparing))
-
-        Task {
-            do {
-                guard let movie = try await item.loadTransferable(type: GaragePickedMovie.self) else {
-                    throw GarageImportError.unableToLoadSelection
-                }
-
-                await MainActor.run {
-                    selectedVideoItem = nil
-                    let inferredSelection = inferredImportSelection()
-                    pendingPreFlightSelection = inferredSelection
-                    importSelectedVideo(movie, selection: inferredSelection)
-                }
-            } catch {
-                await MainActor.run {
-                    selectedVideoItem = nil
-                    route = .analyzer(.importing(.failure(error.localizedDescription)))
-                }
-            }
-        }
-    }
-
-    @MainActor
-    private func importSelectedVideo(_ movie: GaragePickedMovie, selection: GaragePreFlightSelection) {
-        pendingImportMovie = movie
-        pendingPreFlightSelection = selection
-        recoverableImportRecordID = nil
-        presentImportProgress(GarageAnalysisProgressUpdate(step: .loadingVideo))
-
-        let sourceMovieURL = movie.url
-        let displayName = movie.displayName
-        let clubType = selection.clubType
-        let isLeftHanded = selection.isLeftHanded
-        let cameraAngle = selection.cameraAngle
-        let modelContainer = modelContext.container
-
-        Task {
-            var pendingRecordID: PersistentIdentifier?
-
-            do {
-                let reviewMasterURL = try GarageMediaStore.persistReviewMaster(from: sourceMovieURL)
-                let resolvedTitle = garageSuggestedRecordTitle(for: displayName, fallbackURL: reviewMasterURL)
-                let reviewMasterBookmark = GarageMediaStore.bookmarkData(for: reviewMasterURL)
-
-                pendingRecordID = try await MainActor.run {
-                    presentImportProgress(GarageAnalysisProgressUpdate(step: .loadingVideo))
-
-                    let record = SwingRecord(
-                        title: resolvedTitle,
-                        importStatus: .pending,
-                        clubType: clubType,
-                        isLeftHanded: isLeftHanded,
-                        cameraAngle: cameraAngle,
-                        mediaFilename: reviewMasterURL.lastPathComponent,
-                        mediaFileBookmark: reviewMasterBookmark,
-                        reviewMasterFilename: reviewMasterURL.lastPathComponent,
-                        reviewMasterBookmark: reviewMasterBookmark,
-                        notes: ""
-                    )
-
-                    modelContext.insert(record)
-                    try modelContext.save()
-                    activeImportRecordID = record.persistentModelID
-                    return record.persistentModelID
-                }
-
-                let output = try await analyzeReviewMaster(at: reviewMasterURL, recordID: pendingRecordID)
-                let reviewKey = try await MainActor.run {
-                    try finalizeImportedRecord(recordID: pendingRecordID, output: output)
-                }
-
-                await MainActor.run {
-                    hasNormalizedPersistedAnalysisPayloads = true
-                    route = .analyzer(.review(recordKey: reviewKey))
-                }
-
-                if let recordID = pendingRecordID {
-                    Task.detached(priority: .utility) {
-                        await garageBackfillExportDerivative(
-                            using: modelContainer,
-                            recordID: recordID,
-                            reviewMasterURL: reviewMasterURL
-                        )
-                    }
-                }
-            } catch {
-                let failureMessage = garageImportFailureMessage(from: error)
-                NSLog("%@", failureMessage)
-
-                await MainActor.run {
-                    persistRecoverableImportFailure(recordID: pendingRecordID, message: failureMessage)
-                }
-            }
-        }
+        importCoordinator.retryImport(
+            modelContext: modelContext,
+            navigation: importNavigation
+        )
     }
 
     @MainActor
@@ -1210,66 +928,6 @@ struct GarageView: View {
         }
 
         return GaragePreFlightSelection()
-    }
-
-    @MainActor
-    private func repairRecord(_ record: SwingRecord) {
-        let fallbackStatus: GarageImportStatus = record.isRecoverableFailedImport ? .failed : .complete
-        let failureReason: GarageRepairReason = record.isRecoverableFailedImport ? .importFailed : .corruptedDerivedPayload
-
-        guard let reviewMasterURL = GarageMediaStore.resolvedReviewVideoURL(for: record) else {
-            record.importStatus = fallbackStatus
-            record.clearDerivedPayload(repairReason: .missingReviewVideo)
-            record.clearLegacyDerivedReviewData()
-            try? modelContext.save()
-            recoverableImportRecordID = record.isRecoverableFailedImport ? record.persistentModelID : nil
-            return
-        }
-
-        route = .analyzer(.importing(.analyzing(step: .loadingVideo, frameCount: 0, totalFrames: 0)))
-        let recordID = record.persistentModelID
-        activeImportRecordID = recordID
-        recoverableImportRecordID = nil
-
-        if record.isRecoverableFailedImport {
-            record.importStatus = .retrying
-            try? modelContext.save()
-        }
-
-        Task {
-            do {
-                let output = try await analyzeReviewMaster(at: reviewMasterURL, recordID: recordID)
-
-                await MainActor.run {
-                    do {
-                        let reviewKey = try finalizeImportedRecord(recordID: recordID, output: output)
-                        NSLog(
-                            "%@",
-                            "Garage repair completed. recordID=\(String(describing: recordID))"
-                        )
-                        route = .analyzer(.review(recordKey: reviewKey))
-                    } catch {
-                        let failureMessage = garageImportFailureMessage(from: error)
-                        persistReanalysisFailure(
-                            recordID: recordID,
-                            fallbackStatus: fallbackStatus,
-                            repairReason: failureReason,
-                            message: failureMessage
-                        )
-                    }
-                }
-            } catch {
-                let failureMessage = garageImportFailureMessage(from: error)
-                await MainActor.run {
-                    persistReanalysisFailure(
-                        recordID: recordID,
-                        fallbackStatus: fallbackStatus,
-                        repairReason: failureReason,
-                        message: failureMessage
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -6084,7 +5742,7 @@ private struct GarageEmptyStateView: View {
     }
 }
 
-private func garageSuggestedRecordTitle(for filename: String, fallbackURL: URL) -> String {
+func garageSuggestedRecordTitle(for filename: String, fallbackURL: URL) -> String {
     let preferredName = filename.isEmpty ? fallbackURL.lastPathComponent : filename
     let stem = URL(filePath: preferredName).deletingPathExtension().lastPathComponent
         .replacingOccurrences(of: "_", with: " ")
@@ -7329,7 +6987,7 @@ private struct GarageCommandCenterView: View {
     }
 }
 
-private struct GaragePickedMovie: Transferable {
+struct GaragePickedMovie: Transferable {
     let url: URL
     let displayName: String
 
@@ -7353,7 +7011,7 @@ private struct GaragePickedMovie: Transferable {
     }
 }
 
-private enum GarageImportError: LocalizedError {
+enum GarageImportError: LocalizedError {
     case unableToLoadSelection
 
     var errorDescription: String? {

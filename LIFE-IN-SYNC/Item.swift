@@ -768,6 +768,28 @@ final class SwingRecord {
         self.repairReasonCode = repairReason?.rawValue
     }
 
+    static func pendingImportRecord(
+        title: String,
+        clubType: String,
+        isLeftHanded: Bool,
+        cameraAngle: String,
+        reviewMasterURL: URL,
+        reviewMasterBookmark: Data?
+    ) -> SwingRecord {
+        SwingRecord(
+            title: title,
+            importStatus: .pending,
+            clubType: clubType,
+            isLeftHanded: isLeftHanded,
+            cameraAngle: cameraAngle,
+            mediaFilename: reviewMasterURL.lastPathComponent,
+            mediaFileBookmark: reviewMasterBookmark,
+            reviewMasterFilename: reviewMasterURL.lastPathComponent,
+            reviewMasterBookmark: reviewMasterBookmark,
+            notes: ""
+        )
+    }
+
     var preferredReviewFilename: String? {
         normalizedFilename(reviewMasterFilename) ?? normalizedFilename(mediaFilename)
     }
@@ -969,6 +991,29 @@ final class SwingRecord {
                 analysisResult: output.analysisResult
             )
         )
+    }
+
+    func markImportRetrying() {
+        importStatus = .retrying
+    }
+
+    func markRepairFailure(
+        fallbackStatus: GarageImportStatus,
+        repairReason: GarageRepairReason
+    ) {
+        importStatus = fallbackStatus
+
+        if fallbackStatus.isFailed {
+            markImportFailed(repairReason: repairReason)
+        } else {
+            clearDerivedPayload(repairReason: repairReason)
+            clearLegacyDerivedReviewData()
+        }
+    }
+
+    func hydrateExportDerivative(filename: String, bookmark: Data?) {
+        exportAssetFilename = filename
+        exportAssetBookmark = bookmark
     }
 
     func markImportFailed(repairReason: GarageRepairReason = .importFailed) {
