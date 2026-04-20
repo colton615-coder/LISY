@@ -1,7 +1,10 @@
 # Garage Modular Preview Architecture Design
 
+> [!WARNING]
+> Historical document. Non-authoritative. Do not use for implementation.
+
 ## Status
-Approved design direction for Phase 3 of the Garage UI refactor.
+Archived historical design brief from the Garage UI refactor.
 
 ## Objective
 Refactor the large UI-only subcomponents currently nested inside `LIFE-IN-SYNC/GarageView.swift` into dedicated Garage-local files so they can render independently in Xcode Canvas with robust `#Preview` support.

@@ -1,6 +1,9 @@
 # Immediate Implementation Plan (Next 2-4 Weeks)
 
-## Status: active implementation plan (time-bound).
+> [!WARNING]
+> Historical document. Non-authoritative. Do not use for implementation.
+
+## Status: archived historical implementation plan.
 
 
 ## Objective

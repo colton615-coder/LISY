@@ -1,5 +1,9 @@
 # Garage Phase 5 Coaching Report Audit And Redesign Brief
 
+> [!WARNING]
+> Historical document. Non-authoritative. Do not use for implementation.
+
+Status: archived historical design brief.
 Date: 2026-04-19
 Module: Garage
 Scope: `GarageCoachingReportView`, `GarageCoachingPresentation`, `GarageCoaching`, `GarageReliability`, `GarageInsights`

@@ -1,6 +1,9 @@
 # Garage Module UX/UI Audit — Spec + Implementation Plan
 
-## Status: active module implementation plan (Garage-focused).
+> [!WARNING]
+> Historical document. Non-authoritative. Do not use for implementation.
+
+## Status: archived historical module implementation plan.
 
 
 ## Context

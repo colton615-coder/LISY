@@ -1,5 +1,8 @@
 # Command Center - Personal Dashboard PRD
 
+> [!WARNING]
+> Historical document. Non-authoritative. Do not use for implementation.
+
 > **Deployment Status**: ✅ Ready for Production - All mock and sample data has been cleared. The app starts with a clean slate and includes a data reset feature in Settings for users who want to start fresh.
 
 A comprehensive personal dashboard application that integrates habit tracking, financial management, task management, workout planning, AI coaching (Knox), shopping lists, calendar events, and golf swing analysis. The app features a neumorphic dark theme with glassmorphic elements, providing a modern and cohesive user experience across all modules.

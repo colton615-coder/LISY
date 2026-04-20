@@ -1,6 +1,9 @@
 # Product Direction Brief (2026-04)
 
-## Status: active supporting direction brief (extends canon, does not override).
+> [!WARNING]
+> Historical document. Non-authoritative. Do not use for implementation.
+
+## Status: archived historical direction brief.
 
 
 ## Purpose

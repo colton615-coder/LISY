@@ -1,6 +1,9 @@
 # Test Execution Blocker
 
-## Status: active incident/blocker note (as of 2026-04-02).
+> [!WARNING]
+> Historical document. Non-authoritative. Do not use for implementation.
+
+## Status: archived historical incident note.
 
 
 ## Status

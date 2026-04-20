@@ -1,7 +1,20 @@
 # ARCHITECTURE
 
-## Status: active architecture reference.
+- Status: active architecture reference
+- Authority: highest technical boundary document after the canonical product spec
+- Use when: deciding structure, routing, module ownership, persistence, or Garage analysis rules
+- If conflict, this beats: plans, briefs, runbooks, and archived design documents
+- Last reviewed: 2026-04-19
 
+## Fast Truth
+- Build one native SwiftUI app with one shared shell and eight module roots.
+- Keep SwiftData and local files as the primary data layer for v1.
+- Offline-first is the default for non-AI behavior.
+- Dashboard summarizes and routes; modules own their operational surfaces.
+- Garage analysis is on-device, deterministic, and 2D-first in the current codebase.
+- AI is a translation and assistance layer, never the primary measurement engine.
+- Trust is a first-class architecture concern: weak evidence must degrade or refuse cleanly.
+- Use one design system with module-local atmosphere, not ad hoc module-specific UI laws.
 
 ## 1. Architecture intent
 This app is a single-user personal life operating system built in SwiftUI.
@@ -10,7 +23,7 @@ The architecture must support:
 - one shared app shell
 - eight distinct modules
 - local-first persistence
-- selective backend/API use where required
+- selective backend/API use where justified
 - module-specific visual identity with one consistent system structure
 - safe AI boundaries
 
@@ -21,46 +34,52 @@ The architecture must avoid:
 - module-specific architecture drift
 
 ## 2. Core architecture principles
-- **Local-first in v1**
-- **No account/login in v1**
-- **Offline-first for non-AI features**
-- **Selective backend use**
-- **Shared shell, independent modules**
-- **One design system, different module atmospheres**
-- **AI is advisory unless explicitly confirmed by user**
-- **Flagship modules receive deeper systems than support modules**
+- Local-first in v1
+- No account or login in v1
+- Offline-first for non-AI features
+- Shared shell, independent modules
+- One design system, different module atmospheres
+- AI is advisory unless explicitly confirmed by the user
+- Flagship modules receive deeper systems than support modules
 
-### 2.1 Canonical shell + routing contract (unified)
-This section is the single routing/source-of-truth contract for shell and module navigation.
+## 3. UI architecture / design system law
+- Shared theme tokens, spacing, typography, and surface rules must anchor the UI.
+- Modules may express atmosphere, but must not invent incompatible interaction laws.
+- Premium surfaces should rely on layered materials, tactile depth, subtle inset/raised treatment, and restrained motion.
+- Electric cyan should mark primary cues, active state, or trust-critical emphasis rather than broad decoration.
+- Avoid default `List`, `Form`, or flat grouped-system styling on flagship module surfaces when a custom module surface exists.
+- Shell-level navigation and hierarchy should stay visually consistent even as module mood changes.
 
+## 4. Shell and routing contract
 - Dashboard is the root home screen.
 - Shell navigation owns module switching through the left module menu.
-- The module menu is available from dashboard and from inside modules.
-- Module switching is always a shell-level action (never buried in module detail content).
+- The module menu must remain accessible from dashboard and from inside modules.
+- Module switching is always a shell-level action.
 - Navigation is three-layer by default:
   1. app shell
-  2. current module root
+  2. module root
   3. module detail flow
-- Modules keep detail navigation inside their own boundary unless a deliberate ownership handoff exists.
+- Modules keep deep navigation inside their own boundaries unless a deliberate ownership handoff exists.
 - Dashboard is a summary lens and launcher; it must not replace module detail workflows.
-- Explicit cross-module handoffs are allowed only with clear ownership:
-  - Task ↔ Calendar scheduling links
-  - Dashboard cards launching meaningful module destinations
-- Disallowed by default:
-  - arbitrary deep links between unrelated modules
-  - universal shared tabs across all modules
-  - architecture drift that blurs module ownership
-- Canonical architecture authority lives in `docs/architecture/ARCHITECTURE.md`; planning briefs may guide sequencing but must not override this contract.
 
-## 3. App topology
+Allowed handoffs:
+- Task ↔ Calendar scheduling context
+- dashboard cards launching meaningful module destinations
+
+Disallowed by default:
+- arbitrary deep links between unrelated modules
+- universal shared tabs across all modules
+- architecture drift that blurs module ownership
+
+## 5. App topology
 The app contains:
 - one root app entry
-- one shared dashboard shell
+- one shared shell
+- one dashboard home
 - one global slide-out module menu
 - eight feature modules
-- shared platform services
-- shared persistence layer
-- selective AI/backend services
+- shared persistence and utility services
+- optional AI and backend services
 
 High-level shape:
 
@@ -68,43 +87,42 @@ High-level shape:
 App
 ├── Shell
 │   ├── Dashboard
-│   ├── Left Module Menu
+│   ├── Module Menu
 │   └── Global Navigation Context
 ├── Shared
 │   ├── Design System
-│   ├── Routing Helpers
 │   ├── Persistence
-│   ├── AI Service Layer
 │   ├── Utilities
-│   └── Domain Models
-├── Modules
-│   ├── CapitalCore
-│   ├── IronTemple
-│   ├── Garage
-│   ├── HabitStack
-│   ├── TaskProtocol
-│   ├── Calendar
-│   ├── BibleStudy
-│   └── SupplyList
-└── External
-    ├── AI APIs
-    └── Garage Analysis Backend
+│   └── Service Layer
+└── Modules
+    ├── CapitalCore
+    ├── IronTemple
+    ├── Garage
+    ├── HabitStack
+    ├── TaskProtocol
+    ├── Calendar
+    ├── BibleStudy
+    └── SupplyList
 ```
 
-## 4. Module boundary law
-Each module owns its own domain.
+## 6. Module boundary law
 
 ### Capital Core
 Owns:
-- financial audit
 - expense logging
 - budgeting
-- money insights
+- financial summaries
 
-Must not own:
+Does not own:
 - shopping list inventory
 - calendar planning
 - generic task management
+
+Current supported depth:
+- baseline v1 depth
+
+Must not imply:
+- authoritative financial advice
 
 ### Iron Temple
 Owns:
@@ -113,33 +131,37 @@ Owns:
 - workout execution
 - workout history
 
-Must not own:
+Does not own:
 - habits in general
 - medical diagnosis
 - nutrition platform scope in v1
 
+Current supported depth:
+- baseline v1 depth
+
+Must not imply:
+- medical authority or injury-safe guarantees
+
 ### Garage
 Owns:
-- swing capture/import
-- command center posture for latest score + next issue
+- swing capture and import
 - analysis qualification and import state
-- swing analysis and manual review
-- coaching feedback
-- swing records
-- issue threads
-- journal/progress history
+- deterministic 2D swing analysis
+- manual review and checkpoint review
+- overlays, notes, coaching presentation, and review history
 
-Garage module root uses a four-tab local navigation model:
-1. **Command Center** (`hub`) — latest score + critical next action
-2. **Analyzer** (`analyzer`) — import/manual review operational surface
-3. **Drills** (`drills`) — scaffolded in Phase 1
-4. **Photo-Map** (`range`) — scaffolded in Phase 1
-
-Must not own:
+Does not own:
 - generic media library
 - real-time coaching promises
 - unsupported biomechanics certainty
-- implied 3D analysis claims before the stack proves them
+
+Current supported depth:
+- baseline module depth with deeper Phase 2-ready analysis and review systems
+
+Must not imply:
+- unsupported 3D certainty
+- fabricated confidence when evidence is weak
+- confident conclusions when the review state requires reanalysis
 
 ### Habit Stack
 Owns:
@@ -149,10 +171,16 @@ Owns:
 - focused timer habits
 - streaks
 
-Must not own:
+Does not own:
 - one-time tasks
 - calendar event planning
 - workouts as a whole system
+
+Current supported depth:
+- high v1 depth
+
+Must not imply:
+- project management ownership
 
 ### Task Protocol
 Owns:
@@ -161,10 +189,16 @@ Owns:
 - deadlines
 - completion state
 
-Must not own:
+Does not own:
 - recurring habit logic
 - long calendar planning
 - full project management complexity
+
+Current supported depth:
+- high v1 depth
+
+Must not imply:
+- full project-management platform scope
 
 ### Calendar
 Owns:
@@ -173,21 +207,33 @@ Owns:
 - deadlines
 - daily agenda view
 
-Must not own:
+Does not own:
 - full task logic
 - habit logic
 - deep journaling
+
+Current supported depth:
+- high v1 depth
+
+Must not imply:
+- ownership over task or habit data models
 
 ### Bible Study
 Owns:
 - passage study
 - question/answer flow
 - notes
-- saved study history
+- study history
 
-Must not own:
+Does not own:
 - theology authority claims
 - broad life coaching outside scripture context
+
+Current supported depth:
+- baseline v1 depth
+
+Must not imply:
+- final interpretive authority
 
 ### Supply List
 Owns:
@@ -195,283 +241,133 @@ Owns:
 - category grouping
 - purchased state
 
-Must not own:
+Does not own:
 - budgeting logic
-- pantry/inventory complexity in v1
+- pantry or inventory complexity in v1
 
-## 5. Shared shell architecture
-The app shell is the controlling frame around every module.
+Current supported depth:
+- high v1 depth
 
-### Shell responsibilities
-- render dashboard home
-- expose left slide-out navigation menu
-- provide consistent top-level navigation access
-- host module entry points
-- maintain global visual structure
-- support dashboard summaries from modules
-- provide the shared module-shell scaffold for the current shell pass
-
-### Shell rules
-- all modules must feel like part of one app
-- module identity changes theme/vibe, not core UX law
-- shell-level navigation must remain stable even when module content changes
-- dashboard is the primary home
-- module shells currently use a minimal header plus a locked floating module-local dock
-
-## 6. Navigation architecture
-### Global navigation
-- Dashboard is the root home screen.
-- A top-left control opens the slide-out module menu.
-- The module menu is available from dashboard and from inside modules.
-- Module switching is a top-level navigation action.
-
-### Module navigation
-- Each module owns its own bottom tab structure.
-- Different modules may have different tab counts.
-- Current module shells must keep every local surface visible at once.
-- Modules may push deeper screens inside their own navigation stack.
-- Deeper screens stay inside that module unless a deliberate cross-module handoff exists.
-
-### Cross-module navigation rules
-Allowed examples:
-- Task deadline opens or links into Calendar context
-- Calendar item can open related task detail
-- Dashboard cards can jump into relevant module screens
-
-Disallowed by default:
-- random deep-linking between unrelated modules
-- shared tabs across all modules
-- one universal home/action/review tab pattern
+Must not imply:
+- pantry or inventory-management scope
 
 ## 7. State management strategy
-Recommended pattern:
-- **SwiftUI + MVVM-style feature state**
-- lightweight shared app state only where truly needed
-- feature-specific view models/stores inside each module
-- service injection for persistence, AI, and backend calls
+- Prefer SwiftUI with feature-scoped MVVM-style state or tightly coupled view-state wrappers.
+- Keep app-level state narrow: selected module, shell/menu state, shared theme context, and small routing aids.
+- Let each module own its own screen state, drafts, selections, filters, and session state.
+- Do not centralize the app into one giant global environment object.
 
-### State layers
-#### App-level state
-Use only for:
-- selected module context
-- shell/menu state
-- shared theme context
-- dashboard refresh triggers if needed
-
-#### Module-level state
-Each module should own:
-- screen state
-- filters
-- selection
-- drafts
-- feature-specific session state
-
-#### Session state
-Some modules need temporary runtime state:
+Temporary runtime state examples:
 - Iron Temple workout session
 - Habit Stack focused timer session
-- Garage analysis/upload state
+- Garage analysis session and review session
 - Capital Core audit flow state
 
-### Rule
-Do not use one giant global state object for the whole app.
-
 ## 8. Persistence architecture
-### v1 persistence rule
-Persist core user data locally first.
+- Persist core user data locally first.
+- Use SwiftData for primary structured persistence in v1.
+- Use local file storage only where heavier assets are required.
+- Backend persistence is optional and must not become the only source of truth for core local flows.
 
-Recommended storage split:
-- **SwiftData/Core Data** for structured app data
-- local file storage only where needed for heavier assets
-- backend persistence only when feature requirements justify it
+Recommended local persistence by module:
+- Capital Core: expenses, categories, budgets, financial summaries
+- Iron Temple: workout templates, sessions, history, preferences
+- Garage: swing records, derived analysis payloads, notes, media references, review state
+- Habit Stack: habit definitions, completion history, timer totals, streak state
+- Task Protocol: tasks, notes, priorities, due dates, completion state
+- Calendar: events, plans, deadlines, agenda entries
+- Bible Study: passages, questions, notes, study history
+- Supply List: items, categories, purchased state, recent history
 
-### Local persistence by module
-#### Capital Core
-- audit responses
-- financial profile
-- expenses
-- categories
-- budgets
-- saved insights
-- goals
+## 9. Backend and AI service strategy
+No backend is required for:
+- shell navigation
+- dashboard aggregation
+- local persistence flows
+- current Garage deterministic analysis and review pipeline
 
-#### Iron Temple
-- exercise library references
-- workout plans
-- generated plans
-- completed sessions
-- user preferences
-- history
-
-#### Garage
-- analysis metadata
-- result summaries
-- journal entries
-- progress history
-- backend job references
-- local references to video assets if retained
-
-#### Habit Stack
-- habit definitions
-- completion history
-- quantity logs
-- timer totals
-- streak state
-
-#### Task Protocol
-- tasks
-- notes
-- priority
-- due dates
-- completion state
-
-#### Calendar
-- plans
-- events
-- deadlines
-- agenda entries
-
-#### Bible Study
-- saved passages
-- questions
-- notes
-- saved AI responses
-- study history
-
-#### Supply List
-- list items
-- categories
-- purchased state
-- recent history
-
-## 9. Backend strategy
-### No backend required early for:
-- Task Protocol
-- Habit Stack
-- Calendar
-- Supply List
-- most Iron Temple persistence
-- most Capital Core logging
-
-### Backend/API required early for:
+Optional external services may support:
 - AI-generated content across modules
-- Garage upload + analysis pipeline
+- future Garage enrichment or remote processing if explicitly introduced later
 
-### Hybrid architecture rule
-The app must still work for local features when network/API services are unavailable.
+Rule:
+- the app must remain functional for local features when external services are unavailable
 
 ## 10. AI architecture
 AI is a service layer, not the source of truth for everything.
 
-### AI global rules
-- AI may generate drafts, plans, summaries, categorization, and explanations.
-- AI must not silently overwrite user data.
-- User confirmation is required before AI-created output becomes saved structured data.
-- AI failures must degrade gracefully.
-- Saved user records must remain accessible without AI availability.
+Global AI rules:
+- AI may generate drafts, plans, summaries, categorization, and explanations
+- AI must not silently overwrite user data
+- user confirmation is required before AI-created output becomes saved structured data
+- AI failures must degrade gracefully
+- saved user records must remain accessible without AI availability
 
-### Module AI responsibilities
-#### Capital Core
-- conduct audit flow
-- summarize baseline
-- suggest budgets
-- provide financial observations
+Module AI responsibilities:
+- Capital Core: audit assistance, summaries, advisory observations
+- Iron Temple: workout plan suggestions and substitutions
+- Garage: explain measured findings, translate metrics into coaching language, map findings into curated drills
+- Bible Study: explain passages, summarize themes, support reflection
+- Supply List: categorize messy item input without inventing items
 
-Rule:
-- advisory only
-- not authoritative financial advice
-
-#### Iron Temple
-- generate workout plans
-- propose substitutions
-- tailor to goals/preferences
-
-Rule:
-- user must approve before save
-
-#### Garage
-- capture qualification and evidence gating
-- explain measured results
-- translate metrics into coaching language
-- map findings into curated drills and practice plans
-
-Rule:
+Garage-specific AI rule:
 - AI is not the primary measurement engine
 - AI must remain traceable and refusal-capable when evidence is weak
 
-#### Bible Study
-- explain passages
-- answer study questions
-- summarize themes
-- support reflection
-
-Rule:
-- position as study companion, not final authority
-
-#### Supply List
-- categorize messy item input
-- tidy list groupings
-
-Rule:
-- do not invent items unless prompted
-
 ## 11. Garage analysis architecture
-Garage is special and must use a more rigorous pipeline.
+Garage uses a stricter analysis pipeline than the rest of the app.
 
-### Required pipeline
-1. user captures/imports swing evidence
-2. qualification logic scores whether the evidence is weak, acceptable, or structured high-quality
-3. only supported claim depth is unlocked for that evidence tier
-4. deterministic or structured 2D analysis extracts measurable signals
-5. structured findings, bounded metrics, checkpoints, and supported overlays are returned
-6. AI may translate those results into plain-English coaching and curated drill mapping
-7. user chooses whether to discard, retake, save as swing record, or attach to an issue thread
-8. retained results may feed journal and progress history
+Required pipeline:
+1. user captures or imports swing evidence
+2. qualification logic determines whether review depth is supported
+3. deterministic on-device 2D analysis extracts measurable signals
+4. structured findings, checkpoints, anchors, and overlays are produced
+5. review availability is surfaced honestly: ready, needs reanalysis, missing video, or unavailable
+6. AI may translate supported findings into plain-English coaching and drill framing
+7. user decides whether to retain, reanalyze, or discard the record
 
-### Why
-This creates:
-- better trust
-- reproducible outputs
-- debuggable failures
-- cleaner separation between measurement and interpretation
-- explicit control over claim depth and refusal behavior
-
-### Garage warning
-Do not make a raw “send video to LLM and hope” architecture.
-Do not imply 3D or segment-style analysis until the stack proves it.
+Trust rules:
+- do not send raw video to an LLM and pretend that is measurement
+- do not imply 3D or segment-level certainty until the stack proves it
+- overlays must degrade honestly when pose confidence is weak
+- unsupported conclusions must be refused, not softened into confident language
+- recommendations must trace back to supported findings
 
 ## 12. Dashboard aggregation architecture
 Dashboard is a summary lens, not the full operational surface of each module.
 
-### Dashboard can show
+Dashboard may show:
 - Capital Core summary
 - Habit streak progress
 - task urgency
 - today’s calendar items
 - workout prompt or recent workout
 - Garage latest analysis snapshot
-- Bible Study progress/study cue
+- Bible Study cue
 - Supply List quick count
 
-### Dashboard rule
-Only summaries and launch surfaces belong here.
-Do not recreate full module workflows on dashboard cards.
+Dashboard rule:
+- only summaries and launch surfaces belong here
+- do not recreate full module workflows on dashboard cards
 
 ## 13. Error handling law
 - Non-critical failures should not crash the app.
-- AI/network failures must show fallback states.
+- AI or network failures must show fallback states.
 - Empty states must exist for every module.
 - Partial data availability should still render usable UI.
-- Garage upload/analysis needs explicit state handling:
+- Garage must model explicit local review and analysis states such as:
   - idle
-  - uploading
-  - processing
-  - success
+  - importing
+  - analyzing
+  - ready
+  - needs reanalysis
+  - missing video
   - failed
 
-## 14. Safety / trust boundaries
+## 14. Safety and trust boundaries
+
 ### Capital Core
-- no false “financial advisor” authority
+- no false financial-advisor authority
 - suggestions must be framed as guidance
 
 ### Iron Temple
@@ -481,92 +377,42 @@ Do not recreate full module workflows on dashboard cards.
 
 ### Garage
 - no exaggerated confidence when signal quality is weak
-- metrics/confidence should be transparent
-- recommendations must trace back to supported findings
+- metrics and confidence must be transparent
+- coaching must trace back to supported findings
 - the product must be allowed to refuse unsupported conclusions
 
 ### Bible Study
 - no claims of final interpretive authority
-- should support study, not replace discernment
+- support study, not replacement of discernment
 
-## 15. Recommended folder structure
+## 15. Recommended folder guidance
+Prefer a structure that keeps shared systems separate from module-owned code:
+
 ```md
 App/
+Shell/
 Shared/
   DesignSystem/
   Models/
   Persistence/
   Services/
-    AI/
-    Backend/
   Utilities/
-Shell/
-  Dashboard/
-  ModuleMenu/
-  Navigation/
 Modules/
   CapitalCore/
-    Views/
-    ViewModels/
-    Models/
-    Services/
   IronTemple/
-    Views/
-    ViewModels/
-    Models/
-    Services/
   Garage/
-    Views/
-    ViewModels/
-    Models/
-    Services/
   HabitStack/
-    Views/
-    ViewModels/
-    Models/
-    Services/
   TaskProtocol/
-    Views/
-    ViewModels/
-    Models/
-    Services/
   Calendar/
-    Views/
-    ViewModels/
-    Models/
-    Services/
   BibleStudy/
-    Views/
-    ViewModels/
-    Models/
-    Services/
   SupplyList/
-    Views/
-    ViewModels/
-    Models/
-    Services/
 ```
 
-## 16. v1 delivery strategy
-Recommended strategy:
-1. build shared shell + dashboard + module menu
-2. establish persistence foundation
-3. implement all module entry shells
-4. deepen flagship modules first
-5. build support modules to disciplined depth
-6. refine AI integrations
-7. refine dashboard aggregation
-
-Why:
-- preserves whole-app structure
-- prevents isolated overbuilding
-- keeps flagship focus without losing app cohesion
-
-## 17. Non-negotiable architecture rules
+## 16. Non-negotiable architecture rules
 - one shared shell
 - local-first core
 - no silent AI writes
 - module boundary discipline
-- support modules stay tighter than flagship modules
 - dashboard summarizes, modules operate
-- Garage uses measured analysis first, AI interpretation second
+- support modules stay tighter than flagship modules
+- Garage uses measured analysis first and coaching interpretation second
