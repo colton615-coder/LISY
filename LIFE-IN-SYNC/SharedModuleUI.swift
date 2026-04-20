@@ -23,6 +23,65 @@ extension Color {
             opacity: Double(a) / 255
         )
     }
+
+    static let vibeBackground = ModuleTheme.garageBackground
+    static let vibeSurface = ModuleTheme.garageSurfaceInset
+}
+
+private struct GarageModalPresenter<ModalContent: View, BottomDock: View>: ViewModifier {
+    @Binding var isPresented: Bool
+    let title: String
+    @ViewBuilder let modalContent: () -> ModalContent
+    @ViewBuilder let bottomDock: () -> BottomDock
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(isPresented: $isPresented) {
+                NavigationStack {
+                    modalContent()
+                        .navigationTitle(title)
+                        .navigationBarTitleDisplayMode(.inline)
+                        .safeAreaInset(edge: .bottom, spacing: 0) {
+                            bottomDock()
+                        }
+                }
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
+    }
+}
+
+extension View {
+    func garageModal<ModalContent: View>(
+        isPresented: Binding<Bool>,
+        title: String,
+        @ViewBuilder content: @escaping () -> ModalContent
+    ) -> some View {
+        modifier(
+            GarageModalPresenter(
+                isPresented: isPresented,
+                title: title,
+                modalContent: content,
+                bottomDock: { EmptyView() }
+            )
+        )
+    }
+
+    func garageModal<ModalContent: View, BottomDock: View>(
+        isPresented: Binding<Bool>,
+        title: String,
+        @ViewBuilder content: @escaping () -> ModalContent,
+        @ViewBuilder bottomDock: @escaping () -> BottomDock
+    ) -> some View {
+        modifier(
+            GarageModalPresenter(
+                isPresented: isPresented,
+                title: title,
+                modalContent: content,
+                bottomDock: bottomDock
+            )
+        )
+    }
 }
 
 enum ModuleHubTab: String, CaseIterable, Identifiable {
