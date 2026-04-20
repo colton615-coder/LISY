@@ -1506,9 +1506,9 @@ private struct GarageAnalysisUnavailablePanel: View {
 }
 
 private struct GarageRecordMetadataEditorSheet: View {
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
+    @Binding var isPresented: Bool
     let record: SwingRecord
 
     @State private var title: String
@@ -1528,7 +1528,8 @@ private struct GarageRecordMetadataEditorSheet: View {
     private let handednessOptions: [(label: String, value: Bool)] = [("Righty", false), ("Lefty", true)]
     private let clubColumns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 3)
 
-    init(record: SwingRecord) {
+    init(isPresented: Binding<Bool>, record: SwingRecord) {
+        _isPresented = isPresented
         self.record = record
         _title = State(initialValue: record.title)
         _clubType = State(initialValue: record.resolvedClubType)
@@ -1538,43 +1539,46 @@ private struct GarageRecordMetadataEditorSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 16) {
-                    metadataFieldCard
-                    handednessCard
-                    cameraAngleCard
-                    clubGridCard
-                    notesCard
-                }
-                .padding(ModuleSpacing.large)
-                .padding(.bottom, ModuleSpacing.large)
-            }
-            .background(garageReviewBackground.ignoresSafeArea())
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Close") {
-                        dismiss()
+        Color.clear
+            .garageModal(
+                isPresented: $isPresented,
+                title: "Swing Metadata"
+            ) {
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        metadataFieldCard
+                        handednessCard
+                        cameraAngleCard
+                        clubGridCard
+                        notesCard
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(garageReviewMutedText)
+                    .padding(ModuleSpacing.large)
+                    .padding(.bottom, ModuleSpacing.large)
                 }
+                .background(Color.vibeBackground.ignoresSafeArea())
+            } bottomDock: {
+                GarageDockSurface {
+                    HStack(spacing: 12) {
+                        GarageDockWideButton(
+                            title: "Close",
+                            systemImage: "xmark",
+                            isPrimary: false,
+                            isEnabled: true,
+                            action: {
+                                isPresented = false
+                            }
+                        )
 
-                ToolbarItem(placement: .principal) {
-                    Text("Swing Metadata")
-                        .font(.system(size: 16, weight: .bold, design: .monospaced))
-                        .foregroundStyle(garageReviewReadableText)
-                }
-
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Save") {
-                        saveChanges()
+                        GarageDockWideButton(
+                            title: "Save",
+                            systemImage: "checkmark",
+                            isPrimary: true,
+                            isEnabled: true,
+                            action: saveChanges
+                        )
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(ModuleTheme.electricCyan)
                 }
             }
-        }
     }
 
     private var metadataFieldCard: some View {
@@ -1594,7 +1598,7 @@ private struct GarageRecordMetadataEditorSheet: View {
                 .background(
                     GarageInsetPanelBackground(
                         shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
-                        fill: garageReviewInsetSurface,
+                        fill: .vibeBackground,
                         stroke: Color.white.opacity(0.08)
                     )
                 )
@@ -1671,7 +1675,7 @@ private struct GarageRecordMetadataEditorSheet: View {
                             .background(
                                 GarageInsetPanelBackground(
                                     shape: RoundedRectangle(cornerRadius: 16, style: .continuous),
-                                    fill: clubType == club ? garageReviewSurface : garageReviewInsetSurface,
+                                    fill: clubType == club ? .vibeSurface : .vibeBackground,
                                     stroke: clubType == club ? ModuleTheme.electricCyan.opacity(0.42) : Color.white.opacity(0.08)
                                 )
                             )
@@ -1698,7 +1702,7 @@ private struct GarageRecordMetadataEditorSheet: View {
                 .background(
                     GarageInsetPanelBackground(
                         shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
-                        fill: garageReviewInsetSurface,
+                        fill: .vibeBackground,
                         stroke: Color.white.opacity(0.08)
                     )
                 )
@@ -1711,7 +1715,7 @@ private struct GarageRecordMetadataEditorSheet: View {
     private var panelBackground: some View {
         GarageRaisedPanelBackground(
             shape: RoundedRectangle(cornerRadius: 24, style: .continuous),
-            fill: garageReviewSurfaceDark.opacity(0.98),
+            fill: .vibeSurface,
             stroke: ModuleTheme.electricCyan.opacity(0.20),
             glow: ModuleTheme.electricCyan.opacity(0.7)
         )
@@ -1732,7 +1736,7 @@ private struct GarageRecordMetadataEditorSheet: View {
                 .background(
                     GarageInsetPanelBackground(
                         shape: shape,
-                        fill: isSelected ? garageReviewSurface : garageReviewInsetSurface,
+                        fill: isSelected ? .vibeSurface : .vibeBackground,
                         stroke: isSelected ? ModuleTheme.electricCyan.opacity(0.42) : Color.white.opacity(0.08)
                     )
                 )
@@ -1748,7 +1752,7 @@ private struct GarageRecordMetadataEditorSheet: View {
         record.notes = notes
 
         try? modelContext.save()
-        dismiss()
+        isPresented = false
     }
 }
 
@@ -2311,9 +2315,10 @@ private struct GarageFocusedReviewWorkspace: View {
                 )
             }
         }
-        .sheet(isPresented: $isShowingCompletionPlayback) {
+        .overlay {
             if let reviewVideoURL {
                 GarageSlowMotionPlaybackSheet(
+                    isPresented: $isShowingCompletionPlayback,
                     videoURL: reviewVideoURL,
                     pathSamples: fullHandPathSamples,
                     frames: swingFrames,
@@ -2322,12 +2327,16 @@ private struct GarageFocusedReviewWorkspace: View {
                 )
             }
         }
-        .sheet(isPresented: $isShowingMetadataEditor) {
-            GarageRecordMetadataEditorSheet(record: record)
+        .overlay {
+            GarageRecordMetadataEditorSheet(
+                isPresented: $isShowingMetadataEditor,
+                record: record
+            )
         }
-        .sheet(isPresented: $isShowingSkeletonPlayback) {
+        .overlay {
             if let reviewVideoURL {
                 GarageSkeletonReviewView(
+                    isPresented: $isShowingSkeletonPlayback,
                     videoURL: reviewVideoURL,
                     pathSamples: fullHandPathSamples,
                     frames: swingFrames,
@@ -4221,8 +4230,7 @@ private struct GarageCompletionPlaybackCallout: View {
 }
 
 private struct GarageSlowMotionPlaybackSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
+    @Binding var isPresented: Bool
     let videoURL: URL
     let pathSamples: [GarageHandPathSample]
     let frames: [SwingFrame]
@@ -4236,12 +4244,14 @@ private struct GarageSlowMotionPlaybackSheet: View {
     @State private var isScrubbing = false
 
     init(
+        isPresented: Binding<Bool>,
         videoURL: URL,
         pathSamples: [GarageHandPathSample],
         frames: [SwingFrame],
         syncFlow: GarageSyncFlowReport?,
         initialMode: GarageReviewMode
     ) {
+        _isPresented = isPresented
         self.videoURL = videoURL
         self.pathSamples = pathSamples
         self.frames = frames
@@ -4252,23 +4262,57 @@ private struct GarageSlowMotionPlaybackSheet: View {
     }
 
     var body: some View {
+        Color.clear
+            .garageModal(
+                isPresented: $isPresented,
+                title: initialMode == .skeleton ? "Skeleton Review" : "Review Playback"
+            ) {
+                playbackContent
+            } bottomDock: {
+                GaragePlaybackActionBar(
+                    onRecheck: {
+                        playbackController.seek(0)
+                        playbackController.startPlayback(at: selectedSpeed)
+                    },
+                    onFinish: {
+                        isPresented = false
+                    }
+                )
+            }
+            .task {
+                let metadata = await GarageMediaStore.assetMetadata(for: videoURL)
+                await MainActor.run {
+                    if let metadata {
+                        videoDisplaySize = metadata.naturalSize
+                        playbackController.updateDurationFromMetadata(metadata.duration)
+                    } else {
+                        videoDisplaySize = CGSize(width: 1, height: 1)
+                    }
+                }
+            }
+            .onAppear {
+                playbackController.startPlayback(at: selectedSpeed)
+            }
+            .onDisappear {
+                playbackController.stop()
+            }
+    }
+
+    private var playbackContent: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Review Playback")
-                        .font(.title3.weight(.medium))
-                        .foregroundStyle(AppModule.garage.theme.textPrimary)
-                    Text("Confirm motion flow before finishing.")
-                        .font(.subheadline)
-                        .foregroundStyle(AppModule.garage.theme.textSecondary)
-                }
-                Spacer()
+                Text("Confirm motion flow before finishing.")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppModule.garage.theme.textSecondary)
+
+                Spacer(minLength: 0)
+
                 Text("Approved")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(garageReviewReadableText)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(Color.white.opacity(0.1), in: Capsule())
+                    .background(Color.vibeSurface, in: Capsule())
             }
 
             ZStack {
@@ -4331,47 +4375,12 @@ private struct GarageSlowMotionPlaybackSheet: View {
             }
         }
         .padding(ModuleSpacing.large)
-        .background(garageReviewBackground.ignoresSafeArea())
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            GaragePlaybackActionBar(
-                onRecheck: {
-                    playbackController.seek(0)
-                    playbackController.startPlayback(at: selectedSpeed)
-                },
-                onFinish: dismiss.callAsFunction
-            )
-        }
-        .safeAreaInset(edge: .top) {
-            HStack {
-                Spacer()
-                Button("Close") { dismiss() }
-                    .font(.subheadline.weight(.semibold))
-                    .buttonStyle(.plain)
-                    .foregroundStyle(garageReviewMutedText)
-            }
-            .padding(.horizontal, ModuleSpacing.large)
-        }
-        .task {
-            let metadata = await GarageMediaStore.assetMetadata(for: videoURL)
-            await MainActor.run {
-                if let metadata {
-                    videoDisplaySize = metadata.naturalSize
-                    playbackController.updateDurationFromMetadata(metadata.duration)
-                } else {
-                    videoDisplaySize = CGSize(width: 1, height: 1)
-                }
-            }
-        }
-        .onAppear {
-            playbackController.startPlayback(at: selectedSpeed)
-        }
-        .onDisappear {
-            playbackController.stop()
-        }
+        .background(Color.vibeBackground.ignoresSafeArea())
     }
 }
 
 private struct GarageSkeletonReviewView: View {
+    @Binding var isPresented: Bool
     let videoURL: URL
     let pathSamples: [GarageHandPathSample]
     let frames: [SwingFrame]
@@ -4379,6 +4388,7 @@ private struct GarageSkeletonReviewView: View {
 
     var body: some View {
         GarageSlowMotionPlaybackSheet(
+            isPresented: $isPresented,
             videoURL: videoURL,
             pathSamples: pathSamples,
             frames: frames,
@@ -4865,6 +4875,7 @@ func garageSuggestedRecordTitle(for filename: String, fallbackURL: URL) -> Strin
 }
 
 private struct GaragePreFlightSheet: View {
+    @Binding var isPresented: Bool
     let movie: GaragePickedMovie
     let initialSelection: GaragePreFlightSelection
     let onClose: () -> Void
@@ -4888,11 +4899,13 @@ private struct GaragePreFlightSheet: View {
     private let clubColumns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
 
     init(
+        isPresented: Binding<Bool>,
         movie: GaragePickedMovie,
         initialSelection: GaragePreFlightSelection,
         onClose: @escaping () -> Void,
         onStartAnalysis: @escaping (GaragePreFlightSelection) -> Void
     ) {
+        _isPresented = isPresented
         self.movie = movie
         self.initialSelection = initialSelection
         self.onClose = onClose
@@ -4918,53 +4931,66 @@ private struct GaragePreFlightSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                AppModule.garage.theme.backgroundBottom
-                    .overlay(
-                        RadialGradient(
-                            colors: [
-                                ModuleTheme.electricCyan.opacity(0.16),
-                                Color.clear
-                            ],
-                            center: .top,
-                            startRadius: 40,
-                            endRadius: 360
+        Color.clear
+            .garageModal(
+                isPresented: $isPresented,
+                title: "Pre-Flight Setup"
+            ) {
+                ZStack {
+                    Color.vibeBackground
+                        .overlay(
+                            RadialGradient(
+                                colors: [
+                                    ModuleTheme.electricCyan.opacity(0.16),
+                                    Color.clear
+                                ],
+                                center: .top,
+                                startRadius: 40,
+                                endRadius: 360
+                            )
                         )
-                    )
-                    .ignoresSafeArea()
+                        .ignoresSafeArea()
 
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: ModuleSpacing.large) {
-                        headerCard
-                        previewCard
-                        handednessCard
-                        clubGridCard
-                        cameraAngleCard
-                        actionCard
+                    ScrollView(showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: ModuleSpacing.large) {
+                            headerCard
+                            previewCard
+                            handednessCard
+                            clubGridCard
+                            cameraAngleCard
+                        }
+                        .padding(ModuleSpacing.large)
+                        .padding(.bottom, ModuleSpacing.large)
                     }
-                    .padding(ModuleSpacing.large)
-                    .padding(.bottom, ModuleSpacing.large)
+                }
+            } bottomDock: {
+                GarageDockSurface {
+                    HStack(spacing: 12) {
+                        GarageDockWideButton(
+                            title: "Close",
+                            systemImage: "xmark",
+                            isPrimary: false,
+                            isEnabled: true,
+                            action: {
+                                isPresented = false
+                                onClose()
+                            }
+                        )
+
+                        GarageDockWideButton(
+                            title: "Start AI Analysis",
+                            systemImage: "play.fill",
+                            isPrimary: true,
+                            isEnabled: canStartAnalysis,
+                            action: {
+                                selection.trimStartSeconds = trimWindow.lowerBound
+                                selection.trimEndSeconds = trimWindow.upperBound
+                                onStartAnalysis(selection)
+                            }
+                        )
+                    }
                 }
             }
-            .overlay(
-                RoundedRectangle(cornerRadius: 0, style: .continuous)
-                    .stroke(ModuleTheme.electricCyan.opacity(0.42), lineWidth: 0.5)
-                    .ignoresSafeArea()
-            )
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Text("Pre-Flight")
-                        .font(.system(size: 16, weight: .bold, design: .monospaced))
-                        .foregroundStyle(Color.white)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Close", action: onClose)
-                        .font(.system(size: 14, weight: .medium, design: .monospaced))
-                        .foregroundStyle(Color.white.opacity(0.72))
-                }
-            }
-        }
         .task {
             await loadMetadata()
         }
@@ -4997,7 +5023,7 @@ private struct GaragePreFlightSheet: View {
         .background(
             GarageRaisedPanelBackground(
                 shape: RoundedRectangle(cornerRadius: 30, style: .continuous),
-                fill: garageReviewSurfaceDark.opacity(0.98),
+                fill: .vibeSurface,
                 stroke: ModuleTheme.electricCyan.opacity(0.24),
                 glow: ModuleTheme.electricCyan
             )
@@ -5060,7 +5086,7 @@ private struct GaragePreFlightSheet: View {
                         .background(
                             GarageInsetPanelBackground(
                                 shape: RoundedRectangle(cornerRadius: 16, style: .continuous),
-                                fill: garageReviewSurface,
+                                fill: .vibeSurface,
                                 stroke: Color.white.opacity(0.08)
                             )
                         )
@@ -5077,7 +5103,7 @@ private struct GaragePreFlightSheet: View {
                         .background(
                             GarageInsetPanelBackground(
                                 shape: RoundedRectangle(cornerRadius: 16, style: .continuous),
-                                fill: garageReviewSurfaceDark,
+                                fill: .vibeBackground,
                                 stroke: Color.white.opacity(0.08)
                             )
                         )
@@ -5093,7 +5119,7 @@ private struct GaragePreFlightSheet: View {
         .background(
             GarageRaisedPanelBackground(
                 shape: RoundedRectangle(cornerRadius: 30, style: .continuous),
-                fill: garageReviewSurfaceDark.opacity(0.98),
+                fill: .vibeSurface,
                 stroke: ModuleTheme.electricCyan.opacity(0.24),
                 glow: ModuleTheme.electricCyan
             )
@@ -5171,7 +5197,7 @@ private struct GaragePreFlightSheet: View {
         .background(
             GarageInsetPanelBackground(
                 shape: RoundedRectangle(cornerRadius: 24, style: .continuous),
-                fill: garageReviewSurfaceDark,
+                fill: .vibeBackground,
                 stroke: Color.white.opacity(0.07)
             )
         )
@@ -5200,7 +5226,7 @@ private struct GaragePreFlightSheet: View {
         .background(
             GarageRaisedPanelBackground(
                 shape: RoundedRectangle(cornerRadius: 24, style: .continuous),
-                fill: garageReviewSurfaceDark.opacity(0.94),
+                fill: .vibeSurface,
                 stroke: Color.white.opacity(0.07)
             )
         )
@@ -5233,7 +5259,7 @@ private struct GaragePreFlightSheet: View {
                             .background(
                                 GarageInsetPanelBackground(
                                     shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
-                                    fill: selection.clubType == club ? garageReviewSurface : garageReviewSurfaceDark,
+                                    fill: selection.clubType == club ? .vibeSurface : .vibeBackground,
                                     stroke: selection.clubType == club ? ModuleTheme.electricCyan.opacity(0.42) : Color.white.opacity(0.08)
                                 )
                             )
@@ -5259,7 +5285,7 @@ private struct GaragePreFlightSheet: View {
         .background(
             GarageRaisedPanelBackground(
                 shape: RoundedRectangle(cornerRadius: 30, style: .continuous),
-                fill: garageReviewSurfaceDark.opacity(0.98),
+                fill: .vibeSurface,
                 stroke: ModuleTheme.electricCyan.opacity(0.24),
                 glow: ModuleTheme.electricCyan
             )
@@ -5289,7 +5315,7 @@ private struct GaragePreFlightSheet: View {
         .background(
             GarageRaisedPanelBackground(
                 shape: RoundedRectangle(cornerRadius: 24, style: .continuous),
-                fill: garageReviewSurfaceDark.opacity(0.94),
+                fill: .vibeSurface,
                 stroke: Color.white.opacity(0.07)
             )
         )
@@ -5334,7 +5360,7 @@ private struct GaragePreFlightSheet: View {
         .background(
             GarageRaisedPanelBackground(
                 shape: RoundedRectangle(cornerRadius: 30, style: .continuous),
-                fill: garageReviewSurfaceDark.opacity(0.98),
+                fill: .vibeSurface,
                 stroke: ModuleTheme.electricCyan.opacity(0.26),
                 glow: ModuleTheme.electricCyan
             )
@@ -5397,7 +5423,7 @@ private struct GaragePreFlightSheet: View {
         .background(
             GarageInsetPanelBackground(
                 shape: RoundedRectangle(cornerRadius: 16, style: .continuous),
-                fill: garageReviewSurfaceDark,
+                fill: .vibeBackground,
                 stroke: Color.white.opacity(0.08)
             )
         )
@@ -5421,7 +5447,7 @@ private struct GaragePreFlightSheet: View {
                 .background(
                     GarageInsetPanelBackground(
                         shape: shape,
-                        fill: isSelected ? garageReviewSurface : garageReviewSurfaceDark,
+                        fill: isSelected ? .vibeSurface : .vibeBackground,
                         stroke: isSelected ? ModuleTheme.electricCyan.opacity(0.4) : Color.white.opacity(0.08)
                     )
                 )

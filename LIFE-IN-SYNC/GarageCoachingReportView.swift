@@ -38,10 +38,8 @@ struct GarageCoachingReportView: View {
         .task(id: presentation.animationIdentityKey) {
             await animateEntranceIfNeeded()
         }
-        .sheet(item: $detailTarget) { target in
-            GarageCoachingDetailSheet(target: target)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
+        .overlay {
+            GarageCoachingDetailModal(detailTarget: $detailTarget)
         }
     }
 
@@ -623,6 +621,37 @@ private struct GarageCoachingBadge: View {
     }
 }
 
+private struct GarageCoachingDetailModal: View {
+    @Binding var detailTarget: GarageCoachingDetailTarget?
+
+    private var isPresented: Binding<Bool> {
+        Binding(
+            get: { detailTarget != nil },
+            set: { newValue in
+                if newValue == false {
+                    detailTarget = nil
+                }
+            }
+        )
+    }
+
+    private var modalTitle: String {
+        detailTarget?.title ?? "Analysis Detail"
+    }
+
+    var body: some View {
+        Color.clear
+            .garageModal(
+                isPresented: isPresented,
+                title: modalTitle
+            ) {
+                if let detailTarget {
+                    GarageCoachingDetailSheet(target: detailTarget)
+                }
+            }
+    }
+}
+
 private struct GarageCoachingDetailSheet: View {
     let target: GarageCoachingDetailTarget
 
@@ -676,7 +705,7 @@ private struct GarageCoachingDetailSheet: View {
                         .background(
                             GarageInsetPanelBackground(
                                 shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
-                                fill: garageReviewInsetSurface
+                                fill: .vibeSurface
                             )
                         )
                     }
@@ -684,7 +713,7 @@ private struct GarageCoachingDetailSheet: View {
             }
             .padding(20)
         }
-        .background(garageReviewBackground.ignoresSafeArea())
+        .background(Color.vibeBackground.ignoresSafeArea())
     }
 }
 
