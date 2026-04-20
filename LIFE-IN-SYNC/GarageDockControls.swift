@@ -44,7 +44,7 @@ struct GarageDockWideButton: View {
     var body: some View {
         Button {
             guard isEnabled else { return }
-            garageTriggerImpact(isPrimary ? .medium : .light)
+            garageTriggerImpact(impactWeight)
             action()
         } label: {
             HStack(spacing: 12) {
@@ -66,6 +66,10 @@ struct GarageDockWideButton: View {
         }
         .buttonStyle(.plain)
         .disabled(isEnabled == false)
+    }
+
+    private var impactWeight: GarageImpactWeight {
+        isPrimary ? .medium : .light
     }
 
     private var foregroundStyle: Color {

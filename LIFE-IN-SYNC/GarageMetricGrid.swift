@@ -16,18 +16,18 @@ struct GarageStep2MetricGrid: View {
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
                     ForEach(gridMetrics) { metric in
                         GarageStep2MetricCard(metric: metric, layout: .standard)
-                            .opacity(visibleMetricIDs.contains(metric.id) ? 1 : 0)
-                            .scaleEffect(visibleMetricIDs.contains(metric.id) ? 1 : 0.985)
-                            .offset(y: visibleMetricIDs.contains(metric.id) ? 0 : 10)
+                            .opacity(isVisible(metric.id) ? 1 : 0)
+                            .scaleEffect(isVisible(metric.id) ? 1 : 0.972)
+                            .offset(y: isVisible(metric.id) ? 0 : 14)
                     }
                 }
             }
 
             if let capstoneMetric {
                 GarageStep2MetricCard(metric: capstoneMetric, layout: .capstone)
-                    .opacity(visibleMetricIDs.contains(capstoneMetric.id) ? 1 : 0)
-                    .scaleEffect(visibleMetricIDs.contains(capstoneMetric.id) ? 1 : 0.985)
-                    .offset(y: visibleMetricIDs.contains(capstoneMetric.id) ? 0 : 12)
+                    .opacity(isVisible(capstoneMetric.id) ? 1 : 0)
+                    .scaleEffect(isVisible(capstoneMetric.id) ? 1 : 0.968)
+                    .offset(y: isVisible(capstoneMetric.id) ? 0 : 18)
             }
         }
         .task(id: metricIdentityKey) {
@@ -60,6 +60,10 @@ struct GarageStep2MetricGrid: View {
         gridMetrics.map(\.id) + (capstoneMetric.map { [$0.id] } ?? [])
     }
 
+    private func isVisible(_ metricID: String) -> Bool {
+        visibleMetricIDs.contains(metricID)
+    }
+
     @MainActor
     private func animateEntranceIfNeeded() async {
         guard metricIdentityKey.isEmpty == false else { return }
@@ -69,11 +73,18 @@ struct GarageStep2MetricGrid: View {
         visibleMetricIDs = []
 
         for (index, metricID) in entranceOrderedIDs.enumerated() {
+            let isCapstone = metricID == capstoneMetric?.id
+
             if index > 0 {
-                try? await Task.sleep(nanoseconds: 58_000_000)
+                try? await Task.sleep(nanoseconds: isCapstone ? 132_000_000 : 68_000_000)
             }
 
-            let _ = withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
+            let _ = withAnimation(
+                .spring(
+                    response: isCapstone ? 0.48 : 0.42,
+                    dampingFraction: isCapstone ? 0.88 : 0.86
+                )
+            ) {
                 visibleMetricIDs.insert(metricID)
             }
         }

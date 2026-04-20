@@ -3,28 +3,109 @@ import SwiftUI
 struct GarageCoachingReportView: View {
     let presentation: GarageCoachingPresentation
 
+    @State private var isShellVisible = false
+    @State private var visibleSections: Set<GarageCoachingSection> = []
+    @State private var lastAnimatedEntranceKey = ""
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            heroCard
+            sectionCard(.hero, glow: presentation.isUnavailable ? nil : garageReviewAccent.opacity(0.35)) {
+                heroCard
+            }
 
             if presentation.snapshots.isEmpty == false {
-                sessionScroller
+                sectionCard(.sessionReadout) {
+                    sessionScroller
+                }
             }
 
             if presentation.metrics.isEmpty == false {
-                metricsSection
+                sectionCard(.signalMix) {
+                    metricsSection
+                }
             }
 
-            actionCard
+            sectionCard(.nextBestAction, stroke: garageReviewAccent.opacity(0.18)) {
+                actionCard
+            }
         }
         .padding(18)
+        .background(containerBackground)
+        .opacity(isShellVisible ? 1 : 0)
+        .scaleEffect(isShellVisible ? 1 : 0.985, anchor: .top)
+        .offset(y: isShellVisible ? 0 : 16)
+        .task(id: entranceIdentityKey) {
+            await animateEntranceIfNeeded()
+        }
+    }
+
+    private var containerBackground: some View {
+        GarageRaisedPanelBackground(
+            shape: RoundedRectangle(cornerRadius: 24, style: .continuous),
+            fill: garageReviewSurface,
+            stroke: garageReviewStroke.opacity(0.96)
+        )
+        .overlay(alignment: .top) {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [garageReviewShadowLight.opacity(0.2), .clear],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(height: 26)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        }
+    }
+
+    private var entranceIdentityKey: String {
+        [
+            presentation.headline,
+            presentation.body,
+            presentation.confidenceLabel,
+            presentation.phaseLabel,
+            presentation.nextBestAction,
+            presentation.snapshots.map(\.id).joined(separator: "::"),
+            presentation.metrics.map(\.id).joined(separator: "::"),
+            presentation.notes.joined(separator: "::")
+        ].joined(separator: "|")
+    }
+
+    private var sectionOrder: [GarageCoachingSection] {
+        var sections: [GarageCoachingSection] = [.hero]
+        if presentation.snapshots.isEmpty == false {
+            sections.append(.sessionReadout)
+        }
+        if presentation.metrics.isEmpty == false {
+            sections.append(.signalMix)
+        }
+        sections.append(.nextBestAction)
+        return sections
+    }
+
+    @ViewBuilder
+    private func sectionCard<Content: View>(
+        _ section: GarageCoachingSection,
+        stroke: Color = garageReviewStroke.opacity(0.92),
+        glow: Color? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            content()
+        }
+        .padding(16)
         .background(
-            GarageCoachingRaisedBackground(
-                cornerRadius: 24,
-                fill: ModuleTheme.garageSurface,
-                stroke: Color.white.opacity(0.05)
+            GarageRaisedPanelBackground(
+                shape: RoundedRectangle(cornerRadius: 22, style: .continuous),
+                fill: garageReviewSurfaceRaised,
+                stroke: stroke,
+                glow: glow
             )
         )
+        .opacity(visibleSections.contains(section) ? 1 : 0)
+        .scaleEffect(visibleSections.contains(section) ? 1 : 0.986, anchor: .top)
+        .offset(y: visibleSections.contains(section) ? 0 : 12)
     }
 
     private var heroCard: some View {
@@ -34,11 +115,11 @@ struct GarageCoachingReportView: View {
                     Text("Focused Analysis")
                         .font(.caption.weight(.bold))
                         .tracking(1.3)
-                        .foregroundStyle(AppModule.garage.theme.textMuted)
+                        .foregroundStyle(garageReviewMutedText)
 
                     Text(presentation.headline)
                         .font(.headline.weight(.semibold))
-                        .foregroundStyle(AppModule.garage.theme.textPrimary)
+                        .foregroundStyle(garageReviewReadableText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -51,37 +132,29 @@ struct GarageCoachingReportView: View {
                     )
                     GarageCoachingBadge(
                         title: presentation.phaseLabel.uppercased(),
-                        tint: ModuleTheme.electricCyan
+                        tint: garageReviewAccent
                     )
                 }
             }
 
             Text(presentation.body)
                 .font(.subheadline)
-                .foregroundStyle(AppModule.garage.theme.textSecondary)
+                .foregroundStyle(garageReviewMutedText)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let supportingLine = presentation.supportingLine {
                 HStack(spacing: 8) {
                     Circle()
-                        .fill(ModuleTheme.electricCyan.opacity(0.9))
+                        .fill(garageReviewAccent.opacity(0.92))
                         .frame(width: 7, height: 7)
 
                     Text(supportingLine)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppModule.garage.theme.textMuted)
+                        .foregroundStyle(garageReviewMutedText.opacity(0.96))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
-        .padding(16)
-        .background(
-            GarageCoachingRaisedBackground(
-                cornerRadius: 22,
-                fill: ModuleTheme.garageSurfaceRaised,
-                stroke: Color.white.opacity(0.05)
-            )
-        )
     }
 
     private var sessionScroller: some View {
@@ -89,7 +162,7 @@ struct GarageCoachingReportView: View {
             Text("Session Readout")
                 .font(.caption.weight(.bold))
                 .tracking(1.2)
-                .foregroundStyle(AppModule.garage.theme.textMuted)
+                .foregroundStyle(garageReviewMutedText)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
@@ -108,13 +181,13 @@ struct GarageCoachingReportView: View {
                 Text("Signal Mix")
                     .font(.caption.weight(.bold))
                     .tracking(1.2)
-                    .foregroundStyle(AppModule.garage.theme.textMuted)
+                    .foregroundStyle(garageReviewMutedText)
 
                 Spacer(minLength: 0)
 
                 Text("Deep-dive coaching cues")
                     .font(.caption.weight(.medium))
-                    .foregroundStyle(AppModule.garage.theme.textSecondary)
+                    .foregroundStyle(garageReviewMutedText.opacity(0.94))
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
             }
@@ -128,11 +201,11 @@ struct GarageCoachingReportView: View {
             Text("Next Best Action")
                 .font(.caption.weight(.bold))
                 .tracking(1.2)
-                .foregroundStyle(ModuleTheme.electricCyan)
+                .foregroundStyle(garageReviewAccent)
 
             Text(presentation.nextBestAction)
                 .font(.footnote.weight(.semibold))
-                .foregroundStyle(AppModule.garage.theme.textPrimary)
+                .foregroundStyle(garageReviewReadableText)
                 .fixedSize(horizontal: false, vertical: true)
 
             if presentation.notes.isEmpty == false {
@@ -140,46 +213,71 @@ struct GarageCoachingReportView: View {
                     ForEach(presentation.notes, id: \.self) { note in
                         HStack(alignment: .top, spacing: 10) {
                             RoundedRectangle(cornerRadius: 2, style: .continuous)
-                                .fill(Color(hex: "#FFCE52"))
+                                .fill(garageReviewPending)
                                 .frame(width: 14, height: 3)
                                 .padding(.top, 7)
 
                             Text(note)
                                 .font(.caption.weight(.medium))
-                                .foregroundStyle(AppModule.garage.theme.textSecondary)
+                                .foregroundStyle(garageReviewMutedText)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
                 .padding(14)
                 .background(
-                    GarageCoachingInsetBackground(
-                        cornerRadius: 18,
-                        fill: ModuleTheme.garageSurfaceInset
+                    GarageInsetPanelBackground(
+                        shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
+                        fill: garageReviewInsetSurface
                     )
                 )
             }
         }
-        .padding(16)
-        .background(
-            GarageCoachingRaisedBackground(
-                cornerRadius: 22,
-                fill: ModuleTheme.garageSurfaceRaised,
-                stroke: ModuleTheme.electricCyan.opacity(0.18)
-            )
-        )
     }
 
     private func badgeTint(for confidenceLabel: String) -> Color {
         switch confidenceLabel {
         case GarageReliabilityStatus.trusted.rawValue:
-            Color(hex: "#4DDE8E")
+            garageReviewApproved
         case GarageReliabilityStatus.review.rawValue:
-            Color(hex: "#FFCE52")
+            garageReviewPending
         default:
-            Color(hex: "#FF5F63")
+            garageReviewFlagged
         }
     }
+
+    @MainActor
+    private func animateEntranceIfNeeded() async {
+        guard entranceIdentityKey.isEmpty == false else { return }
+        guard lastAnimatedEntranceKey != entranceIdentityKey else { return }
+
+        lastAnimatedEntranceKey = entranceIdentityKey
+        isShellVisible = false
+        visibleSections = []
+
+        let _ = withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+            isShellVisible = true
+        }
+
+        try? await Task.sleep(nanoseconds: 95_000_000)
+
+        for (index, section) in sectionOrder.enumerated() {
+            if index > 0 {
+                try? await Task.sleep(nanoseconds: 58_000_000)
+            }
+
+            let _ = withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+                visibleSections.insert(section)
+            }
+        }
+    }
+}
+
+private enum GarageCoachingSection: String, Hashable {
+    case hero
+    case sessionReadout
+    case signalMix
+    case nextBestAction
 }
 
 private enum GarageCoachingMetricCardLayout {
@@ -195,12 +293,12 @@ private struct GarageCoachingSnapshotCard: View {
             HStack {
                 ZStack {
                     Circle()
-                        .fill(ModuleTheme.electricCyan.opacity(0.14))
+                        .fill(garageReviewAccent.opacity(0.14))
                         .frame(width: 30, height: 30)
 
                     Image(systemName: snapshot.systemImage)
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(ModuleTheme.electricCyan)
+                        .foregroundStyle(garageReviewAccent)
                 }
 
                 Spacer(minLength: 0)
@@ -208,27 +306,27 @@ private struct GarageCoachingSnapshotCard: View {
 
             Text(snapshot.title)
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(AppModule.garage.theme.textMuted)
+                .foregroundStyle(garageReviewMutedText)
                 .lineLimit(1)
 
             Text(snapshot.value)
                 .font(.title3.weight(.bold))
-                .foregroundStyle(AppModule.garage.theme.textPrimary)
+                .foregroundStyle(garageReviewReadableText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.82)
 
             Text(snapshot.caption)
                 .font(.caption2)
-                .foregroundStyle(AppModule.garage.theme.textSecondary)
+                .foregroundStyle(garageReviewMutedText.opacity(0.94))
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
         }
         .frame(width: 132, alignment: .leading)
         .padding(14)
         .background(
-            GarageCoachingInsetBackground(
-                cornerRadius: 18,
-                fill: ModuleTheme.garageSurfaceInset
+            GarageInsetPanelBackground(
+                shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
+                fill: garageReviewInsetSurface
             )
         )
     }
@@ -291,13 +389,14 @@ private struct GarageCoachingMetricCard: View {
         .padding(layout == .capstone ? 14 : 12)
         .frame(maxWidth: .infinity, minHeight: layout == .capstone ? 104 : 132, alignment: .leading)
         .background(
-            GarageCoachingInsetBackground(
-                cornerRadius: 18,
-                fill: ModuleTheme.garageSurfaceInset
+            GarageInsetPanelBackground(
+                shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
+                fill: garageReviewInsetSurface,
+                stroke: metric.status.tint.opacity(0.22)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(metric.status.tint.opacity(0.26), lineWidth: 0.9)
+                    .stroke(metric.status.tint.opacity(0.16), lineWidth: 0.8)
             )
         )
     }
@@ -319,7 +418,7 @@ private struct GarageCoachingMetricCard: View {
 
             Text(metric.value)
                 .font(.system(size: isPrimaryMetric ? 26 : 20, weight: .bold, design: .rounded))
-                .foregroundStyle(isPrimaryMetric ? ModuleTheme.electricCyan : AppModule.garage.theme.textPrimary)
+                .foregroundStyle(isPrimaryMetric ? garageReviewAccent : garageReviewReadableText)
                 .lineLimit(2)
                 .minimumScaleFactor(0.76)
 
@@ -336,7 +435,7 @@ private struct GarageCoachingMetricCard: View {
 
                         Text(metric.title)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(AppModule.garage.theme.textSecondary)
+                            .foregroundStyle(garageReviewMutedText.opacity(0.95))
                             .lineLimit(1)
                     }
 
@@ -350,7 +449,7 @@ private struct GarageCoachingMetricCard: View {
 
                 Text(metric.value)
                     .font(.system(size: 22, weight: .bold, design: .rounded))
-                    .foregroundStyle(isPrimaryMetric ? ModuleTheme.electricCyan : AppModule.garage.theme.textPrimary)
+                    .foregroundStyle(isPrimaryMetric ? garageReviewAccent : garageReviewReadableText)
                     .multilineTextAlignment(.trailing)
                     .lineLimit(2)
                     .minimumScaleFactor(0.8)
@@ -366,7 +465,7 @@ private struct GarageCoachingMetricCard: View {
 
             Text(metric.title)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(AppModule.garage.theme.textSecondary)
+                .foregroundStyle(garageReviewMutedText.opacity(0.95))
                 .lineLimit(1)
         }
     }
@@ -381,11 +480,22 @@ private struct GarageCoachingMetricCard: View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(ModuleTheme.garageTrack)
+                    .fill(garageReviewTrackFill)
+                    .overlay(
+                        Capsule()
+                            .stroke(garageReviewStroke.opacity(0.72), lineWidth: 0.8)
+                    )
 
                 Capsule()
-                    .fill(metric.status.tint)
+                    .fill(
+                        LinearGradient(
+                            colors: [metric.status.tint.opacity(0.7), metric.status.tint],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
                     .frame(width: max(proxy.size.width * metric.progress, 12))
+                    .shadow(color: metric.status.tint.opacity(0.22), radius: 6, x: 0, y: 0)
             }
         }
         .frame(height: 4)
@@ -400,7 +510,7 @@ private struct GarageCoachingBadge: View {
         Text(title)
             .font(.caption2.weight(.bold))
             .tracking(0.8)
-            .foregroundStyle(AppModule.garage.theme.textPrimary)
+            .foregroundStyle(garageReviewReadableText)
             .lineLimit(1)
             .minimumScaleFactor(0.8)
             .padding(.horizontal, 9)
@@ -410,45 +520,9 @@ private struct GarageCoachingBadge: View {
                     .fill(tint.opacity(0.10))
                     .overlay(
                         Capsule()
-                            .stroke(tint.opacity(0.38), lineWidth: 0.6)
+                            .stroke(tint.opacity(0.38), lineWidth: 0.7)
                     )
             )
-    }
-}
-
-private struct GarageCoachingRaisedBackground: View {
-    let cornerRadius: CGFloat
-    let fill: Color
-    let stroke: Color
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(fill)
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(stroke, lineWidth: 0.9)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color.white.opacity(0.04), lineWidth: 0.5)
-            )
-            .shadow(color: AppModule.garage.theme.shadowDark.opacity(0.28), radius: 18, x: 0, y: 12)
-            .shadow(color: AppModule.garage.theme.shadowLight.opacity(0.1), radius: 10, x: -3, y: -3)
-    }
-}
-
-private struct GarageCoachingInsetBackground: View {
-    let cornerRadius: CGFloat
-    let fill: Color
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(fill)
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color.white.opacity(0.05), lineWidth: 0.8)
-            )
-            .shadow(color: AppModule.garage.theme.shadowDark.opacity(0.2), radius: 10, x: 0, y: 6)
     }
 }
 
@@ -469,13 +543,152 @@ private extension GarageCoachingMetricStatus {
     var tint: Color {
         switch self {
         case .great:
-            Color(hex: "#4DDE8E")
+            garageReviewApproved
         case .good:
-            Color(hex: "#1AD0C8")
+            garageReviewAccent
         case .watch:
-            Color(hex: "#FFCE52")
+            garageReviewPending
         case .bad:
-            Color(hex: "#FF5F63")
+            garageReviewFlagged
         }
     }
+}
+
+private enum GarageCoachingReportPreviewFixture {
+    static let full = GarageCoachingPresentation(
+        title: "Coaching Notes",
+        headline: "Transition appears faster than this swing's baseline",
+        body: "The top-to-delivery handoff is outracing the lower-body sequence, so the club arrives with less time to shallow and stabilize.",
+        supportingLine: "Use this as a cue, not a final judgment",
+        confidenceLabel: GarageReliabilityStatus.trusted.rawValue,
+        phaseLabel: "Transition",
+        nextBestAction: "Rehearse two slow reps feeling your lead side clear before the hands fire, then compare that pattern against the current transition frame.",
+        notes: [
+            "The club is winning the race into the slot.",
+            "Keep the chest quieter through the first move down."
+        ],
+        snapshots: [
+            GarageCoachingPresentation.SessionSnapshot(
+                id: "score",
+                title: "Session Analysis",
+                value: "87",
+                caption: "swing score",
+                systemImage: "waveform.path.ecg.rectangle"
+            ),
+            GarageCoachingPresentation.SessionSnapshot(
+                id: "reliability",
+                title: "Reliability",
+                value: "TRUSTED",
+                caption: "signal confidence",
+                systemImage: "checkmark.shield"
+            ),
+            GarageCoachingPresentation.SessionSnapshot(
+                id: "phase",
+                title: "Focus Phase",
+                value: "Transition",
+                caption: "stability 82",
+                systemImage: "figure.golf"
+            )
+        ],
+        metrics: [
+            GarageCoachingPresentation.MetricTile(
+                id: "tempo",
+                title: "Tempo",
+                value: "3.0 : 1",
+                systemImage: "metronome",
+                status: .great,
+                progress: 0.9
+            ),
+            GarageCoachingPresentation.MetricTile(
+                id: "spine",
+                title: "Spine",
+                value: "6.8°",
+                systemImage: "angle",
+                status: .good,
+                progress: 0.76
+            ),
+            GarageCoachingPresentation.MetricTile(
+                id: "pelvis",
+                title: "Pelvis",
+                value: "1.9 in",
+                systemImage: "arrow.left.and.right",
+                status: .watch,
+                progress: 0.58
+            ),
+            GarageCoachingPresentation.MetricTile(
+                id: "reliability",
+                title: "Reliability",
+                value: "TRUSTED",
+                systemImage: "checkmark.shield",
+                status: .great,
+                progress: 0.92
+            ),
+            GarageCoachingPresentation.MetricTile(
+                id: "head",
+                title: "Head",
+                value: "Stable through delivery",
+                systemImage: "viewfinder.circle",
+                status: .good,
+                progress: 0.73
+            )
+        ],
+        isUnavailable: false
+    )
+
+    static let unavailable = GarageCoachingPresentation(
+        title: "Coaching Notes",
+        headline: "Coaching unavailable",
+        body: "Review the motion and stability metric while coaching catches up.",
+        supportingLine: nil,
+        confidenceLabel: GarageReliabilityStatus.review.rawValue,
+        phaseLabel: "Impact",
+        nextBestAction: "Re-run the review after confirming the most stable impact frame and compare the hand path against the existing marker set.",
+        notes: [],
+        snapshots: [],
+        metrics: [
+            GarageCoachingPresentation.MetricTile(
+                id: "score",
+                title: "Swing Score",
+                value: "82",
+                systemImage: "scope",
+                status: .good,
+                progress: 0.82
+            ),
+            GarageCoachingPresentation.MetricTile(
+                id: "reliability",
+                title: "Reliability",
+                value: "REVIEW",
+                systemImage: "checkmark.shield",
+                status: .watch,
+                progress: 0.58
+            )
+        ],
+        isUnavailable: true
+    )
+}
+
+private struct GarageCoachingReportPreviewSurface: View {
+    let presentation: GarageCoachingPresentation
+
+    var body: some View {
+        ScrollView {
+            GarageCoachingReportView(presentation: presentation)
+                .padding()
+        }
+        .background(garageReviewBackground.ignoresSafeArea())
+    }
+}
+
+#Preview("Garage Coaching Report · Full") {
+    PreviewScreenContainer {
+        GarageCoachingReportPreviewSurface(presentation: GarageCoachingReportPreviewFixture.full)
+    }
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Garage Coaching Report · Unavailable") {
+    PreviewScreenContainer {
+        GarageCoachingReportPreviewSurface(presentation: GarageCoachingReportPreviewFixture.unavailable)
+    }
+    .preferredColorScheme(.dark)
 }
