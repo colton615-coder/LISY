@@ -1866,270 +1866,6 @@ struct GarageReviewSummaryPresentation: Equatable {
     }
 }
 
-struct GarageCoachingPresentation: Equatable {
-    struct SessionSnapshot: Identifiable, Equatable {
-        let id: String
-        let title: String
-        let value: String
-        let caption: String
-        let systemImage: String
-    }
-
-    struct MetricTile: Identifiable, Equatable {
-        let id: String
-        let title: String
-        let value: String
-        let systemImage: String
-        let status: GarageCoachingMetricStatus
-        let progress: Double
-    }
-
-    let title: String
-    let headline: String
-    let body: String
-    let supportingLine: String?
-    let confidenceLabel: String
-    let phaseLabel: String
-    let nextBestAction: String
-    let notes: [String]
-    let snapshots: [SessionSnapshot]
-    let metrics: [MetricTile]
-    let isUnavailable: Bool
-
-    static func make(
-        report: GarageCoachingReport,
-        selectedPhase: SwingPhase,
-        reliabilityStatus: GarageReliabilityStatus,
-        scorecard: GarageSwingScorecard?,
-        stabilityScore: Int?
-    ) -> GarageCoachingPresentation {
-        let unavailable = report.cues.isEmpty
-        let primaryCue = report.cues.first
-        let rawHeadline = primaryCue?.title ?? report.headline
-
-        let headline: String
-        if rawHeadline == "Transition Looks Rushed" {
-            headline = "Transition appears faster than this swing’s baseline"
-        } else {
-            headline = rawHeadline
-        }
-
-        let body: String
-        if let primaryCue {
-            body = primaryCue.message
-        } else {
-            body = "Review the motion and stability metric while coaching catches up."
-        }
-
-        let scoreValue = scorecard.map(\.totalScore) ?? 82
-        let snapshots = [
-            SessionSnapshot(
-                id: "score",
-                title: "Session Analysis",
-                value: "\(scoreValue)",
-                caption: "swing score",
-                systemImage: "waveform.path.ecg.rectangle"
-            ),
-            SessionSnapshot(
-                id: "reliability",
-                title: "Reliability",
-                value: reliabilityStatus.rawValue.uppercased(),
-                caption: "signal confidence",
-                systemImage: "checkmark.shield"
-            ),
-            SessionSnapshot(
-                id: "phase",
-                title: "Focus Phase",
-                value: selectedPhase.reviewTitle,
-                caption: stabilityScore.map { "stability \($0)" } ?? "stability pending",
-                systemImage: "figure.golf"
-            )
-        ]
-
-        let metrics = metricTiles(
-            scorecard: scorecard,
-            reliabilityStatus: reliabilityStatus,
-            scoreValue: scoreValue,
-            selectedPhase: selectedPhase,
-            stabilityScore: stabilityScore
-        )
-
-        return GarageCoachingPresentation(
-            title: "Coaching Notes",
-            headline: unavailable ? "Coaching unavailable" : headline,
-            body: body,
-            supportingLine: unavailable ? nil : "Use this as a cue, not a final judgment",
-            confidenceLabel: reliabilityStatus.rawValue,
-            phaseLabel: selectedPhase.reviewTitle,
-            nextBestAction: report.nextBestAction,
-            notes: Array(report.blockers.prefix(2)),
-            snapshots: snapshots,
-            metrics: metrics,
-            isUnavailable: unavailable
-        )
-    }
-
-    private static func metricTiles(
-        scorecard: GarageSwingScorecard?,
-        reliabilityStatus: GarageReliabilityStatus,
-        scoreValue: Int,
-        selectedPhase: SwingPhase,
-        stabilityScore: Int?
-    ) -> [MetricTile] {
-        guard let scorecard else {
-            return [
-                MetricTile(
-                    id: "score",
-                    title: "Swing Score",
-                    value: "\(scoreValue)",
-                    systemImage: "scope",
-                    status: metricStatus(for: scoreValue),
-                    progress: normalized(scoreValue)
-                ),
-                MetricTile(
-                    id: "reliability",
-                    title: "Reliability",
-                    value: reliabilityStatus.rawValue.uppercased(),
-                    systemImage: "checkmark.shield",
-                    status: metricStatus(for: reliabilityStatus),
-                    progress: normalized(reliabilityStatus)
-                ),
-                MetricTile(
-                    id: "focus",
-                    title: "Focus",
-                    value: selectedPhase.reviewTitle,
-                    systemImage: "target",
-                    status: .good,
-                    progress: 0.66
-                ),
-                MetricTile(
-                    id: "stability",
-                    title: "Stability",
-                    value: stabilityScore.map(String.init) ?? "--",
-                    systemImage: "figure.walk",
-                    status: metricStatus(for: stabilityScore ?? 58),
-                    progress: normalized(stabilityScore ?? 58)
-                )
-            ]
-        }
-
-        let domainData = GarageSwingDomain.allCases.compactMap { domain -> MetricTile? in
-            guard let domainScore = scorecard.domainScores.first(where: { $0.id == domain.rawValue }) else {
-                return nil
-            }
-
-            return MetricTile(
-                id: domain.rawValue,
-                title: coachingMetricTitle(for: domain),
-                value: domainScore.displayValue,
-                systemImage: coachingMetricIcon(for: domain),
-                status: GarageCoachingMetricStatus(from: domainScore.grade),
-                progress: normalized(domainScore.score)
-            )
-        }
-
-        let reliabilityTile = MetricTile(
-            id: "reliability",
-            title: "Reliability",
-            value: reliabilityStatus.rawValue.uppercased(),
-            systemImage: "checkmark.shield",
-            status: metricStatus(for: reliabilityStatus),
-            progress: normalized(reliabilityStatus)
-        )
-
-        return Array((domainData + [reliabilityTile]).prefix(6))
-    }
-
-    private static func coachingMetricTitle(for domain: GarageSwingDomain) -> String {
-        switch domain {
-        case .tempo:
-            "Tempo"
-        case .spine:
-            "Spine"
-        case .pelvis:
-            "Pelvis"
-        case .knee:
-            "Knees"
-        case .head:
-            "Head"
-        }
-    }
-
-    private static func coachingMetricIcon(for domain: GarageSwingDomain) -> String {
-        switch domain {
-        case .tempo:
-            "metronome"
-        case .spine:
-            "angle"
-        case .pelvis:
-            "arrow.left.and.right"
-        case .knee:
-            "figure.walk"
-        case .head:
-            "viewfinder.circle"
-        }
-    }
-
-    private static func metricStatus(for score: Int) -> GarageCoachingMetricStatus {
-        switch score {
-        case 85...:
-            .great
-        case 70..<85:
-            .good
-        case 55..<70:
-            .watch
-        default:
-            .bad
-        }
-    }
-
-    private static func metricStatus(for reliabilityStatus: GarageReliabilityStatus) -> GarageCoachingMetricStatus {
-        switch reliabilityStatus {
-        case .trusted:
-            .great
-        case .review:
-            .watch
-        case .provisional:
-            .bad
-        }
-    }
-
-    private static func normalized(_ score: Int) -> Double {
-        min(max(Double(score) / 100, 0), 1)
-    }
-
-    private static func normalized(_ reliabilityStatus: GarageReliabilityStatus) -> Double {
-        switch reliabilityStatus {
-        case .trusted:
-            0.92
-        case .review:
-            0.68
-        case .provisional:
-            0.34
-        }
-    }
-}
-
-enum GarageCoachingMetricStatus: String, Equatable {
-    case great
-    case good
-    case watch
-    case bad
-
-    init(from grade: GarageMetricGrade) {
-        switch grade {
-        case .excellent:
-            self = .great
-        case .good:
-            self = .good
-        case .fair:
-            self = .watch
-        case .needsWork:
-            self = .bad
-        }
-    }
-}
-
 private func garageAspectFitRect(contentSize: CGSize, in container: CGRect) -> CGRect {
     guard contentSize.width > 0, contentSize.height > 0, container.width > 0, container.height > 0 else {
         return .zero
@@ -2378,7 +2114,7 @@ private struct GarageFocusedReviewWorkspace: View {
         return GarageCoachingPresentation.make(
             report: coachingReport,
             selectedPhase: selectedPhase,
-            reliabilityStatus: reliabilityReport.status,
+            reliabilityReport: reliabilityReport,
             scorecard: swingScorecard,
             stabilityScore: stabilityScore
         )
@@ -2989,14 +2725,7 @@ private struct GarageReviewSummaryControls: View {
     }
 
     private var coachingResetKey: String {
-        [
-            coachingPresentation.headline,
-            coachingPresentation.body,
-            coachingPresentation.confidenceLabel,
-            coachingPresentation.phaseLabel,
-            coachingPresentation.nextBestAction,
-            coachingPresentation.notes.joined(separator: "|")
-        ].joined(separator: "::")
+        coachingPresentation.animationIdentityKey
     }
 }
 
@@ -3126,7 +2855,7 @@ private struct GarageCoachingDisclosureCard: View {
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(garageReviewReadableText)
 
-                            Text(presentation.confidenceLabel.uppercased())
+                            Text(presentation.reliabilityStatus.rawValue.uppercased())
                                 .font(.caption2.weight(.bold))
                                 .tracking(0.8)
                                 .foregroundStyle(coachingConfidenceTint)
@@ -3147,18 +2876,18 @@ private struct GarageCoachingDisclosureCard: View {
                                 .fill(ModuleTheme.electricCyan)
                                 .frame(width: 7, height: 7)
 
-                            Text(presentation.phaseLabel)
+                            Text(presentation.phase.reviewTitle)
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(garageReviewMutedText)
                                 .lineLimit(1)
                         }
 
-                        Text(presentation.headline)
+                        Text(presentation.hero.headline)
                             .font(.headline.weight(.semibold))
                             .foregroundStyle(garageReviewReadableText)
                             .lineLimit(1)
 
-                        Text(presentation.body)
+                        Text(presentation.hero.body)
                             .font(.caption.weight(.medium))
                             .foregroundStyle(garageReviewMutedText)
                             .lineLimit(1)
@@ -3197,14 +2926,7 @@ private struct GarageCoachingDisclosureCard: View {
     }
 
     private var coachingConfidenceTint: Color {
-        switch presentation.confidenceLabel {
-        case GarageReliabilityStatus.trusted.rawValue:
-            Color(hex: "#4DDE8E")
-        case GarageReliabilityStatus.review.rawValue:
-            Color(hex: "#FFCE52")
-        default:
-            Color(hex: "#FF5F63")
-        }
+        presentation.reliabilityStatus.tint
     }
 }
 

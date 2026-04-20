@@ -334,23 +334,191 @@ final class GarageDerivedReportsXCTests: XCTestCase {
         XCTAssertEqual(GarageReviewMode.skeleton.title, "SyncFlow")
     }
 
-    func testGarageCoachingPresentationKeepsScoreAndReliabilityCardsAvailable() {
+    func testGarageCoachingPresentationReturnsReadyModeForTrustedCueDrivenSession() throws {
+        let scorecard = try XCTUnwrap(
+            GarageScorecardEngine.generate(
+                frames: makeFullBodyDTLSwingFrames(),
+                keyFrames: makeStep2KeyFrames()
+            )
+        )
+
+        let presentation = GarageCoachingPresentation.make(
+            report: GarageCoachingReport(
+                headline: "Transition Looks Rushed",
+                confidenceLabel: GarageReliabilityStatus.trusted.rawValue,
+                cues: [
+                    GarageCoachingCue(
+                        title: "Transition Looks Rushed",
+                        message: "Transition is outracing the current baseline.",
+                        severity: .caution
+                    )
+                ],
+                blockers: [],
+                nextBestAction: "Keep collecting swings."
+            ),
+            selectedPhase: .transition,
+            reliabilityReport: GarageReliabilityReport(
+                score: 92,
+                status: .trusted,
+                summary: "This swing has strong coverage across video, checkpoints, anchors, and path generation.",
+                checks: [
+                    GarageReliabilityCheck(title: "Video Source", passed: true, detail: "The original swing video is linked and readable.")
+                ]
+            ),
+            scorecard: scorecard,
+            stabilityScore: 84
+        )
+
+        XCTAssertEqual(presentation.mode, .ready)
+        XCTAssertEqual(presentation.hero.headline, "Transition appears faster than this swing's baseline")
+        XCTAssertEqual(presentation.reliabilityStatus, .trusted)
+        XCTAssertEqual(presentation.metrics.first(where: { $0.id == "reliability" })?.badgeStyle, .trust(.trusted))
+    }
+
+    func testGarageCoachingPresentationReturnsReviewModeWhenCueAndBlockersCoexist() throws {
+        let scorecard = try XCTUnwrap(
+            GarageScorecardEngine.generate(
+                frames: makeFullBodyDTLSwingFrames(),
+                keyFrames: makeStep2KeyFrames()
+            )
+        )
+
+        let presentation = GarageCoachingPresentation.make(
+            report: GarageCoachingReport(
+                headline: "Hand Path Needs Monitoring",
+                confidenceLabel: GarageReliabilityStatus.review.rawValue,
+                cues: [
+                    GarageCoachingCue(
+                        title: "Hand Path Needs Monitoring",
+                        message: "The current path shape is readable, but it still needs review.",
+                        severity: .info
+                    )
+                ],
+                blockers: ["Average pose confidence is only 62%, so detections may be noisy."],
+                nextBestAction: "Use the cues directionally, but resolve the review notes before treating them as final."
+            ),
+            selectedPhase: .impact,
+            reliabilityReport: GarageReliabilityReport(
+                score: 68,
+                status: .review,
+                summary: "This swing is usable, but one or more checks still need review before you trust the output fully.",
+                checks: [
+                    GarageReliabilityCheck(title: "Pose Confidence", passed: false, detail: "Average pose confidence is only 62%, so detections may be noisy.")
+                ]
+            ),
+            scorecard: scorecard,
+            stabilityScore: 72
+        )
+
+        XCTAssertEqual(presentation.mode, .review)
+        XCTAssertFalse(presentation.action.notes.isEmpty)
+        XCTAssertEqual(presentation.metrics.first(where: { $0.id == "reliability" })?.badgeStyle, .trust(.review))
+    }
+
+    func testGarageCoachingPresentationUsesUnavailableModeAndTruthfulMissingScore() {
         let presentation = GarageCoachingPresentation.make(
             report: GarageCoachingReport(
                 headline: "Stable session",
-                confidenceLabel: GarageReliabilityStatus.trusted.rawValue,
+                confidenceLabel: GarageReliabilityStatus.review.rawValue,
                 cues: [],
                 blockers: [],
                 nextBestAction: "Keep collecting swings."
             ),
             selectedPhase: .impact,
-            reliabilityStatus: .trusted,
+            reliabilityReport: GarageReliabilityReport(
+                score: 68,
+                status: .review,
+                summary: "This swing is usable, but one or more checks still need review before you trust the output fully.",
+                checks: [
+                    GarageReliabilityCheck(title: "Grip Coverage", passed: false, detail: "Anchor coverage or path generation is incomplete.")
+                ]
+            ),
             scorecard: nil,
             stabilityScore: 84
         )
 
-        XCTAssertEqual(presentation.snapshots.first(where: { $0.id == "score" })?.caption, "swing score")
-        XCTAssertEqual(presentation.metrics.first(where: { $0.id == "reliability" })?.value, GarageReliabilityStatus.trusted.rawValue.uppercased())
+        XCTAssertEqual(presentation.mode, .unavailable)
+        XCTAssertEqual(presentation.snapshots.first(where: { $0.id == "score" })?.value, "UNAVAILABLE")
+        XCTAssertEqual(presentation.snapshots.first(where: { $0.id == "score" })?.valueState, .unavailable)
+        XCTAssertEqual(presentation.metrics.first(where: { $0.id == "score" })?.value, "UNAVAILABLE")
+        XCTAssertNil(presentation.metrics.first(where: { $0.id == "score" })?.badgeStyle)
+        XCTAssertNil(presentation.metrics.first(where: { $0.id == "score" })?.progress)
+    }
+
+    func testGarageCoachingPresentationUsesProvisionalModeWithoutInventingStabilityGrade() {
+        let presentation = GarageCoachingPresentation.make(
+            report: GarageCoachingReport(
+                headline: "Hold interpretation until the swing is more complete.",
+                confidenceLabel: GarageReliabilityStatus.provisional.rawValue,
+                cues: [],
+                blockers: ["Anchor coverage or path generation is incomplete."],
+                nextBestAction: "Fix the failed reliability checks before using coaching cues."
+            ),
+            selectedPhase: .takeaway,
+            reliabilityReport: GarageReliabilityReport(
+                score: 34,
+                status: .provisional,
+                summary: "This swing is still provisional. Fix the failed checks before relying on the analysis.",
+                checks: [
+                    GarageReliabilityCheck(title: "Grip Coverage", passed: false, detail: "Anchor coverage or path generation is incomplete.")
+                ]
+            ),
+            scorecard: nil,
+            stabilityScore: nil
+        )
+
+        let stabilityMetric = presentation.metrics.first(where: { $0.id == "stability" })
+
+        XCTAssertEqual(presentation.mode, .provisional)
+        XCTAssertEqual(stabilityMetric?.value, "UNAVAILABLE")
+        XCTAssertNil(stabilityMetric?.badgeStyle)
+        XCTAssertNil(stabilityMetric?.progress)
+    }
+
+    func testGarageCoachingPresentationKeepsReliabilityTileAndSupportsOddMetricCounts() throws {
+        let scorecard = try XCTUnwrap(
+            GarageScorecardEngine.generate(
+                frames: makeFullBodyDTLSwingFrames(),
+                keyFrames: makeStep2KeyFrames()
+            )
+        )
+        let partialScorecard = GarageSwingScorecard(
+            timestamps: scorecard.timestamps,
+            metrics: scorecard.metrics,
+            domainScores: Array(scorecard.domainScores.dropLast()),
+            totalScore: scorecard.totalScore
+        )
+
+        let presentation = GarageCoachingPresentation.make(
+            report: GarageCoachingReport(
+                headline: "Transition Looks Rushed",
+                confidenceLabel: GarageReliabilityStatus.trusted.rawValue,
+                cues: [
+                    GarageCoachingCue(
+                        title: "Transition Looks Rushed",
+                        message: "Transition is outracing the current baseline.",
+                        severity: .caution
+                    )
+                ],
+                blockers: [],
+                nextBestAction: "Keep collecting swings."
+            ),
+            selectedPhase: .transition,
+            reliabilityReport: GarageReliabilityReport(
+                score: 92,
+                status: .trusted,
+                summary: "This swing has strong coverage across video, checkpoints, anchors, and path generation.",
+                checks: [
+                    GarageReliabilityCheck(title: "Video Source", passed: true, detail: "The original swing video is linked and readable.")
+                ]
+            ),
+            scorecard: partialScorecard,
+            stabilityScore: 84
+        )
+
+        XCTAssertEqual(presentation.metrics.count, 5)
+        XCTAssertEqual(presentation.metrics.last?.id, "reliability")
+        XCTAssertEqual(presentation.metrics.last?.badgeStyle, .trust(.trusted))
     }
 
     func testSyncFlowDetectsEarlyHandsAndMapsReleaseTimingRisk() throws {
