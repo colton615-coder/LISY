@@ -637,7 +637,12 @@ struct GarageView: View {
                 message: "Drills is planned for Phase 2. Command Center and Analyzer are active in this pass."
             )
         case .range:
-            GarageCourseMapView(bottomInset: 78)
+            GarageCourseMapView(
+                bottomInset: 78,
+                onExit: {
+                    route = .hub
+                }
+            )
         }
     }
 
