@@ -81,6 +81,28 @@ struct GarageSkeletonOverlay: View {
         return nil
     }
 
+    private var hudSeverity: GarageSkeletonHUDSeverity? {
+        guard captionTitle != nil, captionDetail != nil else { return nil }
+
+        if showsConsequence, let consequence {
+            return .critical(consequence.riskPhrase)
+        }
+
+        if syncFlow?.status == .limited {
+            return .warning("Pose tracking limited")
+        }
+
+        if let consequence, !consequence.riskPhrase.isEmpty {
+            return .warning(consequence.riskPhrase)
+        }
+
+        if syncFlow?.status == .ready {
+            return .neutral("Sequence view active")
+        }
+
+        return nil
+    }
+
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             Canvas { context, _ in
@@ -97,44 +119,15 @@ struct GarageSkeletonOverlay: View {
                 drawTruth(in: &context, currentFrame: currentFrame)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                if let captionTitle, let captionDetail {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(captionTitle)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color.white)
-                            .lineLimit(2)
-
-                        Text(captionDetail)
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(Color.white.opacity(0.82))
-                            .lineLimit(3)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.black.opacity(0.54))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                            )
-                    )
-                }
-
-                if showsConsequence, let consequence {
-                    Text(consequence.riskPhrase)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(
-                            Capsule()
-                                .fill(Color.orange.opacity(0.88))
-                        )
-                }
+            if let captionTitle, let captionDetail {
+                GarageSkeletonHUDPanel(
+                    title: captionTitle,
+                    detail: captionDetail,
+                    severity: hudSeverity
+                )
+                .padding(12)
+                .transition(.opacity)
             }
-            .padding(12)
         }
     }
 
