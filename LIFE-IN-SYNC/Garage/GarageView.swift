@@ -637,15 +637,17 @@ struct GarageView: View {
                 message: "Drills is planned for Phase 2. Command Center and Analyzer are active in this pass."
             )
         case .range:
-            GaragePendingSurface(
-                title: "Photo-Map",
-                message: "Photo-Map scaffolding is reserved for a future phase once the core tabs are validated."
-            )
+            GarageCourseMapView(bottomInset: 78)
         }
     }
 
     private var garageHubContent: some View {
-        GarageCommandCenterView(records: reviewableSwingRecords)
+        GarageCommandCenterView(
+            records: reviewableSwingRecords,
+            openCourseMap: {
+                route = .range
+            }
+        )
     }
 
     @ViewBuilder
@@ -2430,6 +2432,7 @@ private struct GarageGaugeTickMarks: View {
 
 private struct GarageCommandCenterView: View {
     let records: [SwingRecord]
+    let openCourseMap: () -> Void
 
     private let fallbackScore = 82
     private let fallbackIssueTitle = "Build stable baseline"
@@ -2467,6 +2470,7 @@ private struct GarageCommandCenterView: View {
 
             heroStatusSurface
             criticalActionSurface
+            courseMappingSurface
         }
         .padding(.bottom, 90)
     }
@@ -2557,6 +2561,49 @@ private struct GarageCommandCenterView: View {
             Text(issueDetail)
                 .font(.footnote)
                 .foregroundStyle(AppModule.garage.theme.textSecondary)
+        }
+    }
+
+    private var courseMappingSurface: some View {
+        GarageTelemetrySurface(isActive: true, cornerRadius: 22, padding: 20) {
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Course Mapping")
+                        .font(.caption.weight(.semibold))
+                        .tracking(1.2)
+                        .foregroundStyle(AppModule.garage.theme.primary)
+
+                    Text("Survey the hole before you swing")
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(AppModule.garage.theme.textPrimary)
+
+                    Text("Open the new Garage course surface for route lines, tactical nodes, and a restrained map-first planning layer.")
+                        .font(.footnote)
+                        .foregroundStyle(AppModule.garage.theme.textSecondary)
+                }
+
+                Spacer(minLength: 0)
+
+                Button {
+                    garageTriggerImpact(.medium)
+                    openCourseMap()
+                } label: {
+                    Label("Open Map", systemImage: "map.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(garageReviewCanvasFill)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 12)
+                        .background(
+                            GarageRaisedPanelBackground(
+                                shape: Capsule(),
+                                fill: garageReviewAccent,
+                                stroke: garageReviewAccent.opacity(0.35),
+                                glow: garageReviewAccent
+                            )
+                        )
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 
