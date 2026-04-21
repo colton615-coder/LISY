@@ -16,7 +16,10 @@ enum LISYModelRegistry {
         WorkoutTemplate.self,
         WorkoutSession.self,
         StudyEntry.self,
-        SwingRecord.self
+        SwingRecord.self,
+        GarageRoundSession.self,
+        GarageHoleMap.self,
+        GarageTacticalShot.self
     ]
 }
 

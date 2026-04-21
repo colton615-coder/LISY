@@ -3,6 +3,7 @@ import SwiftUI
 
 struct GarageCourseMapView: View {
     @StateObject private var model: GarageCourseMappingModel
+    @State private var tacticalEntryPresentation: GarageTacticalEntryPresentation?
 
     private let bottomInset: CGFloat
 
@@ -41,6 +42,11 @@ struct GarageCourseMapView: View {
 
                 Spacer(minLength: 0)
 
+                HStack {
+                    Spacer()
+                    tacticalEntryButton
+                }
+
                 courseStatsSheet
             }
             .padding(.horizontal, 16)
@@ -48,6 +54,14 @@ struct GarageCourseMapView: View {
             .padding(.bottom, bottomInset)
         }
         .background(ModuleTheme.garageBackground.ignoresSafeArea())
+        .sheet(item: $tacticalEntryPresentation) { presentation in
+            GarageTacticalEntryFlow(
+                session: presentation.session,
+                hole: presentation.hole
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
     }
 
     private var mapLayer: some View {
@@ -324,6 +338,65 @@ struct GarageCourseMapView: View {
             )
         )
     }
+
+    private var tacticalEntryButton: some View {
+        Button {
+            garageTriggerImpact(.medium)
+            tacticalEntryPresentation = makeTacticalEntryPresentation()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 18, weight: .bold))
+
+                Text("Log Shot")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .foregroundStyle(garageReviewCanvasFill)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+            .background(
+                GarageRaisedPanelBackground(
+                    shape: Capsule(),
+                    fill: Color.vibeElectricCyan,
+                    stroke: Color.vibeElectricCyan.opacity(0.34),
+                    glow: Color.vibeElectricCyan
+                )
+            )
+        }
+        .buttonStyle(.plain)
+        .shadow(color: Color.vibeElectricCyan.opacity(0.22), radius: 16, x: 0, y: 10)
+    }
+
+    private func makeTacticalEntryPresentation() -> GarageTacticalEntryPresentation {
+        let holeNumber = Int(model.metadata.holeLabel.filter(\.isNumber)) ?? 1
+        let yardage = model.activeRoute?.stats.totalYardage ?? 0
+
+        let session = GarageRoundSession(
+            sessionTitle: "Tactical Debrief",
+            courseName: model.metadata.courseName
+        )
+
+        let hole = GarageHoleMap(
+            holeNumber: holeNumber,
+            holeName: model.metadata.holeName,
+            par: model.metadata.par,
+            yardageLabel: yardage > 0 ? "\(yardage)" : "",
+            sourceType: .assistedWebImport,
+            sourceReference: model.metadata.courseName,
+            teeAnchor: GarageMapAnchor(kind: .tee, normalizedX: 0.5, normalizedY: 0.88),
+            fairwayCheckpointAnchor: GarageMapAnchor(kind: .fairwayCheckpoint, normalizedX: 0.5, normalizedY: 0.5),
+            greenCenterAnchor: GarageMapAnchor(kind: .greenCenter, normalizedX: 0.5, normalizedY: 0.14),
+            session: session
+        )
+
+        return GarageTacticalEntryPresentation(session: session, hole: hole)
+    }
+}
+
+private struct GarageTacticalEntryPresentation: Identifiable {
+    let id = UUID()
+    let session: GarageRoundSession
+    let hole: GarageHoleMap
 }
 
 private struct GarageCourseNodeMarker: View {

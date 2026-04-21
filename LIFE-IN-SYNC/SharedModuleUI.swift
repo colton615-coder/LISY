@@ -26,6 +26,7 @@ extension Color {
 
     static let vibeBackground = ModuleTheme.garageBackground
     static let vibeSurface = ModuleTheme.garageSurfaceInset
+    static let vibeElectricCyan = ModuleTheme.electricCyan
 }
 
 private struct GarageModalPresenter<ModalContent: View, BottomDock: View>: ViewModifier {

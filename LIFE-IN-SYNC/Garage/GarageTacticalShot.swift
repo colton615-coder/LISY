@@ -1,0 +1,51 @@
+import Foundation
+import SwiftData
+
+@Model
+final class GarageTacticalShot {
+    var id: UUID
+    var createdAt: Date
+    var updatedAt: Date
+    var sequenceIndex: Int
+    var holeNumber: Int
+    var placement: GarageShotPlacement
+    var club: GarageTacticalClub
+    var shotType: GarageTacticalShotType
+    var intendedTarget: String
+    var lieBeforeShot: GarageTacticalLie
+    var actualResult: GarageTacticalResult
+
+    var session: GarageRoundSession?
+
+    var hole: GarageHoleMap?
+
+    init(
+        id: UUID = UUID(),
+        createdAt: Date = .now,
+        updatedAt: Date = .now,
+        sequenceIndex: Int,
+        holeNumber: Int,
+        placement: GarageShotPlacement,
+        club: GarageTacticalClub,
+        shotType: GarageTacticalShotType,
+        intendedTarget: String,
+        lieBeforeShot: GarageTacticalLie,
+        actualResult: GarageTacticalResult,
+        session: GarageRoundSession? = nil,
+        hole: GarageHoleMap? = nil
+    ) {
+        self.id = id
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.sequenceIndex = sequenceIndex
+        self.holeNumber = holeNumber
+        self.placement = placement
+        self.club = club
+        self.shotType = shotType
+        self.intendedTarget = intendedTarget
+        self.lieBeforeShot = lieBeforeShot
+        self.actualResult = actualResult
+        self.session = session
+        self.hole = hole
+    }
+}
