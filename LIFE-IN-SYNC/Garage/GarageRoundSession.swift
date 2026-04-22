@@ -11,8 +11,10 @@ final class GarageRoundSession {
     var sessionDate: Date
     var notes: String
 
+    @Relationship(deleteRule: .cascade, inverse: \GarageHoleMap.session)
     var holes: [GarageHoleMap]
 
+    @Relationship(deleteRule: .cascade, inverse: \GarageTacticalShot.session)
     var shots: [GarageTacticalShot]
 
     init(

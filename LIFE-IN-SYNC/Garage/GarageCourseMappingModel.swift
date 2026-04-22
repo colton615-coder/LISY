@@ -27,15 +27,25 @@ struct GarageCourseRegion: Hashable, Codable {
     }
 }
 
+struct GarageCourseAssetDescriptor: Equatable {
+    let sourceType: GarageHoleSourceType
+    let sourceReference: String
+    let localAssetPath: String?
+    let imagePixelWidth: Double
+    let imagePixelHeight: Double
+}
+
 struct GarageCourseMetadata: Equatable {
     let courseName: String
     let holeLabel: String
     let holeName: String
     let par: Int
+    let yardageLabel: String
     let playerIntent: String
     let contextNote: String
     let dominantWind: String
     let region: GarageCourseRegion
+    let assetDescriptor: GarageCourseAssetDescriptor?
 }
 
 enum GarageCourseNodeKind: String, CaseIterable, Codable, Identifiable {
@@ -182,10 +192,18 @@ extension GarageCourseMappingModel {
             holeLabel: "Hole 14",
             holeName: "Cliffside Splitter",
             par: 4,
+            yardageLabel: "434",
             playerIntent: "Survey the safest aggressive line before committing to the tee shape.",
             contextNote: "Course Mapping is now the Garage environmental routing seam. Keep the surface tactical, compact, and local-first.",
             dominantWind: "Wind NNE 8 mph",
-            region: region
+            region: region,
+            assetDescriptor: GarageCourseAssetDescriptor(
+                sourceType: .assistedWebImport,
+                sourceReference: "https://example.com/courses/north-ridge-links/hole-14",
+                localAssetPath: nil,
+                imagePixelWidth: 1668,
+                imagePixelHeight: 2388
+            )
         )
 
         let primaryRoute = GarageCourseRoute(

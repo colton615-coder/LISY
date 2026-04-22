@@ -21,6 +21,7 @@ final class GarageHoleMap {
 
     var session: GarageRoundSession?
 
+    @Relationship(deleteRule: .cascade, inverse: \GarageTacticalShot.hole)
     var shots: [GarageTacticalShot]
 
     init(

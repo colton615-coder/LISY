@@ -47,8 +47,12 @@ struct GarageMapAnchor: Codable, Hashable, Identifiable {
 
     init(kind: GarageMapAnchorKind, normalizedX: Double, normalizedY: Double) {
         self.kind = kind
-        self.normalizedX = min(max(normalizedX, 0), 1)
-        self.normalizedY = min(max(normalizedY, 0), 1)
+        self.normalizedX = normalizedX
+        self.normalizedY = normalizedY
+    }
+
+    var isNormalizedInBounds: Bool {
+        (0 ... 1).contains(normalizedX) && (0 ... 1).contains(normalizedY)
     }
 }
 
@@ -57,8 +61,12 @@ struct GarageShotPlacement: Codable, Hashable {
     var normalizedY: Double
 
     init(normalizedX: Double, normalizedY: Double) {
-        self.normalizedX = min(max(normalizedX, 0), 1)
-        self.normalizedY = min(max(normalizedY, 0), 1)
+        self.normalizedX = normalizedX
+        self.normalizedY = normalizedY
+    }
+
+    var isNormalizedInBounds: Bool {
+        (0 ... 1).contains(normalizedX) && (0 ... 1).contains(normalizedY)
     }
 }
 

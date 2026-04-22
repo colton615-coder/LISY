@@ -10,6 +10,7 @@ import CoreGraphics
 import CoreMedia
 import CoreVideo
 import Foundation
+import SwiftData
 import Testing
 @testable import LIFE_IN_SYNC
 
@@ -44,6 +45,138 @@ struct LIFE_IN_SYNCTests {
 
         #expect(record.mediaFilename == "swing.mov")
         #expect(record.notes == "Ball started left.")
+    }
+
+    @Test func garageCourseMappingReusesTheActiveSessionLedger() async throws {
+        let container = try makeInMemoryContainer()
+        let context = container.mainContext
+        let existingSession = GarageRoundSession(
+            sessionTitle: "North Ridge Links Round",
+            courseName: "North Ridge Links"
+        )
+
+        context.insert(existingSession)
+        try context.save()
+
+        let resolvedSession = try GarageCourseMappingPersistence.resolveActiveSession(
+            for: makeCourseMetadata(),
+            in: context
+        )
+
+        #expect(resolvedSession.id == existingSession.id)
+    }
+
+    @Test func garageCourseMappingRejectsZeroDimensionHoleImports() async throws {
+        let container = try makeInMemoryContainer()
+        let context = container.mainContext
+        let session = GarageRoundSession(
+            sessionTitle: "North Ridge Links Round",
+            courseName: "North Ridge Links"
+        )
+
+        context.insert(session)
+        try context.save()
+
+        do {
+            _ = try GarageCourseMappingPersistence.resolveHole(
+                for: makeCourseMetadata(
+                    assetDescriptor: GarageCourseAssetDescriptor(
+                        sourceType: .assistedWebImport,
+                        sourceReference: "https://example.com/course/hole-14",
+                        localAssetPath: nil,
+                        imagePixelWidth: 0,
+                        imagePixelHeight: 1668
+                    )
+                ),
+                session: session,
+                in: context
+            )
+            Issue.record("Expected zero-dimension hole imports to be rejected.")
+        } catch let error as GarageCourseMappingPersistenceError {
+            #expect(error == .invalidImageDimensions(width: 0, height: 1668))
+        }
+    }
+
+    @Test func garageCourseMappingRejectsOutOfBoundsCoordinates() async throws {
+        let anchor = GarageMapAnchor(
+            kind: .tee,
+            normalizedX: 1.2,
+            normalizedY: 0.5
+        )
+        let placement = GarageShotPlacement(
+            normalizedX: 0.5,
+            normalizedY: -0.1
+        )
+
+        do {
+            try anchor.validate(fieldName: "Tee anchor")
+            Issue.record("Expected the tee anchor validation to fail.")
+        } catch let error as GarageCourseMappingPersistenceError {
+            #expect(error == .coordinateOutOfBounds(field: "Tee anchor", x: 1.2, y: 0.5))
+        }
+
+        do {
+            try placement.validate(fieldName: "Shot placement")
+            Issue.record("Expected the shot placement validation to fail.")
+        } catch let error as GarageCourseMappingPersistenceError {
+            #expect(error == .coordinateOutOfBounds(field: "Shot placement", x: 0.5, y: -0.1))
+        }
+    }
+
+    @Test func garageCourseMappingReindexesShotTimelineIntoAContiguousSequence() async throws {
+        let session = GarageRoundSession(
+            sessionTitle: "North Ridge Links Round",
+            courseName: "North Ridge Links"
+        )
+        let hole = GarageHoleMap(
+            holeNumber: 14,
+            holeName: "Cliffside Splitter",
+            par: 4,
+            yardageLabel: "434",
+            sourceType: .assistedWebImport,
+            sourceReference: "https://example.com/course/hole-14",
+            localAssetPath: nil,
+            imagePixelWidth: 1668,
+            imagePixelHeight: 2388,
+            teeAnchor: GarageMapAnchor(kind: .tee, normalizedX: 0.5, normalizedY: 0.88),
+            fairwayCheckpointAnchor: GarageMapAnchor(kind: .fairwayCheckpoint, normalizedX: 0.5, normalizedY: 0.48),
+            greenCenterAnchor: GarageMapAnchor(kind: .greenCenter, normalizedX: 0.52, normalizedY: 0.14),
+            session: session
+        )
+        let laterShot = GarageTacticalShot(
+            sequenceIndex: 5,
+            holeNumber: hole.holeNumber,
+            placement: GarageShotPlacement(normalizedX: 0.5, normalizedY: 0.66),
+            club: .driver,
+            shotType: .teeShot,
+            intendedTarget: "Center Line",
+            lieBeforeShot: .tee,
+            actualResult: .onTarget,
+            session: session,
+            hole: hole
+        )
+        let earlierShot = GarageTacticalShot(
+            sequenceIndex: 2,
+            holeNumber: hole.holeNumber,
+            placement: GarageShotPlacement(normalizedX: 0.54, normalizedY: 0.38),
+            club: .sevenIron,
+            shotType: .approach,
+            intendedTarget: "Right Window",
+            lieBeforeShot: .fairway,
+            actualResult: .rightMiss,
+            session: session,
+            hole: hole
+        )
+
+        session.holes = [hole]
+        session.shots = [laterShot, earlierShot]
+        hole.shots = [laterShot, earlierShot]
+
+        GarageCourseMappingPersistence.reindexShots(in: session)
+
+        #expect(session.shots.map(\.sequenceIndex).sorted() == [1, 2])
+        #expect(laterShot.sequenceIndex == 2)
+        #expect(earlierShot.sequenceIndex == 1)
     }
 
     @Test func swingRecordDefaultsImportStatusToComplete() async throws {
@@ -879,6 +1012,41 @@ struct LIFE_IN_SYNCTests {
         #expect(address.frameIndex < (keyFrames.first(where: { $0.phase == .takeaway })?.frameIndex ?? Int.max))
     }
 
+}
+
+@MainActor
+private func makeInMemoryContainer() throws -> ModelContainer {
+    try ModelContainer(
+        for: LISYPersistence.schema,
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+    )
+}
+
+private func makeCourseMetadata(
+    assetDescriptor: GarageCourseAssetDescriptor? = GarageCourseAssetDescriptor(
+        sourceType: .assistedWebImport,
+        sourceReference: "https://example.com/course/hole-14",
+        localAssetPath: nil,
+        imagePixelWidth: 1668,
+        imagePixelHeight: 2388
+    )
+) -> GarageCourseMetadata {
+    GarageCourseMetadata(
+        courseName: "North Ridge Links",
+        holeLabel: "Hole 14",
+        holeName: "Cliffside Splitter",
+        par: 4,
+        yardageLabel: "434",
+        playerIntent: "Survey the safest aggressive line before committing to the tee shape.",
+        contextNote: "Course Mapping stays tactical and local-first.",
+        dominantWind: "Wind NNE 8 mph",
+        region: GarageCourseRegion(
+            center: GarageMapCoordinate(latitude: 36.5686, longitude: -121.9503),
+            latitudinalMeters: 880,
+            longitudinalMeters: 880
+        ),
+        assetDescriptor: assetDescriptor
+    )
 }
 
 @MainActor

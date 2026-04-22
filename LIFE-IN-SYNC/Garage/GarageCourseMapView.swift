@@ -1,12 +1,16 @@
 import CoreLocation
 import MapKit
+import SwiftData
 import SwiftUI
 
 struct GarageCourseMapView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
 
     @StateObject private var model: GarageCourseMappingModel
     @State private var tacticalEntryPresentation: GarageTacticalEntryPresentation?
+    @State private var calibrationPresentation: GarageCourseCalibrationPresentation?
+    @State private var blockerAlert: GarageCourseMapAlert?
 
     private let bottomInset: CGFloat
     private let onExit: (() -> Void)?
@@ -72,6 +76,26 @@ struct GarageCourseMapView: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
+        .sheet(item: $calibrationPresentation) { presentation in
+            GarageCourseCalibrationSheet(
+                hole: presentation.hole,
+                onComplete: {
+                    tacticalEntryPresentation = GarageTacticalEntryPresentation(
+                        session: presentation.session,
+                        hole: presentation.hole
+                    )
+                }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+        .alert(item: $blockerAlert) { alert in
+            Alert(
+                title: Text(alert.title),
+                message: Text(alert.message),
+                dismissButton: .default(Text("OK"))
+            )
+        }
     }
 
     private var mapLayer: some View {
@@ -124,8 +148,7 @@ struct GarageCourseMapView: View {
 
     private var tacticalEntryButton: some View {
         Button {
-            garageTriggerImpact(.medium)
-            tacticalEntryPresentation = makeTacticalEntryPresentation()
+            handleLogShotTap()
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "plus.circle.fill")
@@ -154,29 +177,37 @@ struct GarageCourseMapView: View {
         .shadow(color: Color.vibeElectricCyan.opacity(0.18), radius: 16, x: 0, y: 10)
     }
 
-    private func makeTacticalEntryPresentation() -> GarageTacticalEntryPresentation {
-        let holeNumber = Int(model.metadata.holeLabel.filter(\.isNumber)) ?? 1
-        let yardage = model.activeRoute?.stats.totalYardage ?? 0
+    private func handleLogShotTap() {
+        garageTriggerImpact(.medium)
 
-        let session = GarageRoundSession(
-            sessionTitle: "Tactical Debrief",
-            courseName: model.metadata.courseName
-        )
+        do {
+            let session = try GarageCourseMappingPersistence.resolveActiveSession(
+                for: model.metadata,
+                in: modelContext
+            )
+            let hole = try GarageCourseMappingPersistence.resolveHole(
+                for: model.metadata,
+                session: session,
+                in: modelContext
+            )
 
-        let hole = GarageHoleMap(
-            holeNumber: holeNumber,
-            holeName: model.metadata.holeName,
-            par: model.metadata.par,
-            yardageLabel: yardage > 0 ? "\(yardage)" : "",
-            sourceType: .assistedWebImport,
-            sourceReference: model.metadata.courseName,
-            teeAnchor: GarageMapAnchor(kind: .tee, normalizedX: 0.5, normalizedY: 0.88),
-            fairwayCheckpointAnchor: GarageMapAnchor(kind: .fairwayCheckpoint, normalizedX: 0.5, normalizedY: 0.5),
-            greenCenterAnchor: GarageMapAnchor(kind: .greenCenter, normalizedX: 0.5, normalizedY: 0.14),
-            session: session
-        )
+            if hole.isCalibrated == false {
+                calibrationPresentation = GarageCourseCalibrationPresentation(
+                    session: session,
+                    hole: hole
+                )
+                return
+            }
 
-        return GarageTacticalEntryPresentation(session: session, hole: hole)
+            try hole.validateForShotLogging()
+            tacticalEntryPresentation = GarageTacticalEntryPresentation(
+                session: session,
+                hole: hole
+            )
+        } catch {
+            modelContext.rollback()
+            blockerAlert = GarageCourseMapAlert(error: error)
+        }
     }
 }
 
@@ -184,6 +215,33 @@ private struct GarageTacticalEntryPresentation: Identifiable {
     let id = UUID()
     let session: GarageRoundSession
     let hole: GarageHoleMap
+}
+
+private struct GarageCourseCalibrationPresentation: Identifiable {
+    let id = UUID()
+    let session: GarageRoundSession
+    let hole: GarageHoleMap
+}
+
+private struct GarageCourseMapAlert: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
+
+    init(error: Error) {
+        title = "Shot Entry Locked"
+
+        if let localizedError = error as? LocalizedError,
+           let errorDescription = localizedError.errorDescription {
+            if let recoverySuggestion = localizedError.recoverySuggestion {
+                message = "\(errorDescription) \(recoverySuggestion)"
+            } else {
+                message = errorDescription
+            }
+        } else {
+            message = (error as NSError).localizedDescription
+        }
+    }
 }
 
 private extension GarageCourseRegion {

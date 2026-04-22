@@ -55,6 +55,7 @@ struct GarageTacticalEntryFlow: View {
     @State private var currentStep: GarageTacticalEntryStep = .placement
     @State private var draft = GarageTacticalEntryDraft()
     @State private var saveErrorMessage: String?
+    @State private var saveFailureAlert: GarageTacticalEntryAlert?
 
     private let targetOptions = [
         "Center Line",
@@ -82,6 +83,16 @@ struct GarageTacticalEntryFlow: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
+        }
+        .alert(item: $saveFailureAlert) { alert in
+            Alert(
+                title: Text(alert.title),
+                message: Text(alert.message),
+                primaryButton: .default(Text("Retry")) {
+                    persistShot()
+                },
+                secondaryButton: .cancel(Text("Keep Editing"))
+            )
         }
     }
 
@@ -494,42 +505,69 @@ struct GarageTacticalEntryFlow: View {
 
         saveErrorMessage = nil
 
-        if session.modelContext == nil {
-            modelContext.insert(session)
-        }
-
-        if hole.modelContext == nil {
-            modelContext.insert(hole)
-        }
-
-        if session.holes.contains(where: { $0.id == hole.id }) == false {
-            session.holes.append(hole)
-        }
-
-        let shot = GarageTacticalShot(
-            sequenceIndex: session.shots.count + 1,
-            holeNumber: hole.holeNumber,
-            placement: draft.placement,
-            club: club,
-            shotType: shotType,
-            intendedTarget: draft.intendedTarget,
-            lieBeforeShot: lieBeforeShot,
-            actualResult: actualResult,
-            session: session,
-            hole: hole
-        )
-
-        modelContext.insert(shot)
-        session.updatedAt = .now
-        hole.updatedAt = .now
-
         do {
+            try hole.validateForShotLogging()
+            try draft.placement.validate(fieldName: "Shot placement")
+
+            if session.modelContext == nil {
+                modelContext.insert(session)
+            }
+
+            if hole.modelContext == nil {
+                modelContext.insert(hole)
+            }
+
+            if session.holes.contains(where: { $0.id == hole.id }) == false {
+                session.holes.append(hole)
+            }
+
+            let shot = GarageTacticalShot(
+                sequenceIndex: session.shots.count + 1,
+                holeNumber: hole.holeNumber,
+                placement: draft.placement,
+                club: club,
+                shotType: shotType,
+                intendedTarget: draft.intendedTarget,
+                lieBeforeShot: lieBeforeShot,
+                actualResult: actualResult,
+                session: session,
+                hole: hole
+            )
+
+            modelContext.insert(shot)
+            if session.shots.contains(where: { $0.id == shot.id }) == false {
+                session.shots.append(shot)
+            }
+            if hole.shots.contains(where: { $0.id == shot.id }) == false {
+                hole.shots.append(shot)
+            }
+
+            GarageCourseMappingPersistence.reindexShots(in: session)
             try modelContext.save()
             onSave?(shot)
             dismiss()
         } catch {
-            saveErrorMessage = "Garage could not save this tactical shot yet."
+            modelContext.rollback()
+            let message = Self.message(for: error)
+            saveErrorMessage = message
+            saveFailureAlert = GarageTacticalEntryAlert(
+                title: "Unable to Save Shot",
+                message: message
+            )
         }
+    }
+
+    private static func message(for error: Error) -> String {
+        let nsError = error as NSError
+        if let localizedError = error as? LocalizedError,
+           let errorDescription = localizedError.errorDescription {
+            if let recoverySuggestion = localizedError.recoverySuggestion {
+                return "\(errorDescription) \(recoverySuggestion)"
+            }
+            return errorDescription
+        }
+
+        return "Garage could not save this tactical shot yet. \(nsError.localizedDescription)"
     }
 }
 
@@ -661,6 +699,12 @@ extension GarageTacticalShotType: GarageTacticalSelectable {}
 extension GarageTacticalLie: GarageTacticalSelectable {}
 extension GarageTacticalResult: GarageTacticalSelectable {}
 
+private struct GarageTacticalEntryAlert: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
+}
+
 #Preview {
     let session = GarageRoundSession(
         sessionTitle: "Evening Debrief",
@@ -673,6 +717,9 @@ extension GarageTacticalResult: GarageTacticalSelectable {}
         yardageLabel: "434",
         sourceType: .assistedWebImport,
         sourceReference: "https://example.com",
+        localAssetPath: nil,
+        imagePixelWidth: 1668,
+        imagePixelHeight: 2388,
         teeAnchor: GarageMapAnchor(kind: .tee, normalizedX: 0.48, normalizedY: 0.88),
         fairwayCheckpointAnchor: GarageMapAnchor(kind: .fairwayCheckpoint, normalizedX: 0.5, normalizedY: 0.48),
         greenCenterAnchor: GarageMapAnchor(kind: .greenCenter, normalizedX: 0.52, normalizedY: 0.14),
