@@ -290,3 +290,83 @@ enum GarageTacticalResult: String, Codable, CaseIterable, Identifiable {
         }
     }
 }
+
+enum GarageShotFlightShape: String, Codable, CaseIterable, Identifiable {
+    case straight
+    case fade
+    case draw
+    case slice
+    case hook
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .straight:
+            "Straight"
+        case .fade:
+            "Fade"
+        case .draw:
+            "Draw"
+        case .slice:
+            "Slice"
+        case .hook:
+            "Hook"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .straight:
+            "arrow.up"
+        case .fade:
+            "arrow.up.right"
+        case .draw:
+            "arrow.up.left"
+        case .slice:
+            "arrow.turn.up.right"
+        case .hook:
+            "arrow.turn.up.left"
+        }
+    }
+}
+
+enum GarageShotStrikeQuality: String, Codable, CaseIterable, Identifiable {
+    case pure
+    case thin
+    case fat
+    case chunk
+    case skull
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .pure:
+            "Pure"
+        case .thin:
+            "Thin"
+        case .fat:
+            "Fat"
+        case .chunk:
+            "Chunk"
+        case .skull:
+            "Skull"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .pure:
+            "checkmark.circle"
+        case .thin:
+            "line.diagonal"
+        case .fat:
+            "arrow.down.to.line"
+        case .chunk:
+            "aqi.low"
+        case .skull:
+            "bolt.slash"
+        }
+    }
+}

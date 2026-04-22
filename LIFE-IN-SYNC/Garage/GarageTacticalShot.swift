@@ -14,6 +14,8 @@ final class GarageTacticalShot {
     var intendedTarget: String
     var lieBeforeShot: GarageTacticalLie
     var actualResult: GarageTacticalResult
+    var flightShape: GarageShotFlightShape
+    var strikeQuality: GarageShotStrikeQuality
 
     var session: GarageRoundSession?
 
@@ -31,6 +33,8 @@ final class GarageTacticalShot {
         intendedTarget: String,
         lieBeforeShot: GarageTacticalLie,
         actualResult: GarageTacticalResult,
+        flightShape: GarageShotFlightShape = .straight,
+        strikeQuality: GarageShotStrikeQuality = .pure,
         session: GarageRoundSession? = nil,
         hole: GarageHoleMap? = nil
     ) {
@@ -45,6 +49,8 @@ final class GarageTacticalShot {
         self.intendedTarget = intendedTarget
         self.lieBeforeShot = lieBeforeShot
         self.actualResult = actualResult
+        self.flightShape = flightShape
+        self.strikeQuality = strikeQuality
         self.session = session
         self.hole = hole
     }

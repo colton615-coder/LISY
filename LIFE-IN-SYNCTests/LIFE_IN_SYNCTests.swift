@@ -179,6 +179,40 @@ struct LIFE_IN_SYNCTests {
         #expect(earlierShot.sequenceIndex == 1)
     }
 
+    @Test func garageTacticalShotDefaultsTrajectoryToStraightAndPure() async throws {
+        let shot = GarageTacticalShot(
+            sequenceIndex: 1,
+            holeNumber: 14,
+            placement: GarageShotPlacement(normalizedX: 0.5, normalizedY: 0.6),
+            club: .driver,
+            shotType: .teeShot,
+            intendedTarget: "Center Line",
+            lieBeforeShot: .tee,
+            actualResult: .onTarget
+        )
+
+        #expect(shot.flightShape == .straight)
+        #expect(shot.strikeQuality == .pure)
+    }
+
+    @Test func garageTacticalShotStoresCustomTrajectoryClassification() async throws {
+        let shot = GarageTacticalShot(
+            sequenceIndex: 2,
+            holeNumber: 14,
+            placement: GarageShotPlacement(normalizedX: 0.42, normalizedY: 0.3),
+            club: .sevenIron,
+            shotType: .approach,
+            intendedTarget: "Right Window",
+            lieBeforeShot: .fairway,
+            actualResult: .rightMiss,
+            flightShape: .fade,
+            strikeQuality: .thin
+        )
+
+        #expect(shot.flightShape == .fade)
+        #expect(shot.strikeQuality == .thin)
+    }
+
     @Test func swingRecordDefaultsImportStatusToComplete() async throws {
         let record = SwingRecord(title: "Baseline import")
 
