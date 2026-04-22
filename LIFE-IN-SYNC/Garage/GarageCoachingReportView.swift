@@ -1,12 +1,16 @@
 import SwiftUI
+import UIKit
 
 struct GarageCoachingReportView: View {
     let presentation: GarageCoachingPresentation
+    var isExportingReport: Bool = false
+    var onDownloadFullReport: () -> Void = {}
 
     @State private var isShellVisible = false
     @State private var visibleSections: Set<GarageCoachingSection> = []
     @State private var lastAnimatedEntranceKey = ""
     @State private var detailTarget: GarageCoachingDetailTarget?
+    @State private var selectedRedesignOption: GarageCoachingRedesignOption = .minimalist
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -24,6 +28,10 @@ struct GarageCoachingReportView: View {
                 sectionCard(.signalMix) {
                     metricsSection
                 }
+            }
+
+            sectionCard(.redesignStudio, stroke: garageReviewAccent.opacity(0.18)) {
+                redesignStudioSection
             }
 
             sectionCard(.nextBestAction, stroke: actionStroke) {
@@ -110,6 +118,7 @@ struct GarageCoachingReportView: View {
         if presentation.metrics.isEmpty == false {
             sections.append(.signalMix)
         }
+        sections.append(.redesignStudio)
         sections.append(.nextBestAction)
         return sections
     }
@@ -140,37 +149,48 @@ struct GarageCoachingReportView: View {
 
     private var heroCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Focused Analysis")
-                        .font(.caption.weight(.bold))
-                        .tracking(1.25)
-                        .foregroundStyle(garageReviewMutedText)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 12) {
+                    heroTitleBlock
 
-                    Text(presentation.hero.headline)
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(garageReviewReadableText)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+
+                    heroDownloadButton
                 }
 
-                Spacer(minLength: 0)
-
-                VStack(alignment: .trailing, spacing: 8) {
-                    GarageCoachingBadge(
-                        title: presentation.reliabilityStatus.rawValue.uppercased(),
-                        tint: presentation.reliabilityStatus.tint
-                    )
-                    GarageCoachingBadge(
-                        title: presentation.phase.reviewTitle.uppercased(),
-                        tint: garageReviewAccent
-                    )
+                VStack(alignment: .leading, spacing: 12) {
+                    heroTitleBlock
+                    heroDownloadButton
                 }
+            }
+
+            HStack(spacing: 8) {
+                GarageCoachingBadge(
+                    title: presentation.reliabilityStatus.rawValue.uppercased(),
+                    tint: presentation.reliabilityStatus.tint
+                )
+                GarageCoachingBadge(
+                    title: presentation.phase.reviewTitle.uppercased(),
+                    tint: garageReviewAccent
+                )
             }
 
             Text(presentation.hero.body)
                 .font(.subheadline)
                 .foregroundStyle(garageReviewMutedText)
                 .fixedSize(horizontal: false, vertical: true)
+
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "doc.richtext.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(garageReviewAccent)
+                    .padding(.top, 2)
+
+                Text(downloadSupportCopy)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(garageReviewMutedText.opacity(0.96))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             HStack(spacing: 8) {
                 Circle()
@@ -183,6 +203,55 @@ struct GarageCoachingReportView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+
+    private var heroTitleBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Focused Analysis")
+                .font(.caption.weight(.bold))
+                .tracking(1.25)
+                .foregroundStyle(garageReviewMutedText)
+
+            Text(presentation.hero.headline)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(garageReviewReadableText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var heroDownloadButton: some View {
+        Button {
+            garageTriggerImpact(.medium)
+            onDownloadFullReport()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: isExportingReport ? "hourglass" : "arrow.down.doc.fill")
+                    .font(.caption.weight(.bold))
+
+                Text(isExportingReport ? "Preparing PDF" : "Download Full Report")
+                    .font(.caption.weight(.bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+            }
+            .foregroundStyle(garageReviewCanvasFill)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                Capsule()
+                    .fill(garageReviewAccent)
+                    .overlay(
+                        Capsule()
+                            .stroke(garageReviewAccent.opacity(0.42), lineWidth: 0.8)
+                    )
+                    .shadow(color: garageReviewAccent.opacity(0.26), radius: 10, x: 0, y: 6)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(isExportingReport)
+    }
+
+    private var downloadSupportCopy: String {
+        "Compiles the critique, the metrics, and all 3 redesigned UI assets into a crisp, shareable PDF."
     }
 
     private var disclaimerTint: Color {
@@ -240,6 +309,100 @@ struct GarageCoachingReportView: View {
                 garageTriggerImpact(.light)
                 detailTarget = .metric(metric)
             }
+        }
+    }
+
+    private var redesignStudioSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Redesign Carousel")
+                        .font(.caption.weight(.bold))
+                        .tracking(1.2)
+                        .foregroundStyle(garageReviewMutedText)
+
+                    Text("Three distinct directions for the same report")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(garageReviewReadableText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+
+                Text("Swipe or tap")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(garageReviewAccent.opacity(0.92))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill(garageReviewAccent.opacity(0.10))
+                            .overlay(
+                                Capsule()
+                                    .stroke(garageReviewAccent.opacity(0.22), lineWidth: 0.8)
+                            )
+                    )
+            }
+
+            HStack(spacing: 8) {
+                ForEach(GarageCoachingRedesignOption.allCases) { option in
+                    Button {
+                        garageTriggerImpact(.light)
+                        withAnimation(.spring(response: 0.34, dampingFraction: 0.84)) {
+                            selectedRedesignOption = option
+                        }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(option.optionLabel)
+                                .font(.caption2.weight(.bold))
+                                .tracking(0.9)
+                            Text(option.title)
+                                .font(.caption.weight(.semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                        .foregroundStyle(
+                            selectedRedesignOption == option
+                                ? garageReviewReadableText
+                                : garageReviewMutedText
+                        )
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(
+                                    selectedRedesignOption == option
+                                        ? option.tint.opacity(0.18)
+                                        : garageReviewInsetSurface
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .stroke(
+                                            selectedRedesignOption == option
+                                                ? option.tint.opacity(0.36)
+                                                : garageReviewStroke.opacity(0.9),
+                                            lineWidth: 0.8
+                                        )
+                                )
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            TabView(selection: $selectedRedesignOption) {
+                ForEach(GarageCoachingRedesignOption.allCases) { option in
+                    GarageCoachingRedesignOptionCard(
+                        option: option,
+                        presentation: presentation
+                    )
+                    .tag(option)
+                    .padding(.vertical, 2)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(height: 438)
         }
     }
 
@@ -324,6 +487,7 @@ private enum GarageCoachingSection: String, Hashable {
     case hero
     case sessionReadout
     case signalMix
+    case redesignStudio
     case nextBestAction
 }
 
@@ -714,6 +878,888 @@ private struct GarageCoachingDetailSheet: View {
             .padding(20)
         }
         .background(Color.vibeBackground.ignoresSafeArea())
+    }
+}
+
+enum GarageCoachingRedesignOption: String, CaseIterable, Identifiable {
+    case minimalist
+    case powerUser
+    case vibe
+
+    var id: String { rawValue }
+
+    var optionLabel: String {
+        switch self {
+        case .minimalist:
+            "OPTION A"
+        case .powerUser:
+            "OPTION B"
+        case .vibe:
+            "OPTION C"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .minimalist:
+            "The Minimalist"
+        case .powerUser:
+            "The Power User"
+        case .vibe:
+            "The Vibe"
+        }
+    }
+
+    var descriptor: String {
+        switch self {
+        case .minimalist:
+            "Black-and-white dominant, quiet spacing, and typography-first clarity."
+        case .powerUser:
+            "Dense signal layout with tighter spacing, fast scanning, and all-core metrics upfront."
+        case .vibe:
+            "Softer corners, subtle gradients, and warmer emotional feedback without losing clarity."
+        }
+    }
+
+    var psychology: String {
+        switch self {
+        case .minimalist:
+            "Best for users who want the report to lower cognitive load and let a few important coaching cues land with zero visual noise."
+        case .powerUser:
+            "Best for users who feel more in control when every metric, status, and trend is visible at once with minimal navigation friction."
+        case .vibe:
+            "Best for users who stay engaged longer when the interface feels friendly, expressive, and emotionally rewarding instead of clinical."
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .minimalist:
+            garageReviewReadableText
+        case .powerUser:
+            garageReviewAccent
+        case .vibe:
+            AppModule.garage.theme.secondary
+        }
+    }
+}
+
+struct GarageShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+enum GarageCoachingReportPDFExporter {
+    private static let pageSize = CGSize(width: 612, height: 792)
+
+    @MainActor
+    static func export(presentation: GarageCoachingPresentation) throws -> URL {
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("garage-coaching-report-\(UUID().uuidString)")
+            .appendingPathExtension("pdf")
+
+        let renderer = UIGraphicsPDFRenderer(bounds: CGRect(origin: .zero, size: pageSize))
+        let exportDate = Date()
+        let pages: [GarageCoachingReportPDFPage] = [
+            .summary,
+            .metrics,
+            .redesign(.minimalist),
+            .redesign(.powerUser),
+            .redesign(.vibe)
+        ]
+
+        try renderer.writePDF(to: fileURL) { context in
+            for page in pages {
+                context.beginPage()
+
+                let pageView = GarageCoachingReportPDFPageView(
+                    page: page,
+                    presentation: presentation,
+                    exportDate: exportDate
+                )
+                .frame(width: pageSize.width, height: pageSize.height)
+
+                let imageRenderer = ImageRenderer(content: pageView)
+                imageRenderer.scale = 2
+
+                if let pageImage = imageRenderer.uiImage {
+                    pageImage.draw(in: CGRect(origin: .zero, size: pageSize))
+                }
+            }
+        }
+
+        return fileURL
+    }
+}
+
+private enum GarageCoachingReportPDFPage: Identifiable {
+    case summary
+    case metrics
+    case redesign(GarageCoachingRedesignOption)
+
+    var id: String {
+        switch self {
+        case .summary:
+            "summary"
+        case .metrics:
+            "metrics"
+        case let .redesign(option):
+            "redesign-\(option.rawValue)"
+        }
+    }
+}
+
+private struct GarageCoachingRedesignOptionCard: View {
+    let option: GarageCoachingRedesignOption
+    let presentation: GarageCoachingPresentation
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .center, spacing: 10) {
+                    Text(option.optionLabel)
+                        .font(.caption2.weight(.bold))
+                        .tracking(1.0)
+                        .foregroundStyle(option.tint)
+
+                    Text(option.title)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(garageReviewReadableText)
+
+                    Spacer(minLength: 0)
+                }
+
+                Text(option.descriptor)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(garageReviewMutedText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            GarageCoachingRedesignAsset(option: option, presentation: presentation)
+                .frame(maxWidth: .infinity)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("UX Psychology")
+                    .font(.caption.weight(.bold))
+                    .tracking(1.0)
+                    .foregroundStyle(garageReviewMutedText)
+
+                Text(option.psychology)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(garageReviewReadableText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(
+            GarageInsetPanelBackground(
+                shape: RoundedRectangle(cornerRadius: 22, style: .continuous),
+                fill: garageReviewInsetSurface,
+                stroke: option.tint.opacity(0.16)
+            )
+        )
+    }
+}
+
+private struct GarageCoachingRedesignAsset: View {
+    let option: GarageCoachingRedesignOption
+    let presentation: GarageCoachingPresentation
+
+    var body: some View {
+        Group {
+            switch option {
+            case .minimalist:
+                GarageMinimalistRedesignAsset(presentation: presentation)
+            case .powerUser:
+                GaragePowerUserRedesignAsset(presentation: presentation)
+            case .vibe:
+                GarageVibeRedesignAsset(presentation: presentation)
+            }
+        }
+        .frame(height: 270)
+    }
+}
+
+private struct GarageMinimalistRedesignAsset: View {
+    let presentation: GarageCoachingPresentation
+
+    private var leadMetric: GarageCoachingMetricModel? {
+        presentation.metrics.first
+    }
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 30, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [garageReviewSurfaceDark, Color.black.opacity(0.96)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 30, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 0.7)
+            )
+            .overlay {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack {
+                        Text("FOCUSED REPORT")
+                            .font(.caption2.weight(.bold))
+                            .tracking(1.6)
+                            .foregroundStyle(Color.white.opacity(0.62))
+
+                        Spacer(minLength: 0)
+
+                        Circle()
+                            .fill(Color.white.opacity(0.86))
+                            .frame(width: 6, height: 6)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    VStack(alignment: .leading, spacing: 20) {
+                        Text(presentation.hero.headline.uppercased())
+                            .font(.system(size: 27, weight: .bold, design: .default))
+                            .foregroundStyle(Color.white)
+                            .lineLimit(3)
+                            .minimumScaleFactor(0.78)
+
+                        Text(presentation.hero.body)
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(Color.white.opacity(0.70))
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    HStack(alignment: .lastTextBaseline, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("PRIMARY SIGNAL")
+                                .font(.caption2.weight(.bold))
+                                .tracking(1.4)
+                                .foregroundStyle(Color.white.opacity(0.48))
+
+                            Text(leadMetric?.value ?? presentation.reliabilityStatus.rawValue)
+                                .font(.system(size: 28, weight: .bold, design: .rounded))
+                                .foregroundStyle(Color.white)
+                        }
+
+                        Spacer(minLength: 0)
+
+                        Text(leadMetric?.title.uppercased() ?? "TRUST")
+                            .font(.caption.weight(.semibold))
+                            .tracking(1.0)
+                            .foregroundStyle(Color.white.opacity(0.54))
+                    }
+                }
+                .padding(26)
+            }
+    }
+}
+
+private struct GaragePowerUserRedesignAsset: View {
+    let presentation: GarageCoachingPresentation
+
+    private var denseMetrics: [GarageCoachingMetricModel] {
+        Array(presentation.metrics.prefix(6))
+    }
+
+    private var chartMetrics: [GarageCoachingMetricModel] {
+        Array(presentation.metrics.prefix(4))
+    }
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 22, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [garageReviewSurfaceDark, garageReviewSurface, garageReviewSurfaceRaised],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(garageReviewAccent.opacity(0.22), lineWidth: 0.8)
+            )
+            .overlay {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("POWER DASHBOARD")
+                                .font(.caption2.weight(.bold))
+                                .tracking(1.4)
+                                .foregroundStyle(garageReviewAccent)
+
+                            Text("Everything visible without scrolling")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(garageReviewMutedText.opacity(0.92))
+                        }
+
+                        Spacer(minLength: 0)
+
+                        Text(presentation.reliabilityStatus.rawValue.uppercased())
+                            .font(.caption2.weight(.bold))
+                            .tracking(0.8)
+                            .foregroundStyle(garageReviewReadableText)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(
+                                Capsule()
+                                    .fill(garageReviewAccent.opacity(0.12))
+                                    .overlay(
+                                        Capsule()
+                                            .stroke(garageReviewAccent.opacity(0.24), lineWidth: 0.8)
+                                    )
+                            )
+                    }
+
+                    HStack(alignment: .top, spacing: 10) {
+                        GaragePowerUserTrendChart(metrics: chartMetrics)
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(Array(presentation.snapshots.prefix(3))) { snapshot in
+                                HStack(spacing: 8) {
+                                    Circle()
+                                        .fill(snapshot.accentStyle.tint.opacity(0.92))
+                                        .frame(width: 6, height: 6)
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(snapshot.title)
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(garageReviewMutedText)
+                                            .lineLimit(1)
+
+                                        Text(snapshot.value)
+                                            .font(.caption.weight(.bold))
+                                            .foregroundStyle(garageReviewReadableText)
+                                            .lineLimit(1)
+                                            .minimumScaleFactor(0.82)
+                                    }
+
+                                    Spacer(minLength: 0)
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+
+                    LazyVGrid(
+                        columns: [
+                            GridItem(.flexible(), spacing: 8),
+                            GridItem(.flexible(), spacing: 8),
+                            GridItem(.flexible(), spacing: 8)
+                        ],
+                        spacing: 8
+                    ) {
+                        ForEach(denseMetrics) { metric in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(metric.title)
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(garageReviewMutedText)
+                                    .lineLimit(2)
+
+                                Text(metric.value)
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(garageReviewReadableText)
+                                    .lineLimit(2)
+                                    .minimumScaleFactor(0.72)
+
+                                Capsule()
+                                    .fill((metric.badgeStyle?.tint ?? garageReviewAccent).opacity(0.9))
+                                    .frame(height: 3)
+                            }
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(garageReviewInsetSurface.opacity(0.96))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                            .stroke(garageReviewStroke.opacity(0.92), lineWidth: 0.7)
+                                    )
+                            )
+                        }
+                    }
+                }
+                .padding(18)
+            }
+    }
+}
+
+private struct GaragePowerUserTrendChart: View {
+    let metrics: [GarageCoachingMetricModel]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("TREND STACK")
+                .font(.caption2.weight(.bold))
+                .tracking(1.2)
+                .foregroundStyle(garageReviewMutedText)
+
+            HStack(alignment: .bottom, spacing: 8) {
+                ForEach(Array(metrics.enumerated()), id: \.offset) { index, metric in
+                    VStack(spacing: 6) {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(metric.badgeStyle?.tint ?? garageReviewAccent)
+                            .frame(height: chartHeight(for: metric, index: index))
+
+                        Text(metric.title.prefix(3).uppercased())
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(garageReviewMutedText.opacity(0.94))
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .frame(height: 104, alignment: .bottom)
+        }
+        .padding(12)
+        .frame(width: 168, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(garageReviewInsetSurface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(garageReviewStroke.opacity(0.9), lineWidth: 0.7)
+                )
+        )
+    }
+
+    private func chartHeight(for metric: GarageCoachingMetricModel, index: Int) -> CGFloat {
+        if let progress = metric.progress {
+            return max(CGFloat(progress) * 74, 18)
+        }
+
+        return CGFloat(40 + (index * 12))
+    }
+}
+
+private struct GarageVibeRedesignAsset: View {
+    let presentation: GarageCoachingPresentation
+
+    private var leadMetric: GarageCoachingMetricModel? {
+        presentation.metrics.first
+    }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 34, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            garageReviewSurfaceRaised,
+                            AppModule.garage.theme.secondary.opacity(0.22),
+                            garageReviewSurface
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            Circle()
+                .fill(garageReviewAccent.opacity(0.16))
+                .frame(width: 150, height: 150)
+                .blur(radius: 10)
+                .offset(x: 128, y: -94)
+
+            Circle()
+                .fill(AppModule.garage.theme.secondary.opacity(0.14))
+                .frame(width: 120, height: 120)
+                .blur(radius: 8)
+                .offset(x: -116, y: 88)
+
+            RoundedRectangle(cornerRadius: 34, style: .continuous)
+                .stroke(Color.white.opacity(0.07), lineWidth: 0.8)
+
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("COACHING STORY")
+                            .font(.caption2.weight(.bold))
+                            .tracking(1.4)
+                            .foregroundStyle(AppModule.garage.theme.secondary)
+
+                        Text("Approachable and emotionally sticky")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(garageReviewMutedText.opacity(0.94))
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Text(presentation.phase.reviewTitle)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(garageReviewReadableText)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(
+                            Capsule()
+                                .fill(Color.white.opacity(0.10))
+                                .overlay(
+                                    Capsule()
+                                        .stroke(Color.white.opacity(0.12), lineWidth: 0.8)
+                                )
+                        )
+                }
+
+                Text(presentation.hero.headline)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(garageReviewReadableText)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+
+                Text(presentation.hero.body)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(garageReviewMutedText.opacity(0.96))
+                    .lineLimit(3)
+
+                HStack(spacing: 10) {
+                    GarageVibeBadge(
+                        title: presentation.reliabilityStatus.rawValue.capitalized,
+                        tint: garageReviewAccent
+                    )
+
+                    if let snapshot = presentation.snapshots.first {
+                        GarageVibeBadge(
+                            title: snapshot.title,
+                            tint: AppModule.garage.theme.secondary
+                        )
+                    }
+                }
+
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Main Cue")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(garageReviewMutedText)
+
+                        Text(leadMetric?.value ?? presentation.hero.headline)
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .foregroundStyle(garageReviewReadableText)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.78)
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .fill(garageReviewSurfaceDark.opacity(0.54))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                    .stroke(Color.white.opacity(0.08), lineWidth: 0.8)
+                            )
+                    )
+
+                    VStack(spacing: 10) {
+                        ForEach(Array(presentation.metrics.prefix(2))) { metric in
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(metric.badgeStyle?.tint ?? garageReviewAccent)
+                                    .frame(width: 8, height: 8)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(metric.title)
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(garageReviewMutedText)
+                                        .lineLimit(1)
+
+                                    Text(metric.value)
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(garageReviewReadableText)
+                                        .lineLimit(1)
+                                }
+
+                                Spacer(minLength: 0)
+                            }
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                    .fill(Color.white.opacity(0.08))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                            .stroke(Color.white.opacity(0.08), lineWidth: 0.8)
+                                    )
+                            )
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(20)
+        }
+    }
+}
+
+private struct GarageVibeBadge: View {
+    let title: String
+    let tint: Color
+
+    var body: some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(garageReviewReadableText)
+            .lineLimit(1)
+            .minimumScaleFactor(0.84)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                Capsule()
+                    .fill(tint.opacity(0.12))
+                    .overlay(
+                        Capsule()
+                            .stroke(tint.opacity(0.18), lineWidth: 0.8)
+                    )
+            )
+    }
+}
+
+private struct GarageCoachingReportPDFPageView: View {
+    let page: GarageCoachingReportPDFPage
+    let presentation: GarageCoachingPresentation
+    let exportDate: Date
+
+    private let pagePadding: CGFloat = 28
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [garageReviewBackground, garageReviewSurfaceDark],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            switch page {
+            case .summary:
+                summaryPage
+            case .metrics:
+                metricsPage
+            case let .redesign(option):
+                redesignPage(option: option)
+            }
+        }
+    }
+
+    private var summaryPage: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            pdfHeader(
+                eyebrow: "GARAGE UI/UX REPORT",
+                title: "Focused Analysis + Redesign Direction",
+                subtitle: "Exported \(exportDate.formatted(date: .abbreviated, time: .shortened))"
+            )
+
+            GaragePDFCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Critique")
+                        .font(.caption.weight(.bold))
+                        .tracking(1.0)
+                        .foregroundStyle(garageReviewMutedText)
+
+                    Text(presentation.hero.headline)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(garageReviewReadableText)
+
+                    Text(presentation.hero.body)
+                        .font(.body)
+                        .foregroundStyle(garageReviewMutedText)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 8) {
+                        GarageCoachingBadge(
+                            title: presentation.reliabilityStatus.rawValue.uppercased(),
+                            tint: presentation.reliabilityStatus.tint
+                        )
+                        GarageCoachingBadge(
+                            title: presentation.phase.reviewTitle.uppercased(),
+                            tint: garageReviewAccent
+                        )
+                    }
+                }
+            }
+
+            GaragePDFCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Next Best Action")
+                        .font(.caption.weight(.bold))
+                        .tracking(1.0)
+                        .foregroundStyle(garageReviewMutedText)
+
+                    Text(presentation.action.body)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(garageReviewReadableText)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if presentation.action.notes.isEmpty == false {
+                        ForEach(presentation.action.notes, id: \.self) { note in
+                            HStack(alignment: .top, spacing: 8) {
+                                Circle()
+                                    .fill(garageReviewAccent.opacity(0.92))
+                                    .frame(width: 6, height: 6)
+                                    .padding(.top, 6)
+
+                                Text(note)
+                                    .font(.footnote.weight(.medium))
+                                    .foregroundStyle(garageReviewMutedText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+            }
+
+            GaragePDFCard {
+                Text("This PDF bundles the critique, the metrics, and all 3 redesigned UI assets into one shareable handoff.")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(garageReviewReadableText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(pagePadding)
+    }
+
+    private var metricsPage: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            pdfHeader(
+                eyebrow: "EVIDENCE",
+                title: "Metrics + Session Readout",
+                subtitle: "The measurable layer behind the critique."
+            )
+
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 12),
+                    GridItem(.flexible(), spacing: 12)
+                ],
+                spacing: 12
+            ) {
+                ForEach(presentation.metrics) { metric in
+                    GaragePDFCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(spacing: 8) {
+                                Image(systemName: metric.systemImage)
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(metric.badgeStyle?.tint ?? garageReviewAccent)
+
+                                Text(metric.title)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(garageReviewMutedText)
+                                    .lineLimit(1)
+
+                                Spacer(minLength: 0)
+                            }
+
+                            Text(metric.value)
+                                .font(.headline.weight(.bold))
+                                .foregroundStyle(garageReviewReadableText)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.78)
+
+                            if let badgeStyle = metric.badgeStyle {
+                                Text(badgeStyle.title)
+                                    .font(.caption2.weight(.bold))
+                                    .tracking(0.8)
+                                    .foregroundStyle(badgeStyle.tint)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if presentation.snapshots.isEmpty == false {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Session Readout")
+                        .font(.caption.weight(.bold))
+                        .tracking(1.0)
+                        .foregroundStyle(garageReviewMutedText)
+
+                    HStack(spacing: 12) {
+                        ForEach(Array(presentation.snapshots.prefix(3))) { snapshot in
+                            GaragePDFCard {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text(snapshot.title)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(garageReviewMutedText)
+
+                                    Text(snapshot.value)
+                                        .font(.headline.weight(.bold))
+                                        .foregroundStyle(garageReviewReadableText)
+                                        .lineLimit(2)
+                                        .minimumScaleFactor(0.8)
+
+                                    Text(snapshot.caption)
+                                        .font(.caption2)
+                                        .foregroundStyle(garageReviewMutedText.opacity(0.94))
+                                        .lineLimit(2)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(pagePadding)
+    }
+
+    private func redesignPage(option: GarageCoachingRedesignOption) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            pdfHeader(
+                eyebrow: option.optionLabel,
+                title: option.title,
+                subtitle: option.psychology
+            )
+
+            GarageCoachingRedesignOptionCard(option: option, presentation: presentation)
+
+            Spacer(minLength: 0)
+        }
+        .padding(pagePadding)
+    }
+
+    private func pdfHeader(eyebrow: String, title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(eyebrow)
+                .font(.caption.weight(.bold))
+                .tracking(1.4)
+                .foregroundStyle(garageReviewAccent)
+
+            Text(title)
+                .font(.system(size: 28, weight: .bold, design: .rounded))
+                .foregroundStyle(garageReviewReadableText)
+
+            Text(subtitle)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(garageReviewMutedText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+private struct GaragePDFCard<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            content
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            GarageRaisedPanelBackground(
+                shape: RoundedRectangle(cornerRadius: 24, style: .continuous),
+                fill: garageReviewSurfaceRaised,
+                stroke: garageReviewStroke.opacity(0.92)
+            )
+        )
     }
 }
 

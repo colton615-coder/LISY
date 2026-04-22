@@ -287,6 +287,10 @@ struct GarageFocusedReviewWorkspace: View {
     @State private var dragAnchorPoint: CGPoint?
     @State private var isDraggingAnchor = false
     @State private var isShowingMetadataEditor = false
+    @State private var isCoachingReportExpanded = false
+    @State private var isExportingCoachingReport = false
+    @State private var exportedCoachingReportURL: URL?
+    @State private var coachingReportExportError: String?
 
     private var resolvedReviewVideo: GarageResolvedReviewVideo? {
         GarageMediaStore.resolvedReviewVideo(for: record)
@@ -628,7 +632,12 @@ struct GarageFocusedReviewWorkspace: View {
                         coachingPresentation: coachingPresentation,
                         reviewRecoveryTitle: reviewRecoveryTitle,
                         reviewRecoveryBody: reviewRecoveryBody,
-                        reviewFrameSource: reviewFrameSource
+                        reviewFrameSource: reviewFrameSource,
+                        onCoachingExpansionChange: { isExpanded in
+                            isCoachingReportExpanded = isExpanded
+                        },
+                        isExportingReport: isExportingCoachingReport,
+                        onDownloadFullReport: exportCoachingReport
                     )
                 }
             }
@@ -654,14 +663,29 @@ struct GarageFocusedReviewWorkspace: View {
             } else {
                 GarageSummaryPrimaryActionBar(
                     canContinue: reviewVideoURL != nil,
+                    showsDownloadReport: isCoachingReportExpanded,
+                    isExportingReport: isExportingCoachingReport,
                     onContinue: {
                         isShowingCompletionPlayback = true
                     },
                     onSkeletonReview: {
                         isShowingSkeletonPlayback = true
-                    }
+                    },
+                    onDownloadReport: exportCoachingReport
                 )
             }
+        }
+        .sheet(isPresented: shareSheetIsPresented) {
+            if let exportedCoachingReportURL {
+                GarageShareSheet(activityItems: [exportedCoachingReportURL])
+            }
+        }
+        .alert("Unable to Export Report", isPresented: exportErrorIsPresented) {
+            Button("OK", role: .cancel) {
+                coachingReportExportError = nil
+            }
+        } message: {
+            Text(coachingReportExportError ?? "The report could not be exported right now.")
         }
         .overlay {
             if let reviewVideoURL {
@@ -704,6 +728,47 @@ struct GarageFocusedReviewWorkspace: View {
         .onChange(of: selectedPhase) { _, _ in
             dragAnchorPoint = nil
             isDraggingAnchor = false
+        }
+    }
+
+    private var shareSheetIsPresented: Binding<Bool> {
+        Binding(
+            get: { exportedCoachingReportURL != nil },
+            set: { newValue in
+                if newValue == false {
+                    exportedCoachingReportURL = nil
+                }
+            }
+        )
+    }
+
+    private var exportErrorIsPresented: Binding<Bool> {
+        Binding(
+            get: { coachingReportExportError != nil },
+            set: { newValue in
+                if newValue == false {
+                    coachingReportExportError = nil
+                }
+            }
+        )
+    }
+
+    private func exportCoachingReport() {
+        guard isExportingCoachingReport == false else { return }
+
+        Task { @MainActor in
+            isExportingCoachingReport = true
+            coachingReportExportError = nil
+
+            do {
+                exportedCoachingReportURL = try GarageCoachingReportPDFExporter.export(
+                    presentation: coachingPresentation
+                )
+            } catch {
+                coachingReportExportError = error.localizedDescription
+            }
+
+            isExportingCoachingReport = false
         }
     }
 
@@ -1041,6 +1106,9 @@ private struct GarageReviewSummaryControls: View {
     let reviewRecoveryTitle: String
     let reviewRecoveryBody: String
     let reviewFrameSource: GarageReviewFrameSourceState
+    var onCoachingExpansionChange: (Bool) -> Void = { _ in }
+    var isExportingReport: Bool = false
+    var onDownloadFullReport: () -> Void = {}
     @State private var isCoachingExpanded = false
 
     var body: some View {
@@ -1056,14 +1124,18 @@ private struct GarageReviewSummaryControls: View {
                 if metrics.isEmpty == false {
                     GarageCoachingDisclosureCard(
                         presentation: coachingPresentation,
-                        isExpanded: $isCoachingExpanded
+                        isExpanded: $isCoachingExpanded,
+                        isExportingReport: isExportingReport,
+                        onDownloadFullReport: onDownloadFullReport
                     )
                 }
             case let .unavailable(presentation):
                 GarageStep2UnavailableCard(presentation: presentation)
                 GarageCoachingDisclosureCard(
                     presentation: coachingPresentation,
-                    isExpanded: $isCoachingExpanded
+                    isExpanded: $isCoachingExpanded,
+                    isExportingReport: isExportingReport,
+                    onDownloadFullReport: onDownloadFullReport
                 )
             }
             if reviewFrameSource != .video {
@@ -1078,6 +1150,9 @@ private struct GarageReviewSummaryControls: View {
         .padding(.bottom, 12)
         .task(id: coachingResetKey) {
             isCoachingExpanded = false
+        }
+        .onChange(of: isCoachingExpanded) { _, newValue in
+            onCoachingExpansionChange(newValue)
         }
     }
 
@@ -1170,15 +1245,33 @@ private struct GarageReviewActionDock: View {
 
 private struct GarageSummaryPrimaryActionBar: View {
     let canContinue: Bool
+    var showsDownloadReport: Bool = false
+    var isExportingReport: Bool = false
     let onContinue: () -> Void
     let onSkeletonReview: () -> Void
+    var onDownloadReport: () -> Void = {}
 
     var body: some View {
         GarageDockSurface {
+            if showsDownloadReport {
+                GarageDockWideButton(
+                    title: isExportingReport ? "Preparing Full Report" : "Download Full Report",
+                    systemImage: isExportingReport ? "hourglass" : "arrow.down.doc.fill",
+                    isPrimary: true,
+                    isEnabled: isExportingReport == false,
+                    action: onDownloadReport
+                )
+
+                Text("Creates a shareable PDF with the critique, the metrics, and all 3 redesigned UI assets.")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(garageReviewMutedText.opacity(0.96))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             GarageDockWideButton(
                 title: canContinue ? "Review Hand Path" : "Slow Motion Review Unavailable",
                 systemImage: canContinue ? "play.fill" : "exclamationmark.triangle.fill",
-                isPrimary: true,
+                isPrimary: showsDownloadReport == false,
                 isEnabled: canContinue,
                 action: onContinue
             )
@@ -1197,6 +1290,8 @@ private struct GarageSummaryPrimaryActionBar: View {
 private struct GarageCoachingDisclosureCard: View {
     let presentation: GarageCoachingPresentation
     @Binding var isExpanded: Bool
+    var isExportingReport: Bool = false
+    var onDownloadFullReport: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1276,7 +1371,11 @@ private struct GarageCoachingDisclosureCard: View {
             .buttonStyle(.plain)
 
             if isExpanded {
-                GarageCoachingReportView(presentation: presentation)
+                GarageCoachingReportView(
+                    presentation: presentation,
+                    isExportingReport: isExportingReport,
+                    onDownloadFullReport: onDownloadFullReport
+                )
                     .transition(.opacity.combined(with: .scale(scale: 0.985, anchor: .top)))
             }
         }
