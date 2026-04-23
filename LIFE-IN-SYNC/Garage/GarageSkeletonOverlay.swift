@@ -20,11 +20,13 @@ struct GarageSkeletonOverlay: View {
                 onSelectMode: onSelectMode
             )
             .padding(12)
-            .transition(.opacity.combined(with: .move(edge: .bottom)))
+            .opacity(presentation.hud.opacity)
+            .transition(.opacity)
         }
-        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: presentation.mode)
-        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: presentation.cleanCues)
-        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: presentation.proJoints)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: presentation.mode)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: presentation.cleanCues)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: presentation.proJoints)
+        .animation(.easeInOut(duration: 0.18), value: presentation.hud.opacity)
     }
 }
 
@@ -66,7 +68,7 @@ private struct GarageSkeletonOverlayCanvas: View, Equatable {
             }
 
             if let halo = cue.halo {
-                drawHalo(halo, status: cue.status, opacity: cue.opacity, in: &context)
+                drawHeadBracket(halo, status: cue.status, opacity: cue.opacity, in: &context)
             }
         }
     }
@@ -78,6 +80,10 @@ private struct GarageSkeletonOverlayCanvas: View, Equatable {
 
         if let proHeadHalo = presentation.proHeadHalo {
             drawHalo(proHeadHalo, status: .optimal, opacity: 0.50, in: &context)
+        }
+
+        if let proHeadTrail = presentation.proHeadTrail {
+            drawPolyline(proHeadTrail, status: .optimal, opacity: 0.56, in: &context)
         }
 
         for joint in presentation.proJoints {
@@ -126,12 +132,12 @@ private struct GarageSkeletonOverlayCanvas: View, Equatable {
             layer.stroke(
                 path,
                 with: .color(status.tint.opacity(0.24 * opacity)),
-                style: StrokeStyle(lineWidth: line.outerWidth, lineCap: .round, lineJoin: .round)
+                style: StrokeStyle(lineWidth: line.outerWidth, lineCap: .round, lineJoin: .round, dash: line.dash)
             )
             layer.stroke(
                 path,
                 with: .color(status.tint.opacity(0.92 * opacity)),
-                style: StrokeStyle(lineWidth: line.coreWidth, lineCap: .round, lineJoin: .round)
+                style: StrokeStyle(lineWidth: line.coreWidth, lineCap: .round, lineJoin: .round, dash: line.dash)
             )
         }
     }
@@ -157,12 +163,12 @@ private struct GarageSkeletonOverlayCanvas: View, Equatable {
             layer.stroke(
                 path,
                 with: .color(status.tint.opacity(0.20 * opacity)),
-                style: StrokeStyle(lineWidth: polyline.outerWidth, lineCap: .round, lineJoin: .round)
+                style: StrokeStyle(lineWidth: polyline.outerWidth, lineCap: .round, lineJoin: .round, dash: polyline.dash)
             )
             layer.stroke(
                 path,
                 with: .color(status.tint.opacity(0.82 * opacity)),
-                style: StrokeStyle(lineWidth: polyline.coreWidth, lineCap: .round, lineJoin: .round)
+                style: StrokeStyle(lineWidth: polyline.coreWidth, lineCap: .round, lineJoin: .round, dash: polyline.dash)
             )
         }
     }
@@ -186,6 +192,48 @@ private struct GarageSkeletonOverlayCanvas: View, Equatable {
                 path,
                 with: .color(status.tint.opacity(0.84 * opacity)),
                 style: StrokeStyle(lineWidth: halo.coreWidth, lineCap: .round, dash: halo.dash)
+            )
+        }
+    }
+
+    private func drawHeadBracket(
+        _ halo: GarageOverlayHalo,
+        status: GarageOverlayMetricStatus,
+        opacity: Double,
+        in context: inout GraphicsContext
+    ) {
+        let rect = halo.rect
+        let bracketLength = min(rect.width, rect.height) * 0.34
+        let leftX = rect.minX
+        let rightX = rect.maxX
+        let topY = rect.minY
+        let bottomY = rect.maxY
+
+        var path = Path()
+        path.move(to: CGPoint(x: leftX + bracketLength, y: topY))
+        path.addLine(to: CGPoint(x: leftX, y: topY))
+        path.addLine(to: CGPoint(x: leftX, y: topY + bracketLength))
+        path.move(to: CGPoint(x: rightX - bracketLength, y: topY))
+        path.addLine(to: CGPoint(x: rightX, y: topY))
+        path.addLine(to: CGPoint(x: rightX, y: topY + bracketLength))
+        path.move(to: CGPoint(x: leftX, y: bottomY - bracketLength))
+        path.addLine(to: CGPoint(x: leftX, y: bottomY))
+        path.addLine(to: CGPoint(x: leftX + bracketLength, y: bottomY))
+        path.move(to: CGPoint(x: rightX, y: bottomY - bracketLength))
+        path.addLine(to: CGPoint(x: rightX, y: bottomY))
+        path.addLine(to: CGPoint(x: rightX - bracketLength, y: bottomY))
+
+        context.drawLayer { layer in
+            layer.addFilter(.shadow(color: Color.black.opacity(0.50 * opacity), radius: 5, x: 0, y: 1))
+            layer.stroke(
+                path,
+                with: .color(status.tint.opacity(0.18 * opacity)),
+                style: StrokeStyle(lineWidth: halo.outerWidth, lineCap: .round, lineJoin: .round)
+            )
+            layer.stroke(
+                path,
+                with: .color(status.tint.opacity(0.82 * opacity)),
+                style: StrokeStyle(lineWidth: halo.coreWidth, lineCap: .round, lineJoin: .round)
             )
         }
     }

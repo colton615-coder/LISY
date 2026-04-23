@@ -43,18 +43,20 @@ struct GarageSkeletonHUDPanel: View {
     var onSelectMode: (GarageOverlayMode) -> Void = { _ in }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                         .font(.system(.caption, design: .rounded).weight(.bold))
                         .foregroundStyle(Color.white)
-                        .lineLimit(2)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
 
                     Text(detail)
                         .font(.system(.caption2, design: .rounded).weight(.semibold))
                         .foregroundStyle(overlayStatus.tint.opacity(overlayStatus == .insufficientData ? 0.86 : 0.96))
-                        .lineLimit(2)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
                 }
 
                 Spacer(minLength: 4)
@@ -62,11 +64,6 @@ struct GarageSkeletonHUDPanel: View {
                 if isModeToggleEnabled {
                     modeToggle
                 }
-            }
-
-            if let severity {
-                severityRow(severity)
-                    .transition(.opacity)
             }
         }
         .dynamicTypeSize(.xSmall ... .medium)
@@ -93,11 +90,11 @@ struct GarageSkeletonHUDPanel: View {
                         .frame(minHeight: 22)
                         .background(
                             Capsule()
-                                .fill(mode == overlayMode ? overlayStatus.tint.opacity(0.22) : Color.clear)
+                                .fill(mode == overlayMode ? garageReviewAccent.opacity(0.20) : Color.clear)
                                 .overlay(
                                     Capsule()
                                         .stroke(
-                                            mode == overlayMode ? overlayStatus.tint.opacity(0.42) : Color.white.opacity(0.08),
+                                            mode == overlayMode ? garageReviewAccent.opacity(0.42) : Color.white.opacity(0.08),
                                             lineWidth: 0.6
                                         )
                                 )
@@ -108,20 +105,6 @@ struct GarageSkeletonHUDPanel: View {
         }
         .padding(3)
         .background(Color.black.opacity(0.28), in: Capsule())
-    }
-
-    @ViewBuilder
-    private func severityRow(_ severity: GarageSkeletonHUDSeverity) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: severity.symbolName)
-                .font(.system(.caption2, design: .rounded).weight(.semibold))
-
-            Text(severity.label)
-                .font(.system(.caption2, design: .rounded).weight(.semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-        }
-        .foregroundStyle(severity.tint)
     }
 
     private var panelBackground: some View {

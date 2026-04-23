@@ -38,7 +38,7 @@ enum GarageOverlayMetricStatus: Equatable {
     var tint: Color {
         switch self {
         case .optimal:
-            garageReviewApproved
+            garageReviewReadableText
         case .warning:
             garageReviewPending
         case .critical:
@@ -86,6 +86,17 @@ enum GarageOverlayCueKind: String, Equatable {
     case spine
     case pelvis
     case head
+
+    var title: String {
+        switch self {
+        case .spine:
+            "Posture"
+        case .pelvis:
+            "Depth"
+        case .head:
+            "Head stability"
+        }
+    }
 }
 
 struct GarageOverlayLine: Equatable {
@@ -93,12 +104,14 @@ struct GarageOverlayLine: Equatable {
     let end: CGPoint
     let outerWidth: CGFloat
     let coreWidth: CGFloat
+    var dash: [CGFloat] = []
 }
 
 struct GarageOverlayPolyline: Equatable {
     let points: [CGPoint]
     let outerWidth: CGFloat
     let coreWidth: CGFloat
+    var dash: [CGFloat] = []
 }
 
 struct GarageOverlayHalo: Equatable {
@@ -151,6 +164,7 @@ struct GarageOverlayHUDPresentation: Equatable {
     let primaryStatus: GarageOverlayMetricStatus
     let mode: GarageOverlayMode
     let isModeToggleEnabled: Bool
+    let opacity: Double
 
     static let unavailable = GarageOverlayHUDPresentation(
         title: "Pose overlay unavailable",
@@ -158,7 +172,8 @@ struct GarageOverlayHUDPresentation: Equatable {
         severity: .warning("Pose data limited"),
         primaryStatus: .insufficientData,
         mode: .clean,
-        isModeToggleEnabled: false
+        isModeToggleEnabled: false,
+        opacity: 1
     )
 }
 
@@ -168,6 +183,7 @@ struct GarageOverlayPresentationState: Equatable {
     let proSegments: [GarageOverlayLine]
     let proJoints: [GarageOverlayJoint]
     let proHeadHalo: GarageOverlayHalo?
+    let proHeadTrail: GarageOverlayPolyline?
     let flowPath: GarageOverlayPolyline?
     let pulseMarker: GarageOverlayMarker?
     let issueMarker: GarageOverlayMarker?
@@ -180,6 +196,7 @@ struct GarageOverlayPresentationState: Equatable {
         proSegments: [],
         proJoints: [],
         proHeadHalo: nil,
+        proHeadTrail: nil,
         flowPath: nil,
         pulseMarker: nil,
         issueMarker: nil,
@@ -193,21 +210,14 @@ enum GarageOverlayAdapter {
     private static let minimumMetricConfidence = 0.45
     private static let minimumFrameConfidence = 0.48
     private static let confidenceWindowRadius = 2
-
-    private static let skeletonLinks: [(SwingJointName, SwingJointName)] = [
-        (.leftShoulder, .rightShoulder),
-        (.leftShoulder, .leftElbow),
-        (.leftElbow, .leftWrist),
-        (.rightShoulder, .rightElbow),
-        (.rightElbow, .rightWrist),
-        (.leftShoulder, .leftHip),
-        (.rightShoulder, .rightHip),
-        (.leftHip, .rightHip),
-        (.leftHip, .leftKnee),
-        (.leftKnee, .leftAnkle),
-        (.rightHip, .rightKnee),
-        (.rightKnee, .rightAnkle)
-    ]
+    private static let cleanCoreLineWidth: CGFloat = 2.25
+    private static let cleanGlowLineWidth: CGFloat = 6.0
+    private static let cleanReferenceCoreLineWidth: CGFloat = 1.7
+    private static let cleanReferenceGlowLineWidth: CGFloat = 5.0
+    private static let cleanReferenceDash: [CGFloat] = [7, 6]
+    private static let balancedEMAAlpha = 0.42
+    private static let balancedEMAWindow = 5
+    private static let hudAvoidanceOpacity = 0.25
 
     private static let renderOrder: [SwingJointName] = [
         .leftAnkle,
@@ -253,37 +263,53 @@ enum GarageOverlayAdapter {
         }
 
         let safeFrameIndex = currentFrameIndex ?? frames.firstIndex(of: resolvedFrame)
+        let displayFrame = smoothedFrame(
+            frames: frames,
+            currentFrameIndex: safeFrameIndex,
+            fallbackFrame: resolvedFrame
+        )
         let cleanCues = cleanOverlayCues(
             drawSize: drawSize,
             frames: frames,
             currentFrameIndex: safeFrameIndex,
-            currentFrame: resolvedFrame,
+            currentFrame: displayFrame,
             keyFrames: keyFrames,
             scorecard: scorecard,
             syncFlow: syncFlow
         )
-        let proSegments = mode == .pro ? skeletonSegments(drawSize: drawSize, frame: resolvedFrame) : []
-        let proJoints = mode == .pro ? skeletonJoints(drawSize: drawSize, frame: resolvedFrame) : []
-        let proHeadHalo = mode == .pro ? headHalo(drawSize: drawSize, frame: resolvedFrame, status: .optimal) : nil
-        let flowPath = mode == .pro ? flowPolyline(drawSize: drawSize, frame: resolvedFrame) : nil
+        let proFocus = primaryCueKind(cleanCues: cleanCues, syncFlow: syncFlow)
+        let proSegments = mode == .pro ? skeletonSegments(drawSize: drawSize, frame: displayFrame, focus: proFocus) : []
+        let proJoints = mode == .pro ? skeletonJoints(drawSize: drawSize, frame: displayFrame, focus: proFocus) : []
+        let proHeadTrail = mode == .pro && proFocus == .head
+            ? headTrailPolyline(drawSize: drawSize, frames: frames, currentFrameIndex: safeFrameIndex, fallbackFrame: displayFrame)
+            : nil
+        let flowPath = mode == .pro && proFocus != .head ? flowPolyline(drawSize: drawSize, frame: displayFrame) : nil
         let pulseMarker = mode == .pro ? pulseMarker(progress: pulseProgress, polyline: flowPath) : nil
         let resolvedIssueMarker = mode == .pro
             ? issueMarker(
                 drawSize: drawSize,
-                frame: resolvedFrame,
+                frame: displayFrame,
                 currentTime: currentTime,
                 syncFlow: syncFlow
             )
             : nil
-        let labels = mode == .pro ? rawLabels(drawSize: drawSize, scorecard: scorecard, syncFlow: syncFlow) : []
-        let hud = hudPresentation(mode: mode, cleanCues: cleanCues, scorecard: scorecard, syncFlow: syncFlow)
+        let labels = mode == .pro ? rawLabels(drawSize: drawSize, scorecard: scorecard, syncFlow: syncFlow, focus: proFocus) : []
+        let hud = hudPresentation(
+            mode: mode,
+            cleanCues: cleanCues,
+            scorecard: scorecard,
+            syncFlow: syncFlow,
+            frame: displayFrame,
+            drawSize: drawSize
+        )
 
         return GarageOverlayPresentationState(
             mode: mode,
             cleanCues: cleanCues,
             proSegments: proSegments,
             proJoints: proJoints,
-            proHeadHalo: proHeadHalo,
+            proHeadHalo: nil,
+            proHeadTrail: proHeadTrail,
             flowPath: flowPath,
             pulseMarker: pulseMarker,
             issueMarker: resolvedIssueMarker,
@@ -329,7 +355,7 @@ enum GarageOverlayAdapter {
             )
         ]
 
-        return cues.map { cue in
+        let normalizedCues = cues.map { cue in
             guard cue.confidence == .insufficientData else { return cue }
             return GarageOverlayCue(
                 kind: cue.kind,
@@ -342,6 +368,8 @@ enum GarageOverlayAdapter {
                 halo: cue.halo
             )
         }
+
+        return selectedCleanCues(from: normalizedCues)
     }
 
     private static func spineCue(
@@ -366,8 +394,8 @@ enum GarageOverlayAdapter {
             line = GarageOverlayLine(
                 start: mappedPoint(pelvis, in: drawSize),
                 end: mappedPoint(shoulderMidpoint, in: drawSize),
-                outerWidth: 7,
-                coreWidth: 2.4
+                outerWidth: cleanGlowLineWidth,
+                coreWidth: cleanCoreLineWidth
             )
         } else {
             line = nil
@@ -407,8 +435,8 @@ enum GarageOverlayAdapter {
             line = GarageOverlayLine(
                 start: mappedPoint(leftHip, in: drawSize),
                 end: mappedPoint(rightHip, in: drawSize),
-                outerWidth: 8,
-                coreWidth: 2.6
+                outerWidth: cleanGlowLineWidth,
+                coreWidth: cleanCoreLineWidth
             )
         } else {
             line = nil
@@ -421,7 +449,12 @@ enum GarageOverlayAdapter {
         {
             let start = mappedPoint(addressPelvis, in: drawSize)
             let end = mappedPoint(currentPelvis, in: drawSize)
-            polyline = GarageOverlayPolyline(points: [start, end], outerWidth: 5, coreWidth: 1.8)
+            polyline = GarageOverlayPolyline(
+                points: [start, end],
+                outerWidth: cleanReferenceGlowLineWidth,
+                coreWidth: cleanReferenceCoreLineWidth,
+                dash: cleanReferenceDash
+            )
         } else {
             polyline = nil
         }
@@ -465,8 +498,12 @@ enum GarageOverlayAdapter {
         )
     }
 
-    private static func skeletonSegments(drawSize: CGSize, frame: SwingFrame) -> [GarageOverlayLine] {
-        skeletonLinks.compactMap { startName, endName in
+    private static func skeletonSegments(
+        drawSize: CGSize,
+        frame: SwingFrame,
+        focus: GarageOverlayCueKind
+    ) -> [GarageOverlayLine] {
+        relatedSkeletonLinks(for: focus).compactMap { startName, endName in
             guard
                 let startJoint = frame.joint(named: startName),
                 let endJoint = frame.joint(named: endName),
@@ -485,8 +522,15 @@ enum GarageOverlayAdapter {
         }
     }
 
-    private static func skeletonJoints(drawSize: CGSize, frame: SwingFrame) -> [GarageOverlayJoint] {
-        renderOrder.compactMap { jointName in
+    private static func skeletonJoints(
+        drawSize: CGSize,
+        frame: SwingFrame,
+        focus: GarageOverlayCueKind
+    ) -> [GarageOverlayJoint] {
+        let visibleJoints = relatedJoints(for: focus)
+
+        return renderOrder.compactMap { jointName in
+            guard visibleJoints.contains(jointName) else { return nil }
             guard let joint = frame.joint(named: jointName), joint.confidence >= minimumGeometryConfidence else {
                 return nil
             }
@@ -525,6 +569,37 @@ enum GarageOverlayAdapter {
             outerWidth: status == .insufficientData ? 3.4 : 5.0,
             coreWidth: status == .insufficientData ? 1.1 : 1.8,
             dash: [8, 6]
+        )
+    }
+
+    private static func headTrailPolyline(
+        drawSize: CGSize,
+        frames: [SwingFrame],
+        currentFrameIndex: Int?,
+        fallbackFrame: SwingFrame
+    ) -> GarageOverlayPolyline? {
+        let resolvedIndex = currentFrameIndex ?? frames.firstIndex(of: fallbackFrame)
+        guard let resolvedIndex, frames.indices.contains(resolvedIndex) else {
+            guard let headCircle = GarageAnalysisPipeline.headCircle(in: fallbackFrame) else { return nil }
+            return GarageOverlayPolyline(
+                points: [mappedPoint(headCircle.center, in: drawSize)],
+                outerWidth: cleanReferenceGlowLineWidth,
+                coreWidth: cleanReferenceCoreLineWidth
+            )
+        }
+
+        let lowerBound = max(frames.startIndex, resolvedIndex - 9)
+        let upperBound = min(frames.endIndex - 1, resolvedIndex)
+        let points = (lowerBound...upperBound).compactMap { index -> CGPoint? in
+            guard let headCircle = GarageAnalysisPipeline.headCircle(in: frames[index]) else { return nil }
+            return mappedPoint(headCircle.center, in: drawSize)
+        }
+
+        guard points.count >= 2 else { return nil }
+        return GarageOverlayPolyline(
+            points: points,
+            outerWidth: 5.5,
+            coreWidth: 1.8
         )
     }
 
@@ -584,44 +659,50 @@ enum GarageOverlayAdapter {
     private static func rawLabels(
         drawSize: CGSize,
         scorecard: GarageSwingScorecard?,
-        syncFlow: GarageSyncFlowReport?
+        syncFlow: GarageSyncFlowReport?,
+        focus: GarageOverlayCueKind
     ) -> [GarageOverlayLabel] {
         var labels: [GarageOverlayLabel] = []
         let left = max(min(drawSize.width * 0.04, drawSize.width - 120), 10)
         var y = max(drawSize.height * 0.08, 14)
 
         if let scorecard {
-            labels.append(
-                GarageOverlayLabel(
-                    id: "spine",
-                    text: String(format: "Spine %.1f°", scorecard.metrics.spine.deltaDegrees),
-                    anchor: CGPoint(x: left, y: y),
-                    status: status(for: .spine, scorecard: scorecard),
-                    opacity: 0.96
+            switch focus {
+            case .spine:
+                labels.append(
+                    GarageOverlayLabel(
+                        id: "spine",
+                        text: String(format: "Spine %.1f°", scorecard.metrics.spine.deltaDegrees),
+                        anchor: CGPoint(x: left, y: y),
+                        status: status(for: .spine, scorecard: scorecard),
+                        opacity: 0.96
+                    )
                 )
-            )
-            y += 22
-            labels.append(
-                GarageOverlayLabel(
-                    id: "pelvis",
-                    text: String(format: "Depth %.1f in", scorecard.metrics.pelvicDepth.driftInches),
-                    anchor: CGPoint(x: left, y: y),
-                    status: pelvisStatus(scorecard: scorecard, syncFlow: syncFlow),
-                    opacity: 0.96
+                y += 22
+            case .pelvis:
+                labels.append(
+                    GarageOverlayLabel(
+                        id: "pelvis",
+                        text: String(format: "Depth %.1f in", scorecard.metrics.pelvicDepth.driftInches),
+                        anchor: CGPoint(x: left, y: y),
+                        status: pelvisStatus(scorecard: scorecard, syncFlow: syncFlow),
+                        opacity: 0.96
+                    )
                 )
-            )
-            y += 22
-            let headComposite = (scorecard.metrics.headStability.swayInches * 0.6) + (scorecard.metrics.headStability.dipInches * 0.4)
-            labels.append(
-                GarageOverlayLabel(
-                    id: "head",
-                    text: String(format: "Head %.1f in", headComposite),
-                    anchor: CGPoint(x: left, y: y),
-                    status: headStatus(scorecard: scorecard, syncFlow: syncFlow),
-                    opacity: 0.96
+                y += 22
+            case .head:
+                let headComposite = (scorecard.metrics.headStability.swayInches * 0.6) + (scorecard.metrics.headStability.dipInches * 0.4)
+                labels.append(
+                    GarageOverlayLabel(
+                        id: "head",
+                        text: String(format: "Head %.1f in", headComposite),
+                        anchor: CGPoint(x: left, y: y),
+                        status: headStatus(scorecard: scorecard, syncFlow: syncFlow),
+                        opacity: 0.96
+                    )
                 )
-            )
-            y += 22
+                y += 22
+            }
         }
 
         if let issue = syncFlow?.primaryIssue {
@@ -643,17 +724,20 @@ enum GarageOverlayAdapter {
         mode: GarageOverlayMode,
         cleanCues: [GarageOverlayCue],
         scorecard: GarageSwingScorecard?,
-        syncFlow: GarageSyncFlowReport?
+        syncFlow: GarageSyncFlowReport?,
+        frame: SwingFrame,
+        drawSize: CGSize
     ) -> GarageOverlayHUDPresentation {
         let actionableCue = cleanCues.first { $0.status == .critical }
             ?? cleanCues.first { $0.status == .warning }
             ?? cleanCues.first { $0.status == .optimal }
         let unavailableCount = cleanCues.filter { $0.status == .insufficientData }.count
+        let hasLowConfidenceCue = cleanCues.contains { $0.confidence == .low || $0.confidence == .insufficientData }
 
         let severity: GarageSkeletonHUDSeverity?
         if let consequence = syncFlow?.consequence, let issue = syncFlow?.primaryIssue {
             severity = .critical(consequence.riskPhrase.isEmpty ? issue.kind.riskPhrase : consequence.riskPhrase)
-        } else if syncFlow?.status == .limited || unavailableCount == cleanCues.count {
+        } else if syncFlow?.status == .limited || unavailableCount == cleanCues.count || hasLowConfidenceCue {
             severity = .warning("Pose confidence limited")
         } else if let issue = syncFlow?.primaryIssue {
             severity = .warning(issue.kind.riskPhrase)
@@ -668,20 +752,20 @@ enum GarageOverlayAdapter {
         if mode == .pro {
             title = "Pro overlay"
             detail = scorecard == nil
-                ? "Full skeleton visible. Scorecard metrics are unavailable for this frame set."
-                : "Full skeleton, SyncFlow, and raw DTL metrics are visible."
+                ? "Focused skeleton visible. Metrics are unavailable for this frame set."
+                : "\(primaryCueKind(cleanCues: cleanCues, syncFlow: syncFlow).title) diagnostics visible."
             primaryStatus = .optimal
         } else if unavailableCount == cleanCues.count {
             title = "Clean overlay limited"
-            detail = "Garage can inspect raw pose in Pro Mode, but Clean Mode is hiding uncertain cues."
+            detail = "Pose confidence is low; guidance is muted."
             primaryStatus = .insufficientData
         } else if let actionableCue {
-            title = "\(actionableCue.title): \(actionableCue.status.label)"
-            detail = cleanDetail(for: actionableCue, syncFlow: syncFlow)
+            title = actionableCue.title
+            detail = shortCleanDetail(for: actionableCue, syncFlow: syncFlow)
             primaryStatus = actionableCue.status
         } else {
             title = "Clean overlay ready"
-            detail = "Garage is showing only the most defensible DTL cues."
+            detail = "Only high-confidence DTL cues are visible."
             primaryStatus = .optimal
         }
 
@@ -691,50 +775,51 @@ enum GarageOverlayAdapter {
             severity: severity,
             primaryStatus: primaryStatus,
             mode: mode,
-            isModeToggleEnabled: true
+            isModeToggleEnabled: true,
+            opacity: hudOpacity(frame: frame, drawSize: drawSize)
         )
     }
 
-    private static func cleanDetail(for cue: GarageOverlayCue, syncFlow: GarageSyncFlowReport?) -> String {
+    private static func shortCleanDetail(for cue: GarageOverlayCue, syncFlow: GarageSyncFlowReport?) -> String {
         switch cue.kind {
         case .spine:
             switch cue.status {
             case .optimal:
-                return "Posture is staying within the current DTL target window."
+                return "Maintained through impact."
             case .warning:
-                return "Posture is near the edge of the current DTL target window."
+                return "Near the edge of the target window."
             case .critical:
-                return "Spine angle is drifting enough to affect repeatability."
+                return "Drifting enough to affect repeatability."
             case .insufficientData:
-                return "Shoulder and hip landmarks are not stable enough for posture guidance."
+                return "Landmarks are too unstable for a strong read."
             }
         case .pelvis:
             if let issue = syncFlow?.primaryIssue, issue.segment == .pelvis {
-                return issue.detail
+                return "Depth is crowding the strike window."
             }
             switch cue.status {
             case .optimal:
-                return "Pelvic depth is staying stable enough through impact."
+                return "Depth stayed stable through impact."
             case .warning:
-                return "Depth is getting close to the warning boundary."
+                return "Depth is close to the warning boundary."
             case .critical:
-                return "Pelvic depth is crowding the strike window."
+                return "Depth is crowding the strike window."
             case .insufficientData:
-                return "Hip landmarks are not stable enough for depth guidance."
+                return "Hip landmarks are not stable enough."
             }
         case .head:
             if syncFlow?.primaryIssue?.kind == .unstableHead {
-                return syncFlow?.primaryIssue?.detail ?? "Head stability is limiting confidence."
+                return "Head movement is limiting confidence."
             }
             switch cue.status {
             case .optimal:
-                return "Head position is stable enough for the current review."
+                return "Stable enough for this review."
             case .warning:
-                return "Head movement is close to the caution range."
+                return "Movement is near caution range."
             case .critical:
-                return "Head drift is large enough to reduce contact stability."
+                return "Drift may reduce contact stability."
             case .insufficientData:
-                return "Head and shoulder landmarks are not stable enough for this cue."
+                return "Face-area landmarks are too unstable."
             }
         }
     }
@@ -781,6 +866,225 @@ enum GarageOverlayAdapter {
         confidence: GarageOverlayConfidenceLevel
     ) -> Double {
         min(max(status.opacityScale * confidence.opacityScale, 0.16), 1.0)
+    }
+
+    private static func selectedCleanCues(from cues: [GarageOverlayCue]) -> [GarageOverlayCue] {
+        let sortedCues = cues.sorted { lhs, rhs in
+            if severityRank(lhs.status) != severityRank(rhs.status) {
+                return severityRank(lhs.status) > severityRank(rhs.status)
+            }
+
+            return cuePriority(lhs.kind) < cuePriority(rhs.kind)
+        }
+
+        var selected: [GarageOverlayCue] = []
+        for cue in sortedCues {
+            guard cue.status != .insufficientData || selected.isEmpty else { continue }
+            let overlapsExistingCue = selected.contains { existingCue in
+                cueBounds(cue).intersects(cueBounds(existingCue).insetBy(dx: -14, dy: -14))
+            }
+
+            if overlapsExistingCue == false || selected.isEmpty {
+                selected.append(cue)
+            }
+
+            if selected.count == 2 {
+                break
+            }
+        }
+
+        return selected
+    }
+
+    private static func cueBounds(_ cue: GarageOverlayCue) -> CGRect {
+        var rect = CGRect.null
+
+        if let line = cue.line {
+            rect = rect.union(CGRect(
+                x: min(line.start.x, line.end.x),
+                y: min(line.start.y, line.end.y),
+                width: abs(line.start.x - line.end.x),
+                height: abs(line.start.y - line.end.y)
+            ))
+        }
+
+        if let polyline = cue.polyline {
+            for point in polyline.points {
+                rect = rect.union(CGRect(x: point.x, y: point.y, width: 1, height: 1))
+            }
+        }
+
+        if let halo = cue.halo {
+            rect = rect.union(halo.rect)
+        }
+
+        return rect == .null ? .zero : rect.insetBy(dx: -10, dy: -10)
+    }
+
+    private static func severityRank(_ status: GarageOverlayMetricStatus) -> Int {
+        switch status {
+        case .critical:
+            return 3
+        case .warning:
+            return 2
+        case .optimal:
+            return 1
+        case .insufficientData:
+            return 0
+        }
+    }
+
+    private static func cuePriority(_ kind: GarageOverlayCueKind) -> Int {
+        switch kind {
+        case .pelvis:
+            return 0
+        case .spine:
+            return 1
+        case .head:
+            return 2
+        }
+    }
+
+    private static func primaryCueKind(
+        cleanCues: [GarageOverlayCue],
+        syncFlow: GarageSyncFlowReport?
+    ) -> GarageOverlayCueKind {
+        if syncFlow?.primaryIssue?.kind == .unstableHead {
+            return .head
+        }
+
+        if syncFlow?.primaryIssue?.segment == .pelvis {
+            return .pelvis
+        }
+
+        return cleanCues.first { $0.status == .critical }?.kind
+            ?? cleanCues.first { $0.status == .warning }?.kind
+            ?? cleanCues.first?.kind
+            ?? .spine
+    }
+
+    private static func relatedSkeletonLinks(for focus: GarageOverlayCueKind) -> [(SwingJointName, SwingJointName)] {
+        switch focus {
+        case .spine:
+            return [
+                (.leftShoulder, .rightShoulder),
+                (.leftShoulder, .leftHip),
+                (.rightShoulder, .rightHip),
+                (.leftHip, .rightHip)
+            ]
+        case .pelvis:
+            return [
+                (.leftHip, .rightHip),
+                (.leftHip, .leftKnee),
+                (.rightHip, .rightKnee),
+                (.leftKnee, .leftAnkle),
+                (.rightKnee, .rightAnkle)
+            ]
+        case .head:
+            return [
+                (.leftShoulder, .rightShoulder)
+            ]
+        }
+    }
+
+    private static func relatedJoints(for focus: GarageOverlayCueKind) -> Set<SwingJointName> {
+        switch focus {
+        case .spine:
+            return [.leftShoulder, .rightShoulder, .leftHip, .rightHip]
+        case .pelvis:
+            return [.leftHip, .rightHip, .leftKnee, .rightKnee, .leftAnkle, .rightAnkle]
+        case .head:
+            return [.nose, .leftShoulder, .rightShoulder]
+        }
+    }
+
+    private static func hudOpacity(frame: SwingFrame, drawSize: CGSize) -> Double {
+        let hudRect = CGRect(
+            x: 0,
+            y: max(drawSize.height - 112, 0),
+            width: min(drawSize.width * 0.72, 238),
+            height: 112
+        ).insetBy(dx: -20, dy: -18)
+
+        let handPoints = [
+            frame.point(named: .leftWrist, minimumConfidence: minimumGeometryConfidence),
+            frame.point(named: .rightWrist, minimumConfidence: minimumGeometryConfidence)
+        ].compactMap { $0 }.map { mappedPoint($0, in: drawSize) }
+
+        let handCenter = GarageAnalysisPipeline.handCenter(in: frame)
+        let mappedHandCenter = handCenter == .zero ? nil : mappedPoint(handCenter, in: drawSize)
+        let pointsToCheck = handPoints + [mappedHandCenter].compactMap { $0 }
+
+        guard pointsToCheck.isEmpty == false else { return 1 }
+        return pointsToCheck.contains { hudRect.contains($0) } ? hudAvoidanceOpacity : 1
+    }
+
+    private static func smoothedFrame(
+        frames: [SwingFrame],
+        currentFrameIndex: Int?,
+        fallbackFrame: SwingFrame
+    ) -> SwingFrame {
+        guard
+            let currentFrameIndex,
+            frames.indices.contains(currentFrameIndex)
+        else {
+            return fallbackFrame
+        }
+
+        let lowerBound = max(frames.startIndex, currentFrameIndex - balancedEMAWindow + 1)
+        let sourceFrames = Array(frames[lowerBound...currentFrameIndex])
+        guard sourceFrames.count >= 2 else {
+            return fallbackFrame
+        }
+
+        let currentJointNames = Set(fallbackFrame.joints.map(\.name))
+        let smoothedJoints = SwingJointName.allCases.compactMap { jointName -> SwingJoint? in
+            guard currentJointNames.contains(jointName) else { return nil }
+
+            var smoothedX: Double?
+            var smoothedY: Double?
+            var smoothedConfidence: Double?
+
+            for frame in sourceFrames {
+                guard let joint = frame.joint(named: jointName) else { continue }
+
+                if let existingX = smoothedX, let existingY = smoothedY, let existingConfidence = smoothedConfidence {
+                    smoothedX = (balancedEMAAlpha * joint.x) + ((1 - balancedEMAAlpha) * existingX)
+                    smoothedY = (balancedEMAAlpha * joint.y) + ((1 - balancedEMAAlpha) * existingY)
+                    smoothedConfidence = (balancedEMAAlpha * joint.confidence) + ((1 - balancedEMAAlpha) * existingConfidence)
+                } else {
+                    smoothedX = joint.x
+                    smoothedY = joint.y
+                    smoothedConfidence = joint.confidence
+                }
+            }
+
+            guard
+                let smoothedX,
+                let smoothedY,
+                let smoothedConfidence
+            else {
+                return fallbackFrame.joint(named: jointName)
+            }
+
+            return SwingJoint(
+                name: jointName,
+                x: smoothedX,
+                y: smoothedY,
+                confidence: smoothedConfidence
+            )
+        }
+
+        guard smoothedJoints.isEmpty == false else {
+            return fallbackFrame
+        }
+
+        return SwingFrame(
+            timestamp: fallbackFrame.timestamp,
+            joints: smoothedJoints,
+            joints3D: fallbackFrame.joints3D,
+            confidence: fallbackFrame.confidence
+        )
     }
 
     private static func rollingConfidenceLevel(
