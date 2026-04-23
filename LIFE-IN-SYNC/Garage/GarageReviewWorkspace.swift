@@ -268,6 +268,107 @@ private struct GarageScrollOffsetKey: PreferenceKey {
     }
 }
 
+private struct GarageResolvedEvidenceTarget {
+    let frameIndex: Int?
+    let phase: SwingPhase?
+    let directional: Bool
+    let prefersSkeleton: Bool
+}
+
+private struct GarageEvidenceArrival: Identifiable {
+    let id = UUID()
+    let title: String
+    let detail: String
+    let tint: Color
+    let isDirectional: Bool
+}
+
+private extension GarageEvidenceEmphasis {
+    var prefersSkeleton: Bool {
+        switch self {
+        case .coachingCue, .metric:
+            true
+        case .blocker:
+            false
+        }
+    }
+}
+
+private extension GarageEvidenceTarget {
+    var arrivalTitle: String {
+        switch self {
+        case let .checkpoint(_, _, emphasis):
+            "Evidence: \(emphasis.label)"
+        case let .phaseWindow(_, _, _, _, emphasis):
+            "Directional Evidence: \(emphasis.label)"
+        case let .reliabilityIssue(kind, _, _):
+            "Review Signal: \(kind.label)"
+        case let .reviewNote(noteID, _, _):
+            "Review Note: \(noteID)"
+        }
+    }
+
+    var arrivalTint: Color {
+        switch self {
+        case .checkpoint:
+            garageReviewAccent
+        case .phaseWindow:
+            garageReviewPending
+        case .reliabilityIssue:
+            garageReviewPending
+        case .reviewNote:
+            garageReviewMutedText.opacity(0.94)
+        }
+    }
+}
+
+private struct GarageEvidenceArrivalBanner: View {
+    let arrival: GarageEvidenceArrival
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(arrival.tint.opacity(arrival.isDirectional ? 0.14 : 0.18))
+                    .frame(width: 34, height: 34)
+                    .overlay(
+                        Circle()
+                            .stroke(arrival.tint.opacity(0.32), lineWidth: 0.8)
+                    )
+
+                Image(systemName: arrival.isDirectional ? "waveform.path.ecg" : "scope")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(arrival.tint)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(arrival.title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(garageReviewReadableText)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.82)
+
+                Text(arrival.detail)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(garageReviewMutedText.opacity(0.96))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.82)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
+        .background(
+            GarageRaisedPanelBackground(
+                shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
+                fill: garageReviewSurfaceRaised.opacity(0.98),
+                stroke: arrival.tint.opacity(0.28),
+                glow: arrival.tint.opacity(arrival.isDirectional ? 0.18 : 0.28)
+            )
+        )
+        .frame(maxWidth: 280, alignment: .leading)
+    }
+}
+
 struct GarageFocusedReviewWorkspace: View {
     @Environment(\.modelContext) private var modelContext
 
@@ -291,6 +392,7 @@ struct GarageFocusedReviewWorkspace: View {
     @State private var isExportingCoachingReport = false
     @State private var exportedCoachingReportURL: URL?
     @State private var coachingReportExportError: String?
+    @State private var evidenceArrival: GarageEvidenceArrival?
 
     private var resolvedReviewVideo: GarageResolvedReviewVideo? {
         GarageMediaStore.resolvedReviewVideo(for: record)
@@ -472,7 +574,13 @@ struct GarageFocusedReviewWorkspace: View {
             selectedPhase: selectedPhase,
             reliabilityReport: reliabilityReport,
             scorecard: swingScorecard,
-            stabilityScore: stabilityScore
+            stabilityScore: stabilityScore,
+            evidenceContext: GarageEvidenceContext(
+                frames: swingFrames,
+                keyFrames: keyFrames,
+                syncFlow: syncFlowReport,
+                reviewFrameSource: reviewFrameSource
+            )
         )
     }
 
@@ -602,6 +710,14 @@ struct GarageFocusedReviewWorkspace: View {
                 .padding(.trailing, 12)
                 .padding(.top, reviewSurface == .summary ? 54 : 12)
             }
+            .overlay(alignment: .bottomLeading) {
+                if let evidenceArrival {
+                    GarageEvidenceArrivalBanner(arrival: evidenceArrival)
+                        .padding(.leading, 14)
+                        .padding(.bottom, 14)
+                        .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .bottomLeading)))
+                }
+            }
             ScrollView(.vertical, showsIndicators: false) {
                 Color.clear
                     .frame(height: 0)
@@ -637,7 +753,8 @@ struct GarageFocusedReviewWorkspace: View {
                             isCoachingReportExpanded = isExpanded
                         },
                         isExportingReport: isExportingCoachingReport,
-                        onDownloadFullReport: exportCoachingReport
+                        onDownloadFullReport: exportCoachingReport,
+                        onNavigateToEvidence: navigateToEvidence
                     )
                 }
             }
@@ -769,6 +886,130 @@ struct GarageFocusedReviewWorkspace: View {
             }
 
             isExportingCoachingReport = false
+        }
+    }
+
+    private func navigateToEvidence(_ target: GarageEvidenceTarget) {
+        guard swingFrames.isEmpty == false else {
+            presentEvidenceArrival(for: target, resolvedFrameIndex: nil, directional: true)
+            return
+        }
+
+        let resolution = resolveEvidenceTarget(target)
+
+        if let resolvedFrameIndex = resolution.frameIndex {
+            currentTime = swingFrames[resolvedFrameIndex].timestamp
+        }
+
+        if let phase = resolution.phase {
+            selectedPhase = phase
+        } else if let resolvedFrameIndex = resolution.frameIndex,
+                  let nearestPhase = nearestPhase(for: resolvedFrameIndex) {
+            selectedPhase = nearestPhase
+        }
+
+        if resolution.prefersSkeleton {
+            reviewMode = .skeleton
+        }
+
+        presentEvidenceArrival(
+            for: target,
+            resolvedFrameIndex: resolution.frameIndex,
+            directional: resolution.directional
+        )
+    }
+
+    private func resolveEvidenceTarget(_ target: GarageEvidenceTarget) -> GarageResolvedEvidenceTarget {
+        switch target {
+        case let .checkpoint(frameIndex, phase, emphasis):
+            let clampedIndex = clampedFrameIndex(frameIndex)
+            return GarageResolvedEvidenceTarget(
+                frameIndex: clampedIndex,
+                phase: phase,
+                directional: clampedIndex != frameIndex,
+                prefersSkeleton: emphasis.prefersSkeleton
+            )
+        case let .phaseWindow(startFrameIndex, endFrameIndex, selectedFrameIndex, phase, emphasis):
+            let lowerBound = min(startFrameIndex, endFrameIndex)
+            let upperBound = max(startFrameIndex, endFrameIndex)
+            let boundedSelection = min(max(selectedFrameIndex, lowerBound), upperBound)
+            let clampedIndex = clampedFrameIndex(boundedSelection)
+            let directional = clampedIndex != selectedFrameIndex || startFrameIndex != endFrameIndex
+            return GarageResolvedEvidenceTarget(
+                frameIndex: clampedIndex,
+                phase: phase,
+                directional: directional,
+                prefersSkeleton: emphasis.prefersSkeleton
+            )
+        case let .reliabilityIssue(_, relatedFrameIndex, phase):
+            let clampedIndex = relatedFrameIndex.map(clampedFrameIndex)
+            return GarageResolvedEvidenceTarget(
+                frameIndex: clampedIndex,
+                phase: phase,
+                directional: true,
+                prefersSkeleton: false
+            )
+        case let .reviewNote(_, relatedFrameIndex, phase):
+            let clampedIndex = relatedFrameIndex.map(clampedFrameIndex)
+            return GarageResolvedEvidenceTarget(
+                frameIndex: clampedIndex,
+                phase: phase,
+                directional: true,
+                prefersSkeleton: false
+            )
+        }
+    }
+
+    private func clampedFrameIndex(_ frameIndex: Int) -> Int {
+        min(max(frameIndex, 0), max(swingFrames.count - 1, 0))
+    }
+
+    private func presentEvidenceArrival(
+        for target: GarageEvidenceTarget,
+        resolvedFrameIndex: Int?,
+        directional: Bool
+    ) {
+        let arrival = GarageEvidenceArrival(
+            title: target.arrivalTitle,
+            detail: evidenceArrivalDetail(
+                target: target,
+                resolvedFrameIndex: resolvedFrameIndex,
+                directional: directional
+            ),
+            tint: target.arrivalTint,
+            isDirectional: directional
+        )
+
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+            evidenceArrival = arrival
+        }
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_250_000_000)
+            guard evidenceArrival?.id == arrival.id else { return }
+
+            withAnimation(.easeOut(duration: 0.24)) {
+                evidenceArrival = nil
+            }
+        }
+    }
+
+    private func evidenceArrivalDetail(
+        target: GarageEvidenceTarget,
+        resolvedFrameIndex: Int?,
+        directional: Bool
+    ) -> String {
+        let frameLabel = resolvedFrameIndex.map { "Frame \($0 + 1) of \(swingFrames.count)" } ?? "No exact frame available"
+
+        switch target {
+        case .checkpoint:
+            return directional ? "\(frameLabel) - clamped evidence" : "\(frameLabel) - exact checkpoint"
+        case .phaseWindow:
+            return "\(frameLabel) - directional sequence"
+        case let .reliabilityIssue(kind, _, _):
+            return "\(kind.label) - review signal"
+        case .reviewNote:
+            return "\(frameLabel) - review note"
         }
     }
 
@@ -1109,6 +1350,7 @@ private struct GarageReviewSummaryControls: View {
     var onCoachingExpansionChange: (Bool) -> Void = { _ in }
     var isExportingReport: Bool = false
     var onDownloadFullReport: () -> Void = {}
+    var onNavigateToEvidence: (GarageEvidenceTarget) -> Void = { _ in }
     @State private var isCoachingExpanded = false
 
     var body: some View {
@@ -1126,7 +1368,8 @@ private struct GarageReviewSummaryControls: View {
                         presentation: coachingPresentation,
                         isExpanded: $isCoachingExpanded,
                         isExportingReport: isExportingReport,
-                        onDownloadFullReport: onDownloadFullReport
+                        onDownloadFullReport: onDownloadFullReport,
+                        onNavigateToEvidence: handleEvidenceNavigation
                     )
                 }
             case let .unavailable(presentation):
@@ -1135,7 +1378,8 @@ private struct GarageReviewSummaryControls: View {
                     presentation: coachingPresentation,
                     isExpanded: $isCoachingExpanded,
                     isExportingReport: isExportingReport,
-                    onDownloadFullReport: onDownloadFullReport
+                    onDownloadFullReport: onDownloadFullReport,
+                    onNavigateToEvidence: handleEvidenceNavigation
                 )
             }
             if reviewFrameSource != .video {
@@ -1158,6 +1402,14 @@ private struct GarageReviewSummaryControls: View {
 
     private var coachingResetKey: String {
         coachingPresentation.animationIdentityKey
+    }
+
+    private func handleEvidenceNavigation(_ target: GarageEvidenceTarget) {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+            isCoachingExpanded = false
+        }
+        onCoachingExpansionChange(false)
+        onNavigateToEvidence(target)
     }
 }
 
@@ -1292,6 +1544,7 @@ private struct GarageCoachingDisclosureCard: View {
     @Binding var isExpanded: Bool
     var isExportingReport: Bool = false
     var onDownloadFullReport: () -> Void = {}
+    var onNavigateToEvidence: (GarageEvidenceTarget) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1374,7 +1627,8 @@ private struct GarageCoachingDisclosureCard: View {
                 GarageCoachingReportView(
                     presentation: presentation,
                     isExportingReport: isExportingReport,
-                    onDownloadFullReport: onDownloadFullReport
+                    onDownloadFullReport: onDownloadFullReport,
+                    onNavigateToEvidence: onNavigateToEvidence
                 )
                     .transition(.opacity.combined(with: .scale(scale: 0.985, anchor: .top)))
             }

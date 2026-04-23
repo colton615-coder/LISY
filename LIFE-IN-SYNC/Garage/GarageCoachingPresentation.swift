@@ -38,6 +38,117 @@ enum GarageCoachingValueState: Equatable {
     case unavailable
 }
 
+enum GarageEvidenceEmphasis: Equatable {
+    case coachingCue(String)
+    case metric(String)
+    case blocker(String)
+}
+
+enum GarageEvidenceReliabilityKind: Equatable {
+    case lowPoseConfidence
+    case missingKeyframeCoverage
+    case reviewNotApproved
+    case incompleteAnchorCoverage
+    case unavailableReviewSource
+    case manualAdjustmentLoad
+
+    var label: String {
+        switch self {
+        case .lowPoseConfidence:
+            "Pose Confidence"
+        case .missingKeyframeCoverage:
+            "Keyframe Coverage"
+        case .reviewNotApproved:
+            "Review Status"
+        case .incompleteAnchorCoverage:
+            "Grip Coverage"
+        case .unavailableReviewSource:
+            "Video Source"
+        case .manualAdjustmentLoad:
+            "Manual Adjustments"
+        }
+    }
+}
+
+enum GarageEvidenceTarget: Equatable {
+    case checkpoint(
+        frameIndex: Int,
+        phase: SwingPhase,
+        emphasis: GarageEvidenceEmphasis
+    )
+    case phaseWindow(
+        startFrameIndex: Int,
+        endFrameIndex: Int,
+        selectedFrameIndex: Int,
+        phase: SwingPhase,
+        emphasis: GarageEvidenceEmphasis
+    )
+    case reliabilityIssue(
+        kind: GarageEvidenceReliabilityKind,
+        relatedFrameIndex: Int?,
+        phase: SwingPhase?
+    )
+    case reviewNote(
+        noteID: String,
+        relatedFrameIndex: Int?,
+        phase: SwingPhase?
+    )
+
+    var accessibilityLabel: String {
+        switch self {
+        case let .checkpoint(_, phase, emphasis):
+            "\(emphasis.label) evidence at \(phase.reviewTitle)"
+        case let .phaseWindow(_, _, _, phase, emphasis):
+            "\(emphasis.label) directional evidence near \(phase.reviewTitle)"
+        case let .reliabilityIssue(kind, _, _):
+            "\(kind.label) evidence"
+        case let .reviewNote(noteID, _, _):
+            "\(noteID) evidence"
+        }
+    }
+
+    var actionLabel: String {
+        switch self {
+        case .checkpoint:
+            "View Evidence"
+        case .phaseWindow:
+            "View Sequence"
+        case .reliabilityIssue:
+            "Review Signal"
+        case .reviewNote:
+            "Review Note"
+        }
+    }
+}
+
+extension GarageEvidenceEmphasis {
+    var label: String {
+        switch self {
+        case let .coachingCue(title), let .metric(title), let .blocker(title):
+            title
+        }
+    }
+}
+
+struct GarageEvidenceContext: Equatable {
+    let frames: [SwingFrame]
+    let keyFrames: [KeyFrame]
+    let syncFlow: GarageSyncFlowReport?
+    let reviewFrameSource: GarageReviewFrameSourceState
+
+    init(
+        frames: [SwingFrame],
+        keyFrames: [KeyFrame],
+        syncFlow: GarageSyncFlowReport?,
+        reviewFrameSource: GarageReviewFrameSourceState
+    ) {
+        self.frames = frames
+        self.keyFrames = keyFrames
+        self.syncFlow = syncFlow
+        self.reviewFrameSource = reviewFrameSource
+    }
+}
+
 enum GarageCoachingAccentStyle: Equatable {
     case accent
     case trusted
@@ -78,6 +189,7 @@ struct GarageCoachingHeroModel: Equatable {
     let body: String
     let disclaimer: String
     let detailSections: [GarageCoachingDetailSection]
+    var evidenceTarget: GarageEvidenceTarget? = nil
 }
 
 struct GarageCoachingSnapshotModel: Identifiable, Equatable {
@@ -89,6 +201,7 @@ struct GarageCoachingSnapshotModel: Identifiable, Equatable {
     let accentStyle: GarageCoachingAccentStyle
     let valueState: GarageCoachingValueState
     let detailSections: [GarageCoachingDetailSection]
+    var evidenceTarget: GarageEvidenceTarget? = nil
 }
 
 struct GarageCoachingMetricModel: Identifiable, Equatable {
@@ -100,6 +213,7 @@ struct GarageCoachingMetricModel: Identifiable, Equatable {
     let progress: Double?
     let valueState: GarageCoachingValueState
     let detailSections: [GarageCoachingDetailSection]
+    var evidenceTarget: GarageEvidenceTarget? = nil
 
     var isPrimaryMetric: Bool {
         id == "reliability" || id == "score"
@@ -236,27 +350,31 @@ struct GarageCoachingPresentation: Equatable {
         selectedPhase: SwingPhase,
         reliabilityReport: GarageReliabilityReport,
         scorecard: GarageSwingScorecard?,
-        stabilityScore: Int?
+        stabilityScore: Int?,
+        evidenceContext: GarageEvidenceContext? = nil
     ) -> GarageCoachingPresentation {
         let mode = renderMode(report: report, reliabilityStatus: reliabilityReport.status)
         let hero = makeHero(
             report: report,
             phase: selectedPhase,
             reliabilityReport: reliabilityReport,
-            mode: mode
+            mode: mode,
+            evidenceContext: evidenceContext
         )
         let snapshots = makeSnapshots(
             phase: selectedPhase,
             reliabilityReport: reliabilityReport,
             scorecard: scorecard,
-            stabilityScore: stabilityScore
+            stabilityScore: stabilityScore,
+            evidenceContext: evidenceContext
         )
         let metrics = makeMetrics(
             mode: mode,
             phase: selectedPhase,
             reliabilityReport: reliabilityReport,
             scorecard: scorecard,
-            stabilityScore: stabilityScore
+            stabilityScore: stabilityScore,
+            evidenceContext: evidenceContext
         )
         let notes = resolvedNotes(report: report, reliabilityReport: reliabilityReport)
         let action = GarageCoachingActionModel(
@@ -308,7 +426,8 @@ struct GarageCoachingPresentation: Equatable {
         report: GarageCoachingReport,
         phase: SwingPhase,
         reliabilityReport: GarageReliabilityReport,
-        mode: GarageCoachingRenderMode
+        mode: GarageCoachingRenderMode,
+        evidenceContext: GarageEvidenceContext?
     ) -> GarageCoachingHeroModel {
         let primaryCue = report.cues.first
         let rawHeadline = primaryCue?.title ?? report.headline
@@ -341,7 +460,13 @@ struct GarageCoachingPresentation: Equatable {
             headline: mode == .unavailable ? "Coaching unavailable" : headline,
             body: body,
             disclaimer: mode.disclaimerText,
-            detailSections: detailSections
+            detailSections: detailSections,
+            evidenceTarget: evidenceTarget(
+                for: primaryCue,
+                fallbackPhase: phase,
+                reliabilityStatus: reliabilityReport.status,
+                context: evidenceContext
+            )
         )
     }
 
@@ -349,7 +474,8 @@ struct GarageCoachingPresentation: Equatable {
         phase: SwingPhase,
         reliabilityReport: GarageReliabilityReport,
         scorecard: GarageSwingScorecard?,
-        stabilityScore: Int?
+        stabilityScore: Int?,
+        evidenceContext: GarageEvidenceContext?
     ) -> [GarageCoachingSnapshotModel] {
         let scoreSnapshot = GarageCoachingSnapshotModel(
             id: "score",
@@ -366,7 +492,14 @@ struct GarageCoachingPresentation: Equatable {
                         ? "The Step 2 scorecard is not available for this swing yet, so the session score cannot be shown."
                         : "The session score is the current total from the DTL domain scorecard."
                 )
-            ]
+            ],
+            evidenceTarget: scorecard == nil ? nil : phaseWindowEvidence(
+                startPhase: .address,
+                endPhase: .impact,
+                selectedPhase: phase,
+                emphasis: .metric("Session Analysis"),
+                context: evidenceContext
+            )
         )
 
         let failedCheckDetails = reliabilityReport.checks
@@ -389,7 +522,12 @@ struct GarageCoachingPresentation: Equatable {
                     title: failedCheckDetails.isEmpty ? "Status" : "Needs Review",
                     body: failedCheckDetails.first ?? "All current reliability checks are passing."
                 )
-            ]
+            ],
+            evidenceTarget: reliabilityEvidenceTarget(
+                reliabilityReport: reliabilityReport,
+                selectedPhase: phase,
+                context: evidenceContext
+            )
         )
 
         let phaseSnapshot = GarageCoachingSnapshotModel(
@@ -411,7 +549,12 @@ struct GarageCoachingPresentation: Equatable {
                         "Postural stability is currently \($0), based on head and pelvis drift from setup to impact."
                     } ?? "Postural stability could not be calculated from the current swing data."
                 )
-            ]
+            ],
+            evidenceTarget: checkpointEvidence(
+                phase: phase,
+                emphasis: .metric("Focus Phase"),
+                context: evidenceContext
+            )
         )
 
         return [scoreSnapshot, reliabilitySnapshot, phaseSnapshot]
@@ -422,7 +565,8 @@ struct GarageCoachingPresentation: Equatable {
         phase: SwingPhase,
         reliabilityReport: GarageReliabilityReport,
         scorecard: GarageSwingScorecard?,
-        stabilityScore: Int?
+        stabilityScore: Int?,
+        evidenceContext: GarageEvidenceContext?
     ) -> [GarageCoachingMetricModel] {
         if let scorecard {
             let domainMetrics = GarageSwingDomain.allCases.compactMap { domain -> GarageCoachingMetricModel? in
@@ -448,7 +592,11 @@ struct GarageCoachingPresentation: Equatable {
                             title: "Grade",
                             body: "Current performance grade: \(domainScore.grade.label)."
                         )
-                    ]
+                    ],
+                    evidenceTarget: metricEvidenceTarget(
+                        for: domain,
+                        context: evidenceContext
+                    )
                 )
             }
 
@@ -469,7 +617,12 @@ struct GarageCoachingPresentation: Equatable {
                         title: "Focus Phase",
                         body: "\(phase.reviewTitle) remains the active coaching checkpoint while trust is \(reliabilityReport.status.rawValue.lowercased())."
                     )
-                ]
+                ],
+                evidenceTarget: reliabilityEvidenceTarget(
+                    reliabilityReport: reliabilityReport,
+                    selectedPhase: phase,
+                    context: evidenceContext
+                )
             )
 
             return Array((domainMetrics + [reliabilityMetric]).prefix(6))
@@ -489,7 +642,8 @@ struct GarageCoachingPresentation: Equatable {
                         title: "Missing Scorecard",
                         body: "The Step 2 scorecard is not available yet, so the session score cannot be rendered."
                     )
-                ]
+                ],
+                evidenceTarget: nil
             ),
             GarageCoachingMetricModel(
                 id: "reliability",
@@ -504,7 +658,12 @@ struct GarageCoachingPresentation: Equatable {
                         title: "Reliability",
                         body: reliabilityReport.summary
                     )
-                ]
+                ],
+                evidenceTarget: reliabilityEvidenceTarget(
+                    reliabilityReport: reliabilityReport,
+                    selectedPhase: phase,
+                    context: evidenceContext
+                )
             )
         ]
 
@@ -524,7 +683,14 @@ struct GarageCoachingPresentation: Equatable {
                             title: "Support Metric",
                             body: "Stability is available even though the broader scorecard is missing."
                         )
-                    ]
+                    ],
+                    evidenceTarget: phaseWindowEvidence(
+                        startPhase: .address,
+                        endPhase: .impact,
+                        selectedPhase: .impact,
+                        emphasis: .metric("Stability"),
+                        context: evidenceContext
+                    )
                 )
             )
         } else if mode == .provisional {
@@ -542,12 +708,276 @@ struct GarageCoachingPresentation: Equatable {
                             title: "Support Metric",
                             body: "Stability could not be calculated from the current swing data."
                         )
-                    ]
+                    ],
+                    evidenceTarget: nil
                 )
             )
         }
 
         return fallbackMetrics
+    }
+
+    static func evidenceTarget(
+        for cue: GarageCoachingCue?,
+        fallbackPhase: SwingPhase,
+        reliabilityStatus: GarageReliabilityStatus,
+        context: GarageEvidenceContext?
+    ) -> GarageEvidenceTarget? {
+        guard let cue, let context else { return nil }
+
+        if let syncIssue = context.syncFlow?.primaryIssue,
+           cue.title == syncIssue.title || cue.message == syncIssue.detail {
+            return syncFlowEvidenceTarget(
+                for: syncIssue,
+                reliabilityStatus: reliabilityStatus,
+                context: context
+            )
+        }
+
+        return checkpointEvidence(
+            phase: fallbackPhase,
+            emphasis: .coachingCue(cue.title),
+            context: context
+        )
+    }
+
+    private static func syncFlowEvidenceTarget(
+        for issue: GarageSyncFlowIssue,
+        reliabilityStatus: GarageReliabilityStatus,
+        context: GarageEvidenceContext
+    ) -> GarageEvidenceTarget? {
+        guard supportsVisualEvidence(context) else { return nil }
+        guard let selectedFrameIndex = nearestFrameIndex(to: issue.timestamp, in: context.frames) else {
+            return nil
+        }
+
+        let phase = nearestPhase(for: selectedFrameIndex, keyFrames: context.keyFrames) ?? phase(for: issue.kind)
+        let emphasis = GarageEvidenceEmphasis.coachingCue(issue.title)
+
+        if reliabilityStatus == .trusted {
+            return .checkpoint(
+                frameIndex: selectedFrameIndex,
+                phase: phase,
+                emphasis: emphasis
+            )
+        }
+
+        let window = frameWindow(
+            around: selectedFrameIndex,
+            lowerPadding: 3,
+            upperPadding: 3,
+            frameCount: context.frames.count
+        )
+        return .phaseWindow(
+            startFrameIndex: window.lowerBound,
+            endFrameIndex: window.upperBound,
+            selectedFrameIndex: selectedFrameIndex,
+            phase: phase,
+            emphasis: emphasis
+        )
+    }
+
+    private static func metricEvidenceTarget(
+        for domain: GarageSwingDomain,
+        context: GarageEvidenceContext?
+    ) -> GarageEvidenceTarget? {
+        switch domain {
+        case .tempo:
+            return phaseWindowEvidence(
+                startPhase: .topOfBackswing,
+                endPhase: .impact,
+                selectedPhase: .transition,
+                emphasis: .metric("Tempo"),
+                context: context
+            )
+        case .spine:
+            return phaseWindowEvidence(
+                startPhase: .address,
+                endPhase: .impact,
+                selectedPhase: .impact,
+                emphasis: .metric("Spine"),
+                context: context
+            )
+        case .pelvis:
+            return phaseWindowEvidence(
+                startPhase: .transition,
+                endPhase: .impact,
+                selectedPhase: .earlyDownswing,
+                emphasis: .metric("Pelvis"),
+                context: context
+            )
+        case .knee:
+            return phaseWindowEvidence(
+                startPhase: .address,
+                endPhase: .impact,
+                selectedPhase: .impact,
+                emphasis: .metric("Knees"),
+                context: context
+            )
+        case .head:
+            return phaseWindowEvidence(
+                startPhase: .address,
+                endPhase: .impact,
+                selectedPhase: .impact,
+                emphasis: .metric("Head"),
+                context: context
+            )
+        }
+    }
+
+    private static func reliabilityEvidenceTarget(
+        reliabilityReport: GarageReliabilityReport,
+        selectedPhase: SwingPhase,
+        context: GarageEvidenceContext?
+    ) -> GarageEvidenceTarget? {
+        guard let context else { return nil }
+
+        if let failedCheck = reliabilityReport.checks.first(where: { $0.passed == false }) {
+            let kind = reliabilityKind(for: failedCheck)
+            let relatedPhase = relatedPhase(for: kind, selectedPhase: selectedPhase)
+            let relatedIndex = relatedPhase.flatMap {
+                frameIndex(for: $0, keyFrames: context.keyFrames)
+            }
+
+            return .reliabilityIssue(
+                kind: kind,
+                relatedFrameIndex: relatedIndex,
+                phase: relatedPhase
+            )
+        }
+
+        return phaseWindowEvidence(
+            startPhase: .address,
+            endPhase: .impact,
+            selectedPhase: selectedPhase,
+            emphasis: .blocker("Trusted signal"),
+            context: context
+        )
+    }
+
+    private static func checkpointEvidence(
+        phase: SwingPhase,
+        emphasis: GarageEvidenceEmphasis,
+        context: GarageEvidenceContext?
+    ) -> GarageEvidenceTarget? {
+        guard
+            let context,
+            supportsVisualEvidence(context),
+            let frameIndex = frameIndex(for: phase, keyFrames: context.keyFrames)
+        else {
+            return nil
+        }
+
+        return .checkpoint(frameIndex: frameIndex, phase: phase, emphasis: emphasis)
+    }
+
+    private static func phaseWindowEvidence(
+        startPhase: SwingPhase,
+        endPhase: SwingPhase,
+        selectedPhase: SwingPhase,
+        emphasis: GarageEvidenceEmphasis,
+        context: GarageEvidenceContext?
+    ) -> GarageEvidenceTarget? {
+        guard
+            let context,
+            supportsVisualEvidence(context),
+            let startIndex = frameIndex(for: startPhase, keyFrames: context.keyFrames),
+            let endIndex = frameIndex(for: endPhase, keyFrames: context.keyFrames)
+        else {
+            return nil
+        }
+
+        let lowerBound = min(startIndex, endIndex)
+        let upperBound = max(startIndex, endIndex)
+        let selectedIndex = frameIndex(for: selectedPhase, keyFrames: context.keyFrames)
+            .map { min(max($0, lowerBound), upperBound) }
+            ?? lowerBound + ((upperBound - lowerBound) / 2)
+
+        return .phaseWindow(
+            startFrameIndex: lowerBound,
+            endFrameIndex: upperBound,
+            selectedFrameIndex: selectedIndex,
+            phase: selectedPhase,
+            emphasis: emphasis
+        )
+    }
+
+    private static func supportsVisualEvidence(_ context: GarageEvidenceContext) -> Bool {
+        context.reviewFrameSource != .recoveryNeeded && context.frames.isEmpty == false
+    }
+
+    private static func frameIndex(for phase: SwingPhase, keyFrames: [KeyFrame]) -> Int? {
+        keyFrames.first(where: { $0.phase == phase })?.frameIndex
+    }
+
+    private static func nearestFrameIndex(to timestamp: Double, in frames: [SwingFrame]) -> Int? {
+        guard frames.isEmpty == false else { return nil }
+
+        return frames.enumerated().min { lhs, rhs in
+            abs(lhs.element.timestamp - timestamp) < abs(rhs.element.timestamp - timestamp)
+        }?.offset
+    }
+
+    private static func nearestPhase(for frameIndex: Int, keyFrames: [KeyFrame]) -> SwingPhase? {
+        keyFrames.min { lhs, rhs in
+            abs(lhs.frameIndex - frameIndex) < abs(rhs.frameIndex - frameIndex)
+        }?.phase
+    }
+
+    private static func frameWindow(
+        around selectedFrameIndex: Int,
+        lowerPadding: Int,
+        upperPadding: Int,
+        frameCount: Int
+    ) -> ClosedRange<Int> {
+        let lastIndex = max(frameCount - 1, 0)
+        let start = min(max(selectedFrameIndex - lowerPadding, 0), lastIndex)
+        let end = min(max(selectedFrameIndex + upperPadding, 0), lastIndex)
+        return min(start, end)...max(start, end)
+    }
+
+    private static func phase(for issueKind: GarageSyncFlowIssueKind) -> SwingPhase {
+        switch issueKind {
+        case .earlyHands:
+            .transition
+        case .hipStall:
+            .earlyDownswing
+        case .earlyExtension, .unstableHead:
+            .impact
+        }
+    }
+
+    private static func reliabilityKind(for check: GarageReliabilityCheck) -> GarageEvidenceReliabilityKind {
+        switch check.title {
+        case "Video Source":
+            .unavailableReviewSource
+        case "Keyframe Coverage":
+            .missingKeyframeCoverage
+        case "Review Status":
+            .reviewNotApproved
+        case "Grip Coverage":
+            .incompleteAnchorCoverage
+        case "Pose Confidence":
+            .lowPoseConfidence
+        case "Manual Adjustments":
+            .manualAdjustmentLoad
+        default:
+            .reviewNotApproved
+        }
+    }
+
+    private static func relatedPhase(
+        for kind: GarageEvidenceReliabilityKind,
+        selectedPhase: SwingPhase
+    ) -> SwingPhase? {
+        switch kind {
+        case .lowPoseConfidence, .reviewNotApproved, .manualAdjustmentLoad:
+            selectedPhase
+        case .missingKeyframeCoverage, .incompleteAnchorCoverage:
+            selectedPhase
+        case .unavailableReviewSource:
+            nil
+        }
     }
 
     private static func resolvedNotes(

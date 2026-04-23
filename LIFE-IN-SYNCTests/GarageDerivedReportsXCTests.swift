@@ -521,6 +521,268 @@ final class GarageDerivedReportsXCTests: XCTestCase {
         XCTAssertEqual(presentation.metrics.last?.badgeStyle, .trust(.trusted))
     }
 
+    func testGarageCoachingPresentationMapsTrustedSyncFlowCueToExactEvidenceFrame() throws {
+        let frames = makeFullBodyDTLSwingFrames()
+        let keyFrames = makeStep2KeyFrames()
+        let transitionFrameIndex = try XCTUnwrap(keyFrames.first(where: { $0.phase == .transition })?.frameIndex)
+        let syncIssue = GarageSyncFlowIssue(
+            kind: .earlyHands,
+            segment: .hands,
+            jointName: .rightWrist,
+            timestamp: frames[transitionFrameIndex].timestamp,
+            title: "Sequence break: hands jumped first",
+            detail: "The hands accelerated before the pelvis and torso could organize the downswing."
+        )
+
+        let presentation = GarageCoachingPresentation.make(
+            report: GarageCoachingReport(
+                headline: syncIssue.title,
+                confidenceLabel: GarageReliabilityStatus.trusted.rawValue,
+                cues: [
+                    GarageCoachingCue(
+                        title: syncIssue.title,
+                        message: syncIssue.detail,
+                        severity: .caution
+                    )
+                ],
+                blockers: [],
+                nextBestAction: "Jump to the transition evidence."
+            ),
+            selectedPhase: .transition,
+            reliabilityReport: GarageReliabilityReport(
+                score: 92,
+                status: .trusted,
+                summary: "This swing has strong coverage.",
+                checks: []
+            ),
+            scorecard: GarageScorecardEngine.generate(frames: frames, keyFrames: keyFrames),
+            stabilityScore: 84,
+            evidenceContext: GarageEvidenceContext(
+                frames: frames,
+                keyFrames: keyFrames,
+                syncFlow: GarageSyncFlowReport(
+                    status: .ready,
+                    headline: syncIssue.title,
+                    primaryIssue: syncIssue,
+                    markers: [],
+                    consequence: nil,
+                    summary: syncIssue.detail
+                ),
+                reviewFrameSource: .video
+            )
+        )
+
+        XCTAssertEqual(
+            presentation.hero.evidenceTarget,
+            .checkpoint(
+                frameIndex: transitionFrameIndex,
+                phase: .transition,
+                emphasis: .coachingCue(syncIssue.title)
+            )
+        )
+    }
+
+    func testGarageCoachingPresentationMapsReviewSyncFlowCueToDirectionalEvidenceWindow() throws {
+        let frames = makeFullBodyDTLSwingFrames()
+        let keyFrames = makeStep2KeyFrames()
+        let transitionFrameIndex = try XCTUnwrap(keyFrames.first(where: { $0.phase == .transition })?.frameIndex)
+        let syncIssue = GarageSyncFlowIssue(
+            kind: .hipStall,
+            segment: .pelvis,
+            jointName: .rightHip,
+            timestamp: frames[transitionFrameIndex].timestamp,
+            title: "Sequence break: hips stalled",
+            detail: "Power slowed in the pelvis before the hands delivered through impact."
+        )
+
+        let presentation = GarageCoachingPresentation.make(
+            report: GarageCoachingReport(
+                headline: syncIssue.title,
+                confidenceLabel: GarageReliabilityStatus.review.rawValue,
+                cues: [
+                    GarageCoachingCue(
+                        title: syncIssue.title,
+                        message: syncIssue.detail,
+                        severity: .caution
+                    )
+                ],
+                blockers: ["Average pose confidence is only 62%, so detections may be noisy."],
+                nextBestAction: "Use this cue directionally."
+            ),
+            selectedPhase: .transition,
+            reliabilityReport: GarageReliabilityReport(
+                score: 68,
+                status: .review,
+                summary: "This swing is usable, but needs review.",
+                checks: [
+                    GarageReliabilityCheck(title: "Pose Confidence", passed: false, detail: "Average pose confidence is only 62%, so detections may be noisy.")
+                ]
+            ),
+            scorecard: GarageScorecardEngine.generate(frames: frames, keyFrames: keyFrames),
+            stabilityScore: 72,
+            evidenceContext: GarageEvidenceContext(
+                frames: frames,
+                keyFrames: keyFrames,
+                syncFlow: GarageSyncFlowReport(
+                    status: .ready,
+                    headline: syncIssue.title,
+                    primaryIssue: syncIssue,
+                    markers: [],
+                    consequence: nil,
+                    summary: syncIssue.detail
+                ),
+                reviewFrameSource: .video
+            )
+        )
+
+        guard case let .phaseWindow(startFrameIndex, endFrameIndex, selectedFrameIndex, phase, emphasis) = presentation.hero.evidenceTarget else {
+            return XCTFail("Expected review cue to map to directional phase-window evidence.")
+        }
+
+        XCTAssertLessThanOrEqual(startFrameIndex, transitionFrameIndex)
+        XCTAssertGreaterThanOrEqual(endFrameIndex, transitionFrameIndex)
+        XCTAssertEqual(selectedFrameIndex, transitionFrameIndex)
+        XCTAssertEqual(phase, .transition)
+        XCTAssertEqual(emphasis, .coachingCue(syncIssue.title))
+    }
+
+    func testGarageCoachingPresentationMapsReliabilityBlockerWithoutFakePrecision() throws {
+        let frames = makeFullBodyDTLSwingFrames()
+        let keyFrames = makeStep2KeyFrames()
+        let impactFrameIndex = try XCTUnwrap(keyFrames.first(where: { $0.phase == .impact })?.frameIndex)
+
+        let presentation = GarageCoachingPresentation.make(
+            report: GarageCoachingReport(
+                headline: "Hand Path Needs Monitoring",
+                confidenceLabel: GarageReliabilityStatus.review.rawValue,
+                cues: [],
+                blockers: ["Average pose confidence is only 62%, so detections may be noisy."],
+                nextBestAction: "Use the cues directionally."
+            ),
+            selectedPhase: .impact,
+            reliabilityReport: GarageReliabilityReport(
+                score: 68,
+                status: .review,
+                summary: "This swing is usable, but needs review.",
+                checks: [
+                    GarageReliabilityCheck(title: "Pose Confidence", passed: false, detail: "Average pose confidence is only 62%, so detections may be noisy.")
+                ]
+            ),
+            scorecard: nil,
+            stabilityScore: nil,
+            evidenceContext: GarageEvidenceContext(
+                frames: frames,
+                keyFrames: keyFrames,
+                syncFlow: nil,
+                reviewFrameSource: .video
+            )
+        )
+
+        XCTAssertEqual(
+            presentation.snapshots.first(where: { $0.id == "reliability" })?.evidenceTarget,
+            .reliabilityIssue(
+                kind: .lowPoseConfidence,
+                relatedFrameIndex: impactFrameIndex,
+                phase: .impact
+            )
+        )
+    }
+
+    func testGarageCoachingPresentationDoesNotInventEvidenceWithoutContext() {
+        let presentation = GarageCoachingPresentation.make(
+            report: GarageCoachingReport(
+                headline: "Transition Looks Rushed",
+                confidenceLabel: GarageReliabilityStatus.trusted.rawValue,
+                cues: [
+                    GarageCoachingCue(
+                        title: "Transition Looks Rushed",
+                        message: "Transition is outracing the current baseline.",
+                        severity: .caution
+                    )
+                ],
+                blockers: [],
+                nextBestAction: "Keep collecting swings."
+            ),
+            selectedPhase: .transition,
+            reliabilityReport: GarageReliabilityReport(
+                score: 92,
+                status: .trusted,
+                summary: "This swing has strong coverage.",
+                checks: []
+            ),
+            scorecard: nil,
+            stabilityScore: nil
+        )
+
+        XCTAssertNil(presentation.hero.evidenceTarget)
+        XCTAssertNil(presentation.snapshots.first(where: { $0.id == "reliability" })?.evidenceTarget)
+    }
+
+    func testGarageCoachingPresentationDisablesVisualEvidenceWhenReviewSourceNeedsRecovery() throws {
+        let frames = makeFullBodyDTLSwingFrames()
+        let keyFrames = makeStep2KeyFrames()
+        let transitionFrameIndex = try XCTUnwrap(keyFrames.first(where: { $0.phase == .transition })?.frameIndex)
+        let syncIssue = GarageSyncFlowIssue(
+            kind: .earlyHands,
+            segment: .hands,
+            jointName: .rightWrist,
+            timestamp: frames[transitionFrameIndex].timestamp,
+            title: "Sequence break: hands jumped first",
+            detail: "The hands accelerated before the pelvis and torso could organize the downswing."
+        )
+
+        let presentation = GarageCoachingPresentation.make(
+            report: GarageCoachingReport(
+                headline: syncIssue.title,
+                confidenceLabel: GarageReliabilityStatus.review.rawValue,
+                cues: [
+                    GarageCoachingCue(
+                        title: syncIssue.title,
+                        message: syncIssue.detail,
+                        severity: .caution
+                    )
+                ],
+                blockers: ["Garage cannot fully verify this swing until either the stored video or fallback-ready pose frames are available."],
+                nextBestAction: "Restore review media before trusting this cue."
+            ),
+            selectedPhase: .transition,
+            reliabilityReport: GarageReliabilityReport(
+                score: 42,
+                status: .provisional,
+                summary: "This swing still needs recovery.",
+                checks: [
+                    GarageReliabilityCheck(title: "Video Source", passed: false, detail: "Garage cannot fully verify this swing until either the stored video or fallback-ready pose frames are available.")
+                ]
+            ),
+            scorecard: GarageScorecardEngine.generate(frames: frames, keyFrames: keyFrames),
+            stabilityScore: 72,
+            evidenceContext: GarageEvidenceContext(
+                frames: frames,
+                keyFrames: keyFrames,
+                syncFlow: GarageSyncFlowReport(
+                    status: .ready,
+                    headline: syncIssue.title,
+                    primaryIssue: syncIssue,
+                    markers: [],
+                    consequence: nil,
+                    summary: syncIssue.detail
+                ),
+                reviewFrameSource: .recoveryNeeded
+            )
+        )
+
+        XCTAssertNil(presentation.hero.evidenceTarget)
+        XCTAssertNil(presentation.snapshots.first(where: { $0.id == "score" })?.evidenceTarget)
+        XCTAssertEqual(
+            presentation.snapshots.first(where: { $0.id == "reliability" })?.evidenceTarget,
+            .reliabilityIssue(
+                kind: .unavailableReviewSource,
+                relatedFrameIndex: nil,
+                phase: nil
+            )
+        )
+    }
+
     func testSyncFlowDetectsEarlyHandsAndMapsReleaseTimingRisk() throws {
         let frames = makeSyncFlowEarlyHandsFrames()
         let keyFrames = makeSyncFlowKeyFrames()

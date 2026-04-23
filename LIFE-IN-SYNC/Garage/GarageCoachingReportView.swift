@@ -5,6 +5,7 @@ struct GarageCoachingReportView: View {
     let presentation: GarageCoachingPresentation
     var isExportingReport: Bool = false
     var onDownloadFullReport: () -> Void = {}
+    var onNavigateToEvidence: (GarageEvidenceTarget) -> Void = { _ in }
 
     @State private var isShellVisible = false
     @State private var visibleSections: Set<GarageCoachingSection> = []
@@ -175,6 +176,10 @@ struct GarageCoachingReportView: View {
                 )
             }
 
+            if let evidenceTarget = presentation.hero.evidenceTarget {
+                evidenceActionButton(for: evidenceTarget)
+            }
+
             Text(presentation.hero.body)
                 .font(.subheadline)
                 .foregroundStyle(garageReviewMutedText)
@@ -279,7 +284,11 @@ struct GarageCoachingReportView: View {
                     ForEach(presentation.snapshots) { snapshot in
                         GarageCoachingSnapshotCard(snapshot: snapshot) {
                             garageTriggerImpact(.light)
-                            detailTarget = .snapshot(snapshot)
+                            if let evidenceTarget = snapshot.evidenceTarget {
+                                onNavigateToEvidence(evidenceTarget)
+                            } else {
+                                detailTarget = .snapshot(snapshot)
+                            }
                         }
                     }
                 }
@@ -307,9 +316,44 @@ struct GarageCoachingReportView: View {
 
             GarageCoachingMetricGrid(metrics: presentation.metrics) { metric in
                 garageTriggerImpact(.light)
-                detailTarget = .metric(metric)
+                if let evidenceTarget = metric.evidenceTarget {
+                    onNavigateToEvidence(evidenceTarget)
+                } else {
+                    detailTarget = .metric(metric)
+                }
             }
         }
+    }
+
+    private func evidenceActionButton(for target: GarageEvidenceTarget) -> some View {
+        Button {
+            garageTriggerImpact(.light)
+            onNavigateToEvidence(target)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "scope")
+                    .font(.caption.weight(.bold))
+
+                Text(target.actionLabel)
+                    .font(.caption.weight(.bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+            }
+            .foregroundStyle(garageReviewAccent)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(
+                Capsule()
+                    .fill(garageReviewAccent.opacity(0.12))
+                    .overlay(
+                        Capsule()
+                            .stroke(garageReviewAccent.opacity(0.28), lineWidth: 0.8)
+                    )
+                    .shadow(color: garageReviewAccent.opacity(0.16), radius: 8, x: 0, y: 4)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(target.accessibilityLabel)
     }
 
     private var redesignStudioSection: some View {
@@ -516,9 +560,9 @@ private struct GarageCoachingSnapshotCard: View {
 
                     Spacer(minLength: 0)
 
-                    Image(systemName: "arrow.up.forward.circle.fill")
+                    Image(systemName: snapshot.evidenceTarget == nil ? "arrow.up.forward.circle.fill" : "scope")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(garageReviewMutedText.opacity(0.72))
+                        .foregroundStyle(snapshot.evidenceTarget == nil ? garageReviewMutedText.opacity(0.72) : garageReviewAccent)
                 }
 
                 Text(snapshot.title)
@@ -538,6 +582,10 @@ private struct GarageCoachingSnapshotCard: View {
                     .foregroundStyle(garageReviewMutedText.opacity(0.94))
                     .lineLimit(2)
                     .minimumScaleFactor(0.85)
+
+                if let evidenceTarget = snapshot.evidenceTarget {
+                    GarageEvidenceAffordance(label: evidenceTarget.actionLabel)
+                }
             }
             .frame(width: 138, alignment: .leading)
             .padding(14)
@@ -545,11 +593,42 @@ private struct GarageCoachingSnapshotCard: View {
                         GarageInsetPanelBackground(
                             shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
                             fill: garageReviewInsetSurface,
-                            stroke: snapshot.accentStyle.tint.opacity(snapshot.valueState == .available ? 0.18 : 0.08)
+                            stroke: snapshot.evidenceTarget == nil
+                                ? snapshot.accentStyle.tint.opacity(snapshot.valueState == .available ? 0.18 : 0.08)
+                                : garageReviewAccent.opacity(0.3)
                         )
                     )
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct GarageEvidenceAffordance: View {
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "scope")
+                .font(.system(size: 9, weight: .bold))
+
+            Text(label.uppercased())
+                .font(.system(size: 9, weight: .bold))
+                .tracking(0.7)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .foregroundStyle(garageReviewAccent.opacity(0.96))
+        .padding(.horizontal, 7)
+        .padding(.vertical, 5)
+        .background(
+            Capsule()
+                .fill(garageReviewAccent.opacity(0.1))
+                .overlay(
+                    Capsule()
+                        .stroke(garageReviewAccent.opacity(0.22), lineWidth: 0.7)
+                )
+        )
+        .accessibilityHidden(true)
     }
 }
 
@@ -632,7 +711,11 @@ private struct GarageCoachingMetricCard: View {
     }
 
     private var metricStroke: Color {
-        (metric.badgeStyle?.tint ?? garageReviewMutedText.opacity(0.42))
+        if metric.evidenceTarget != nil {
+            return garageReviewAccent.opacity(0.32)
+        }
+
+        return (metric.badgeStyle?.tint ?? garageReviewMutedText.opacity(0.42))
             .opacity(metric.valueState == .available ? 0.2 : 0.08)
     }
 
@@ -648,6 +731,10 @@ private struct GarageCoachingMetricCard: View {
                         title: badgeStyle.title,
                         tint: badgeStyle.tint
                     )
+                }
+
+                if let evidenceTarget = metric.evidenceTarget {
+                    GarageEvidenceAffordance(label: evidenceTarget.actionLabel)
                 }
             }
 
@@ -678,6 +765,10 @@ private struct GarageCoachingMetricCard: View {
                             title: badgeStyle.title,
                             tint: badgeStyle.tint
                         )
+                    }
+
+                    if let evidenceTarget = metric.evidenceTarget {
+                        GarageEvidenceAffordance(label: evidenceTarget.actionLabel)
                     }
                 }
 
