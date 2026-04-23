@@ -37,18 +37,32 @@ struct GarageSkeletonHUDPanel: View {
     let title: String
     let detail: String
     let severity: GarageSkeletonHUDSeverity?
+    var overlayStatus: GarageOverlayMetricStatus = .optimal
+    var overlayMode: GarageOverlayMode = .clean
+    var isModeToggleEnabled = false
+    var onSelectMode: (GarageOverlayMode) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.white)
-                .lineLimit(2)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.system(.caption, design: .rounded).weight(.bold))
+                        .foregroundStyle(Color.white)
+                        .lineLimit(2)
 
-            Text(detail)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(Color.white.opacity(0.82))
-                .lineLimit(2)
+                    Text(detail)
+                        .font(.system(.caption2, design: .rounded).weight(.semibold))
+                        .foregroundStyle(overlayStatus.tint.opacity(overlayStatus == .insufficientData ? 0.86 : 0.96))
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 4)
+
+                if isModeToggleEnabled {
+                    modeToggle
+                }
+            }
 
             if let severity {
                 severityRow(severity)
@@ -62,14 +76,48 @@ struct GarageSkeletonHUDPanel: View {
         .shadow(color: Color.black.opacity(0.34), radius: 16, x: 0, y: 10)
     }
 
+    private var modeToggle: some View {
+        HStack(spacing: 3) {
+            ForEach(GarageOverlayMode.allCases) { mode in
+                Button {
+                    guard mode != overlayMode else { return }
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        onSelectMode(mode)
+                    }
+                    garageTriggerImpact(.light)
+                } label: {
+                    Text(mode.title)
+                        .font(.system(.caption2, design: .rounded).weight(.bold))
+                        .foregroundStyle(mode == overlayMode ? Color.white : Color.white.opacity(0.58))
+                        .padding(.horizontal, 7)
+                        .frame(minHeight: 22)
+                        .background(
+                            Capsule()
+                                .fill(mode == overlayMode ? overlayStatus.tint.opacity(0.22) : Color.clear)
+                                .overlay(
+                                    Capsule()
+                                        .stroke(
+                                            mode == overlayMode ? overlayStatus.tint.opacity(0.42) : Color.white.opacity(0.08),
+                                            lineWidth: 0.6
+                                        )
+                                )
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .background(Color.black.opacity(0.28), in: Capsule())
+    }
+
     @ViewBuilder
     private func severityRow(_ severity: GarageSkeletonHUDSeverity) -> some View {
         HStack(spacing: 6) {
             Image(systemName: severity.symbolName)
-                .font(.caption2.weight(.semibold))
+                .font(.system(.caption2, design: .rounded).weight(.semibold))
 
             Text(severity.label)
-                .font(.caption2.weight(.semibold))
+                .font(.system(.caption2, design: .rounded).weight(.semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
         }

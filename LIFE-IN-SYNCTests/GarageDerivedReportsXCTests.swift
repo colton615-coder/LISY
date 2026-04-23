@@ -1055,6 +1055,135 @@ final class GarageDerivedReportsXCTests: XCTestCase {
 
         XCTAssertNil(GarageAnalysisPipeline.headCircle(in: frame))
     }
+
+    func testGarageOverlayAdapterCleanModeHidesProPrimitivesAndRawLabels() throws {
+        let frames = makeFullBodyDTLSwingFrames()
+        let keyFrames = makeStep2KeyFrames()
+        let scorecard = try XCTUnwrap(GarageScorecardEngine.generate(frames: frames, keyFrames: keyFrames))
+
+        let presentation = GarageOverlayAdapter.makePresentation(
+            mode: .clean,
+            drawSize: CGSize(width: 360, height: 540),
+            frames: frames,
+            currentFrameIndex: 8,
+            currentFrame: frames[8],
+            keyFrames: keyFrames,
+            currentTime: frames[8].timestamp,
+            pulseProgress: 0.8,
+            scorecard: scorecard,
+            syncFlow: GarageSyncFlowEngine.generate(frames: frames, keyFrames: keyFrames, scorecard: scorecard)
+        )
+
+        XCTAssertEqual(presentation.mode, .clean)
+        XCTAssertEqual(presentation.cleanCues.map(\.kind), [.spine, .pelvis, .head])
+        XCTAssertTrue(presentation.proSegments.isEmpty)
+        XCTAssertTrue(presentation.proJoints.isEmpty)
+        XCTAssertTrue(presentation.labels.isEmpty)
+        XCTAssertTrue(presentation.cleanCues.allSatisfy { $0.status != .insufficientData })
+    }
+
+    func testGarageOverlayAdapterProModeIncludesSkeletonAndRawLabels() throws {
+        let frames = makeFullBodyDTLSwingFrames()
+        let keyFrames = makeStep2KeyFrames()
+        let scorecard = try XCTUnwrap(GarageScorecardEngine.generate(frames: frames, keyFrames: keyFrames))
+
+        let presentation = GarageOverlayAdapter.makePresentation(
+            mode: .pro,
+            drawSize: CGSize(width: 360, height: 540),
+            frames: frames,
+            currentFrameIndex: 8,
+            currentFrame: frames[8],
+            keyFrames: keyFrames,
+            currentTime: frames[8].timestamp,
+            pulseProgress: 0.8,
+            scorecard: scorecard,
+            syncFlow: GarageSyncFlowEngine.generate(frames: frames, keyFrames: keyFrames, scorecard: scorecard)
+        )
+
+        XCTAssertEqual(presentation.mode, .pro)
+        XCTAssertFalse(presentation.proSegments.isEmpty)
+        XCTAssertFalse(presentation.proJoints.isEmpty)
+        XCTAssertTrue(presentation.labels.contains(where: { $0.text.contains("Spine") && $0.text.contains("°") }))
+        XCTAssertTrue(presentation.labels.contains(where: { $0.text.contains("Depth") && $0.text.contains("in") }))
+        XCTAssertEqual(presentation.hud.mode, .pro)
+    }
+
+    func testGarageOverlayAdapterMarksMissingCleanCuesAsInsufficientData() {
+        let frame = SwingFrame(
+            timestamp: 0,
+            joints: [
+                joint(.nose, x: 0.50, y: 0.20, confidence: 0.2)
+            ],
+            confidence: 0.25
+        )
+
+        let presentation = GarageOverlayAdapter.makePresentation(
+            mode: .clean,
+            drawSize: CGSize(width: 360, height: 540),
+            frames: [frame],
+            currentFrameIndex: 0,
+            currentFrame: frame,
+            keyFrames: [],
+            currentTime: 0,
+            pulseProgress: 0,
+            scorecard: nil,
+            syncFlow: nil
+        )
+
+        XCTAssertEqual(presentation.cleanCues.count, 3)
+        XCTAssertTrue(presentation.cleanCues.allSatisfy { $0.status == .insufficientData })
+        XCTAssertTrue(presentation.hud.detail.contains("Clean Mode is hiding uncertain cues"))
+    }
+
+    func testGarageOverlayAdapterSmoothsSingleWeakFrameWithoutImmediateCueDropout() throws {
+        var frames = makeFullBodyDTLSwingFrames()
+        let keyFrames = makeStep2KeyFrames()
+        let scorecard = try XCTUnwrap(GarageScorecardEngine.generate(frames: frames, keyFrames: keyFrames))
+        frames[4].confidence = 0.3
+
+        let presentation = GarageOverlayAdapter.makePresentation(
+            mode: .clean,
+            drawSize: CGSize(width: 360, height: 540),
+            frames: frames,
+            currentFrameIndex: 4,
+            currentFrame: frames[4],
+            keyFrames: keyFrames,
+            currentTime: frames[4].timestamp,
+            pulseProgress: 0.4,
+            scorecard: scorecard,
+            syncFlow: nil
+        )
+        let spineCue = try XCTUnwrap(presentation.cleanCues.first(where: { $0.kind == .spine }))
+
+        XCTAssertNotEqual(spineCue.confidence, .insufficientData)
+        XCTAssertGreaterThan(spineCue.opacity, 0.70)
+    }
+
+    func testGarageOverlayAdapterRequiresRepeatedWeakFramesBeforeFadingCueOut() throws {
+        var frames = makeFullBodyDTLSwingFrames()
+        let keyFrames = makeStep2KeyFrames()
+        let scorecard = try XCTUnwrap(GarageScorecardEngine.generate(frames: frames, keyFrames: keyFrames))
+        for index in 2...6 {
+            frames[index].confidence = 0.3
+        }
+
+        let presentation = GarageOverlayAdapter.makePresentation(
+            mode: .clean,
+            drawSize: CGSize(width: 360, height: 540),
+            frames: frames,
+            currentFrameIndex: 4,
+            currentFrame: frames[4],
+            keyFrames: keyFrames,
+            currentTime: frames[4].timestamp,
+            pulseProgress: 0.4,
+            scorecard: scorecard,
+            syncFlow: nil
+        )
+        let spineCue = try XCTUnwrap(presentation.cleanCues.first(where: { $0.kind == .spine }))
+
+        XCTAssertEqual(spineCue.status, .insufficientData)
+        XCTAssertLessThan(spineCue.opacity, 0.30)
+    }
 }
 
 @MainActor

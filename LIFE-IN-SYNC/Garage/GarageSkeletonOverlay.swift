@@ -1,399 +1,377 @@
 import SwiftUI
 
 struct GarageSkeletonOverlay: View {
-    let drawSize: CGSize
-    let currentFrame: SwingFrame?
-    let currentTime: Double
-    let pulseProgress: Double
-    let syncFlow: GarageSyncFlowReport?
-
-    private static let skeletonLinks: [(SwingJointName, SwingJointName)] = [
-        (.leftShoulder, .rightShoulder),
-        (.leftShoulder, .leftElbow),
-        (.leftElbow, .leftWrist),
-        (.rightShoulder, .rightElbow),
-        (.rightElbow, .rightWrist),
-        (.leftShoulder, .leftHip),
-        (.rightShoulder, .rightHip),
-        (.leftHip, .rightHip),
-        (.leftHip, .leftKnee),
-        (.leftKnee, .leftAnkle),
-        (.rightHip, .rightKnee),
-        (.rightKnee, .rightAnkle)
-    ]
-
-    private static let renderOrder: [SwingJointName] = [
-        .leftAnkle,
-        .rightAnkle,
-        .leftKnee,
-        .rightKnee,
-        .leftHip,
-        .rightHip,
-        .leftWrist,
-        .rightWrist,
-        .leftElbow,
-        .rightElbow,
-        .leftShoulder,
-        .rightShoulder
-    ]
-
-    private static let emphasizedJoints: Set<SwingJointName> = [
-        .leftShoulder,
-        .rightShoulder,
-        .leftHip,
-        .rightHip
-    ]
-
-    private var primaryIssue: GarageSyncFlowIssue? {
-        syncFlow?.primaryIssue
-    }
-
-    private var consequence: GarageSyncFlowConsequence? {
-        syncFlow?.consequence
-    }
-
-    private var showsConsequence: Bool {
-        guard let consequence else { return false }
-        return currentTime >= consequence.startTimestamp && currentTime <= consequence.endTimestamp
-    }
-
-    private var captionTitle: String? {
-        if let primaryIssue {
-            return primaryIssue.title
-        }
-
-        if syncFlow?.status == .limited {
-            return syncFlow?.headline
-        }
-
-        return nil
-    }
-
-    private var captionDetail: String? {
-        if let primaryIssue {
-            return primaryIssue.detail
-        }
-
-        if syncFlow?.status == .limited {
-            return syncFlow?.summary
-        }
-
-        return nil
-    }
-
-    private var hudSeverity: GarageSkeletonHUDSeverity? {
-        guard captionTitle != nil, captionDetail != nil else { return nil }
-
-        if showsConsequence, let consequence {
-            return .critical(consequence.riskPhrase)
-        }
-
-        if syncFlow?.status == .limited {
-            return .warning("Pose tracking limited")
-        }
-
-        if let consequence, !consequence.riskPhrase.isEmpty {
-            return .warning(consequence.riskPhrase)
-        }
-
-        if syncFlow?.status == .ready {
-            return .neutral("Sequence view active")
-        }
-
-        return nil
-    }
+    let presentation: GarageOverlayPresentationState
+    var onSelectMode: (GarageOverlayMode) -> Void = { _ in }
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            Canvas { context, _ in
-                guard
-                    drawSize.width > 0,
-                    drawSize.height > 0,
-                    let currentFrame
-                else {
-                    return
-                }
+            GarageSkeletonOverlayCanvas(presentation: presentation)
+                .equatable()
+                .allowsHitTesting(false)
 
-                drawStructure(in: &context, currentFrame: currentFrame)
-                drawFlow(in: &context, currentFrame: currentFrame)
-                drawTruth(in: &context, currentFrame: currentFrame)
-            }
+            GarageSkeletonHUDPanel(
+                title: presentation.hud.title,
+                detail: presentation.hud.detail,
+                severity: presentation.hud.severity,
+                overlayStatus: presentation.hud.primaryStatus,
+                overlayMode: presentation.hud.mode,
+                isModeToggleEnabled: presentation.hud.isModeToggleEnabled,
+                onSelectMode: onSelectMode
+            )
+            .padding(12)
+            .transition(.opacity.combined(with: .move(edge: .bottom)))
+        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: presentation.mode)
+        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: presentation.cleanCues)
+        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: presentation.proJoints)
+    }
+}
 
-            if let captionTitle, let captionDetail {
-                GarageSkeletonHUDPanel(
-                    title: captionTitle,
-                    detail: captionDetail,
-                    severity: hudSeverity
-                )
-                .padding(12)
-                .transition(.opacity)
+private struct GarageSkeletonOverlayCanvas: View, Equatable {
+    let presentation: GarageOverlayPresentationState
+
+    static func == (lhs: GarageSkeletonOverlayCanvas, rhs: GarageSkeletonOverlayCanvas) -> Bool {
+        lhs.presentation == rhs.presentation
+    }
+
+    var body: some View {
+        Canvas { context, _ in
+            drawCleanCues(in: &context)
+
+            if presentation.mode == .pro {
+                drawProSkeleton(in: &context)
+                drawFlow(in: &context)
+                drawMarkers(in: &context)
+                drawLabels(in: &context)
             }
         }
     }
 
-    private func drawStructure(in context: inout GraphicsContext, currentFrame: SwingFrame) {
-        for (startName, endName) in Self.skeletonLinks {
-            guard
-                let startJoint = currentFrame.joint(named: startName),
-                let endJoint = currentFrame.joint(named: endName),
-                max(startJoint.confidence, endJoint.confidence) >= 0.2
-            else {
-                continue
-            }
+    private func drawCleanCues(in context: inout GraphicsContext) {
+        for cue in presentation.cleanCues {
+            guard cue.opacity > 0 else { continue }
 
-            let startPoint = garageSkeletonMappedPoint(CGPoint(x: startJoint.x, y: startJoint.y), in: drawSize)
-            let endPoint = garageSkeletonMappedPoint(CGPoint(x: endJoint.x, y: endJoint.y), in: drawSize)
-            let confidence = (startJoint.confidence + endJoint.confidence) / 2
-            var path = Path()
-            path.move(to: startPoint)
-            path.addLine(to: endPoint)
-
-            if confidence < 0.55 {
-                context.drawLayer { layer in
-                    layer.addFilter(.blur(radius: 1.2))
-                    layer.stroke(
-                        path,
-                        with: .linearGradient(
-                            Gradient(colors: [
-                                ModuleTheme.garageTextPrimary.opacity(0.10 + (confidence * 0.12)),
-                                ModuleTheme.electricCyan.opacity(0.12 + (confidence * 0.18))
-                            ]),
-                            startPoint: startPoint,
-                            endPoint: endPoint
-                        ),
-                        style: StrokeStyle(lineWidth: 1.5 + (confidence * 1.1), lineCap: .round, lineJoin: .round)
-                    )
-                }
-            } else {
-                context.stroke(
-                    path,
-                    with: .linearGradient(
-                        Gradient(colors: [
-                            ModuleTheme.garageTextPrimary.opacity(0.18 + (confidence * 0.08)),
-                            ModuleTheme.electricCyan.opacity(0.20 + (confidence * 0.38))
-                        ]),
-                        startPoint: startPoint,
-                        endPoint: endPoint
-                    ),
-                    style: StrokeStyle(lineWidth: 1.8 + (confidence * 1.0), lineCap: .round, lineJoin: .round)
+            if let polyline = cue.polyline {
+                drawPolyline(
+                    polyline,
+                    status: cue.status,
+                    opacity: cue.opacity * 0.62,
+                    in: &context
                 )
             }
-        }
 
-        if let headCircle = GarageAnalysisPipeline.headCircle(in: currentFrame) {
-            let mappedCenter = garageSkeletonMappedPoint(headCircle.center, in: drawSize)
-            let mappedRadius = min(drawSize.width, drawSize.height) * headCircle.radius
-            let circleRect = CGRect(
-                x: mappedCenter.x - mappedRadius,
-                y: mappedCenter.y - mappedRadius,
-                width: mappedRadius * 2,
-                height: mappedRadius * 2
-            )
-            context.stroke(
-                Ellipse().path(in: circleRect),
-                with: .color(ModuleTheme.electricCyan.opacity(0.40)),
-                style: StrokeStyle(lineWidth: 1.5)
-            )
-        }
-
-        if
-            let nose = currentFrame.point(named: .nose, minimumConfidence: 0.35),
-            let leftShoulder = currentFrame.point(named: .leftShoulder, minimumConfidence: 0.35),
-            let rightShoulder = currentFrame.point(named: .rightShoulder, minimumConfidence: 0.35)
-        {
-            let shoulderMidpoint = CGPoint(
-                x: (leftShoulder.x + rightShoulder.x) / 2,
-                y: (leftShoulder.y + rightShoulder.y) / 2
-            )
-            let startPoint = garageSkeletonMappedPoint(nose, in: drawSize)
-            let endPoint = garageSkeletonMappedPoint(shoulderMidpoint, in: drawSize)
-            var connector = Path()
-            connector.move(to: startPoint)
-            connector.addLine(to: endPoint)
-
-            context.stroke(
-                connector,
-                with: .color(ModuleTheme.electricCyan.opacity(0.20)),
-                style: StrokeStyle(lineWidth: 1.4, lineCap: .round)
-            )
-        }
-
-        for jointName in Self.renderOrder {
-            guard let joint = currentFrame.joint(named: jointName), joint.confidence >= 0.2 else {
-                continue
+            if let line = cue.line {
+                drawLine(line, status: cue.status, opacity: cue.opacity, in: &context)
             }
 
-            let mappedPoint = garageSkeletonMappedPoint(
-                CGPoint(x: joint.x, y: joint.y),
-                in: drawSize
-            )
-            let isEmphasized = Self.emphasizedJoints.contains(jointName)
-            let radius = isEmphasized ? 4.8 : 3.4
-            let circleRect = CGRect(
-                x: mappedPoint.x - radius,
-                y: mappedPoint.y - radius,
-                width: radius * 2,
-                height: radius * 2
-            )
-
-            if joint.confidence >= 0.75 {
-                context.drawLayer { layer in
-                    layer.addFilter(
-                        .shadow(
-                            color: ModuleTheme.electricCyan.opacity(isEmphasized ? 0.62 : 0.4),
-                            radius: isEmphasized ? 4 : 2.5,
-                            x: 0,
-                            y: 0
-                        )
-                    )
-                    layer.fill(
-                        Ellipse().path(in: circleRect),
-                        with: .color(ModuleTheme.electricCyan.opacity(0.94))
-                    )
-                }
-            } else {
-                context.drawLayer { layer in
-                    layer.addFilter(.blur(radius: 0.8))
-                    layer.fill(
-                        Ellipse().path(in: circleRect),
-                        with: .color(Color(red: 0.72, green: 0.84, blue: 0.89).opacity(0.30 + (joint.confidence * 0.42)))
-                    )
-                }
+            if let halo = cue.halo {
+                drawHalo(halo, status: cue.status, opacity: cue.opacity, in: &context)
             }
         }
     }
 
-    private func drawFlow(in context: inout GraphicsContext, currentFrame: SwingFrame) {
-        let chainPoints = syncFlowChainPoints(from: currentFrame)
-        guard chainPoints.count >= 2 else { return }
-
-        var chainPath = Path()
-        chainPath.move(to: chainPoints[0])
-        for point in chainPoints.dropFirst() {
-            chainPath.addLine(to: point)
+    private func drawProSkeleton(in context: inout GraphicsContext) {
+        for segment in presentation.proSegments {
+            drawLine(segment, status: .optimal, opacity: 0.58, in: &context)
         }
 
-        context.stroke(
-            chainPath,
-            with: .color(ModuleTheme.electricCyan.opacity(0.10)),
-            style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round)
-        )
+        if let proHeadHalo = presentation.proHeadHalo {
+            drawHalo(proHeadHalo, status: .optimal, opacity: 0.50, in: &context)
+        }
 
-        if let pulsePoint = garageSyncFlowPulsePoint(progress: pulseProgress, along: chainPoints) {
-            let outerRect = CGRect(x: pulsePoint.x - 10, y: pulsePoint.y - 10, width: 20, height: 20)
-            let innerRect = CGRect(x: pulsePoint.x - 5, y: pulsePoint.y - 5, width: 10, height: 10)
-
-            context.drawLayer { layer in
-                layer.addFilter(.shadow(color: Color.white.opacity(0.55), radius: 12, x: 0, y: 0))
-                layer.fill(Ellipse().path(in: outerRect), with: .color(Color.white.opacity(0.75)))
-                layer.fill(Ellipse().path(in: innerRect), with: .color(ModuleTheme.electricCyan))
-            }
+        for joint in presentation.proJoints {
+            drawJoint(joint, in: &context)
         }
     }
 
-    private func drawTruth(in context: inout GraphicsContext, currentFrame: SwingFrame) {
-        guard
-            let primaryIssue,
-            let markedPoint = currentFrame.point(named: primaryIssue.jointName, minimumConfidence: 0.2)
-        else {
+    private func drawFlow(in context: inout GraphicsContext) {
+        if let flowPath = presentation.flowPath {
+            drawPolyline(flowPath, status: .optimal, opacity: 0.36, in: &context)
+        }
+
+        if let pulseMarker = presentation.pulseMarker {
+            drawMarker(pulseMarker, in: &context)
+        }
+    }
+
+    private func drawMarkers(in context: inout GraphicsContext) {
+        if let issueMarker = presentation.issueMarker {
+            drawMarker(issueMarker, in: &context)
+        }
+    }
+
+    private func drawLabels(in context: inout GraphicsContext) {
+        for label in presentation.labels {
+            let text = Text(label.text)
+                .font(.system(.caption2, design: .rounded).weight(.semibold))
+                .foregroundStyle(label.status.tint.opacity(label.opacity))
+
+            context.draw(text, at: label.anchor, anchor: .topLeading)
+        }
+    }
+
+    private func drawLine(
+        _ line: GarageOverlayLine,
+        status: GarageOverlayMetricStatus,
+        opacity: Double,
+        in context: inout GraphicsContext
+    ) {
+        var path = Path()
+        path.move(to: line.start)
+        path.addLine(to: line.end)
+
+        context.drawLayer { layer in
+            layer.addFilter(.shadow(color: Color.black.opacity(0.62 * opacity), radius: 5, x: 0, y: 1))
+            layer.stroke(
+                path,
+                with: .color(status.tint.opacity(0.24 * opacity)),
+                style: StrokeStyle(lineWidth: line.outerWidth, lineCap: .round, lineJoin: .round)
+            )
+            layer.stroke(
+                path,
+                with: .color(status.tint.opacity(0.92 * opacity)),
+                style: StrokeStyle(lineWidth: line.coreWidth, lineCap: .round, lineJoin: .round)
+            )
+        }
+    }
+
+    private func drawPolyline(
+        _ polyline: GarageOverlayPolyline,
+        status: GarageOverlayMetricStatus,
+        opacity: Double,
+        in context: inout GraphicsContext
+    ) {
+        guard let firstPoint = polyline.points.first, polyline.points.count >= 2 else {
             return
         }
 
-        let mappedPoint = garageSkeletonMappedPoint(markedPoint, in: drawSize)
-        let outerRect = CGRect(x: mappedPoint.x - 13, y: mappedPoint.y - 13, width: 26, height: 26)
-        let innerRect = CGRect(x: mappedPoint.x - 5.5, y: mappedPoint.y - 5.5, width: 11, height: 11)
+        var path = Path()
+        path.move(to: firstPoint)
+        for point in polyline.points.dropFirst() {
+            path.addLine(to: point)
+        }
 
         context.drawLayer { layer in
-            layer.addFilter(.shadow(color: Color.orange.opacity(0.72), radius: 10, x: 0, y: 0))
+            layer.addFilter(.shadow(color: Color.black.opacity(0.52 * opacity), radius: 5, x: 0, y: 1))
             layer.stroke(
-                Ellipse().path(in: outerRect),
-                with: .color(Color.orange.opacity(0.95)),
-                style: StrokeStyle(lineWidth: 2.4)
+                path,
+                with: .color(status.tint.opacity(0.20 * opacity)),
+                style: StrokeStyle(lineWidth: polyline.outerWidth, lineCap: .round, lineJoin: .round)
             )
-            layer.fill(Ellipse().path(in: innerRect), with: .color(Color.orange.opacity(0.95)))
+            layer.stroke(
+                path,
+                with: .color(status.tint.opacity(0.82 * opacity)),
+                style: StrokeStyle(lineWidth: polyline.coreWidth, lineCap: .round, lineJoin: .round)
+            )
         }
     }
 
-    private func syncFlowChainPoints(from frame: SwingFrame) -> [CGPoint] {
-        var points: [CGPoint] = []
+    private func drawHalo(
+        _ halo: GarageOverlayHalo,
+        status: GarageOverlayMetricStatus,
+        opacity: Double,
+        in context: inout GraphicsContext
+    ) {
+        let path = Ellipse().path(in: halo.rect)
 
-        if let base = garageSyncFlowBaseCenter(in: frame) {
-            points.append(garageSkeletonMappedPoint(base, in: drawSize))
+        context.drawLayer { layer in
+            layer.addFilter(.shadow(color: Color.black.opacity(0.54 * opacity), radius: 5, x: 0, y: 1))
+            layer.stroke(
+                path,
+                with: .color(status.tint.opacity(0.18 * opacity)),
+                style: StrokeStyle(lineWidth: halo.outerWidth, lineCap: .round, dash: halo.dash)
+            )
+            layer.stroke(
+                path,
+                with: .color(status.tint.opacity(0.84 * opacity)),
+                style: StrokeStyle(lineWidth: halo.coreWidth, lineCap: .round, dash: halo.dash)
+            )
         }
+    }
 
-        if let pelvis = garageSyncFlowMidpoint(.leftHip, .rightHip, in: frame) {
-            points.append(garageSkeletonMappedPoint(pelvis, in: drawSize))
+    private func drawJoint(_ joint: GarageOverlayJoint, in context: inout GraphicsContext) {
+        let rect = CGRect(
+            x: joint.center.x - joint.radius,
+            y: joint.center.y - joint.radius,
+            width: joint.radius * 2,
+            height: joint.radius * 2
+        )
+
+        context.drawLayer { layer in
+            layer.addFilter(.shadow(color: joint.status.tint.opacity(0.52 * joint.opacity), radius: 4, x: 0, y: 0))
+            layer.fill(
+                Ellipse().path(in: rect.insetBy(dx: -2, dy: -2)),
+                with: .color(Color.black.opacity(0.36 * joint.opacity))
+            )
+            layer.fill(
+                Ellipse().path(in: rect),
+                with: .color(joint.status.tint.opacity(0.92 * joint.opacity))
+            )
         }
+    }
 
-        if let torso = garageSyncFlowMidpoint(.leftShoulder, .rightShoulder, in: frame) {
-            points.append(garageSkeletonMappedPoint(torso, in: drawSize))
+    private func drawMarker(_ marker: GarageOverlayMarker, in context: inout GraphicsContext) {
+        let outerRect = CGRect(
+            x: marker.center.x - marker.outerRadius,
+            y: marker.center.y - marker.outerRadius,
+            width: marker.outerRadius * 2,
+            height: marker.outerRadius * 2
+        )
+        let innerRect = CGRect(
+            x: marker.center.x - marker.innerRadius,
+            y: marker.center.y - marker.innerRadius,
+            width: marker.innerRadius * 2,
+            height: marker.innerRadius * 2
+        )
+
+        context.drawLayer { layer in
+            layer.addFilter(.shadow(color: marker.status.tint.opacity(0.72 * marker.opacity), radius: 10, x: 0, y: 0))
+            layer.stroke(
+                Ellipse().path(in: outerRect),
+                with: .color(marker.status.tint.opacity(0.95 * marker.opacity)),
+                style: StrokeStyle(lineWidth: 2.2)
+            )
+            layer.fill(
+                Ellipse().path(in: innerRect),
+                with: .color(marker.status.tint.opacity(0.96 * marker.opacity))
+            )
         }
-
-        let hands = GarageAnalysisPipeline.handCenter(in: frame)
-        if hands != .zero {
-            points.append(garageSkeletonMappedPoint(hands, in: drawSize))
-        }
-
-        return points
     }
 }
 
-private func garageSkeletonMappedPoint(_ point: CGPoint, in size: CGSize) -> CGPoint {
-    CGPoint(
-        x: size.width * point.x,
-        y: size.height * point.y
+private enum GarageSkeletonOverlayPreviewFixture {
+    static let drawSize = CGSize(width: 320, height: 460)
+
+    static let frame = SwingFrame(
+        timestamp: 0,
+        joints: [
+            SwingJoint(name: .nose, x: 0.50, y: 0.18, confidence: 0.95),
+            SwingJoint(name: .leftShoulder, x: 0.41, y: 0.34, confidence: 0.96),
+            SwingJoint(name: .rightShoulder, x: 0.59, y: 0.34, confidence: 0.96),
+            SwingJoint(name: .leftElbow, x: 0.36, y: 0.48, confidence: 0.92),
+            SwingJoint(name: .rightElbow, x: 0.55, y: 0.48, confidence: 0.92),
+            SwingJoint(name: .leftWrist, x: 0.34, y: 0.64, confidence: 0.94),
+            SwingJoint(name: .rightWrist, x: 0.42, y: 0.64, confidence: 0.94),
+            SwingJoint(name: .leftHip, x: 0.45, y: 0.60, confidence: 0.95),
+            SwingJoint(name: .rightHip, x: 0.55, y: 0.60, confidence: 0.95),
+            SwingJoint(name: .leftKnee, x: 0.47, y: 0.78, confidence: 0.92),
+            SwingJoint(name: .rightKnee, x: 0.57, y: 0.78, confidence: 0.92),
+            SwingJoint(name: .leftAnkle, x: 0.47, y: 0.94, confidence: 0.90),
+            SwingJoint(name: .rightAnkle, x: 0.57, y: 0.94, confidence: 0.90)
+        ],
+        confidence: 0.95
+    )
+
+    static let limitedFrame = SwingFrame(
+        timestamp: 0,
+        joints: [
+            SwingJoint(name: .nose, x: 0.50, y: 0.18, confidence: 0.24),
+            SwingJoint(name: .leftShoulder, x: 0.41, y: 0.34, confidence: 0.22),
+            SwingJoint(name: .rightShoulder, x: 0.59, y: 0.34, confidence: 0.22)
+        ],
+        confidence: 0.26
+    )
+
+    static let keyFrames = [
+        KeyFrame(phase: .address, frameIndex: 0),
+        KeyFrame(phase: .impact, frameIndex: 0)
+    ]
+
+    static let scorecard = GarageSwingScorecard(
+        timestamps: GarageSwingTimestamps(perspective: .dtl, start: 0, top: 0.4, impact: 0.8),
+        metrics: GarageSwingMetrics(
+            tempo: GarageTempoMetric(ratio: 3.0),
+            spine: GarageSpineAngleMetric(deltaDegrees: 4.0),
+            pelvicDepth: GaragePelvicDepthMetric(driftInches: 1.4),
+            kneeFlex: GarageKneeFlexMetric(leftDeltaDegrees: 5, rightDeltaDegrees: 6),
+            headStability: GarageHeadStabilityMetric(swayInches: 0.7, dipInches: 0.4)
+        ),
+        domainScores: [
+            GarageSwingDomainScore(id: GarageSwingDomain.tempo.rawValue, title: "Tempo", score: 92, grade: .excellent, displayValue: "3.0 : 1"),
+            GarageSwingDomainScore(id: GarageSwingDomain.spine.rawValue, title: "Spine", score: 88, grade: .excellent, displayValue: "4.0°"),
+            GarageSwingDomainScore(id: GarageSwingDomain.pelvis.rawValue, title: "Pelvis", score: 82, grade: .good, displayValue: "1.4 in"),
+            GarageSwingDomainScore(id: GarageSwingDomain.knee.rawValue, title: "Knee", score: 78, grade: .good, displayValue: "Left 5° / Right 6°"),
+            GarageSwingDomainScore(id: GarageSwingDomain.head.rawValue, title: "Head", score: 90, grade: .excellent, displayValue: "Sway 0.7 in")
+        ],
+        totalScore: 86
+    )
+
+    static func presentation(mode: GarageOverlayMode) -> GarageOverlayPresentationState {
+        GarageOverlayAdapter.makePresentation(
+            mode: mode,
+            drawSize: drawSize,
+            frames: [frame],
+            currentFrameIndex: 0,
+            currentFrame: frame,
+            keyFrames: keyFrames,
+            currentTime: 0,
+            pulseProgress: 0.7,
+            scorecard: scorecard,
+            syncFlow: nil
+        )
+    }
+
+    static var limitedPresentation: GarageOverlayPresentationState {
+        GarageOverlayAdapter.makePresentation(
+            mode: .clean,
+            drawSize: drawSize,
+            frames: [limitedFrame],
+            currentFrameIndex: 0,
+            currentFrame: limitedFrame,
+            keyFrames: [],
+            currentTime: 0,
+            pulseProgress: 0,
+            scorecard: nil,
+            syncFlow: nil
+        )
+    }
+}
+
+private struct GarageSkeletonOverlayPreviewSurface: View {
+    let presentation: GarageOverlayPresentationState
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    garageReviewCanvasFill,
+                    garageReviewSurfaceDark,
+                    Color.black.opacity(0.82)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .opacity(0.22)
+                .frame(width: 180, height: 360)
+                .rotationEffect(.degrees(-7))
+
+            GarageSkeletonOverlay(presentation: presentation)
+        }
+        .frame(width: GarageSkeletonOverlayPreviewFixture.drawSize.width, height: GarageSkeletonOverlayPreviewFixture.drawSize.height)
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .padding()
+        .background(Color.vibeBackground)
+    }
+}
+
+#Preview("Garage Overlay Clean") {
+    GarageSkeletonOverlayPreviewSurface(
+        presentation: GarageSkeletonOverlayPreviewFixture.presentation(mode: .clean)
     )
 }
 
-private func garageSyncFlowMidpoint(
-    _ left: SwingJointName,
-    _ right: SwingJointName,
-    in frame: SwingFrame
-) -> CGPoint? {
-    guard
-        let leftPoint = frame.point(named: left, minimumConfidence: 0.2),
-        let rightPoint = frame.point(named: right, minimumConfidence: 0.2)
-    else {
-        return nil
-    }
-
-    return CGPoint(x: (leftPoint.x + rightPoint.x) / 2, y: (leftPoint.y + rightPoint.y) / 2)
+#Preview("Garage Overlay Pro") {
+    GarageSkeletonOverlayPreviewSurface(
+        presentation: GarageSkeletonOverlayPreviewFixture.presentation(mode: .pro)
+    )
 }
 
-private func garageSyncFlowBaseCenter(in frame: SwingFrame) -> CGPoint? {
-    guard
-        let leftAnkle = frame.point(named: .leftAnkle, minimumConfidence: 0.2),
-        let rightAnkle = frame.point(named: .rightAnkle, minimumConfidence: 0.2)
-    else {
-        return nil
-    }
-
-    return CGPoint(x: (leftAnkle.x + rightAnkle.x) / 2, y: (leftAnkle.y + rightAnkle.y) / 2)
-}
-
-private func garageSyncFlowPulsePoint(progress: Double, along points: [CGPoint]) -> CGPoint? {
-    guard points.count >= 2 else { return points.first }
-
-    let clampedProgress = min(max(progress, 0), 1)
-    let segmentLengths = zip(points, points.dropFirst()).map { start, end in
-        hypot(end.x - start.x, end.y - start.y)
-    }
-    let totalLength = segmentLengths.reduce(0, +)
-    guard totalLength > 0.0001 else { return points.last }
-
-    var target = totalLength * clampedProgress
-    for (index, segmentLength) in segmentLengths.enumerated() {
-        if target <= segmentLength || index == segmentLengths.count - 1 {
-            let start = points[index]
-            let end = points[index + 1]
-            let localProgress = segmentLength > 0 ? target / segmentLength : 0
-            return CGPoint(
-                x: start.x + ((end.x - start.x) * localProgress),
-                y: start.y + ((end.y - start.y) * localProgress)
-            )
-        }
-        target -= segmentLength
-    }
-
-    return points.last
+#Preview("Garage Overlay Limited") {
+    GarageSkeletonOverlayPreviewSurface(
+        presentation: GarageSkeletonOverlayPreviewFixture.limitedPresentation
+    )
 }
