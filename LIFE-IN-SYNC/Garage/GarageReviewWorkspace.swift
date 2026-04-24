@@ -642,11 +642,11 @@ struct GarageFocusedReviewWorkspace: View {
     }
 
     private var videoStageHeight: CGFloat {
-        min(max(viewportHeight * 0.55, 460), 540)
+        min(max(viewportHeight * 0.78, 600), 760)
     }
 
     private var collapsedVideoHeight: CGFloat {
-        min(max(viewportHeight * 0.34, 300), 360)
+        min(max(viewportHeight * 0.52, 420), 560)
     }
 
     private var videoCollapseProgress: CGFloat {
@@ -773,8 +773,8 @@ struct GarageFocusedReviewWorkspace: View {
                 controlsScrollOffset = newValue
             }
         }
-        .padding(.horizontal, ModuleSpacing.large)
-        .padding(.top, 8)
+        .padding(.horizontal, reviewSurface == .summary ? 0 : ModuleSpacing.small)
+        .padding(.top, 0)
         .background(garageReviewBackground.ignoresSafeArea())
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if reviewSurface == .fallbackHandPath {
@@ -1373,17 +1373,28 @@ private struct GarageReviewSummaryControls: View {
     var onDownloadFullReport: () -> Void = {}
     var onNavigateToEvidence: (GarageEvidenceTarget) -> Void = { _ in }
     @State private var isCoachingExpanded = false
+    @State private var isAnalysisProofExpanded = false
 
     var body: some View {
+        let feedback = GarageFeedbackPresentationState.make(
+            summary: summaryPresentation,
+            step2: step2Presentation,
+            coaching: coachingPresentation
+        )
+
         VStack(alignment: .leading, spacing: 14) {
-            GarageReviewContextBand(presentation: summaryPresentation)
+            GarageCleanAnalysisFeedbackCard(
+                feedback: feedback,
+                onNavigateToEvidence: handleEvidenceNavigation
+            )
 
             switch step2Presentation {
-            case let .ready(score, metrics):
-                GarageStep2ScoreSummaryCard(presentation: score)
-                if metrics.isEmpty == false {
-                    GarageStep2MetricGrid(metrics: metrics)
-                }
+            case let .ready(_, metrics):
+                GarageAnalysisProofDisclosureCard(
+                    step2Presentation: step2Presentation,
+                    isExpanded: $isAnalysisProofExpanded
+                )
+
                 if metrics.isEmpty == false {
                     GarageCoachingDisclosureCard(
                         presentation: coachingPresentation,
@@ -1393,8 +1404,12 @@ private struct GarageReviewSummaryControls: View {
                         onNavigateToEvidence: handleEvidenceNavigation
                     )
                 }
-            case let .unavailable(presentation):
-                GarageStep2UnavailableCard(presentation: presentation)
+            case .unavailable:
+                GarageAnalysisProofDisclosureCard(
+                    step2Presentation: step2Presentation,
+                    isExpanded: $isAnalysisProofExpanded
+                )
+
                 GarageCoachingDisclosureCard(
                     presentation: coachingPresentation,
                     isExpanded: $isCoachingExpanded,
@@ -1415,6 +1430,7 @@ private struct GarageReviewSummaryControls: View {
         .padding(.bottom, 12)
         .task(id: coachingResetKey) {
             isCoachingExpanded = false
+            isAnalysisProofExpanded = false
         }
         .onChange(of: isCoachingExpanded) { _, newValue in
             onCoachingExpansionChange(newValue)
@@ -1428,9 +1444,355 @@ private struct GarageReviewSummaryControls: View {
     private func handleEvidenceNavigation(_ target: GarageEvidenceTarget) {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
             isCoachingExpanded = false
+            isAnalysisProofExpanded = false
         }
         onCoachingExpansionChange(false)
         onNavigateToEvidence(target)
+    }
+}
+
+private struct GarageFeedbackPresentationState {
+    let headline: String
+    let detail: String
+    let statusLabel: String
+    let statusTint: Color
+    let systemImage: String
+    let primaryProofTitle: String
+    let primaryProofValue: String
+    let primaryProofTint: Color
+    let secondaryProofTitle: String
+    let secondaryProofValue: String
+    let evidenceTarget: GarageEvidenceTarget?
+
+    static func make(
+        summary: GarageReviewSummaryPresentation,
+        step2: GarageStep2Presentation,
+        coaching: GarageCoachingPresentation
+    ) -> GarageFeedbackPresentationState {
+        let primaryMetric = strongestMetric(from: step2)
+        let scoreValue = scoreValue(from: step2)
+        let headline = resolvedHeadline(
+            coachingHeadline: coaching.hero.headline,
+            metric: primaryMetric,
+            scoreValue: scoreValue
+        )
+        let primaryProofTitle = primaryMetric?.title ?? "Coach Cue"
+        let primaryProofValue = primaryMetric.map { "\($0.value) · \($0.grade.label)" } ?? coaching.hero.headline
+        let secondaryProofTitle = scoreValue == nil ? "Pose Signal" : "Swing Score"
+        let secondaryProofValue = scoreValue.map { "\($0)/100" } ?? summary.poseQuality.label
+
+        return GarageFeedbackPresentationState(
+            headline: headline,
+            detail: coaching.hero.body,
+            statusLabel: coaching.reliabilityStatus.rawValue.uppercased(),
+            statusTint: coaching.reliabilityStatus.tint,
+            systemImage: iconName(for: primaryMetric, mode: coaching.mode),
+            primaryProofTitle: primaryProofTitle,
+            primaryProofValue: primaryProofValue,
+            primaryProofTint: primaryMetric?.grade.tint ?? coaching.reliabilityStatus.tint,
+            secondaryProofTitle: secondaryProofTitle,
+            secondaryProofValue: secondaryProofValue,
+            evidenceTarget: coaching.hero.evidenceTarget
+        )
+    }
+
+    private static func strongestMetric(from step2: GarageStep2Presentation) -> GarageStep2MetricPresentation? {
+        guard case let .ready(_, metrics) = step2 else {
+            return nil
+        }
+
+        return metrics.sorted { lhs, rhs in
+            if lhs.grade.garageFeedbackPriority == rhs.grade.garageFeedbackPriority {
+                return lhs.title < rhs.title
+            }
+
+            return lhs.grade.garageFeedbackPriority > rhs.grade.garageFeedbackPriority
+        }.first
+    }
+
+    private static func scoreValue(from step2: GarageStep2Presentation) -> String? {
+        guard case let .ready(score, _) = step2 else {
+            return nil
+        }
+
+        return score.scoreValue
+    }
+
+    private static func resolvedHeadline(
+        coachingHeadline: String,
+        metric: GarageStep2MetricPresentation?,
+        scoreValue: String?
+    ) -> String {
+        if let metric, metric.grade == .fair || metric.grade == .needsWork {
+            return "\(metric.title) needs attention"
+        }
+
+        if let scoreValue, let numericScore = Int(scoreValue), numericScore >= 85 {
+            return "Swing pattern is holding up"
+        }
+
+        return coachingHeadline
+    }
+
+    private static func iconName(
+        for metric: GarageStep2MetricPresentation?,
+        mode: GarageCoachingRenderMode
+    ) -> String {
+        if mode == .provisional || mode == .unavailable {
+            return "exclamationmark.triangle.fill"
+        }
+
+        switch metric?.id {
+        case "tempo":
+            return "metronome.fill"
+        case "spine":
+            return "figure.core.training"
+        case "pelvis":
+            return "figure.golf"
+        case "knee":
+            return "figure.strengthtraining.functional"
+        case "head":
+            return "scope"
+        default:
+            return "sparkles"
+        }
+    }
+}
+
+private struct GarageCleanAnalysisFeedbackCard: View {
+    let feedback: GarageFeedbackPresentationState
+    let onNavigateToEvidence: (GarageEvidenceTarget) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(feedback.statusTint.opacity(0.14))
+                        .frame(width: 42, height: 42)
+                        .overlay(
+                            Circle()
+                                .stroke(feedback.statusTint.opacity(0.28), lineWidth: 0.8)
+                        )
+
+                    Image(systemName: feedback.systemImage)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(feedback.statusTint)
+                }
+
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(spacing: 8) {
+                        Text("Garage Feedback")
+                            .font(.caption2.weight(.bold))
+                            .tracking(0.7)
+                            .foregroundStyle(garageReviewMutedText)
+
+                        Text(feedback.statusLabel)
+                            .font(.caption2.weight(.bold))
+                            .tracking(0.7)
+                            .foregroundStyle(feedback.statusTint)
+                    }
+
+                    Text(feedback.headline)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(garageReviewReadableText)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.86)
+
+                    Text(feedback.detail)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(garageReviewMutedText.opacity(0.96))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.86)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 10) {
+                GarageFeedbackProofPill(
+                    title: feedback.primaryProofTitle,
+                    value: feedback.primaryProofValue,
+                    tint: feedback.primaryProofTint
+                )
+
+                GarageFeedbackProofPill(
+                    title: feedback.secondaryProofTitle,
+                    value: feedback.secondaryProofValue,
+                    tint: garageReviewAccent
+                )
+            }
+
+            if let evidenceTarget = feedback.evidenceTarget {
+                Button {
+                    onNavigateToEvidence(evidenceTarget)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "scope")
+                            .font(.caption.weight(.bold))
+
+                        Text("Show evidence frame")
+                            .font(.caption.weight(.bold))
+
+                        Spacer(minLength: 0)
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.weight(.bold))
+                    }
+                    .foregroundStyle(garageReviewReadableText)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(
+                        GarageInsetPanelBackground(
+                            shape: Capsule(),
+                            fill: garageReviewSurfaceDark.opacity(0.92),
+                            stroke: garageReviewStroke.opacity(0.72)
+                        )
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(evidenceTarget.accessibilityLabel)
+            }
+        }
+        .padding(16)
+        .background(
+            GarageRaisedPanelBackground(
+                shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous),
+                fill: garageReviewSurfaceRaised,
+                stroke: feedback.statusTint.opacity(0.24),
+                glow: feedback.statusTint.opacity(0.14)
+            )
+        )
+    }
+}
+
+private struct GarageFeedbackProofPill: View {
+    let title: String
+    let value: String
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(garageReviewMutedText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(garageReviewReadableText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(garageReviewSurfaceDark.opacity(0.78))
+                .overlay(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(tint.opacity(0.9))
+                        .frame(width: 3)
+                }
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(tint.opacity(0.2), lineWidth: 0.8)
+                )
+        )
+    }
+}
+
+private struct GarageAnalysisProofDisclosureCard: View {
+    let step2Presentation: GarageStep2Presentation
+    @Binding var isExpanded: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                withAnimation(.spring(response: 0.36, dampingFraction: 0.82)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Analysis Proof")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(garageReviewReadableText)
+
+                        Text(summaryText)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(garageReviewMutedText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Text(isExpanded ? "HIDE DATA" : "SHOW DATA")
+                        .font(.caption2.weight(.bold))
+                        .tracking(0.7)
+                        .foregroundStyle(isExpanded ? ModuleTheme.electricCyan : garageReviewMutedText)
+
+                    Image(systemName: isExpanded ? "chevron.up.circle.fill" : "chevron.down.circle.fill")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(isExpanded ? ModuleTheme.electricCyan : garageReviewMutedText.opacity(0.92))
+                }
+                .padding(14)
+                .background(
+                    GarageRaisedPanelBackground(
+                        shape: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous),
+                        fill: garageReviewSurface,
+                        stroke: garageReviewStroke.opacity(0.72)
+                    )
+                )
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                proofContent
+                    .transition(.opacity.combined(with: .scale(scale: 0.985, anchor: .top)))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var proofContent: some View {
+        switch step2Presentation {
+        case let .ready(score, metrics):
+            GarageStep2ScoreSummaryCard(presentation: score)
+
+            if metrics.isEmpty == false {
+                GarageStep2MetricGrid(metrics: metrics)
+            }
+        case let .unavailable(presentation):
+            GarageStep2UnavailableCard(presentation: presentation)
+        }
+    }
+
+    private var summaryText: String {
+        switch step2Presentation {
+        case let .ready(score, metrics):
+            "\(score.scoreValue)/100 · \(metrics.count) DTL checks preserved"
+        case .unavailable:
+            "Math layer retained; scorecard evidence is unavailable"
+        }
+    }
+}
+
+private extension GarageMetricGrade {
+    var garageFeedbackPriority: Int {
+        switch self {
+        case .needsWork:
+            3
+        case .fair:
+            2
+        case .good:
+            1
+        case .excellent:
+            0
+        }
     }
 }
 
@@ -1920,6 +2282,10 @@ private struct GarageFocusedReviewFrame: View {
         let limitedSkeletonInspection = reviewSurface == .summary
             && reviewMode == .skeleton
             && summaryPresentation.poseQuality == .limited
+        let isFullBleedVideo = reviewSurface == .summary
+        let frameCornerRadius: CGFloat = isFullBleedVideo ? 0 : 26
+        let frameStrokeOpacity: Double = isFullBleedVideo ? 0 : 0.95
+        let frameShadowOpacity: Double = isFullBleedVideo ? 0 : 0.34
 
         ZStack(alignment: .topLeading) {
             Rectangle()
@@ -2014,12 +2380,17 @@ private struct GarageFocusedReviewFrame: View {
                 .padding(.top, 14)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: frameCornerRadius, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .stroke(garageReviewStroke.opacity(0.95), lineWidth: 1)
+            RoundedRectangle(cornerRadius: frameCornerRadius, style: .continuous)
+                .stroke(garageReviewStroke.opacity(frameStrokeOpacity), lineWidth: isFullBleedVideo ? 0 : 1)
         )
-        .shadow(color: garageReviewShadowDark.opacity(0.34), radius: 20, x: 0, y: 12)
+        .shadow(
+            color: garageReviewShadowDark.opacity(frameShadowOpacity),
+            radius: isFullBleedVideo ? 0 : 20,
+            x: 0,
+            y: isFullBleedVideo ? 0 : 12
+        )
         .frame(height: preferredHeight)
         .frame(maxWidth: .infinity)
     }
