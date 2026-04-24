@@ -1,12 +1,8 @@
 import SwiftData
 
-<<<<<<< ours
-/// Centralized model list so app, previews, and future persistence helpers share one schema source of truth.
-=======
-/// Centralized model list so schema versions stay aligned for non-breaking model additions.
->>>>>>> theirs
+/// Centralized model list so app, previews, migrations, and persistence helpers share one schema source of truth.
 enum LISYModelRegistry {
-    static let models: [any PersistentModel.Type] = [
+    static let coreModels: [any PersistentModel.Type] = [
         CompletionRecord.self,
         TagRecord.self,
         NoteRecord.self,
@@ -20,24 +16,21 @@ enum LISYModelRegistry {
         WorkoutTemplate.self,
         WorkoutSession.self,
         StudyEntry.self,
-<<<<<<< ours
-        SwingRecord.self,
+        SwingRecord.self
+    ]
+
+    static let garageCourseMappingModels: [any PersistentModel.Type] = [
         GarageRoundSession.self,
         GarageHoleMap.self,
         GarageTacticalShot.self
     ]
-}
 
-enum LISYPersistence {
-    static let schema = Schema(LISYModelRegistry.models)
-=======
-        SwingRecord.self
-    ]
+    static let models: [any PersistentModel.Type] = coreModels + garageCourseMappingModels
 }
 
 enum LISYSchemaV1: VersionedSchema {
     static var versionIdentifier: Schema.Version = .init(1, 0, 0)
-    static var models: [any PersistentModel.Type] { LISYModelRegistry.models }
+    static var models: [any PersistentModel.Type] { LISYModelRegistry.coreModels }
 }
 
 enum LISYSchemaV2: VersionedSchema {
@@ -73,5 +66,8 @@ enum LISYMigrationPlan: SchemaMigrationPlan {
             )
         ]
     }
->>>>>>> theirs
+}
+
+enum LISYPersistence {
+    static let schema = Schema(LISYSchemaV2.models)
 }
