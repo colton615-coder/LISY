@@ -35,7 +35,7 @@ enum GarageOverlayLens: String, CaseIterable, Identifiable, Equatable {
         case .handPath:
             "Path"
         case .hipSway:
-            "Hip sway"
+            "Hip Sway"
         }
     }
 
