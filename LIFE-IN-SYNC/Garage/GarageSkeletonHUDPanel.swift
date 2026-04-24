@@ -39,11 +39,13 @@ struct GarageSkeletonHUDPanel: View {
     let severity: GarageSkeletonHUDSeverity?
     var overlayStatus: GarageOverlayMetricStatus = .optimal
     var overlayMode: GarageOverlayMode = .clean
+    var selectedLens: GarageOverlayLens = .posture
     var isModeToggleEnabled = false
     var onSelectMode: (GarageOverlayMode) -> Void = { _ in }
+    var onSelectLens: (GarageOverlayLens) -> Void = { _ in }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
@@ -64,6 +66,10 @@ struct GarageSkeletonHUDPanel: View {
                 if isModeToggleEnabled {
                     modeToggle
                 }
+            }
+
+            if overlayMode == .pro {
+                lensPicker
             }
         }
         .dynamicTypeSize(.xSmall ... .medium)
@@ -118,6 +124,38 @@ struct GarageSkeletonHUDPanel: View {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(Color.white.opacity(0.10), lineWidth: 0.75)
             }
+    }
+
+    private var lensPicker: some View {
+        HStack(spacing: 6) {
+            ForEach(GarageOverlayLens.allCases) { lens in
+                Button {
+                    guard lens != selectedLens else { return }
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                        onSelectLens(lens)
+                    }
+                    garageTriggerImpact(.light)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: lens.symbolName)
+                            .font(.system(size: 11, weight: .semibold))
+                        Text(lens.title)
+                            .font(.system(.caption2, design: .rounded).weight(.semibold))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(lens == selectedLens ? Color.white : Color.white.opacity(0.5))
+                    .padding(.horizontal, 8)
+                    .frame(minHeight: 26)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(lens == selectedLens ? Color.white.opacity(0.14) : Color.clear)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .background(.ultraThinMaterial, in: Capsule(style: .continuous))
     }
 }
 

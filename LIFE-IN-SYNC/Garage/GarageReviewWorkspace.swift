@@ -394,6 +394,7 @@ struct GarageFocusedReviewWorkspace: View {
     @State private var coachingReportExportError: String?
     @State private var evidenceArrival: GarageEvidenceArrival?
     @State private var skeletonOverlayMode: GarageOverlayMode = .clean
+    @State private var selectedLens: GarageOverlayLens = .posture
 
     private var resolvedReviewVideo: GarageResolvedReviewVideo? {
         GarageMediaStore.resolvedReviewVideo(for: record)
@@ -672,6 +673,7 @@ struct GarageFocusedReviewWorkspace: View {
                 showsAnchorGuides: isDraggingAnchor,
                 reviewMode: reviewMode,
                 skeletonOverlayMode: skeletonOverlayMode,
+                selectedLens: selectedLens,
                 reviewSurface: reviewSurface,
                 handPathSamples: fullHandPathSamples,
                 currentTime: currentFrameTimestamp ?? currentTime,
@@ -681,6 +683,7 @@ struct GarageFocusedReviewWorkspace: View {
                 preferredHeight: activeVideoHeight,
                 onSelectReviewMode: selectReviewMode,
                 onSelectOverlayMode: selectOverlayMode,
+                onSelectOverlayLens: selectOverlayLens,
                 onAnchorDragChanged: handleAnchorDragChanged,
                 onAnchorDragEnded: handleAnchorDragEnded
             )
@@ -1294,6 +1297,12 @@ struct GarageFocusedReviewWorkspace: View {
             skeletonOverlayMode = mode
         }
     }
+
+    private func selectOverlayLens(_ lens: GarageOverlayLens) {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+            selectedLens = lens
+        }
+    }
 }
 
 private struct GarageReviewScrollableControls: View {
@@ -1839,6 +1848,7 @@ private struct GarageFocusedReviewFrame: View {
     let showsAnchorGuides: Bool
     let reviewMode: GarageReviewMode
     let skeletonOverlayMode: GarageOverlayMode
+    let selectedLens: GarageOverlayLens
     let reviewSurface: GarageReviewSurface
     let handPathSamples: [GarageHandPathSample]
     let currentTime: Double
@@ -1848,6 +1858,7 @@ private struct GarageFocusedReviewFrame: View {
     let preferredHeight: CGFloat
     let onSelectReviewMode: (GarageReviewMode) -> Void
     let onSelectOverlayMode: (GarageOverlayMode) -> Void
+    let onSelectOverlayLens: (GarageOverlayLens) -> Void
     let onAnchorDragChanged: (CGPoint) -> Void
     let onAnchorDragEnded: (CGPoint) -> Void
 
@@ -1864,6 +1875,7 @@ private struct GarageFocusedReviewFrame: View {
         showsAnchorGuides: Bool,
         reviewMode: GarageReviewMode,
         skeletonOverlayMode: GarageOverlayMode,
+        selectedLens: GarageOverlayLens,
         reviewSurface: GarageReviewSurface,
         handPathSamples: [GarageHandPathSample],
         currentTime: Double,
@@ -1873,6 +1885,7 @@ private struct GarageFocusedReviewFrame: View {
         preferredHeight: CGFloat,
         onSelectReviewMode: @escaping (GarageReviewMode) -> Void,
         onSelectOverlayMode: @escaping (GarageOverlayMode) -> Void,
+        onSelectOverlayLens: @escaping (GarageOverlayLens) -> Void,
         onAnchorDragChanged: @escaping (CGPoint) -> Void,
         onAnchorDragEnded: @escaping (CGPoint) -> Void
     ) {
@@ -1888,6 +1901,7 @@ private struct GarageFocusedReviewFrame: View {
         self.showsAnchorGuides = showsAnchorGuides
         self.reviewMode = reviewMode
         self.skeletonOverlayMode = skeletonOverlayMode
+        self.selectedLens = selectedLens
         self.reviewSurface = reviewSurface
         self.handPathSamples = handPathSamples
         self.currentTime = currentTime
@@ -1897,6 +1911,7 @@ private struct GarageFocusedReviewFrame: View {
         self.preferredHeight = preferredHeight
         self.onSelectReviewMode = onSelectReviewMode
         self.onSelectOverlayMode = onSelectOverlayMode
+        self.onSelectOverlayLens = onSelectOverlayLens
         self.onAnchorDragChanged = onAnchorDragChanged
         self.onAnchorDragEnded = onAnchorDragEnded
     }
@@ -1923,6 +1938,7 @@ private struct GarageFocusedReviewFrame: View {
                     showsAnchorGuides: showsAnchorGuides,
                     reviewMode: reviewMode,
                     skeletonOverlayMode: skeletonOverlayMode,
+                    selectedLens: selectedLens,
                     reviewSurface: reviewSurface,
                     handPathSamples: handPathSamples,
                     currentTime: currentTime,
@@ -1930,6 +1946,7 @@ private struct GarageFocusedReviewFrame: View {
                     syncFlow: syncFlow,
                     skeletonOverlayOpacity: limitedSkeletonInspection ? 0.72 : 1,
                     onSelectOverlayMode: onSelectOverlayMode,
+                    onSelectOverlayLens: onSelectOverlayLens,
                     onAnchorDragChanged: onAnchorDragChanged,
                     onAnchorDragEnded: onAnchorDragEnded
                 )
@@ -1945,6 +1962,7 @@ private struct GarageFocusedReviewFrame: View {
                     showsAnchorGuides: showsAnchorGuides,
                     reviewMode: reviewMode,
                     skeletonOverlayMode: skeletonOverlayMode,
+                    selectedLens: selectedLens,
                     reviewSurface: reviewSurface,
                     handPathSamples: handPathSamples,
                     currentTime: currentTime,
@@ -1952,6 +1970,7 @@ private struct GarageFocusedReviewFrame: View {
                     syncFlow: syncFlow,
                     skeletonOverlayOpacity: limitedSkeletonInspection ? 0.72 : 1,
                     onSelectOverlayMode: onSelectOverlayMode,
+                    onSelectOverlayLens: onSelectOverlayLens,
                     onAnchorDragChanged: onAnchorDragChanged,
                     onAnchorDragEnded: onAnchorDragEnded
                 )
@@ -2246,6 +2265,7 @@ private struct GarageReviewImageOverlay: View {
     let showsAnchorGuides: Bool
     let reviewMode: GarageReviewMode
     let skeletonOverlayMode: GarageOverlayMode
+    let selectedLens: GarageOverlayLens
     let reviewSurface: GarageReviewSurface
     let handPathSamples: [GarageHandPathSample]
     let currentTime: Double
@@ -2253,6 +2273,7 @@ private struct GarageReviewImageOverlay: View {
     let syncFlow: GarageSyncFlowReport?
     let skeletonOverlayOpacity: Double
     let onSelectOverlayMode: (GarageOverlayMode) -> Void
+    let onSelectOverlayLens: (GarageOverlayLens) -> Void
     let onAnchorDragChanged: (CGPoint) -> Void
     let onAnchorDragEnded: (CGPoint) -> Void
 
@@ -2274,6 +2295,7 @@ private struct GarageReviewImageOverlay: View {
                     GarageSkeletonOverlay(
                         presentation: GarageOverlayAdapter.makePresentation(
                             mode: skeletonOverlayMode,
+                            selectedLens: selectedLens,
                             drawSize: imageRect.size,
                             frames: swingFrames,
                             currentFrameIndex: currentFrameIndex,
@@ -2284,7 +2306,8 @@ private struct GarageReviewImageOverlay: View {
                             scorecard: scorecard,
                             syncFlow: syncFlow
                         ),
-                        onSelectMode: onSelectOverlayMode
+                        onSelectMode: onSelectOverlayMode,
+                        onSelectLens: onSelectOverlayLens
                     )
                     .opacity(skeletonOverlayOpacity)
                     .frame(width: imageRect.width, height: imageRect.height)
@@ -2348,6 +2371,7 @@ private struct GaragePoseFallbackOverlay: View {
     let showsAnchorGuides: Bool
     let reviewMode: GarageReviewMode
     let skeletonOverlayMode: GarageOverlayMode
+    let selectedLens: GarageOverlayLens
     let reviewSurface: GarageReviewSurface
     let handPathSamples: [GarageHandPathSample]
     let currentTime: Double
@@ -2355,6 +2379,7 @@ private struct GaragePoseFallbackOverlay: View {
     let syncFlow: GarageSyncFlowReport?
     let skeletonOverlayOpacity: Double
     let onSelectOverlayMode: (GarageOverlayMode) -> Void
+    let onSelectOverlayLens: (GarageOverlayLens) -> Void
     let onAnchorDragChanged: (CGPoint) -> Void
     let onAnchorDragEnded: (CGPoint) -> Void
 
@@ -2371,6 +2396,7 @@ private struct GaragePoseFallbackOverlay: View {
                     GarageSkeletonOverlay(
                         presentation: GarageOverlayAdapter.makePresentation(
                             mode: skeletonOverlayMode,
+                            selectedLens: selectedLens,
                             drawSize: drawRect.size,
                             frames: swingFrames,
                             currentFrameIndex: currentFrameIndex,
@@ -2381,7 +2407,8 @@ private struct GaragePoseFallbackOverlay: View {
                             scorecard: scorecard,
                             syncFlow: syncFlow
                         ),
-                        onSelectMode: onSelectOverlayMode
+                        onSelectMode: onSelectOverlayMode,
+                        onSelectLens: onSelectOverlayLens
                     )
                     .opacity(skeletonOverlayOpacity)
                     .frame(width: drawRect.width, height: drawRect.height)
@@ -3004,6 +3031,7 @@ private struct GarageSlowMotionPlaybackSheet: View {
     @State private var selectedSpeed: Float = 1.0
     @State private var reviewMode: GarageReviewMode
     @State private var skeletonOverlayMode: GarageOverlayMode = .clean
+    @State private var selectedLens: GarageOverlayLens = .posture
     @State private var isScrubbing = false
 
     init(
@@ -3090,10 +3118,14 @@ private struct GarageSlowMotionPlaybackSheet: View {
                     currentTime: playbackController.currentTime,
                     syncFlow: syncFlow,
                     skeletonOverlayMode: skeletonOverlayMode,
+                    selectedLens: selectedLens,
                     videoSize: videoDisplaySize,
                     isScrubbing: isScrubbing,
                     onSelectOverlayMode: { mode in
                         skeletonOverlayMode = mode
+                    },
+                    onSelectOverlayLens: { lens in
+                        selectedLens = lens
                     }
                 )
             }
@@ -3313,9 +3345,11 @@ private struct GarageSlowMotionVisualizationOverlay: View {
     let currentTime: Double
     let syncFlow: GarageSyncFlowReport?
     let skeletonOverlayMode: GarageOverlayMode
+    let selectedLens: GarageOverlayLens
     let videoSize: CGSize
     let isScrubbing: Bool
     let onSelectOverlayMode: (GarageOverlayMode) -> Void
+    let onSelectOverlayLens: (GarageOverlayLens) -> Void
 
     private var visibleSampleCount: Int {
         var lowerBound = 0
@@ -3383,6 +3417,7 @@ private struct GarageSlowMotionVisualizationOverlay: View {
                 GarageSkeletonOverlay(
                     presentation: GarageOverlayAdapter.makePresentation(
                         mode: skeletonOverlayMode,
+                        selectedLens: selectedLens,
                         drawSize: videoRect.size,
                         frames: frames,
                         currentFrameIndex: currentFrameIndex,
@@ -3393,7 +3428,8 @@ private struct GarageSlowMotionVisualizationOverlay: View {
                         scorecard: nil,
                         syncFlow: syncFlow
                     ),
-                    onSelectMode: onSelectOverlayMode
+                    onSelectMode: onSelectOverlayMode,
+                    onSelectLens: onSelectOverlayLens
                 )
                 .opacity(isScrubbing ? 0 : 1)
                 .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isScrubbing)

@@ -3,6 +3,7 @@ import SwiftUI
 struct GarageSkeletonOverlay: View {
     let presentation: GarageOverlayPresentationState
     var onSelectMode: (GarageOverlayMode) -> Void = { _ in }
+    var onSelectLens: (GarageOverlayLens) -> Void = { _ in }
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
@@ -16,8 +17,10 @@ struct GarageSkeletonOverlay: View {
                 severity: presentation.hud.severity,
                 overlayStatus: presentation.hud.primaryStatus,
                 overlayMode: presentation.hud.mode,
+                selectedLens: presentation.hud.selectedLens,
                 isModeToggleEnabled: presentation.hud.isModeToggleEnabled,
-                onSelectMode: onSelectMode
+                onSelectMode: onSelectMode,
+                onSelectLens: onSelectLens
             )
             .padding(12)
             .opacity(presentation.hud.opacity)
@@ -26,6 +29,7 @@ struct GarageSkeletonOverlay: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: presentation.mode)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: presentation.cleanCues)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: presentation.proJoints)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: presentation.selectedLens)
         .animation(.easeInOut(duration: 0.18), value: presentation.hud.opacity)
     }
 }
@@ -44,6 +48,7 @@ private struct GarageSkeletonOverlayCanvas: View, Equatable {
             if presentation.mode == .pro {
                 drawProSkeleton(in: &context)
                 drawFlow(in: &context)
+                drawHandPathRibbon(in: &context)
                 drawMarkers(in: &context)
                 drawLabels(in: &context)
             }
@@ -98,6 +103,12 @@ private struct GarageSkeletonOverlayCanvas: View, Equatable {
 
         if let pulseMarker = presentation.pulseMarker {
             drawMarker(pulseMarker, in: &context)
+        }
+    }
+
+    private func drawHandPathRibbon(in context: inout GraphicsContext) {
+        for segment in presentation.proRibbonSegments {
+            drawPolyline(segment, status: .optimal, opacity: 0.56, in: &context)
         }
     }
 
@@ -348,6 +359,7 @@ private enum GarageSkeletonOverlayPreviewFixture {
     static func presentation(mode: GarageOverlayMode) -> GarageOverlayPresentationState {
         GarageOverlayAdapter.makePresentation(
             mode: mode,
+            selectedLens: .posture,
             drawSize: drawSize,
             frames: [frame],
             currentFrameIndex: 0,
@@ -363,6 +375,7 @@ private enum GarageSkeletonOverlayPreviewFixture {
     static var limitedPresentation: GarageOverlayPresentationState {
         GarageOverlayAdapter.makePresentation(
             mode: .clean,
+            selectedLens: .posture,
             drawSize: drawSize,
             frames: [limitedFrame],
             currentFrameIndex: 0,
