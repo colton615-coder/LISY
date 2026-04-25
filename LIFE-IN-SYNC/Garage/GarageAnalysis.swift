@@ -528,8 +528,8 @@ struct GarageCoachingReport: Equatable {
     let nextBestAction: String
 }
 
+@MainActor
 enum GarageInsights {
-    @MainActor
     static func report(for record: SwingRecord) -> GarageInsightReport {
         let baseSummary = record.derivedAnalysisResult?.summary ?? "Swing analysis is in progress."
         let baseHighlights = record.derivedAnalysisResult?.highlights ?? []
@@ -775,6 +775,7 @@ enum GarageInsights {
     }
 }
 
+@MainActor
 enum GarageStability {
     static func score(for record: SwingRecord) -> Int? {
         guard let scoringWindow = scoringWindow(in: record) else {
@@ -872,6 +873,7 @@ enum GarageStability {
     }
 }
 
+@MainActor
 enum GarageReliability {
     static func report(for record: SwingRecord) -> GarageReliabilityReport {
         let reviewSource = GarageMediaStore.reviewFrameSource(for: record)
@@ -969,6 +971,7 @@ enum GarageReliability {
     }
 }
 
+@MainActor
 enum GarageCoaching {
     @MainActor
     static func report(for record: SwingRecord) -> GarageCoachingReport {
@@ -1201,6 +1204,7 @@ enum GarageCoaching {
     }
 }
 
+@MainActor
 enum GarageWorkflow {
     @MainActor
     static func progress(for record: SwingRecord) -> GarageWorkflowProgress {

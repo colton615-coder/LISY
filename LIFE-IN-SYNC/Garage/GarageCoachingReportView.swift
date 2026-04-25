@@ -2,7 +2,11 @@ import SwiftUI
 import UIKit
 
 struct GarageCoachingReportView: View {
-    let presentation: GarageCoachingPresentation
+    let record: SwingRecord
+    let selectedPhase: SwingPhase
+    let scorecard: GarageSwingScorecard?
+    let stabilityScore: Int?
+    let evidenceContext: GarageEvidenceContext?
     var isExportingReport: Bool = false
     var onDownloadFullReport: () -> Void = {}
     var onNavigateToEvidence: (GarageEvidenceTarget) -> Void = { _ in }
@@ -12,6 +16,44 @@ struct GarageCoachingReportView: View {
     @State private var lastAnimatedEntranceKey = ""
     @State private var detailTarget: GarageCoachingDetailTarget?
     @State private var selectedRedesignOption: GarageCoachingRedesignOption = .minimalist
+
+    private var presentation: GarageCoachingPresentation {
+        GarageCoachingPresentation.make(
+            report: GarageCoaching.report(for: record),
+            selectedPhase: selectedPhase,
+            reliabilityReport: GarageReliability.report(for: record),
+            scorecard: resolvedScorecard,
+            stabilityScore: resolvedStabilityScore,
+            evidenceContext: resolvedEvidenceContext
+        )
+    }
+
+    private var resolvedFrames: [SwingFrame] {
+        record.derivedSwingFrames
+    }
+
+    private var resolvedKeyFrames: [KeyFrame] {
+        record.derivedKeyFrames
+    }
+
+    private var resolvedScorecard: GarageSwingScorecard? {
+        scorecard
+            ?? record.derivedAnalysisResult?.scorecard
+            ?? GarageScorecardEngine.generate(frames: resolvedFrames, keyFrames: resolvedKeyFrames)
+    }
+
+    private var resolvedStabilityScore: Int? {
+        stabilityScore ?? GarageStability.score(for: record)
+    }
+
+    private var resolvedEvidenceContext: GarageEvidenceContext {
+        evidenceContext ?? GarageEvidenceContext(
+            frames: resolvedFrames,
+            keyFrames: resolvedKeyFrames,
+            syncFlow: record.derivedAnalysisResult?.syncFlow,
+            reviewFrameSource: GarageMediaStore.reviewFrameSource(for: record)
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -807,6 +849,8 @@ private struct GarageCoachingMetricCard: View {
             .foregroundStyle(metricValueTint)
             .lineLimit(2)
             .minimumScaleFactor(0.76)
+            .contentTransition(.numericText())
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: metric.value)
     }
 
     private var metricValueTint: Color {
@@ -2052,9 +2096,27 @@ private enum GarageCoachingReportPreviewFixture {
 private struct GarageCoachingReportPreviewSurface: View {
     let presentation: GarageCoachingPresentation
 
+    private var previewRecord: SwingRecord {
+        SwingRecord(
+            title: "Preview Swing",
+            notes: presentation.hero.body,
+            analysisResult: AnalysisResult(
+                issues: presentation.action.notes,
+                highlights: [presentation.hero.headline],
+                summary: presentation.hero.body
+            )
+        )
+    }
+
     var body: some View {
         ScrollView {
-            GarageCoachingReportView(presentation: presentation)
+            GarageCoachingReportView(
+                record: previewRecord,
+                selectedPhase: presentation.phase,
+                scorecard: nil,
+                stabilityScore: nil,
+                evidenceContext: nil
+            )
                 .padding()
         }
         .background(garageReviewBackground.ignoresSafeArea())

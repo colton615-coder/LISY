@@ -567,6 +567,15 @@ struct GarageFocusedReviewWorkspace: View {
         GarageStep2Presentation.make(scorecard: swingScorecard)
     }
 
+    private var coachingEvidenceContext: GarageEvidenceContext {
+        GarageEvidenceContext(
+            frames: swingFrames,
+            keyFrames: keyFrames,
+            syncFlow: syncFlowReport,
+            reviewFrameSource: reviewFrameSource
+        )
+    }
+
     private var coachingPresentation: GarageCoachingPresentation {
         let reliabilityReport = GarageReliability.report(for: record)
         let coachingReport = GarageCoaching.report(for: record)
@@ -577,12 +586,7 @@ struct GarageFocusedReviewWorkspace: View {
             reliabilityReport: reliabilityReport,
             scorecard: swingScorecard,
             stabilityScore: stabilityScore,
-            evidenceContext: GarageEvidenceContext(
-                frames: swingFrames,
-                keyFrames: keyFrames,
-                syncFlow: syncFlowReport,
-                reviewFrameSource: reviewFrameSource
-            )
+            evidenceContext: coachingEvidenceContext
         )
     }
 
@@ -752,9 +756,14 @@ struct GarageFocusedReviewWorkspace: View {
                     )
                 } else {
                     GarageReviewSummaryControls(
+                        record: record,
                         summaryPresentation: summaryPresentation,
                         step2Presentation: step2Presentation,
                         coachingPresentation: coachingPresentation,
+                        selectedPhase: selectedPhase,
+                        scorecard: swingScorecard,
+                        stabilityScore: stabilityScore,
+                        evidenceContext: coachingEvidenceContext,
                         reviewRecoveryTitle: reviewRecoveryTitle,
                         reviewRecoveryBody: reviewRecoveryBody,
                         reviewFrameSource: reviewFrameSource,
@@ -1362,9 +1371,14 @@ private struct GarageReviewScrollableControls: View {
 }
 
 private struct GarageReviewSummaryControls: View {
+    let record: SwingRecord
     let summaryPresentation: GarageReviewSummaryPresentation
     let step2Presentation: GarageStep2Presentation
     let coachingPresentation: GarageCoachingPresentation
+    let selectedPhase: SwingPhase
+    let scorecard: GarageSwingScorecard?
+    let stabilityScore: Int?
+    let evidenceContext: GarageEvidenceContext?
     let reviewRecoveryTitle: String
     let reviewRecoveryBody: String
     let reviewFrameSource: GarageReviewFrameSourceState
@@ -1397,7 +1411,8 @@ private struct GarageReviewSummaryControls: View {
 
                 if metrics.isEmpty == false {
                     GarageCoachingDisclosureCard(
-                        presentation: coachingPresentation,
+                        record: record,
+                        selectedPhase: selectedPhase,
                         isExpanded: $isCoachingExpanded,
                         isExportingReport: isExportingReport,
                         onDownloadFullReport: onDownloadFullReport,
@@ -1411,7 +1426,8 @@ private struct GarageReviewSummaryControls: View {
                 )
 
                 GarageCoachingDisclosureCard(
-                    presentation: coachingPresentation,
+                    record: record,
+                    selectedPhase: selectedPhase,
                     isExpanded: $isCoachingExpanded,
                     isExportingReport: isExportingReport,
                     onDownloadFullReport: onDownloadFullReport,
@@ -1923,11 +1939,53 @@ private struct GarageSummaryPrimaryActionBar: View {
 }
 
 private struct GarageCoachingDisclosureCard: View {
-    let presentation: GarageCoachingPresentation
+    let record: SwingRecord
+    let selectedPhase: SwingPhase
+    var scorecard: GarageSwingScorecard? = nil
+    var stabilityScore: Int? = nil
+    var evidenceContext: GarageEvidenceContext? = nil
     @Binding var isExpanded: Bool
     var isExportingReport: Bool = false
     var onDownloadFullReport: () -> Void = {}
     var onNavigateToEvidence: (GarageEvidenceTarget) -> Void = { _ in }
+
+    private var presentation: GarageCoachingPresentation {
+        GarageCoachingPresentation.make(
+            report: GarageCoaching.report(for: record),
+            selectedPhase: selectedPhase,
+            reliabilityReport: GarageReliability.report(for: record),
+            scorecard: resolvedScorecard,
+            stabilityScore: resolvedStabilityScore,
+            evidenceContext: resolvedEvidenceContext
+        )
+    }
+
+    private var resolvedFrames: [SwingFrame] {
+        record.derivedSwingFrames
+    }
+
+    private var resolvedKeyFrames: [KeyFrame] {
+        record.derivedKeyFrames
+    }
+
+    private var resolvedScorecard: GarageSwingScorecard? {
+        scorecard
+            ?? record.derivedAnalysisResult?.scorecard
+            ?? GarageScorecardEngine.generate(frames: resolvedFrames, keyFrames: resolvedKeyFrames)
+    }
+
+    private var resolvedStabilityScore: Int? {
+        stabilityScore ?? GarageStability.score(for: record)
+    }
+
+    private var resolvedEvidenceContext: GarageEvidenceContext {
+        evidenceContext ?? GarageEvidenceContext(
+            frames: resolvedFrames,
+            keyFrames: resolvedKeyFrames,
+            syncFlow: record.derivedAnalysisResult?.syncFlow,
+            reviewFrameSource: GarageMediaStore.reviewFrameSource(for: record)
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -2008,7 +2066,11 @@ private struct GarageCoachingDisclosureCard: View {
 
             if isExpanded {
                 GarageCoachingReportView(
-                    presentation: presentation,
+                    record: record,
+                    selectedPhase: selectedPhase,
+                    scorecard: scorecard,
+                    stabilityScore: stabilityScore,
+                    evidenceContext: evidenceContext,
                     isExportingReport: isExportingReport,
                     onDownloadFullReport: onDownloadFullReport,
                     onNavigateToEvidence: onNavigateToEvidence
@@ -4248,9 +4310,19 @@ private struct GarageReviewSummaryPreviewSurface: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             GarageReviewSummaryControls(
+                record: record,
                 summaryPresentation: summaryPresentation,
                 step2Presentation: GarageStep2Presentation.make(scorecard: swingScorecard),
                 coachingPresentation: coachingPresentation,
+                selectedPhase: .impact,
+                scorecard: swingScorecard,
+                stabilityScore: stabilityScore,
+                evidenceContext: GarageEvidenceContext(
+                    frames: record.swingFrames,
+                    keyFrames: record.keyFrames,
+                    syncFlow: syncFlowReport,
+                    reviewFrameSource: reviewFrameSource
+                ),
                 reviewRecoveryTitle: reviewFrameSource == .video ? "Stored video recovered" : "Pose fallback active",
                 reviewRecoveryBody: reviewFrameSource == .video
                     ? "Garage found a stored review video for this checkpoint."

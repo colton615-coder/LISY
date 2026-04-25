@@ -946,18 +946,21 @@ final class SwingRecord {
             || analysisResult != nil
     }
 
+    @MainActor
     func persistDerivedPayload(_ payload: GarageDerivedPayload) {
         derivedPayloadVersion = GarageDerivedPayload.currentVersion
         derivedPayloadData = try? JSONEncoder().encode(payload)
         repairReasonCode = nil
     }
 
+    @MainActor
     func clearDerivedPayload(repairReason: GarageRepairReason) {
         derivedPayloadVersion = 0
         derivedPayloadData = nil
         repairReasonCode = repairReason.rawValue
     }
 
+    @MainActor
     func clearLegacyDerivedReviewData() {
         frameRate = 0
         swingFrames = []
@@ -968,6 +971,7 @@ final class SwingRecord {
         analysisResult = nil
     }
 
+    @MainActor
     func applyAnalysisOutput(
         _ output: GarageAnalysisOutput,
         approvedKeyFrames: [KeyFrame],
@@ -993,10 +997,12 @@ final class SwingRecord {
         )
     }
 
+    @MainActor
     func markImportRetrying() {
         importStatus = .retrying
     }
 
+    @MainActor
     func markRepairFailure(
         fallbackStatus: GarageImportStatus,
         repairReason: GarageRepairReason
@@ -1011,11 +1017,13 @@ final class SwingRecord {
         }
     }
 
+    @MainActor
     func hydrateExportDerivative(filename: String, bookmark: Data?) {
         exportAssetFilename = filename
         exportAssetBookmark = bookmark
     }
 
+    @MainActor
     func markImportFailed(repairReason: GarageRepairReason = .importFailed) {
         importStatus = .failed
         exportAssetFilename = nil
@@ -1025,6 +1033,7 @@ final class SwingRecord {
     }
 
     @discardableResult
+    @MainActor
     func reconcileStrandedImportIfNeeded(isActiveImportRecord: Bool) -> Bool {
         guard resolvedImportStatus.isInFlight, isActiveImportRecord == false else {
             return false
@@ -1054,6 +1063,7 @@ final class SwingRecord {
         keyFrames.count == SwingPhase.allCases.count && SwingPhase.allCases.allSatisfy { reviewStatus(for: $0) == .approved }
     }
 
+    @MainActor
     func refreshKeyframeValidationStatus() {
         if allCheckpointsApproved {
             keyframeValidationStatus = .approved
@@ -1064,6 +1074,7 @@ final class SwingRecord {
         }
     }
 
+    @MainActor
     func hydrateCheckpointStatusesFromAggregateIfNeeded() {
         guard
             keyFrames.isEmpty == false,
