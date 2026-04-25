@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 enum GarageOverlayAdapter {
     private static let minimumGeometryConfidence = 0.2
     private static let minimumMetricConfidence = 0.45
@@ -10,7 +11,7 @@ enum GarageOverlayAdapter {
     private static let cleanReferenceCoreLineWidth: CGFloat = 1.7
     private static let cleanReferenceGlowLineWidth: CGFloat = 5.0
     private static let cleanReferenceDash: [CGFloat] = [7, 6]
-    private static let balancedEMAAlpha = 0.42
+    private static let weightedMovingAverageAlpha = 0.8
     private static let balancedEMAWindow = 5
     private static let hudAvoidanceOpacity = 0.25
 
@@ -38,7 +39,7 @@ enum GarageOverlayAdapter {
 
     static func makePresentation(
         mode: GarageOverlayMode,
-        selectedLens: GarageOverlayLens,
+        selectedLens: GarageDiagnosticLens,
         drawSize: CGSize,
         frames: [SwingFrame],
         currentFrameIndex: Int?,
@@ -65,6 +66,7 @@ enum GarageOverlayAdapter {
             fallbackFrame: resolvedFrame
         )
         let cleanCues = cleanOverlayCues(
+            selectedLens: selectedLens,
             drawSize: drawSize,
             frames: frames,
             currentFrameIndex: safeFrameIndex,
@@ -73,17 +75,17 @@ enum GarageOverlayAdapter {
             scorecard: scorecard,
             syncFlow: syncFlow
         )
-        let lensPayload = mode == .pro
-            ? lensPayload(
-                lens: selectedLens,
-                drawSize: drawSize,
-                frames: frames,
-                currentFrameIndex: safeFrameIndex,
-                frame: displayFrame,
-                keyFrames: keyFrames,
-                pulseProgress: pulseProgress
-            )
-            : GarageOverlayLensPayload.empty
+        let lensPayload = lensPayload(
+            lens: selectedLens,
+            drawSize: drawSize,
+            frames: frames,
+            currentFrameIndex: safeFrameIndex,
+            frame: displayFrame,
+            keyFrames: keyFrames,
+            pulseProgress: pulseProgress,
+            scorecard: scorecard,
+            syncFlow: syncFlow
+        )
         let resolvedIssueMarker = mode == .pro
             ? issueMarker(
                 drawSize: drawSize,
@@ -107,13 +109,14 @@ enum GarageOverlayAdapter {
             mode: mode,
             selectedLens: selectedLens,
             cleanCues: cleanCues,
-            proSegments: lensPayload.proSegments,
-            proJoints: lensPayload.proJoints,
-            proHeadHalo: lensPayload.proHeadHalo,
-            proHeadTrail: lensPayload.proHeadTrail,
-            proRibbonSegments: lensPayload.proRibbonSegments,
-            flowPath: lensPayload.flowPath,
-            pulseMarker: lensPayload.pulseMarker,
+            postureSpineLine: lensPayload.postureSpineLine,
+            posturePelvisLine: lensPayload.posturePelvisLine,
+            headStabilityBounds: lensPayload.headStabilityBounds,
+            headStabilityMarker: lensPayload.headStabilityMarker,
+            handPathSegments: lensPayload.handPathSegments,
+            handPathPulseMarker: lensPayload.handPathPulseMarker,
+            hipSwayBoundaries: lensPayload.hipSwayBoundaries,
+            hipSwayPath: lensPayload.hipSwayPath,
             issueMarker: resolvedIssueMarker,
             labels: labels,
             hud: hud
@@ -121,80 +124,105 @@ enum GarageOverlayAdapter {
     }
 
     private struct GarageOverlayLensPayload {
-        var proSegments: [GarageOverlayLine]
-        var proJoints: [GarageOverlayJoint]
-        var proHeadHalo: GarageOverlayHalo?
-        var proHeadTrail: GarageOverlayPolyline?
-        var proRibbonSegments: [GarageOverlayPolyline]
-        var flowPath: GarageOverlayPolyline?
-        var pulseMarker: GarageOverlayMarker?
+        var postureSpineLine: GarageOverlayLine?
+        var posturePelvisLine: GarageOverlayLine?
+        var headStabilityBounds: GarageOverlayHalo?
+        var headStabilityMarker: GarageOverlayMarker?
+        var handPathSegments: [GarageOverlayPolyline]
+        var handPathPulseMarker: GarageOverlayMarker?
+        var hipSwayBoundaries: [GarageOverlayLine]
+        var hipSwayPath: GarageOverlayPolyline?
 
         static let empty = GarageOverlayLensPayload(
-            proSegments: [],
-            proJoints: [],
-            proHeadHalo: nil,
-            proHeadTrail: nil,
-            proRibbonSegments: [],
-            flowPath: nil,
-            pulseMarker: nil
+            postureSpineLine: nil,
+            posturePelvisLine: nil,
+            headStabilityBounds: nil,
+            headStabilityMarker: nil,
+            handPathSegments: [],
+            handPathPulseMarker: nil,
+            hipSwayBoundaries: [],
+            hipSwayPath: nil
         )
     }
 
     private static func lensPayload(
-        lens: GarageOverlayLens,
+        lens: GarageDiagnosticLens,
         drawSize: CGSize,
         frames: [SwingFrame],
         currentFrameIndex: Int?,
         frame: SwingFrame,
         keyFrames: [KeyFrame],
-        pulseProgress: Double
+        pulseProgress: Double,
+        scorecard: GarageSwingScorecard?,
+        syncFlow: GarageSyncFlowReport?
     ) -> GarageOverlayLensPayload {
         switch lens {
         case .posture:
+            let spine = spineCue(
+                drawSize: drawSize,
+                frames: frames,
+                currentFrameIndex: currentFrameIndex,
+                frame: frame,
+                status: status(for: .spine, scorecard: scorecard)
+            )
+            let pelvis = pelvisCue(
+                drawSize: drawSize,
+                frames: frames,
+                currentFrameIndex: currentFrameIndex,
+                frame: frame,
+                keyFrames: keyFrames,
+                status: pelvisStatus(scorecard: scorecard, syncFlow: syncFlow)
+            )
             return GarageOverlayLensPayload(
-                proSegments: skeletonSegments(drawSize: drawSize, frame: frame, focus: .spine),
-                proJoints: skeletonJoints(drawSize: drawSize, frame: frame, focus: .spine),
-                proHeadHalo: nil,
-                proHeadTrail: nil,
-                proRibbonSegments: [],
-                flowPath: nil,
-                pulseMarker: nil
+                postureSpineLine: spine.line,
+                posturePelvisLine: pelvis.line,
+                headStabilityBounds: nil,
+                headStabilityMarker: nil,
+                handPathSegments: [],
+                handPathPulseMarker: nil,
+                hipSwayBoundaries: [],
+                hipSwayPath: nil
             )
         case .headStability:
+            let bounds = addressHeadHalo(drawSize: drawSize, frames: frames, keyFrames: keyFrames)
             return GarageOverlayLensPayload(
-                proSegments: skeletonSegments(drawSize: drawSize, frame: frame, focus: .head),
-                proJoints: skeletonJoints(drawSize: drawSize, frame: frame, focus: .head),
-                proHeadHalo: addressHeadHalo(drawSize: drawSize, frames: frames, keyFrames: keyFrames),
-                proHeadTrail: headTrailPolyline(drawSize: drawSize, frames: frames, currentFrameIndex: currentFrameIndex, fallbackFrame: frame),
-                proRibbonSegments: [],
-                flowPath: nil,
-                pulseMarker: nil
+                postureSpineLine: nil,
+                posturePelvisLine: nil,
+                headStabilityBounds: bounds,
+                headStabilityMarker: headStabilityMarker(drawSize: drawSize, frame: frame, bounds: bounds),
+                handPathSegments: [],
+                handPathPulseMarker: nil,
+                hipSwayBoundaries: [],
+                hipSwayPath: nil
             )
         case .handPath:
             let segments = handPathSegments(drawSize: drawSize, frames: frames, currentFrameIndex: currentFrameIndex)
             return GarageOverlayLensPayload(
-                proSegments: [],
-                proJoints: [],
-                proHeadHalo: nil,
-                proHeadTrail: nil,
-                proRibbonSegments: segments,
-                flowPath: nil,
-                pulseMarker: pulseMarker(progress: pulseProgress, polylines: segments)
+                postureSpineLine: nil,
+                posturePelvisLine: nil,
+                headStabilityBounds: nil,
+                headStabilityMarker: nil,
+                handPathSegments: segments,
+                handPathPulseMarker: pulseMarker(progress: pulseProgress, polylines: segments),
+                hipSwayBoundaries: [],
+                hipSwayPath: nil
             )
         case .hipSway:
             return GarageOverlayLensPayload(
-                proSegments: hipSwayBoundaries(drawSize: drawSize, frames: frames, keyFrames: keyFrames),
-                proJoints: skeletonJoints(drawSize: drawSize, frame: frame, focus: .pelvis),
-                proHeadHalo: nil,
-                proHeadTrail: nil,
-                proRibbonSegments: [],
-                flowPath: hipSwayOffset(drawSize: drawSize, frames: frames, keyFrames: keyFrames, frame: frame),
-                pulseMarker: nil
+                postureSpineLine: nil,
+                posturePelvisLine: nil,
+                headStabilityBounds: nil,
+                headStabilityMarker: nil,
+                handPathSegments: [],
+                handPathPulseMarker: nil,
+                hipSwayBoundaries: hipSwayBoundaries(drawSize: drawSize, frames: frames, keyFrames: keyFrames),
+                hipSwayPath: hipSwayOffset(drawSize: drawSize, frames: frames, keyFrames: keyFrames, frame: frame)
             )
         }
     }
 
     private static func cleanOverlayCues(
+        selectedLens: GarageDiagnosticLens,
         drawSize: CGSize,
         frames: [SwingFrame],
         currentFrameIndex: Int?,
@@ -245,7 +273,16 @@ enum GarageOverlayAdapter {
             )
         }
 
-        return selectedCleanCues(from: normalizedCues)
+        switch selectedLens {
+        case .posture:
+            return normalizedCues.filter { $0.kind == .spine || $0.kind == .pelvis }
+        case .headStability:
+            return normalizedCues.filter { $0.kind == .head }
+        case .hipSway:
+            return normalizedCues.filter { $0.kind == .pelvis }
+        case .handPath:
+            return [handPathCue(drawSize: drawSize, frames: frames, currentFrameIndex: currentFrameIndex, fallbackFrame: currentFrame)].compactMap { $0 }
+        }
     }
 
     private static func spineCue(
@@ -374,6 +411,33 @@ enum GarageOverlayAdapter {
         )
     }
 
+    private static func handPathCue(
+        drawSize: CGSize,
+        frames: [SwingFrame],
+        currentFrameIndex: Int?,
+        fallbackFrame: SwingFrame
+    ) -> GarageOverlayCue? {
+        let confidence = rollingConfidenceLevel(
+            frames: frames,
+            currentFrameIndex: currentFrameIndex,
+            fallbackFrame: fallbackFrame,
+            jointNames: [.leftWrist, .rightWrist]
+        )
+        let polyline = handPathSegments(drawSize: drawSize, frames: frames, currentFrameIndex: currentFrameIndex).last
+        let status: GarageOverlayMetricStatus = polyline == nil ? .insufficientData : .optimal
+
+        return GarageOverlayCue(
+            kind: .spine,
+            title: "Path",
+            status: status,
+            confidence: polyline == nil ? .insufficientData : confidence,
+            opacity: opacity(status: status, confidence: polyline == nil ? .insufficientData : confidence),
+            line: nil,
+            polyline: polyline,
+            halo: nil
+        )
+    }
+
     private static func skeletonSegments(
         drawSize: CGSize,
         frame: SwingFrame,
@@ -445,6 +509,40 @@ enum GarageOverlayAdapter {
             outerWidth: status == .insufficientData ? 3.4 : 5.0,
             coreWidth: status == .insufficientData ? 1.1 : 1.8,
             dash: [8, 6]
+        )
+    }
+
+    private static func headStabilityMarker(
+        drawSize: CGSize,
+        frame: SwingFrame,
+        bounds: GarageOverlayHalo?
+    ) -> GarageOverlayMarker? {
+        guard
+            let bounds,
+            let headCircle = GarageAnalysisPipeline.headCircle(in: frame)
+        else {
+            return nil
+        }
+
+        let center = mappedPoint(headCircle.center, in: drawSize)
+        guard center.x.isFinite, center.y.isFinite else { return nil }
+
+        let warningRect = bounds.rect.insetBy(dx: -bounds.rect.width * 0.14, dy: -bounds.rect.height * 0.14)
+        let status: GarageOverlayMetricStatus
+        if bounds.rect.contains(center) {
+            status = .optimal
+        } else if warningRect.contains(center) {
+            status = .warning
+        } else {
+            status = .critical
+        }
+
+        return GarageOverlayMarker(
+            center: center,
+            status: status,
+            outerRadius: 11,
+            innerRadius: 4.5,
+            opacity: 0.88
         )
     }
 
@@ -550,7 +648,7 @@ enum GarageOverlayAdapter {
         drawSize: CGSize,
         scorecard: GarageSwingScorecard?,
         syncFlow: GarageSyncFlowReport?,
-        lens: GarageOverlayLens
+        lens: GarageDiagnosticLens
     ) -> [GarageOverlayLabel] {
         var labels: [GarageOverlayLabel] = []
         let left = max(min(drawSize.width * 0.04, drawSize.width - 120), 10)
@@ -623,7 +721,7 @@ enum GarageOverlayAdapter {
 
     private static func hudPresentation(
         mode: GarageOverlayMode,
-        selectedLens: GarageOverlayLens,
+        selectedLens: GarageDiagnosticLens,
         cleanCues: [GarageOverlayCue],
         scorecard: GarageSwingScorecard?,
         syncFlow: GarageSyncFlowReport?,
@@ -657,6 +755,10 @@ enum GarageOverlayAdapter {
                 ? "Focused skeleton visible. Metrics are unavailable for this frame set."
                 : "\(selectedLens.title) lens active."
             primaryStatus = .optimal
+        } else if selectedLens == .handPath, cleanCues.isEmpty == false {
+            title = "Hand Path"
+            detail = "Recent wrist-midpoint ribbon is visible."
+            primaryStatus = actionableCue?.status ?? .optimal
         } else if unavailableCount == cleanCues.count {
             title = "Clean overlay limited"
             detail = "Pose confidence is low; guidance is muted."
@@ -952,9 +1054,9 @@ enum GarageOverlayAdapter {
                 guard let joint = frame.joint(named: jointName) else { continue }
 
                 if let existingX = smoothedX, let existingY = smoothedY, let existingConfidence = smoothedConfidence {
-                    smoothedX = (balancedEMAAlpha * joint.x) + ((1 - balancedEMAAlpha) * existingX)
-                    smoothedY = (balancedEMAAlpha * joint.y) + ((1 - balancedEMAAlpha) * existingY)
-                    smoothedConfidence = (balancedEMAAlpha * joint.confidence) + ((1 - balancedEMAAlpha) * existingConfidence)
+                    smoothedX = (weightedMovingAverageAlpha * joint.x) + ((1 - weightedMovingAverageAlpha) * existingX)
+                    smoothedY = (weightedMovingAverageAlpha * joint.y) + ((1 - weightedMovingAverageAlpha) * existingY)
+                    smoothedConfidence = (weightedMovingAverageAlpha * joint.confidence) + ((1 - weightedMovingAverageAlpha) * existingConfidence)
                 } else {
                     smoothedX = joint.x
                     smoothedY = joint.y

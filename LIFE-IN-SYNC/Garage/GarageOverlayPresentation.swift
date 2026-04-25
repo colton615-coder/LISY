@@ -16,9 +16,7 @@ enum GarageOverlayMode: String, CaseIterable, Identifiable, Equatable {
     }
 }
 
-
-
-enum GarageOverlayLens: String, CaseIterable, Identifiable, Equatable {
+enum GarageDiagnosticLens: String, CaseIterable, Identifiable, Equatable {
     case posture
     case headStability
     case handPath
@@ -52,6 +50,9 @@ enum GarageOverlayLens: String, CaseIterable, Identifiable, Equatable {
         }
     }
 }
+
+typealias GarageOverlayLens = GarageDiagnosticLens
+
 enum GarageOverlayMetricStatus: Equatable {
     case optimal
     case warning
@@ -199,7 +200,7 @@ struct GarageOverlayHUDPresentation: Equatable {
     let severity: GarageSkeletonHUDSeverity?
     let primaryStatus: GarageOverlayMetricStatus
     let mode: GarageOverlayMode
-    let selectedLens: GarageOverlayLens
+    let selectedLens: GarageDiagnosticLens
     let isModeToggleEnabled: Bool
     let opacity: Double
 
@@ -217,30 +218,72 @@ struct GarageOverlayHUDPresentation: Equatable {
 
 struct GarageOverlayPresentationState: Equatable {
     let mode: GarageOverlayMode
-    let selectedLens: GarageOverlayLens
+    let selectedLens: GarageDiagnosticLens
     let cleanCues: [GarageOverlayCue]
-    let proSegments: [GarageOverlayLine]
-    let proJoints: [GarageOverlayJoint]
-    let proHeadHalo: GarageOverlayHalo?
-    let proHeadTrail: GarageOverlayPolyline?
-    let proRibbonSegments: [GarageOverlayPolyline]
-    let flowPath: GarageOverlayPolyline?
-    let pulseMarker: GarageOverlayMarker?
+
+    let postureSpineLine: GarageOverlayLine?
+    let posturePelvisLine: GarageOverlayLine?
+    let headStabilityBounds: GarageOverlayHalo?
+    let headStabilityMarker: GarageOverlayMarker?
+    let handPathSegments: [GarageOverlayPolyline]
+    let handPathPulseMarker: GarageOverlayMarker?
+    let hipSwayBoundaries: [GarageOverlayLine]
+    let hipSwayPath: GarageOverlayPolyline?
+
     let issueMarker: GarageOverlayMarker?
     let labels: [GarageOverlayLabel]
     let hud: GarageOverlayHUDPresentation
+
+    var proSegments: [GarageOverlayLine] {
+        switch selectedLens {
+        case .posture:
+            [postureSpineLine, posturePelvisLine].compactMap { $0 }
+        case .hipSway:
+            hipSwayBoundaries
+        case .headStability, .handPath:
+            []
+        }
+    }
+
+    var proJoints: [GarageOverlayJoint] { [] }
+
+    var proHeadHalo: GarageOverlayHalo? {
+        selectedLens == .headStability ? headStabilityBounds : nil
+    }
+
+    var proHeadTrail: GarageOverlayPolyline? { nil }
+
+    var proRibbonSegments: [GarageOverlayPolyline] {
+        selectedLens == .handPath ? handPathSegments : []
+    }
+
+    var flowPath: GarageOverlayPolyline? {
+        selectedLens == .hipSway ? hipSwayPath : nil
+    }
+
+    var pulseMarker: GarageOverlayMarker? {
+        switch selectedLens {
+        case .headStability:
+            headStabilityMarker
+        case .handPath:
+            handPathPulseMarker
+        case .posture, .hipSway:
+            nil
+        }
+    }
 
     static let unavailable = GarageOverlayPresentationState(
         mode: .clean,
         selectedLens: .posture,
         cleanCues: [],
-        proSegments: [],
-        proJoints: [],
-        proHeadHalo: nil,
-        proHeadTrail: nil,
-        proRibbonSegments: [],
-        flowPath: nil,
-        pulseMarker: nil,
+        postureSpineLine: nil,
+        posturePelvisLine: nil,
+        headStabilityBounds: nil,
+        headStabilityMarker: nil,
+        handPathSegments: [],
+        handPathPulseMarker: nil,
+        hipSwayBoundaries: [],
+        hipSwayPath: nil,
         issueMarker: nil,
         labels: [],
         hud: .unavailable
