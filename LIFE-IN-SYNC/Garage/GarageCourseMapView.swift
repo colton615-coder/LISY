@@ -212,6 +212,7 @@ struct GarageCourseMapView: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: reviewModeEnabled)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.selectedShotID)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.activeShotPlacement)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.isInteracting)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: calibrationPresentation != nil)
         .safeAreaInset(edge: .top, spacing: 0) {
             topStrip
@@ -233,9 +234,10 @@ struct GarageCourseMapView: View {
                     overlayModel.selectShot(activeHole?.shots.sorted(by: { $0.sequenceIndex < $1.sequenceIndex }).last?.id)
                 }
             )
-            .presentationDetents([.large])
+            .presentationDetents([.fraction(0.25), .medium])
             .presentationDragIndicator(.visible)
             .presentationBackground(.regularMaterial)
+            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
             .presentationCornerRadius(32)
         }
         .alert(item: $blockerAlert) { alert in
@@ -549,6 +551,15 @@ struct GarageCourseMapView: View {
                     editorSummaryPill("Y \(Int((draft.placement.normalizedY * 100).rounded()))")
                     editorSummaryPill(reviewModeEnabled ? "Pattern Review" : "Selection Only")
                 }
+
+                if let readout = overlayModel.precisionReadout(
+                    for: overlayModel.activeShotPlacement ?? draft.placement
+                ) {
+                    precisionReadoutStrip(
+                        title: dockState.editingShotID == nil ? "Landing" : "Edited Shot",
+                        readout: readout
+                    )
+                }
             }
         }
     }
@@ -790,6 +801,56 @@ struct GarageCourseMapView: View {
                             .stroke(garageReviewStroke.opacity(0.9), lineWidth: 0.6)
                     )
             )
+    }
+
+    private func precisionReadoutStrip(
+        title: String,
+        readout: GarageCourseMapPrecisionReadout
+    ) -> some View {
+        HStack(spacing: 10) {
+            Text(title.uppercased())
+                .font(.caption2.weight(.bold))
+                .tracking(1.0)
+                .foregroundStyle(Color.vibeElectricCyan)
+
+            Spacer(minLength: 0)
+
+            precisionValue(label: "X", value: readout.formattedX)
+            precisionValue(label: "Y", value: readout.formattedY)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            garageMaterialSurface(
+                RoundedRectangle(cornerRadius: 16, style: .continuous),
+                material: .regularMaterial,
+                stroke: Color.vibeElectricCyan.opacity(0.14)
+            )
+        )
+    }
+
+    private func precisionValue(label: String, value: String) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(garageReviewMutedText)
+
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .monospacedDigit()
+                .contentTransition(.numericText())
+                .foregroundStyle(garageReviewReadableText)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            Capsule()
+                .fill(garageReviewSurface.opacity(0.84))
+                .overlay(
+                    Capsule()
+                        .stroke(garageReviewStroke.opacity(0.88), lineWidth: 0.6)
+                )
+        )
     }
 
     private func primaryActionDisabled(for step: GarageCourseMapEditorStep) -> Bool {
@@ -1307,6 +1368,7 @@ private struct GarageCourseCanvasOverlays: View {
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.activeShotPlacement)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.selectedShotID)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.isInteracting)
     }
 
     private func faintSequencePath(for hole: GarageHoleMap) -> some View {
@@ -1384,9 +1446,8 @@ private struct GarageCourseCanvasOverlays: View {
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GarageCourseMapPinButtonStyle(isSelected: isSelected))
             .position(point)
-            .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
             .opacity(activeDraftShotID == descriptor.id && isEditingPlacement ? 0.35 : 1)
             .zIndex(isSelected ? 2 : 1)
         }
@@ -1397,6 +1458,7 @@ private struct GarageCourseCanvasOverlays: View {
         if let activeDraftDescriptor {
             let draftPlacement = overlayModel.activeShotPlacement ?? activeDraftDescriptor.endPlacement
             let point = GarageCourseMapOverlayRenderer.point(for: draftPlacement, in: rect)
+            let isDragging = overlayModel.isDragging(shotID: activeDraftShotID)
 
             ZStack {
                 Circle()
@@ -1432,7 +1494,9 @@ private struct GarageCourseCanvasOverlays: View {
                     .offset(y: 34)
             }
             .position(point)
-            .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
+            .scaleEffect(isDragging ? 1.15 : 1.0)
+            .shadow(color: .black.opacity(0.12), radius: isDragging ? 16 : 8, x: 0, y: isDragging ? 8 : 4)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isDragging)
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
@@ -1545,6 +1609,22 @@ private struct GarageCourseShotDraftBinding {
 private protocol GarageCourseMapSelectable {
     var title: String { get }
     var symbolName: String { get }
+}
+
+private struct GarageCourseMapPinButtonStyle: ButtonStyle {
+    let isSelected: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 1.08 : (isSelected ? 1.02 : 1.0))
+            .shadow(
+                color: .black.opacity(0.12),
+                radius: configuration.isPressed ? 14 : 8,
+                x: 0,
+                y: configuration.isPressed ? 8 : 4
+            )
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
+    }
 }
 
 extension GarageTacticalClub: GarageCourseMapSelectable {}

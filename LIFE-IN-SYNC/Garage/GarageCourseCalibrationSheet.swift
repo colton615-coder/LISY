@@ -131,6 +131,10 @@ struct GarageCourseCalibrationSheet: View {
         return max(CGFloat(hole.imagePixelWidth / safeHeight), 0.62)
     }
 
+    private var activeAnchorReadout: GarageCourseMapPrecisionReadout? {
+        overlayModel.activeAnchorReadout ?? overlayModel.precisionReadout(for: draft.anchor(for: currentStep))
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -290,12 +294,14 @@ struct GarageCourseCalibrationSheet: View {
 
     private var calibrationCanvas: some View {
         VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .center, spacing: 12) {
                 Text("Calibration Surface")
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(garageReviewReadableText)
 
-                Text("Tap to drop the active anchor. Drag any placed handle to refine it. Garage keeps shot entry locked until all three anchors are saved.")
+                Spacer(minLength: 0)
+
+                Text("Tap to place. Drag to refine.")
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(garageReviewMutedText)
             }
@@ -306,13 +312,14 @@ struct GarageCourseCalibrationSheet: View {
                 image: canvasImage,
                 draft: draft,
                 activeStep: currentStep,
+                activeReadout: activeAnchorReadout,
                 aspectRatio: canvasAspectRatio,
                 placeAnchor: placeAnchor,
                 updateAnchor: updateAnchor,
                 finalizeAnchor: finalizeAnchor,
                 endAnchorInteraction: endAnchorInteraction
             )
-            .frame(height: 430)
+            .frame(height: 340)
         }
     }
 
@@ -485,6 +492,7 @@ private struct GarageCourseCalibrationCanvas: View {
     let image: UIImage?
     let draft: GarageCourseCalibrationDraft
     let activeStep: GarageCourseCalibrationStep
+    let activeReadout: GarageCourseMapPrecisionReadout?
     let aspectRatio: CGFloat
     let placeAnchor: (GarageMapAnchor) -> Void
     let updateAnchor: (GarageMapAnchor) -> Void
@@ -517,11 +525,29 @@ private struct GarageCourseCalibrationCanvas: View {
                 GarageCourseCalibrationGuidePath(descriptors: descriptors)
                     .frame(width: proxy.size.width, height: proxy.size.height)
 
+                VStack {
+                    HStack {
+                        if let activeReadout {
+                            GarageCourseCalibrationReadoutStrip(
+                                title: activeStep.anchorKind.title,
+                                readout: activeReadout
+                            )
+                        }
+
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.top, 18)
+
+                    Spacer()
+                }
+
                 ForEach(descriptors) { descriptor in
                     if let point = descriptor.point {
                         GarageCourseCalibrationHandle(
                             descriptor: descriptor,
-                            point: point
+                            point: point,
+                            isDragging: overlayModel.isDragging(kind: descriptor.kind)
                         )
                         .gesture(
                             DragGesture(minimumDistance: 0)
@@ -581,6 +607,7 @@ private struct GarageCourseCalibrationCanvas: View {
             )
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.activeAnchor)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.isInteracting)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: draft.teeAnchor)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: draft.fairwayCheckpointAnchor)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: draft.greenCenterAnchor)
@@ -605,6 +632,56 @@ private struct GarageCourseCalibrationCanvas: View {
                 material: descriptor.isActive ? .regularMaterial : .ultraThinMaterial,
                 stroke: descriptor.isActive ? Color.vibeElectricCyan.opacity(0.24) : garageReviewStroke.opacity(0.92)
             )
+        )
+    }
+}
+
+private struct GarageCourseCalibrationReadoutStrip: View {
+    let title: String
+    let readout: GarageCourseMapPrecisionReadout
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(title.uppercased())
+                .font(.caption2.weight(.bold))
+                .tracking(1.0)
+                .foregroundStyle(Color.vibeElectricCyan)
+
+            calibrationReadoutValue(label: "X", value: readout.formattedX)
+            calibrationReadoutValue(label: "Y", value: readout.formattedY)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            garageSheetMaterialSurface(
+                RoundedRectangle(cornerRadius: 16, style: .continuous),
+                material: .regularMaterial,
+                stroke: Color.vibeElectricCyan.opacity(0.14)
+            )
+        )
+    }
+
+    private func calibrationReadoutValue(label: String, value: String) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(garageReviewMutedText)
+
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .monospacedDigit()
+                .contentTransition(.numericText())
+                .foregroundStyle(garageReviewReadableText)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            Capsule()
+                .fill(garageReviewSurface.opacity(0.84))
+                .overlay(
+                    Capsule()
+                        .stroke(garageReviewStroke.opacity(0.88), lineWidth: 0.6)
+                )
         )
     }
 }
@@ -694,6 +771,7 @@ private struct GarageCourseCalibrationGuidePath: View {
 private struct GarageCourseCalibrationHandle: View {
     let descriptor: GarageCourseCalibrationAnchorDescriptor
     let point: CGPoint
+    let isDragging: Bool
 
     var body: some View {
         VStack(spacing: 8) {
@@ -735,7 +813,9 @@ private struct GarageCourseCalibrationHandle: View {
         .frame(minWidth: 44, minHeight: 44)
         .contentShape(Rectangle())
         .position(point)
-        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
+        .scaleEffect(isDragging ? 1.15 : 1.0)
+        .shadow(color: .black.opacity(0.12), radius: isDragging ? 16 : 8, x: 0, y: isDragging ? 8 : 4)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isDragging)
     }
 }
 

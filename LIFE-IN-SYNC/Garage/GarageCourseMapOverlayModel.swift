@@ -1,5 +1,6 @@
 import Combine
 import CoreGraphics
+import Foundation
 import SwiftUI
 import UIKit
 
@@ -22,6 +23,23 @@ struct GarageCourseCalibrationAnchorDescriptor: Identifiable, Equatable {
     }
 }
 
+struct GarageCourseMapPrecisionReadout: Equatable {
+    let normalizedX: Double
+    let normalizedY: Double
+
+    var formattedX: String {
+        Self.format(normalizedX)
+    }
+
+    var formattedY: String {
+        Self.format(normalizedY)
+    }
+
+    private static func format(_ value: Double) -> String {
+        String(format: "%.3f", value)
+    }
+}
+
 @MainActor
 final class GarageCourseMapOverlayModel: ObservableObject {
     @Published private(set) var selectedShotID: UUID?
@@ -32,6 +50,24 @@ final class GarageCourseMapOverlayModel: ObservableObject {
 
     private var shotDragOriginPlacement: GarageShotPlacement?
     private var anchorDragOrigin: GarageMapAnchor?
+
+    var isDraggingShot: Bool {
+        guard case .shot = activeDragTarget else { return false }
+        return isInteracting
+    }
+
+    var isDraggingAnchor: Bool {
+        guard case .anchor = activeDragTarget else { return false }
+        return isInteracting
+    }
+
+    var activeShotReadout: GarageCourseMapPrecisionReadout? {
+        precisionReadout(for: activeShotPlacement)
+    }
+
+    var activeAnchorReadout: GarageCourseMapPrecisionReadout? {
+        precisionReadout(for: activeAnchor)
+    }
 
     func selectShot(_ shotID: UUID?) {
         selectedShotID = shotID
@@ -130,6 +166,32 @@ final class GarageCourseMapOverlayModel: ObservableObject {
         activeDragTarget = nil
         isInteracting = false
         return anchor
+    }
+
+    func isDragging(shotID: UUID?) -> Bool {
+        guard case let .shot(activeShotID) = activeDragTarget else { return false }
+        return isInteracting && activeShotID == shotID
+    }
+
+    func isDragging(kind: GarageMapAnchorKind) -> Bool {
+        guard case let .anchor(activeKind) = activeDragTarget else { return false }
+        return isInteracting && activeKind == kind
+    }
+
+    func precisionReadout(for placement: GarageShotPlacement?) -> GarageCourseMapPrecisionReadout? {
+        guard let placement else { return nil }
+        return GarageCourseMapPrecisionReadout(
+            normalizedX: placement.normalizedX,
+            normalizedY: placement.normalizedY
+        )
+    }
+
+    func precisionReadout(for anchor: GarageMapAnchor?) -> GarageCourseMapPrecisionReadout? {
+        guard let anchor else { return nil }
+        return GarageCourseMapPrecisionReadout(
+            normalizedX: anchor.normalizedX,
+            normalizedY: anchor.normalizedY
+        )
     }
 
     func calibrationAnchorDescriptors(

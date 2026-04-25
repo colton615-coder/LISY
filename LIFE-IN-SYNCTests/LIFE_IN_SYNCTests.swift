@@ -225,6 +225,51 @@ struct LIFE_IN_SYNCTests {
         #expect(greenDescriptor.point == CGPoint(x: 165, y: 81))
     }
 
+    @Test func garageCourseMapOverlayExposesShotDragStateAndPrecisionReadout() async throws {
+        let overlayModel = GarageCourseMapOverlayModel()
+        let shotID = UUID()
+
+        overlayModel.beginShotDrag(
+            initialPlacement: GarageShotPlacement(normalizedX: 0.33, normalizedY: 0.61),
+            shotID: shotID
+        )
+
+        let readout = try #require(overlayModel.activeShotReadout)
+
+        #expect(overlayModel.isDraggingShot)
+        #expect(overlayModel.isDragging(shotID: shotID))
+        #expect(readout.normalizedX == 0.33)
+        #expect(readout.normalizedY == 0.61)
+        #expect(readout.formattedX == "0.330")
+        #expect(readout.formattedY == "0.610")
+
+        _ = overlayModel.endShotDrag()
+
+        #expect(overlayModel.isDraggingShot == false)
+        #expect(overlayModel.isDragging(shotID: shotID) == false)
+    }
+
+    @Test func garageCourseMapOverlayExposesAnchorDragStateAndPrecisionReadout() async throws {
+        let overlayModel = GarageCourseMapOverlayModel()
+        let anchor = GarageMapAnchor(kind: .greenCenter, normalizedX: 0.74, normalizedY: 0.16)
+
+        overlayModel.beginAnchorDrag(anchor)
+
+        let readout = try #require(overlayModel.activeAnchorReadout)
+
+        #expect(overlayModel.isDraggingAnchor)
+        #expect(overlayModel.isDragging(kind: .greenCenter))
+        #expect(readout.normalizedX == 0.74)
+        #expect(readout.normalizedY == 0.16)
+        #expect(readout.formattedX == "0.740")
+        #expect(readout.formattedY == "0.160")
+
+        _ = overlayModel.endAnchorDrag()
+
+        #expect(overlayModel.isDraggingAnchor == false)
+        #expect(overlayModel.isDragging(kind: .greenCenter) == false)
+    }
+
     @Test func garageTacticalShotDefaultsTrajectoryToStraightAndPure() async throws {
         let shot = GarageTacticalShot(
             sequenceIndex: 1,
