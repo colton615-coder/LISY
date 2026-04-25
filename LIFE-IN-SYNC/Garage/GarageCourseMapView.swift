@@ -2,6 +2,8 @@ import SwiftData
 import SwiftUI
 import UIKit
 
+private let garageCourseMapSpring = Animation.spring(response: 0.35, dampingFraction: 0.85)
+
 private enum GarageCourseMapMode: Equatable {
     case review
     case shotEntry
@@ -31,7 +33,7 @@ private enum GarageCourseCalibrationStep: Int, CaseIterable, Identifiable {
         case .tee:
             "Tee Anchor"
         case .fairwayCheckpoint:
-            "Checkpoint Anchor"
+            "Mid Anchor"
         case .greenCenter:
             "Green Anchor"
         }
@@ -42,20 +44,20 @@ private enum GarageCourseCalibrationStep: Int, CaseIterable, Identifiable {
         case .tee:
             "Pin where the hole begins."
         case .fairwayCheckpoint:
-            "Drop the fairway checkpoint."
+            "Drop the mid anchor through the fairway corridor."
         case .greenCenter:
-            "Finish at the green center."
+            "Finish at the center of the green."
         }
     }
 
     var statusTitle: String {
         switch self {
         case .tee:
-            "Start"
+            "Tee"
         case .fairwayCheckpoint:
             "Mid"
         case .greenCenter:
-            "Finish"
+            "Green"
         }
     }
 }
@@ -98,79 +100,18 @@ private struct GarageCourseCalibrationDraft: Equatable {
     }
 }
 
-private enum GarageCourseMapEditorStep: Int, CaseIterable, Identifiable {
-    case placement
-    case shot
-    case finish
-
-    var id: Int { rawValue }
-
-    var title: String {
-        switch self {
-        case .placement:
-            "Placement"
-        case .shot:
-            "Shot"
-        case .finish:
-            "Finish"
-        }
-    }
-
-    var subtitle: String {
-        switch self {
-        case .placement:
-            "Tap the landing point on the hole."
-        case .shot:
-            "Capture the club and intent."
-        case .finish:
-            "Classify the miss and trajectory."
-        }
-    }
-}
-
-private enum GarageCourseMapDockState: Equatable {
-    case compact
-    case editing(step: GarageCourseMapEditorStep, shotID: UUID?)
-
-    var step: GarageCourseMapEditorStep? {
-        switch self {
-        case .compact:
-            nil
-        case let .editing(step, _):
-            step
-        }
-    }
-
-    var editingShotID: UUID? {
-        switch self {
-        case .compact:
-            nil
-        case let .editing(_, shotID):
-            shotID
-        }
-    }
-}
-
 private struct GarageCourseShotDraft {
     var placement: GarageShotPlacement
     var club: GarageTacticalClub?
-    var shotType: GarageTacticalShotType?
-    var intendedTarget: String
     var lieBeforeShot: GarageTacticalLie?
     var actualResult: GarageTacticalResult?
-    var flightShape: GarageShotFlightShape
-    var strikeQuality: GarageShotStrikeQuality
 
     init(hole: GarageHoleMap, selectedShot: GarageTacticalShot? = nil) {
         if let selectedShot {
             placement = selectedShot.placement
             club = selectedShot.club
-            shotType = selectedShot.shotType
-            intendedTarget = selectedShot.intendedTarget
             lieBeforeShot = selectedShot.lieBeforeShot
             actualResult = selectedShot.actualResult
-            flightShape = selectedShot.flightShape
-            strikeQuality = selectedShot.strikeQuality
             return
         }
 
@@ -191,20 +132,12 @@ private struct GarageCourseShotDraft {
         }
 
         club = nil
-        shotType = nil
-        intendedTarget = "Center Line"
         lieBeforeShot = hole.totalShots == 0 ? .tee : nil
         actualResult = nil
-        flightShape = .straight
-        strikeQuality = .pure
-    }
-
-    var canAdvanceFromShotStep: Bool {
-        club != nil && shotType != nil
     }
 
     var canSave: Bool {
-        canAdvanceFromShotStep && lieBeforeShot != nil && actualResult != nil
+        club != nil && lieBeforeShot != nil && actualResult != nil
     }
 }
 
@@ -218,10 +151,10 @@ struct GarageCourseMapView: View {
     @State private var activeSession: GarageRoundSession?
     @State private var activeHole: GarageHoleMap?
     @State private var mapMode: GarageCourseMapMode = .review
-    @State private var dockState: GarageCourseMapDockState = .compact
     @State private var reviewModeEnabled = false
     @State private var canvasImage: UIImage?
     @State private var draft: GarageCourseShotDraft?
+    @State private var editingShotID: UUID?
     @State private var calibrationDraft: GarageCourseCalibrationDraft?
     @State private var currentCalibrationStep: GarageCourseCalibrationStep = .tee
     @State private var calibrationSaveErrorMessage: String?
@@ -230,13 +163,6 @@ struct GarageCourseMapView: View {
 
     private let bottomInset: CGFloat
     private let onExit: (() -> Void)?
-    private let targetOptions = [
-        "Center Line",
-        "Left Window",
-        "Right Window",
-        "Aggressive Line",
-        "Safety Line"
-    ]
 
     @MainActor
     init(
@@ -264,17 +190,8 @@ struct GarageCourseMapView: View {
     }
 
     private var selectedDescriptor: GarageCourseShotOverlayDescriptor? {
-        if let editingShotID = dockState.editingShotID,
-           let editingDescriptor = overlayDescriptors.first(where: { $0.id == editingShotID }) {
-            return editingDescriptor
-        }
-
-        if let selectedShotID = overlayModel.selectedShotID,
-           let descriptor = overlayDescriptors.first(where: { $0.id == selectedShotID }) {
-            return descriptor
-        }
-
-        return nil
+        guard let selectedShotID = overlayModel.selectedShotID else { return nil }
+        return overlayDescriptors.first(where: { $0.id == selectedShotID })
     }
 
     private var canvasAspectRatio: CGFloat {
@@ -287,6 +204,13 @@ struct GarageCourseMapView: View {
     private var windLabel: String? {
         let trimmed = model.metadata.dominantWind.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private var activeDraftReadout: GarageCourseMapPrecisionReadout? {
+        if let activeShotPlacement = overlayModel.activeShotPlacement {
+            return overlayModel.precisionReadout(for: activeShotPlacement)
+        }
+        return overlayModel.precisionReadout(for: draft?.placement)
     }
 
     private var activeCalibrationReadout: GarageCourseMapPrecisionReadout? {
@@ -313,15 +237,15 @@ struct GarageCourseMapView: View {
         }
         .background(garageReviewBackground.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: dockState)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: mapMode)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: reviewModeEnabled)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.selectedShotID)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.activeShotPlacement)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.activeAnchor)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.isInteracting)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentCalibrationStep)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: calibrationDraft)
+        .animation(garageCourseMapSpring, value: mapMode)
+        .animation(garageCourseMapSpring, value: reviewModeEnabled)
+        .animation(garageCourseMapSpring, value: overlayModel.selectedShotID)
+        .animation(garageCourseMapSpring, value: overlayModel.activeShotPlacement)
+        .animation(garageCourseMapSpring, value: overlayModel.activeAnchor)
+        .animation(garageCourseMapSpring, value: overlayModel.isInteracting)
+        .animation(garageCourseMapSpring, value: currentCalibrationStep)
+        .animation(garageCourseMapSpring, value: calibrationDraft)
+        .animation(garageCourseMapSpring, value: draft?.placement)
         .safeAreaInset(edge: .top, spacing: 0) {
             topStrip
                 .padding(.horizontal, 16)
@@ -375,13 +299,24 @@ struct GarageCourseMapView: View {
             .contentShape(Circle())
 
             HStack(spacing: 14) {
-                GarageCourseTopMetric(label: "Hole", value: activeHole.map { "\($0.holeNumber)" } ?? model.metadata.holeLabel.replacingOccurrences(of: "Hole ", with: ""))
+                GarageCourseTopMetric(
+                    label: "Hole",
+                    value: activeHole.map { "\($0.holeNumber)" } ?? model.metadata.holeLabel.replacingOccurrences(of: "Hole ", with: "")
+                )
                 GarageCourseTopMetric(label: "Par", value: "\(activeHole?.par ?? model.metadata.par)")
-                GarageCourseTopMetric(label: "Yds", value: activeHole?.yardageLabel.isEmpty == false ? (activeHole?.yardageLabel ?? "") : model.metadata.yardageLabel)
+                GarageCourseTopMetric(
+                    label: "Yds",
+                    value: activeHole?.yardageLabel.isEmpty == false ? (activeHole?.yardageLabel ?? "") : model.metadata.yardageLabel
+                )
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
-            .background(garageMaterialSurface(RoundedRectangle(cornerRadius: 20, style: .continuous), material: .regularMaterial))
+            .background(
+                garageMaterialSurface(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous),
+                    material: .regularMaterial
+                )
+            )
 
             Spacer(minLength: 0)
 
@@ -414,7 +349,6 @@ struct GarageCourseMapView: View {
                     .background(garageMaterialSurface(Circle()))
             }
             .buttonStyle(.plain)
-            .contentShape(Circle())
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("ANCHOR SETUP")
@@ -430,7 +364,12 @@ struct GarageCourseMapView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
-            .background(garageMaterialSurface(RoundedRectangle(cornerRadius: 20, style: .continuous), material: .regularMaterial))
+            .background(
+                garageMaterialSurface(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous),
+                    material: .regularMaterial
+                )
+            )
 
             Spacer(minLength: 0)
 
@@ -447,7 +386,7 @@ struct GarageCourseMapView: View {
 
     private var courseCanvas: some View {
         GeometryReader { proxy in
-            let rect = CGRect(origin: .zero, size: proxy.size)
+            let imageRect = garageAspectFitRect(container: proxy.size, aspectRatio: canvasAspectRatio)
 
             ZStack {
                 Color.black.opacity(0.96)
@@ -456,27 +395,23 @@ struct GarageCourseMapView: View {
                 GarageCourseCanvasSurface(
                     image: canvasImage,
                     hole: activeHole,
-                    metadata: model.metadata
+                    metadata: model.metadata,
+                    imageRect: imageRect
                 )
-                .frame(width: proxy.size.width, height: proxy.size.height)
-                .clipped()
-                .ignoresSafeArea()
 
                 GarageCourseCanvasOverlays(
                     overlayModel: overlayModel,
                     hole: activeHole,
-                    rect: rect,
+                    rect: imageRect,
                     descriptors: overlayDescriptors,
                     selectedDescriptor: selectedDescriptor,
                     reviewModeEnabled: reviewModeEnabled,
                     activeDraftDescriptor: activeDraftOverlayDescriptor(in: activeHole),
-                    activeDraftShotID: dockState.editingShotID,
-                    isEditingPlacement: dockState.step == .placement,
+                    activeDraftShotID: editingShotID,
+                    isEditingPlacement: mapMode == .shotEntry,
                     mapMode: mapMode,
                     calibrationDraft: calibrationDraft,
                     activeCalibrationStep: currentCalibrationStep,
-                    activeCalibrationReadout: activeCalibrationReadout,
-                    startEditingSelectedShot: startEditingSelectedShot,
                     updateDraftPlacement: updateDraftPlacement,
                     finalizeDraftPlacement: finalizeDraftPlacement,
                     clearDraftInteraction: clearDraftInteraction,
@@ -485,7 +420,7 @@ struct GarageCourseMapView: View {
                     endCalibrationInteraction: endCalibrationInteraction
                 ) { descriptor in
                     garageTriggerImpact(.light)
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    withAnimation(garageCourseMapSpring) {
                         overlayModel.selectShot(descriptor.id)
                     }
                     saveErrorMessage = nil
@@ -495,16 +430,16 @@ struct GarageCourseMapView: View {
             .gesture(
                 SpatialTapGesture()
                     .onEnded { value in
-                        handleCanvasTap(value.location, in: rect)
+                        handleCanvasTap(value.location, in: imageRect)
                     }
             )
             .simultaneousGesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .local)
                     .onChanged { value in
-                        handleCanvasDragChanged(value, in: rect)
+                        handleCanvasDragChanged(value, in: imageRect)
                     }
                     .onEnded { value in
-                        handleCanvasDragEnded(value, in: rect)
+                        handleCanvasDragEnded(value, in: imageRect)
                     }
             )
         }
@@ -513,436 +448,365 @@ struct GarageCourseMapView: View {
 
     private var bottomDock: some View {
         VStack(spacing: 10) {
-            if let saveErrorMessage {
-                Text(saveErrorMessage)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(garageReviewFlagged)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        garageMaterialSurface(
-                            RoundedRectangle(cornerRadius: 18, style: .continuous),
-                            material: .ultraThinMaterial,
-                            stroke: garageReviewFlagged.opacity(0.22)
-                        )
-                    )
+            if let saveErrorMessage, mapMode == .shotEntry {
+                errorStrip(message: saveErrorMessage)
             }
 
-            Group {
-                if mapMode == .calibration {
-                    calibrationDock
-                } else {
-                    switch dockState {
-                    case .compact:
-                        compactDock
-                    case let .editing(step, shotID):
-                        expandedDock(step: step, editingShotID: shotID)
-                    }
-                }
+            switch mapMode {
+            case .review:
+                reviewDock
+            case .shotEntry:
+                shotEntryDock
+            case .calibration:
+                calibrationDock
             }
         }
     }
 
-    private var compactDock: some View {
-        HStack(spacing: 12) {
-            Button {
-                handleAddShotTap()
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 17, weight: .bold))
-                    Text("Add Shot")
-                        .font(.subheadline.weight(.semibold))
-                }
-                .foregroundStyle(garageReviewCanvasFill)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(
-                    GarageRaisedPanelBackground(
-                        shape: RoundedRectangle(cornerRadius: 22, style: .continuous),
-                        fill: garageReviewAccent,
-                        stroke: garageReviewAccent.opacity(0.34),
-                        glow: garageReviewAccent
-                    )
-                )
-            }
-            .buttonStyle(.plain)
-            .contentShape(Rectangle())
+    private var reviewDock: some View {
+        GarageDockSurface {
+            if let selectedDescriptor {
+                selectedShotSummary(descriptor: selectedDescriptor)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("COURSE MAP")
+                        .font(.caption.weight(.bold))
+                        .tracking(1.2)
+                        .foregroundStyle(Color.vibeElectricCyan)
 
-            Button {
-                garageTriggerImpact(.light)
-                reviewModeEnabled.toggle()
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: reviewModeEnabled ? "waveform.path.ecg.rectangle.fill" : "waveform.path.ecg.rectangle")
-                        .font(.system(size: 16, weight: .semibold))
-                    Text(reviewModeEnabled ? "Review On" : "Review")
-                        .font(.subheadline.weight(.semibold))
+                    Text("Tap a pin to inspect the saved shot, or add a new landing point directly on the map.")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(garageReviewMutedText)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .foregroundStyle(reviewModeEnabled ? garageReviewReadableText : garageReviewMutedText)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(
-                    reviewModeEnabled
-                    ? AnyView(
-                        GarageRaisedPanelBackground(
-                            shape: RoundedRectangle(cornerRadius: 22, style: .continuous),
-                            fill: garageReviewSurfaceDark.opacity(0.92),
-                            stroke: Color.vibeElectricCyan.opacity(0.22),
-                            glow: Color.vibeElectricCyan.opacity(0.32)
-                        )
-                    )
-                    : AnyView(
-                        GarageInsetPanelBackground(
-                            shape: RoundedRectangle(cornerRadius: 22, style: .continuous),
-                            fill: garageReviewSurfaceDark.opacity(0.88),
-                            stroke: garageReviewStroke.opacity(0.94)
-                        )
-                    )
-                )
             }
-            .buttonStyle(.plain)
-            .contentShape(Rectangle())
+
+            GarageDockWideButton(
+                title: "Add Shot",
+                systemImage: "plus.circle.fill",
+                isPrimary: true,
+                isEnabled: true
+            ) {
+                handleAddShotTap()
+            }
+
+            if selectedDescriptor != nil {
+                GarageDockWideButton(
+                    title: "Edit Selected Shot",
+                    systemImage: "slider.horizontal.3",
+                    isPrimary: false,
+                    isEnabled: true
+                ) {
+                    startEditingSelectedShot()
+                }
+            }
+
+            HStack(spacing: 10) {
+                reviewModeToggleButton
+                anchorModeButton
+            }
         }
-        .padding(14)
-        .background(garageMaterialSurface(RoundedRectangle(cornerRadius: 26, style: .continuous), material: .regularMaterial))
+    }
+
+    private var shotEntryDock: some View {
+        GarageDockSurface {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(editingShotID == nil ? "TACTICAL ENTRY" : "EDIT SHOT")
+                            .font(.caption.weight(.bold))
+                            .tracking(1.2)
+                            .foregroundStyle(Color.vibeElectricCyan)
+
+                        Text("Tap or drag the pin above, then confirm the club, lie, and result.")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(garageReviewMutedText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    if let activeDraftReadout {
+                        GarageCoursePrecisionReadoutStrip(
+                            title: editingShotID == nil ? "Landing" : "Edited Shot",
+                            readout: activeDraftReadout
+                        )
+                        .frame(maxWidth: 196)
+                    }
+                }
+
+                if let draftBinding = draftBinding {
+                    selectionRail(
+                        title: "Club",
+                        items: GarageTacticalClub.allCases,
+                        selection: draftBinding.club
+                    )
+
+                    selectionRail(
+                        title: "Lie",
+                        items: GarageTacticalLie.allCases,
+                        selection: draftBinding.lieBeforeShot
+                    )
+
+                    selectionRail(
+                        title: "Result",
+                        items: GarageTacticalResult.allCases,
+                        selection: draftBinding.actualResult
+                    )
+                }
+
+                HStack(spacing: 12) {
+                    dockActionButton(
+                        title: "Cancel",
+                        isPrimary: false,
+                        isEnabled: true,
+                        action: cancelShotEntry
+                    )
+
+                    dockActionButton(
+                        title: editingShotID == nil ? "Confirm Shot" : "Update Shot",
+                        isPrimary: true,
+                        isEnabled: draft?.canSave == true,
+                        action: persistDraft
+                    )
+                }
+            }
+        }
     }
 
     private var calibrationDock: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            if let calibrationSaveErrorMessage {
-                Text(calibrationSaveErrorMessage)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(garageReviewFlagged)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        garageMaterialSurface(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous),
-                            material: .ultraThinMaterial,
-                            stroke: garageReviewFlagged.opacity(0.22)
+        GarageDockSurface {
+            VStack(alignment: .leading, spacing: 14) {
+                if let calibrationSaveErrorMessage {
+                    errorStrip(message: calibrationSaveErrorMessage)
+                }
+
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("ANCHOR CALIBRATION")
+                            .font(.caption.weight(.bold))
+                            .tracking(1.2)
+                            .foregroundStyle(Color.vibeElectricCyan)
+
+                        Text("Tap the map to place the active anchor. Drag any handle to refine it.")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(garageReviewMutedText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    if let activeCalibrationReadout {
+                        GarageCoursePrecisionReadoutStrip(
+                            title: currentCalibrationStep.anchorKind.title,
+                            readout: activeCalibrationReadout
                         )
+                        .frame(maxWidth: 196)
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    ForEach(GarageCourseCalibrationStep.allCases) { step in
+                        Button {
+                            garageTriggerImpact(.light)
+                            withAnimation(garageCourseMapSpring) {
+                                currentCalibrationStep = step
+                            }
+                        } label: {
+                            calibrationStepPill(step)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                HStack(spacing: 12) {
+                    dockActionButton(
+                        title: currentCalibrationStep == .tee ? "Cancel" : "Back",
+                        isPrimary: false,
+                        isEnabled: true,
+                        action: handleCalibrationBack
                     )
+
+                    dockActionButton(
+                        title: calibrationDraft?.isComplete == true ? "Confirm Anchors" : "Continue",
+                        isPrimary: true,
+                        isEnabled: primaryCalibrationButtonEnabled,
+                        action: handleCalibrationPrimary
+                    )
+                }
             }
+        }
+    }
 
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(currentCalibrationStep.title.uppercased())
-                        .font(.caption.weight(.bold))
-                        .tracking(1.2)
-                        .foregroundStyle(Color.vibeElectricCyan)
+    private func selectedShotSummary(descriptor: GarageCourseShotOverlayDescriptor) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("\(descriptor.sequenceIndex)")
+                    .font(.title3.weight(.black))
+                    .foregroundStyle(garageReviewReadableText)
 
-                    Text("Tap the map to place. Drag a handle to refine.")
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(garageReviewMutedText)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(descriptor.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(garageReviewReadableText)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        .minimumScaleFactor(0.82)
+
+                    Text(descriptor.subtitle)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(garageReviewMutedText)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer(minLength: 0)
-
-                if let activeCalibrationReadout {
-                    precisionReadoutStrip(
-                        title: currentCalibrationStep.anchorKind.title,
-                        readout: activeCalibrationReadout
-                    )
-                    .frame(maxWidth: 190)
-                }
             }
 
             HStack(spacing: 8) {
-                ForEach(GarageCourseCalibrationStep.allCases) { step in
-                    Button {
-                        garageTriggerImpact(.light)
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            currentCalibrationStep = step
-                        }
-                    } label: {
-                        calibrationStepPill(step)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
+                reviewTag(descriptor.detailLine)
 
-            HStack(spacing: 12) {
-                Button {
-                    handleCalibrationBack()
-                } label: {
-                    Text(currentCalibrationStep == .tee ? "Cancel" : "Back")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(garageReviewReadableText)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 15)
-                        .background(
-                            GarageInsetPanelBackground(
-                                shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
-                                fill: garageReviewSurfaceDark.opacity(0.88),
-                                stroke: garageReviewStroke.opacity(0.94)
-                            )
-                        )
+                if let shot = activeHole?.shots.first(where: { $0.id == descriptor.id }) {
+                    reviewTag(shot.lieBeforeShot.title)
+                    reviewTag(shot.actualResult.title)
                 }
-                .buttonStyle(.plain)
-
-                Button {
-                    handleCalibrationPrimary()
-                } label: {
-                    Text(calibrationDraft?.isComplete == true ? "Save Anchors" : "Continue")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(garageReviewCanvasFill)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 15)
-                        .background(
-                            GarageRaisedPanelBackground(
-                                shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
-                                fill: garageReviewAccent,
-                                stroke: garageReviewAccent.opacity(0.34),
-                                glow: garageReviewAccent
-                            )
-                        )
-                }
-                .buttonStyle(.plain)
-                .disabled(primaryCalibrationButtonDisabled)
-                .opacity(primaryCalibrationButtonDisabled ? 0.55 : 1)
             }
         }
-        .padding(16)
-        .background(garageMaterialSurface(RoundedRectangle(cornerRadius: 26, style: .continuous), material: .regularMaterial))
+        .padding(.horizontal, 2)
     }
 
-    private func calibrationStepPill(_ step: GarageCourseCalibrationStep) -> some View {
-        let isActive = currentCalibrationStep == step
-        let isComplete = calibrationDraft?.anchor(for: step) != nil
-
-        return HStack(spacing: 7) {
-            Circle()
-                .fill(isComplete ? Color.vibeElectricCyan : garageReviewMutedText.opacity(isActive ? 0.58 : 0.28))
-                .frame(width: 7, height: 7)
-
-            Text(step.statusTitle.uppercased())
-                .font(.caption2.weight(.bold))
-                .tracking(0.9)
-                .lineLimit(1)
-        }
-        .foregroundStyle(isActive ? garageReviewReadableText : garageReviewMutedText)
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 10)
-        .background(
-            garageMaterialSurface(
-                Capsule(),
-                material: isActive ? .regularMaterial : .ultraThinMaterial,
-                stroke: isActive ? Color.vibeElectricCyan.opacity(0.28) : garageReviewStroke.opacity(0.88)
-            )
-        )
-    }
-
-    private func calibrationStatusPill(_ step: GarageCourseCalibrationStep) -> some View {
-        let isActive = currentCalibrationStep == step
-        let isComplete = calibrationDraft?.anchor(for: step) != nil
-
-        return Circle()
-            .fill(isComplete ? Color.vibeElectricCyan : garageReviewMutedText.opacity(isActive ? 0.66 : 0.28))
-            .frame(width: isActive ? 9 : 7, height: isActive ? 9 : 7)
-            .overlay {
-                Circle()
-                    .stroke(isActive ? Color.vibeElectricCyan.opacity(0.42) : .clear, lineWidth: 3)
-            }
-            .accessibilityLabel(Text("\(step.title) \(isComplete ? "placed" : "pending")"))
-    }
-
-    private func expandedDock(step: GarageCourseMapEditorStep, editingShotID: UUID?) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(editingShotID == nil ? "TACTICAL ENTRY" : "EDIT SHOT")
-                        .font(.caption.weight(.bold))
-                        .tracking(1.2)
-                        .foregroundStyle(Color.vibeElectricCyan)
-
-                    Text(step.subtitle)
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(garageReviewMutedText)
-                }
-
-                Spacer(minLength: 0)
-
-                HStack(spacing: 8) {
-                    ForEach(GarageCourseMapEditorStep.allCases) { item in
+    private func reviewTag(_ title: String) -> some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(garageReviewMutedText)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                Capsule()
+                    .fill(garageReviewSurface.opacity(0.88))
+                    .overlay(
                         Capsule()
-                            .fill(item.rawValue <= step.rawValue ? Color.vibeElectricCyan : garageReviewStroke.opacity(0.86))
-                            .frame(width: item == step ? 28 : 16, height: 5)
-                    }
-                }
-            }
+                            .stroke(garageReviewStroke.opacity(0.9), lineWidth: 0.6)
+                    )
+            )
+    }
 
-            Group {
-                switch step {
-                case .placement:
-                    placementEditor
-                case .shot:
-                    shotEditor
-                case .finish:
-                    finishEditor
-                }
+    private var reviewModeToggleButton: some View {
+        Button {
+            garageTriggerImpact(.light)
+            reviewModeEnabled.toggle()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: reviewModeEnabled ? "waveform.path.ecg.rectangle.fill" : "waveform.path.ecg.rectangle")
+                    .font(.caption.weight(.semibold))
+                Text(reviewModeEnabled ? "Pattern On" : "Pattern")
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
+            .foregroundStyle(reviewModeEnabled ? garageReviewReadableText : garageReviewMutedText)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
+            .background(
+                garageMaterialSurface(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous),
+                    material: reviewModeEnabled ? .regularMaterial : .ultraThinMaterial,
+                    stroke: reviewModeEnabled ? Color.vibeElectricCyan.opacity(0.22) : garageReviewStroke.opacity(0.92)
+                )
+            )
+        }
+        .buttonStyle(.plain)
+    }
 
-            HStack(spacing: 12) {
-                Button {
-                    handleDockBack(step: step)
-                } label: {
-                    Text(step == .placement ? "Cancel" : "Back")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(garageReviewReadableText)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 15)
-                        .background(
+    private var anchorModeButton: some View {
+        Button {
+            garageTriggerImpact(.light)
+            if let activeHole {
+                enterCalibration(for: activeHole)
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "point.3.connected.trianglepath.dotted")
+                    .font(.caption.weight(.semibold))
+                Text("Anchors")
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .foregroundStyle(garageReviewMutedText)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
+            .background(
+                garageMaterialSurface(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous),
+                    material: .ultraThinMaterial,
+                    stroke: garageReviewStroke.opacity(0.92)
+                )
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(activeHole == nil)
+        .opacity(activeHole == nil ? 0.55 : 1)
+    }
+
+    private func errorStrip(message: String) -> some View {
+        Text(message)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(garageReviewFlagged)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                garageMaterialSurface(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous),
+                    material: .ultraThinMaterial,
+                    stroke: garageReviewFlagged.opacity(0.22)
+                )
+            )
+    }
+
+    private func dockActionButton(
+        title: String,
+        isPrimary: Bool,
+        isEnabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            guard isEnabled else { return }
+            garageTriggerImpact(isPrimary ? .medium : .light)
+            action()
+        } label: {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(isPrimary ? garageReviewCanvasFill : garageReviewReadableText)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 15)
+                .background(
+                    Group {
+                        if isPrimary {
+                            GarageRaisedPanelBackground(
+                                shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
+                                fill: garageReviewAccent.opacity(isEnabled ? 1 : 0.34),
+                                stroke: garageReviewAccent.opacity(isEnabled ? 0.34 : 0.18),
+                                glow: isEnabled ? garageReviewAccent : nil
+                            )
+                        } else {
                             GarageInsetPanelBackground(
                                 shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
                                 fill: garageReviewSurfaceDark.opacity(0.88),
                                 stroke: garageReviewStroke.opacity(0.94)
                             )
-                        )
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    handleDockPrimary(step: step, editingShotID: editingShotID)
-                } label: {
-                    Text(step == .finish ? (editingShotID == nil ? "Save Shot" : "Update Shot") : "Continue")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(garageReviewCanvasFill)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 15)
-                        .background(
-                            GarageRaisedPanelBackground(
-                                shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
-                                fill: garageReviewAccent,
-                                stroke: garageReviewAccent.opacity(0.34),
-                                glow: garageReviewAccent
-                            )
-                        )
-                }
-                .buttonStyle(.plain)
-                .disabled(primaryActionDisabled(for: step))
-                .opacity(primaryActionDisabled(for: step) ? 0.55 : 1)
-            }
+                        }
+                    }
+                )
         }
-        .padding(18)
-        .background(garageMaterialSurface(RoundedRectangle(cornerRadius: 26, style: .continuous), material: .regularMaterial))
+        .buttonStyle(.plain)
+        .disabled(isEnabled == false)
+        .opacity(isEnabled ? 1 : 0.55)
     }
 
-    private var placementEditor: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Keep the full hole visible. Tap the landing point above to reposition the selected marker.")
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(garageReviewMutedText)
-
-            if let draft {
-                HStack(spacing: 10) {
-                    editorSummaryPill("X \(Int((draft.placement.normalizedX * 100).rounded()))")
-                    editorSummaryPill("Y \(Int((draft.placement.normalizedY * 100).rounded()))")
-                    editorSummaryPill(reviewModeEnabled ? "Pattern Review" : "Selection Only")
-                }
-
-                if let readout = overlayModel.precisionReadout(
-                    for: overlayModel.activeShotPlacement ?? draft.placement
-                ) {
-                    precisionReadoutStrip(
-                        title: dockState.editingShotID == nil ? "Landing" : "Edited Shot",
-                        readout: readout
-                    )
-                }
-            }
-        }
-    }
-
-    private var shotEditor: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            if let draftBinding = draftBinding {
-                chipRail(
-                    title: "Club",
-                    items: GarageTacticalClub.allCases,
-                    selection: draftBinding.club
-                )
-
-                chipRail(
-                    title: "Shot Type",
-                    items: GarageTacticalShotType.allCases,
-                    selection: draftBinding.shotType
-                )
-
-                targetRail(binding: draftBinding.intendedTarget)
-            }
-        }
-    }
-
-    private var finishEditor: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            if let draftBinding = draftBinding {
-                chipRail(
-                    title: "Lie",
-                    items: GarageTacticalLie.allCases,
-                    selection: draftBinding.lieBeforeShot
-                )
-
-                chipRail(
-                    title: "Result",
-                    items: GarageTacticalResult.allCases,
-                    selection: draftBinding.actualResult
-                )
-
-                chipRail(
-                    title: "Flight Shape",
-                    items: GarageShotFlightShape.allCases,
-                    selection: draftBinding.flightShape
-                )
-
-                chipRail(
-                    title: "Strike Quality",
-                    items: GarageShotStrikeQuality.allCases,
-                    selection: draftBinding.strikeQuality
-                )
-            }
-        }
-    }
-
-    private var draftBinding: GarageCourseShotDraftBinding? {
-        guard draft != nil else { return nil }
-        return GarageCourseShotDraftBinding(
-            club: Binding(
-                get: { draft?.club },
-                set: { draft?.club = $0 }
-            ),
-            shotType: Binding(
-                get: { draft?.shotType },
-                set: { draft?.shotType = $0 }
-            ),
-            intendedTarget: Binding(
-                get: { draft?.intendedTarget ?? "Center Line" },
-                set: { draft?.intendedTarget = $0 }
-            ),
-            lieBeforeShot: Binding(
-                get: { draft?.lieBeforeShot },
-                set: { draft?.lieBeforeShot = $0 }
-            ),
-            actualResult: Binding(
-                get: { draft?.actualResult },
-                set: { draft?.actualResult = $0 }
-            ),
-            flightShape: Binding(
-                get: { draft?.flightShape ?? .straight },
-                set: { draft?.flightShape = $0 }
-            ),
-            strikeQuality: Binding(
-                get: { draft?.strikeQuality ?? .pure },
-                set: { draft?.strikeQuality = $0 }
-            )
-        )
-    }
-
-    private func chipRail<Item: CaseIterable & Identifiable & Hashable>(
+    private func selectionRail<Item: CaseIterable & Identifiable & Hashable>(
         title: String,
         items: Item.AllCases,
         selection: Binding<Item?>
@@ -991,214 +855,68 @@ struct GarageCourseMapView: View {
         }
     }
 
-    private func chipRail<Item: CaseIterable & Identifiable & Hashable>(
-        title: String,
-        items: Item.AllCases,
-        selection: Binding<Item>
-    ) -> some View where Item: GarageCourseMapSelectable {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.caption.weight(.bold))
-                .tracking(1.2)
-                .foregroundStyle(garageReviewMutedText)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(Array(items), id: \.id) { item in
-                        let isSelected = selection.wrappedValue == item
-
-                        Button {
-                            garageTriggerImpact(.light)
-                            selection.wrappedValue = item
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: item.symbolName)
-                                    .font(.caption.weight(.semibold))
-                                Text(item.title)
-                                    .font(.caption.weight(.semibold))
-                            }
-                            .foregroundStyle(isSelected ? garageReviewReadableText : garageReviewMutedText)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                            .background(
-                                Capsule()
-                                    .fill(isSelected ? Color.vibeElectricCyan.opacity(0.14) : garageReviewSurface.opacity(0.9))
-                                    .overlay(
-                                        Capsule()
-                                            .stroke(
-                                                isSelected ? Color.vibeElectricCyan.opacity(0.26) : garageReviewStroke.opacity(0.92),
-                                                lineWidth: 0.6
-                                            )
-                                    )
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.vertical, 1)
-            }
-        }
-    }
-
-    private func targetRail(binding: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Intent Target")
-                .font(.caption.weight(.bold))
-                .tracking(1.2)
-                .foregroundStyle(garageReviewMutedText)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(targetOptions, id: \.self) { option in
-                        let isSelected = binding.wrappedValue == option
-
-                        Button {
-                            garageTriggerImpact(.light)
-                            binding.wrappedValue = option
-                        } label: {
-                            Text(option)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(isSelected ? garageReviewReadableText : garageReviewMutedText)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 10)
-                                .background(
-                                    Capsule()
-                                        .fill(isSelected ? Color.vibeElectricCyan.opacity(0.14) : garageReviewSurface.opacity(0.9))
-                                        .overlay(
-                                            Capsule()
-                                                .stroke(
-                                                    isSelected ? Color.vibeElectricCyan.opacity(0.26) : garageReviewStroke.opacity(0.92),
-                                                    lineWidth: 0.6
-                                                )
-                                        )
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.vertical, 1)
-            }
-        }
-    }
-
-    private func editorSummaryPill(_ title: String) -> some View {
-        Text(title)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(garageReviewReadableText)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(
-                Capsule()
-                    .fill(garageReviewSurface.opacity(0.88))
-                    .overlay(
-                        Capsule()
-                            .stroke(garageReviewStroke.opacity(0.9), lineWidth: 0.6)
-                    )
+    private var draftBinding: GarageCourseShotDraftBinding? {
+        guard draft != nil else { return nil }
+        return GarageCourseShotDraftBinding(
+            club: Binding(
+                get: { draft?.club },
+                set: { draft?.club = $0 }
+            ),
+            lieBeforeShot: Binding(
+                get: { draft?.lieBeforeShot },
+                set: { draft?.lieBeforeShot = $0 }
+            ),
+            actualResult: Binding(
+                get: { draft?.actualResult },
+                set: { draft?.actualResult = $0 }
             )
+        )
     }
 
-    private func precisionReadoutStrip(
-        title: String,
-        readout: GarageCourseMapPrecisionReadout
-    ) -> some View {
-        HStack(spacing: 10) {
-            Text(title.uppercased())
+    private func calibrationStepPill(_ step: GarageCourseCalibrationStep) -> some View {
+        let isActive = currentCalibrationStep == step
+        let isComplete = calibrationDraft?.anchor(for: step) != nil
+
+        return HStack(spacing: 7) {
+            Circle()
+                .fill(isComplete ? Color.vibeElectricCyan : garageReviewMutedText.opacity(isActive ? 0.58 : 0.28))
+                .frame(width: 7, height: 7)
+
+            Text(step.statusTitle.uppercased())
                 .font(.caption2.weight(.bold))
-                .tracking(1.0)
-                .foregroundStyle(Color.vibeElectricCyan)
-
-            Spacer(minLength: 0)
-
-            precisionValue(label: "X", value: readout.formattedX)
-            precisionValue(label: "Y", value: readout.formattedY)
+                .tracking(0.9)
+                .lineLimit(1)
         }
-        .padding(.horizontal, 12)
+        .foregroundStyle(isActive ? garageReviewReadableText : garageReviewMutedText)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 10)
         .padding(.vertical, 10)
         .background(
             garageMaterialSurface(
-                RoundedRectangle(cornerRadius: 16, style: .continuous),
-                material: .regularMaterial,
-                stroke: Color.vibeElectricCyan.opacity(0.14)
+                Capsule(),
+                material: isActive ? .regularMaterial : .ultraThinMaterial,
+                stroke: isActive ? Color.vibeElectricCyan.opacity(0.28) : garageReviewStroke.opacity(0.88)
             )
         )
     }
 
-    private func precisionValue(label: String, value: String) -> some View {
-        HStack(spacing: 6) {
-            Text(label)
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(garageReviewMutedText)
+    private func calibrationStatusPill(_ step: GarageCourseCalibrationStep) -> some View {
+        let isActive = currentCalibrationStep == step
+        let isComplete = calibrationDraft?.anchor(for: step) != nil
 
-            Text(value)
-                .font(.caption.weight(.semibold))
-                .monospacedDigit()
-                .contentTransition(.numericText())
-                .foregroundStyle(garageReviewReadableText)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(
-            Capsule()
-                .fill(garageReviewSurface.opacity(0.84))
-                .overlay(
-                    Capsule()
-                        .stroke(garageReviewStroke.opacity(0.88), lineWidth: 0.6)
-                )
-        )
+        return Circle()
+            .fill(isComplete ? Color.vibeElectricCyan : garageReviewMutedText.opacity(isActive ? 0.66 : 0.28))
+            .frame(width: isActive ? 9 : 7, height: isActive ? 9 : 7)
+            .overlay {
+                Circle()
+                    .stroke(isActive ? Color.vibeElectricCyan.opacity(0.42) : .clear, lineWidth: 3)
+            }
+            .accessibilityLabel(Text("\(step.title) \(isComplete ? "placed" : "pending")"))
     }
 
-    private func primaryActionDisabled(for step: GarageCourseMapEditorStep) -> Bool {
-        guard let draft else { return true }
-        switch step {
-        case .placement:
-            return false
-        case .shot:
-            return draft.canAdvanceFromShotStep == false
-        case .finish:
-            return draft.canSave == false
-        }
-    }
-
-    @MainActor
-    private func handleDockBack(step: GarageCourseMapEditorStep) {
-        garageTriggerImpact(.light)
-
-        switch step {
-        case .placement:
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                mapMode = .review
-                dockState = .compact
-                draft = nil
-            }
-            overlayModel.clearDraftPlacement()
-            saveErrorMessage = nil
-        case .shot:
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                dockState = .editing(step: .placement, shotID: dockState.editingShotID)
-            }
-        case .finish:
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                dockState = .editing(step: .shot, shotID: dockState.editingShotID)
-            }
-        }
-    }
-
-    @MainActor
-    private func handleDockPrimary(step: GarageCourseMapEditorStep, editingShotID: UUID?) {
-        garageTriggerImpact(.medium)
-
-        switch step {
-        case .placement:
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                dockState = .editing(step: .shot, shotID: editingShotID)
-            }
-        case .shot:
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                dockState = .editing(step: .finish, shotID: editingShotID)
-            }
-        case .finish:
-            persistDraft(editingShotID: editingShotID)
-        }
+    private var primaryCalibrationButtonEnabled: Bool {
+        guard let calibrationDraft else { return false }
+        return calibrationDraft.isComplete || calibrationDraft.anchor(for: currentCalibrationStep) != nil
     }
 
     @MainActor
@@ -1208,17 +926,19 @@ struct GarageCourseMapView: View {
         refreshResolvedState(presentCalibrationIfNeeded: false)
 
         guard let activeHole else { return }
-        if activeHole.isCalibrated == false {
+        guard activeHole.isCalibrated else {
             enterCalibration(for: activeHole)
             return
         }
 
         draft = GarageCourseShotDraft(hole: activeHole)
+        editingShotID = nil
         overlayModel.syncDraftPlacement(draft?.placement)
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-            overlayModel.clearSelection()
+        overlayModel.clearSelection()
+        _ = overlayModel.endShotDrag()
+
+        withAnimation(garageCourseMapSpring) {
             mapMode = .shotEntry
-            dockState = .editing(step: .placement, shotID: nil)
         }
     }
 
@@ -1235,72 +955,82 @@ struct GarageCourseMapView: View {
         garageTriggerImpact(.light)
         saveErrorMessage = nil
         draft = GarageCourseShotDraft(hole: activeHole, selectedShot: selectedShot)
+        editingShotID = selectedShot.id
         overlayModel.syncDraftPlacement(draft?.placement)
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+        _ = overlayModel.endShotDrag()
+
+        withAnimation(garageCourseMapSpring) {
             mapMode = .shotEntry
-            dockState = .editing(step: .placement, shotID: selectedShot.id)
+        }
+    }
+
+    @MainActor
+    private func cancelShotEntry() {
+        saveErrorMessage = nil
+        draft = nil
+        editingShotID = nil
+        overlayModel.clearDraftPlacement()
+        _ = overlayModel.endShotDrag()
+
+        withAnimation(garageCourseMapSpring) {
+            mapMode = .review
         }
     }
 
     @MainActor
     private func handleCanvasTap(_ location: CGPoint, in rect: CGRect) {
-        guard rect.contains(location) else { return }
+        guard garageNormalizedPoint(from: location, in: rect) != nil else { return }
 
-        if mapMode == .calibration {
+        switch mapMode {
+        case .calibration:
             let anchor = overlayModel.placeAnchor(
                 kind: currentCalibrationStep.anchorKind,
                 at: location,
                 in: rect
             )
             placeCalibrationAnchor(anchor)
-            return
-        }
-
-        if case .editing(.placement, _) = dockState {
+        case .shotEntry:
             let updatedPlacement = overlayModel.placeShot(
                 at: location,
-                shotID: dockState.editingShotID,
+                shotID: editingShotID,
                 in: rect
             )
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            withAnimation(garageCourseMapSpring) {
                 draft?.placement = updatedPlacement
             }
             saveErrorMessage = nil
             garageTriggerImpact(.light)
-            return
-        }
-
-        if dockState == .compact {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                overlayModel.clearSelection()
-            }
+        case .review:
+            break
         }
     }
 
     @MainActor
     private func handleCanvasDragChanged(_ value: DragGesture.Value, in rect: CGRect) {
-        guard mapMode != .calibration else { return }
-        guard case .editing(.placement, let shotID) = dockState else { return }
-        if overlayModel.activeDragTarget == nil, let draft {
-            overlayModel.beginShotDrag(initialPlacement: draft.placement, shotID: shotID)
+        guard mapMode == .shotEntry, let draft else { return }
+
+        if overlayModel.activeDragTarget == nil {
+            guard rect.contains(value.startLocation) else { return }
+            overlayModel.beginShotDrag(initialPlacement: draft.placement, shotID: editingShotID)
         }
 
         if let updatedPlacement = overlayModel.updateShotDrag(location: value.location, in: rect) {
-            draft?.placement = updatedPlacement
+            self.draft?.placement = updatedPlacement
             saveErrorMessage = nil
         }
     }
 
     @MainActor
     private func handleCanvasDragEnded(_ value: DragGesture.Value, in rect: CGRect) {
-        guard mapMode != .calibration else { return }
-        guard case .editing(.placement, _) = dockState else { return }
+        guard mapMode == .shotEntry else { return }
+        guard overlayModel.activeDragTarget != nil else { return }
 
         if let updatedPlacement = overlayModel.updateShotDrag(location: value.location, in: rect) {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            withAnimation(garageCourseMapSpring) {
                 draft?.placement = updatedPlacement
             }
         }
+
         _ = overlayModel.endShotDrag()
     }
 
@@ -1313,7 +1043,7 @@ struct GarageCourseMapView: View {
 
     @MainActor
     private func finalizeDraftPlacement(_ placement: GarageShotPlacement) {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+        withAnimation(garageCourseMapSpring) {
             draft?.placement = placement
         }
         overlayModel.syncDraftPlacement(placement)
@@ -1328,19 +1058,19 @@ struct GarageCourseMapView: View {
 
     @MainActor
     private func enterCalibration(for hole: GarageHoleMap) {
-        let anchorDraft = GarageCourseCalibrationDraft(hole: hole)
-        calibrationDraft = anchorDraft
-        currentCalibrationStep = GarageCourseCalibrationStep.allCases.first(where: { anchorDraft.anchor(for: $0) == nil }) ?? .tee
+        calibrationDraft = GarageCourseCalibrationDraft(hole: hole)
+        currentCalibrationStep = GarageCourseCalibrationStep.allCases.first(where: { calibrationDraft?.anchor(for: $0) == nil }) ?? .tee
         calibrationSaveErrorMessage = nil
         saveErrorMessage = nil
         draft = nil
+        editingShotID = nil
         overlayModel.clearDraftPlacement()
         overlayModel.clearSelection()
         _ = overlayModel.endShotDrag()
         _ = overlayModel.endAnchorDrag()
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+
+        withAnimation(garageCourseMapSpring) {
             mapMode = .calibration
-            dockState = .compact
         }
     }
 
@@ -1349,7 +1079,8 @@ struct GarageCourseMapView: View {
         calibrationSaveErrorMessage = nil
         calibrationDraft = nil
         _ = overlayModel.endAnchorDrag()
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+
+        withAnimation(garageCourseMapSpring) {
             mapMode = .review
         }
     }
@@ -1361,15 +1092,10 @@ struct GarageCourseMapView: View {
         if currentCalibrationStep == .tee {
             exitCalibration()
         } else if let previous = GarageCourseCalibrationStep(rawValue: currentCalibrationStep.rawValue - 1) {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            withAnimation(garageCourseMapSpring) {
                 currentCalibrationStep = previous
             }
         }
-    }
-
-    private var primaryCalibrationButtonDisabled: Bool {
-        guard let calibrationDraft else { return true }
-        return calibrationDraft.isComplete == false && calibrationDraft.anchor(for: currentCalibrationStep) == nil
     }
 
     @MainActor
@@ -1378,7 +1104,7 @@ struct GarageCourseMapView: View {
         calibrationSaveErrorMessage = nil
 
         guard let calibrationDraft else {
-            calibrationSaveErrorMessage = "Garage could not find the active hole calibration draft."
+            calibrationSaveErrorMessage = "Garage could not find the active calibration draft."
             return
         }
 
@@ -1388,8 +1114,8 @@ struct GarageCourseMapView: View {
                 return
             }
 
-            if let nextStep = nextIncompleteStep(in: calibrationDraft, after: currentCalibrationStep) ?? GarageCourseCalibrationStep(rawValue: currentCalibrationStep.rawValue + 1) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            if let nextStep = nextIncompleteStep(in: calibrationDraft, after: currentCalibrationStep) {
+                withAnimation(garageCourseMapSpring) {
                     currentCalibrationStep = nextStep
                 }
             }
@@ -1426,7 +1152,7 @@ struct GarageCourseMapView: View {
 
     @MainActor
     private func finalizeCalibrationAnchor(_ anchor: GarageMapAnchor) {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+        withAnimation(garageCourseMapSpring) {
             calibrationDraft?.setAnchor(anchor)
         }
         calibrationSaveErrorMessage = nil
@@ -1450,49 +1176,37 @@ struct GarageCourseMapView: View {
             return
         }
 
-        calibrationSaveErrorMessage = nil
-
         do {
-            try teeAnchor.validate(fieldName: "Tee anchor")
-            try fairwayCheckpointAnchor.validate(fieldName: "Fairway checkpoint")
-            try greenCenterAnchor.validate(fieldName: "Green center")
-
-            activeHole.teeAnchor = teeAnchor
-            activeHole.fairwayCheckpointAnchor = fairwayCheckpointAnchor
-            activeHole.greenCenterAnchor = greenCenterAnchor
-            activeHole.updatedAt = .now
-
-            try activeHole.validateForShotLogging()
-            try modelContext.save()
+            _ = try GarageCourseMappingPersistence.saveCalibrationAnchors(
+                teeAnchor: teeAnchor,
+                fairwayCheckpointAnchor: fairwayCheckpointAnchor,
+                greenCenterAnchor: greenCenterAnchor,
+                for: activeHole,
+                in: modelContext
+            )
 
             calibrationDraft = nil
             _ = overlayModel.endAnchorDrag()
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            withAnimation(garageCourseMapSpring) {
                 mapMode = .review
             }
             refreshResolvedState(presentCalibrationIfNeeded: false)
             overlayModel.selectShot(activeHole.lastShot?.id)
         } catch {
-            modelContext.rollback()
             calibrationSaveErrorMessage = GarageCourseMapAlert.message(for: error)
         }
     }
 
     private func activeDraftOverlayDescriptor(in hole: GarageHoleMap?) -> GarageCourseShotOverlayDescriptor? {
-        guard
-            let draft,
-            let hole,
-            dockState.step != nil
-        else {
-            return nil
-        }
+        guard let draft, let hole, mapMode == .shotEntry else { return nil }
 
         let sortedShots = hole.sortedShots
-        let existingShotCount = sortedShots.count
+        let sequenceIndex: Int
         let startPlacement: GarageShotPlacement
 
-        if let editingShotID = dockState.editingShotID,
+        if let editingShotID,
            let editingIndex = sortedShots.firstIndex(where: { $0.id == editingShotID }) {
+            sequenceIndex = sortedShots[editingIndex].sequenceIndex
             if editingIndex > 0 {
                 startPlacement = sortedShots[editingIndex - 1].placement
             } else if let teeAnchor = hole.teeAnchor {
@@ -1503,38 +1217,42 @@ struct GarageCourseMapView: View {
             } else {
                 startPlacement = GarageShotPlacement(normalizedX: 0.5, normalizedY: 0.88)
             }
-        } else if let previousShot = sortedShots.last {
-            startPlacement = previousShot.placement
-        } else if let teeAnchor = hole.teeAnchor {
-            startPlacement = GarageShotPlacement(
-                normalizedX: teeAnchor.normalizedX,
-                normalizedY: teeAnchor.normalizedY
-            )
         } else {
-            startPlacement = GarageShotPlacement(normalizedX: 0.5, normalizedY: 0.88)
+            sequenceIndex = sortedShots.count + 1
+            if let previousShot = sortedShots.last {
+                startPlacement = previousShot.placement
+            } else if let teeAnchor = hole.teeAnchor {
+                startPlacement = GarageShotPlacement(
+                    normalizedX: teeAnchor.normalizedX,
+                    normalizedY: teeAnchor.normalizedY
+                )
+            } else {
+                startPlacement = GarageShotPlacement(normalizedX: 0.5, normalizedY: 0.88)
+            }
         }
 
+        let inferredShotType = GarageCourseMappingPersistence.inferredShotType(for: draft.lieBeforeShot ?? .fairway)
+
         return GarageCourseShotOverlayDescriptor(
-            id: dockState.editingShotID ?? UUID(),
-            sequenceIndex: dockState.editingShotID == nil ? existingShotCount + 1 : (sortedShots.first(where: { $0.id == dockState.editingShotID })?.sequenceIndex ?? existingShotCount),
+            id: editingShotID ?? UUID(),
+            sequenceIndex: sequenceIndex,
             clubTitle: draft.club?.title ?? "Pending Club",
-            shotTypeTitle: draft.shotType?.title ?? "Pending Shot",
+            shotTypeTitle: inferredShotType.title,
             resultTitle: draft.actualResult?.title ?? "Pending Result",
-            flightShape: draft.flightShape,
-            strikeQuality: draft.strikeQuality,
+            flightShape: .straight,
+            strikeQuality: .pure,
             startPlacement: startPlacement,
             endPlacement: draft.placement
         )
     }
 
     @MainActor
-    private func persistDraft(editingShotID: UUID?) {
+    private func persistDraft() {
         guard
             let activeSession,
             let activeHole,
             let draft,
             let club = draft.club,
-            let shotType = draft.shotType,
             let lieBeforeShot = draft.lieBeforeShot,
             let actualResult = draft.actualResult
         else {
@@ -1543,72 +1261,31 @@ struct GarageCourseMapView: View {
         }
 
         do {
-            try activeHole.validateForShotLogging()
-            try draft.placement.validate(fieldName: "Shot placement")
-
-            if activeSession.modelContext == nil {
-                modelContext.insert(activeSession)
-            }
-
-            if activeHole.modelContext == nil {
-                modelContext.insert(activeHole)
-            }
-
-            if activeSession.holes.contains(where: { $0.id == activeHole.id }) == false {
-                activeSession.holes.append(activeHole)
-            }
-
-            let shot: GarageTacticalShot
-            if let editingShotID,
-               let existingShot = activeHole.shots.first(where: { $0.id == editingShotID }) {
-                shot = existingShot
-                shot.updatedAt = .now
-                shot.placement = draft.placement
-                shot.club = club
-                shot.shotType = shotType
-                shot.intendedTarget = draft.intendedTarget
-                shot.lieBeforeShot = lieBeforeShot
-                shot.actualResult = actualResult
-                shot.flightShape = draft.flightShape
-                shot.strikeQuality = draft.strikeQuality
-            } else {
-                shot = GarageTacticalShot(
-                    sequenceIndex: activeSession.totalShots + 1,
-                    holeNumber: activeHole.holeNumber,
+            let savedShot = try GarageCourseMappingPersistence.upsertShot(
+                editingShotID: editingShotID,
+                draft: GarageCourseShotSaveDraft(
                     placement: draft.placement,
                     club: club,
-                    shotType: shotType,
-                    intendedTarget: draft.intendedTarget,
                     lieBeforeShot: lieBeforeShot,
-                    actualResult: actualResult,
-                    flightShape: draft.flightShape,
-                    strikeQuality: draft.strikeQuality,
-                    session: activeSession,
-                    hole: activeHole
-                )
+                    actualResult: actualResult
+                ),
+                session: activeSession,
+                hole: activeHole,
+                in: modelContext
+            )
 
-                modelContext.insert(shot)
-                if activeSession.shots.contains(where: { $0.id == shot.id }) == false {
-                    activeSession.shots.append(shot)
-                }
-                if activeHole.shots.contains(where: { $0.id == shot.id }) == false {
-                    activeHole.shots.append(shot)
-                }
-            }
-
-            GarageCourseMappingPersistence.reindexShots(in: activeSession)
-            try modelContext.save()
             overlayModel.clearDraftPlacement()
-            overlayModel.selectShot(shot.id)
+            overlayModel.selectShot(savedShot.id)
             saveErrorMessage = nil
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            self.draft = nil
+            editingShotID = nil
+
+            withAnimation(garageCourseMapSpring) {
                 mapMode = .review
-                dockState = .compact
-                self.draft = nil
             }
+
             refreshResolvedState(presentCalibrationIfNeeded: false)
         } catch {
-            modelContext.rollback()
             saveErrorMessage = GarageCourseMapAlert.message(for: error)
             blockerAlert = GarageCourseMapAlert(error: error)
         }
@@ -1637,8 +1314,9 @@ struct GarageCourseMapView: View {
                 overlayModel.clearDraftPlacement()
             }
 
-            if overlayDescriptors.contains(where: { $0.id == overlayModel.selectedShotID }) == false {
-                overlayModel.selectShot(overlayDescriptors.last?.id)
+            let refreshedDescriptors = GarageCourseMapOverlayRenderer.descriptors(for: hole)
+            if refreshedDescriptors.contains(where: { $0.id == overlayModel.selectedShotID }) == false {
+                overlayModel.selectShot(refreshedDescriptors.last?.id)
             }
 
             if presentCalibrationIfNeeded, hole.isCalibrated == false, hasPresentedInitialCalibration == false {
@@ -1683,15 +1361,20 @@ private struct GarageCourseCanvasSurface: View {
     let image: UIImage?
     let hole: GarageHoleMap?
     let metadata: GarageCourseMetadata
+    let imageRect: CGRect
 
     var body: some View {
         ZStack {
             if let image {
                 Image(uiImage: image)
                     .resizable()
-                    .aspectRatio(contentMode: .fill)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: imageRect.width, height: imageRect.height)
+                    .position(x: imageRect.midX, y: imageRect.midY)
             } else {
                 GarageCourseFallbackHoleSurface(hole: hole)
+                    .frame(width: imageRect.width, height: imageRect.height)
+                    .position(x: imageRect.midX, y: imageRect.midY)
             }
 
             LinearGradient(
@@ -1703,6 +1386,9 @@ private struct GarageCourseCanvasSurface: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
+            .frame(width: imageRect.width, height: imageRect.height)
+            .position(x: imageRect.midX, y: imageRect.midY)
+            .allowsHitTesting(false)
         }
         .background(garageReviewSurfaceDark)
     }
@@ -1815,8 +1501,6 @@ private struct GarageCourseCanvasOverlays: View {
     let mapMode: GarageCourseMapMode
     let calibrationDraft: GarageCourseCalibrationDraft?
     let activeCalibrationStep: GarageCourseCalibrationStep
-    let activeCalibrationReadout: GarageCourseMapPrecisionReadout?
-    let startEditingSelectedShot: () -> Void
     let updateDraftPlacement: (GarageShotPlacement) -> Void
     let finalizeDraftPlacement: (GarageShotPlacement) -> Void
     let clearDraftInteraction: () -> Void
@@ -1827,7 +1511,7 @@ private struct GarageCourseCanvasOverlays: View {
 
     var body: some View {
         ZStack {
-            if let hole {
+            if let hole, rect.isEmpty == false {
                 if mapMode == .calibration {
                     calibrationLayer(for: hole)
                 } else {
@@ -1835,14 +1519,13 @@ private struct GarageCourseCanvasOverlays: View {
                     generatedFlightPaths
                     markers
                     activeDraftMarker
-                    selectedCallout
                 }
             }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.activeShotPlacement)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.activeAnchor)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.selectedShotID)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.isInteracting)
+        .animation(garageCourseMapSpring, value: overlayModel.activeShotPlacement)
+        .animation(garageCourseMapSpring, value: overlayModel.activeAnchor)
+        .animation(garageCourseMapSpring, value: overlayModel.selectedShotID)
+        .animation(garageCourseMapSpring, value: overlayModel.isInteracting)
     }
 
     private func faintSequencePath(for hole: GarageHoleMap) -> some View {
@@ -2044,7 +1727,7 @@ private struct GarageCourseCanvasOverlays: View {
             .position(point)
             .scaleEffect(isDragging ? 1.15 : 1.0)
             .shadow(color: .black.opacity(0.12), radius: isDragging ? 16 : 8, x: 0, y: isDragging ? 8 : 4)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isDragging)
+            .animation(garageCourseMapSpring, value: isDragging)
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
@@ -2077,70 +1760,6 @@ private struct GarageCourseCanvasOverlays: View {
             .allowsHitTesting(isEditingPlacement)
             .zIndex(3)
         }
-    }
-
-    @ViewBuilder
-    private var selectedCallout: some View {
-        if let selectedDescriptor {
-            let point = GarageCourseMapOverlayRenderer.point(for: selectedDescriptor.endPlacement, in: rect)
-            let calloutWidth = min(max(rect.width * 0.42, 196), 248)
-            let proposedX = point.x + calloutWidth * 0.34
-            let clampedX = min(max(proposedX, rect.minX + calloutWidth * 0.5 + 10), rect.maxX - calloutWidth * 0.5 - 10)
-            let proposedY = point.y - 56
-            let clampedY = max(proposedY, rect.minY + 34)
-
-            VStack(alignment: .leading, spacing: 9) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("\(selectedDescriptor.sequenceIndex)")
-                        .font(.title3.weight(.black))
-                        .foregroundStyle(garageReviewReadableText)
-
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(selectedDescriptor.title)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(garageReviewReadableText)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.82)
-
-                        Text(selectedDescriptor.subtitle)
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(garageReviewMutedText)
-                            .lineLimit(1)
-                    }
-                }
-
-                HStack(spacing: 8) {
-                    calloutTag(selectedDescriptor.detailLine)
-                    Button {
-                        startEditingSelectedShot()
-                    } label: {
-                        Text("Edit")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(garageReviewReadableText)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .background(garageMaterialSurface(Capsule()))
-                            .frame(minWidth: 44, minHeight: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(14)
-            .frame(width: calloutWidth, alignment: .leading)
-            .background(garageMaterialSurface(RoundedRectangle(cornerRadius: 20, style: .continuous), material: .regularMaterial))
-            .position(x: clampedX, y: clampedY)
-            .zIndex(4)
-        }
-    }
-
-    private func calloutTag(_ value: String) -> some View {
-        Text(value)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(garageReviewMutedText)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(garageMaterialSurface(Capsule()))
     }
 }
 
@@ -2215,18 +1834,66 @@ private struct GarageCourseCalibrationHandle: View {
         .position(point)
         .scaleEffect(isDragging ? 1.15 : 1.0)
         .shadow(color: .black.opacity(0.14), radius: isDragging ? 18 : 9, x: 0, y: isDragging ? 9 : 4)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isDragging)
+        .animation(garageCourseMapSpring, value: isDragging)
     }
 }
 
 private struct GarageCourseShotDraftBinding {
     let club: Binding<GarageTacticalClub?>
-    let shotType: Binding<GarageTacticalShotType?>
-    let intendedTarget: Binding<String>
     let lieBeforeShot: Binding<GarageTacticalLie?>
     let actualResult: Binding<GarageTacticalResult?>
-    let flightShape: Binding<GarageShotFlightShape>
-    let strikeQuality: Binding<GarageShotStrikeQuality>
+}
+
+private struct GarageCoursePrecisionReadoutStrip: View {
+    let title: String
+    let readout: GarageCourseMapPrecisionReadout
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(title.uppercased())
+                .font(.caption2.weight(.bold))
+                .tracking(1.0)
+                .foregroundStyle(Color.vibeElectricCyan)
+
+            Spacer(minLength: 0)
+
+            precisionValue(label: "X", value: readout.formattedX)
+            precisionValue(label: "Y", value: readout.formattedY)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            garageMaterialSurface(
+                RoundedRectangle(cornerRadius: 16, style: .continuous),
+                material: .regularMaterial,
+                stroke: Color.vibeElectricCyan.opacity(0.14)
+            )
+        )
+    }
+
+    private func precisionValue(label: String, value: String) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(garageReviewMutedText)
+
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .monospacedDigit()
+                .contentTransition(.numericText())
+                .foregroundStyle(garageReviewReadableText)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            Capsule()
+                .fill(garageReviewSurface.opacity(0.84))
+                .overlay(
+                    Capsule()
+                        .stroke(garageReviewStroke.opacity(0.88), lineWidth: 0.6)
+                )
+        )
+    }
 }
 
 private protocol GarageCourseMapSelectable {
@@ -2246,16 +1913,13 @@ private struct GarageCourseMapPinButtonStyle: ButtonStyle {
                 x: 0,
                 y: configuration.isPressed ? 8 : 4
             )
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
+            .animation(garageCourseMapSpring, value: configuration.isPressed)
     }
 }
 
 extension GarageTacticalClub: GarageCourseMapSelectable {}
-extension GarageTacticalShotType: GarageCourseMapSelectable {}
 extension GarageTacticalLie: GarageCourseMapSelectable {}
 extension GarageTacticalResult: GarageCourseMapSelectable {}
-extension GarageShotFlightShape: GarageCourseMapSelectable {}
-extension GarageShotStrikeQuality: GarageCourseMapSelectable {}
 
 private struct GarageCourseMapAlert: Identifiable {
     let id = UUID()

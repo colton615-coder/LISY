@@ -44,6 +44,13 @@ enum GarageCourseMappingPersistenceError: LocalizedError, Equatable {
     }
 }
 
+struct GarageCourseShotSaveDraft {
+    let placement: GarageShotPlacement
+    let club: GarageTacticalClub
+    let lieBeforeShot: GarageTacticalLie
+    let actualResult: GarageTacticalResult
+}
+
 enum GarageCourseMappingPersistence {
     @MainActor
     static func resolveActiveSession(
@@ -141,6 +148,121 @@ enum GarageCourseMappingPersistence {
         }
 
         session.updatedAt = .now
+    }
+
+    static func inferredShotType(for lie: GarageTacticalLie) -> GarageTacticalShotType {
+        switch lie {
+        case .tee:
+            .teeShot
+        case .green:
+            .putt
+        case .fringe:
+            .chip
+        case .bunker, .trees:
+            .recovery
+        case .fairway, .firstCut, .rough:
+            .approach
+        }
+    }
+
+    @MainActor
+    static func saveCalibrationAnchors(
+        teeAnchor: GarageMapAnchor,
+        fairwayCheckpointAnchor: GarageMapAnchor,
+        greenCenterAnchor: GarageMapAnchor,
+        for hole: GarageHoleMap,
+        in modelContext: ModelContext
+    ) throws -> GarageHoleMap {
+        do {
+            try teeAnchor.validate(fieldName: "Tee anchor")
+            try fairwayCheckpointAnchor.validate(fieldName: "Fairway checkpoint")
+            try greenCenterAnchor.validate(fieldName: "Green center")
+
+            hole.teeAnchor = teeAnchor
+            hole.fairwayCheckpointAnchor = fairwayCheckpointAnchor
+            hole.greenCenterAnchor = greenCenterAnchor
+            hole.updatedAt = .now
+
+            try hole.validateForShotLogging()
+            try modelContext.save()
+            return hole
+        } catch {
+            modelContext.rollback()
+            throw error
+        }
+    }
+
+    @MainActor
+    static func upsertShot(
+        editingShotID: UUID?,
+        draft: GarageCourseShotSaveDraft,
+        session: GarageRoundSession,
+        hole: GarageHoleMap,
+        in modelContext: ModelContext
+    ) throws -> GarageTacticalShot {
+        do {
+            try hole.validateForShotLogging()
+            try draft.placement.validate(fieldName: "Shot placement")
+
+            if session.modelContext == nil {
+                modelContext.insert(session)
+            }
+
+            if hole.modelContext == nil {
+                modelContext.insert(hole)
+            }
+
+            if session.holes.contains(where: { $0.id == hole.id }) == false {
+                session.holes.append(hole)
+            }
+
+            let shotType = inferredShotType(for: draft.lieBeforeShot)
+            let shot: GarageTacticalShot
+
+            if let editingShotID,
+               let existingShot = hole.shots.first(where: { $0.id == editingShotID }) {
+                shot = existingShot
+                shot.updatedAt = .now
+                shot.placement = draft.placement
+                shot.club = draft.club
+                shot.shotType = shotType
+                shot.intendedTarget = "Center Line"
+                shot.lieBeforeShot = draft.lieBeforeShot
+                shot.actualResult = draft.actualResult
+                shot.flightShape = .straight
+                shot.strikeQuality = .pure
+            } else {
+                shot = GarageTacticalShot(
+                    sequenceIndex: session.totalShots + 1,
+                    holeNumber: hole.holeNumber,
+                    placement: draft.placement,
+                    club: draft.club,
+                    shotType: shotType,
+                    intendedTarget: "Center Line",
+                    lieBeforeShot: draft.lieBeforeShot,
+                    actualResult: draft.actualResult,
+                    flightShape: .straight,
+                    strikeQuality: .pure,
+                    session: session,
+                    hole: hole
+                )
+
+                modelContext.insert(shot)
+                if session.shots.contains(where: { $0.id == shot.id }) == false {
+                    session.shots.append(shot)
+                }
+                if hole.shots.contains(where: { $0.id == shot.id }) == false {
+                    hole.shots.append(shot)
+                }
+            }
+
+            reindexShots(in: session)
+            try modelContext.save()
+            return shot
+        } catch {
+            modelContext.rollback()
+            throw error
+        }
     }
 }
 

@@ -179,6 +179,133 @@ struct LIFE_IN_SYNCTests {
         #expect(earlierShot.sequenceIndex == 1)
     }
 
+    @Test func garageSpatialHelpersRoundTripCoordinatesInsideAspectFitRect() async throws {
+        let container = CGRect(x: 0, y: 0, width: 390, height: 844)
+        let imageRect = garageAspectFitRect(
+            contentSize: CGSize(width: 1170, height: 2532),
+            in: container
+        )
+        let mappedPoint = garageMappedPoint(x: 0.25, y: 0.8, in: imageRect)
+        let normalizedPoint = try #require(garageNormalizedPoint(from: mappedPoint, in: imageRect))
+
+        #expect(abs(normalizedPoint.x - 0.25) < 0.0001)
+        #expect(abs(normalizedPoint.y - 0.8) < 0.0001)
+    }
+
+    @Test func garageSpatialHelpersRejectLocationsOutsideTheImageRect() async throws {
+        let imageRect = CGRect(x: 32, y: 64, width: 260, height: 520)
+
+        #expect(garageNormalizedPoint(from: CGPoint(x: imageRect.minX - 1, y: imageRect.midY), in: imageRect) == nil)
+        #expect(garageNormalizedPoint(from: CGPoint(x: imageRect.midX, y: imageRect.maxY + 12), in: imageRect) == nil)
+    }
+
+    @Test func garageCourseMappingSavesCalibrationAnchorsThroughThePersistenceSeam() async throws {
+        let container = try makeInMemoryContainer()
+        let context = container.mainContext
+        let session = GarageRoundSession(
+            sessionTitle: "North Ridge Links Round",
+            courseName: "North Ridge Links"
+        )
+        let hole = GarageHoleMap(
+            holeNumber: 14,
+            holeName: "Cliffside Splitter",
+            par: 4,
+            yardageLabel: "434",
+            sourceType: .assistedWebImport,
+            sourceReference: "https://example.com/course/hole-14",
+            localAssetPath: nil,
+            imagePixelWidth: 1668,
+            imagePixelHeight: 2388,
+            session: session
+        )
+
+        context.insert(session)
+        context.insert(hole)
+        session.holes = [hole]
+        try context.save()
+
+        let updatedHole = try GarageCourseMappingPersistence.saveCalibrationAnchors(
+            teeAnchor: GarageMapAnchor(kind: .tee, normalizedX: 0.5, normalizedY: 0.88),
+            fairwayCheckpointAnchor: GarageMapAnchor(kind: .fairwayCheckpoint, normalizedX: 0.48, normalizedY: 0.44),
+            greenCenterAnchor: GarageMapAnchor(kind: .greenCenter, normalizedX: 0.52, normalizedY: 0.14),
+            for: hole,
+            in: context
+        )
+
+        #expect(updatedHole.isCalibrated)
+        #expect(updatedHole.teeAnchor?.normalizedY == 0.88)
+        #expect(updatedHole.fairwayCheckpointAnchor?.normalizedX == 0.48)
+        #expect(updatedHole.greenCenterAnchor?.normalizedY == 0.14)
+    }
+
+    @Test func garageCourseMappingUpsertsShotsWithSlimDockDefaults() async throws {
+        let container = try makeInMemoryContainer()
+        let context = container.mainContext
+        let session = GarageRoundSession(
+            sessionTitle: "North Ridge Links Round",
+            courseName: "North Ridge Links"
+        )
+        let hole = GarageHoleMap(
+            holeNumber: 14,
+            holeName: "Cliffside Splitter",
+            par: 4,
+            yardageLabel: "434",
+            sourceType: .assistedWebImport,
+            sourceReference: "https://example.com/course/hole-14",
+            localAssetPath: nil,
+            imagePixelWidth: 1668,
+            imagePixelHeight: 2388,
+            teeAnchor: GarageMapAnchor(kind: .tee, normalizedX: 0.5, normalizedY: 0.88),
+            fairwayCheckpointAnchor: GarageMapAnchor(kind: .fairwayCheckpoint, normalizedX: 0.5, normalizedY: 0.48),
+            greenCenterAnchor: GarageMapAnchor(kind: .greenCenter, normalizedX: 0.52, normalizedY: 0.14),
+            session: session
+        )
+
+        context.insert(session)
+        context.insert(hole)
+        session.holes = [hole]
+        try context.save()
+
+        let createdShot = try GarageCourseMappingPersistence.upsertShot(
+            editingShotID: nil,
+            draft: GarageCourseShotSaveDraft(
+                placement: GarageShotPlacement(normalizedX: 0.51, normalizedY: 0.58),
+                club: .sandWedge,
+                lieBeforeShot: .bunker,
+                actualResult: .onTarget
+            ),
+            session: session,
+            hole: hole,
+            in: context
+        )
+
+        #expect(createdShot.shotType == .recovery)
+        #expect(createdShot.intendedTarget == "Center Line")
+        #expect(createdShot.flightShape == .straight)
+        #expect(createdShot.strikeQuality == .pure)
+        #expect(session.totalShots == 1)
+        #expect(hole.totalShots == 1)
+
+        let updatedShot = try GarageCourseMappingPersistence.upsertShot(
+            editingShotID: createdShot.id,
+            draft: GarageCourseShotSaveDraft(
+                placement: GarageShotPlacement(normalizedX: 0.52, normalizedY: 0.16),
+                club: .putter,
+                lieBeforeShot: .green,
+                actualResult: .holed
+            ),
+            session: session,
+            hole: hole,
+            in: context
+        )
+
+        #expect(updatedShot.id == createdShot.id)
+        #expect(updatedShot.shotType == .putt)
+        #expect(updatedShot.club == .putter)
+        #expect(updatedShot.actualResult == .holed)
+        #expect(updatedShot.sequenceIndex == 1)
+    }
+
     @Test func garageCourseMapOverlayClampsDraftShotPlacementIntoVisibleBounds() async throws {
         let overlayModel = GarageCourseMapOverlayModel()
         let rect = CGRect(x: 20, y: 40, width: 200, height: 300)

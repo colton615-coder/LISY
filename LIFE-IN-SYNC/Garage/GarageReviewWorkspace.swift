@@ -218,48 +218,6 @@ struct GarageReviewSummaryPresentation: Equatable {
     }
 }
 
-private func garageAspectFitRect(contentSize: CGSize, in container: CGRect) -> CGRect {
-    guard contentSize.width > 0, contentSize.height > 0, container.width > 0, container.height > 0 else {
-        return .zero
-    }
-
-    let scale = min(container.width / contentSize.width, container.height / contentSize.height)
-    let scaledSize = CGSize(width: contentSize.width * scale, height: contentSize.height * scale)
-    let origin = CGPoint(
-        x: container.midX - (scaledSize.width / 2),
-        y: container.midY - (scaledSize.height / 2)
-    )
-    return CGRect(origin: origin, size: scaledSize)
-}
-
-private func garageMappedPoint(x: Double, y: Double, in rect: CGRect) -> CGPoint {
-    CGPoint(
-        x: rect.minX + (rect.width * x),
-        y: rect.minY + (rect.height * y)
-    )
-}
-
-private func garageMappedPoint(_ point: CGPoint, in rect: CGRect) -> CGPoint {
-    garageMappedPoint(x: point.x, y: point.y, in: rect)
-}
-
-private func garageNormalizedPoint(from location: CGPoint, in rect: CGRect) -> CGPoint? {
-    guard rect.contains(location), rect.width > 0, rect.height > 0 else {
-        return nil
-    }
-
-    let normalizedX = min(max((location.x - rect.minX) / rect.width, 0), 1)
-    let normalizedY = min(max((location.y - rect.minY) / rect.height, 0), 1)
-    return CGPoint(x: normalizedX, y: normalizedY)
-}
-
-private func garageClampedNormalizedPoint(_ point: CGPoint) -> CGPoint {
-    CGPoint(
-        x: min(max(point.x, 0), 1),
-        y: min(max(point.y, 0), 1)
-    )
-}
-
 private struct GarageScrollOffsetKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
 

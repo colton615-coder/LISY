@@ -222,11 +222,22 @@ final class GarageCourseMapOverlayModel: ObservableObject {
     }
 
     static func placement(from location: CGPoint, in rect: CGRect) -> GarageShotPlacement {
+        if let normalized = garageNormalizedPoint(from: location, in: rect) {
+            return GarageShotPlacement(
+                normalizedX: normalized.x,
+                normalizedY: normalized.y
+            )
+        }
+
         let width = max(rect.width, 1)
         let height = max(rect.height, 1)
-        let normalizedX = min(max((location.x - rect.minX) / width, 0), 1)
-        let normalizedY = min(max((location.y - rect.minY) / height, 0), 1)
-        return GarageShotPlacement(normalizedX: normalizedX, normalizedY: normalizedY)
+        let clamped = garageClampedNormalizedPoint(
+            CGPoint(
+                x: (location.x - rect.minX) / width,
+                y: (location.y - rect.minY) / height
+            )
+        )
+        return GarageShotPlacement(normalizedX: clamped.x, normalizedY: clamped.y)
     }
 
     static func anchor(kind: GarageMapAnchorKind, at location: CGPoint, in rect: CGRect) -> GarageMapAnchor {
@@ -239,9 +250,10 @@ final class GarageCourseMapOverlayModel: ObservableObject {
     }
 
     static func point(for placement: GarageShotPlacement, in rect: CGRect) -> CGPoint {
-        CGPoint(
-            x: rect.minX + (rect.width * placement.normalizedX),
-            y: rect.minY + (rect.height * placement.normalizedY)
+        garageMappedPoint(
+            x: placement.normalizedX,
+            y: placement.normalizedY,
+            in: rect
         )
     }
 
@@ -392,27 +404,4 @@ func garageLoadCourseMapImage(at localAssetPath: String?) -> UIImage? {
     }
 
     return image
-}
-
-func garageAspectFitRect(container: CGSize, aspectRatio: CGFloat) -> CGRect {
-    guard container.width > 0, container.height > 0, aspectRatio > 0 else {
-        return CGRect(origin: .zero, size: container)
-    }
-
-    let containerAspectRatio = container.width / container.height
-    let size: CGSize
-    if containerAspectRatio > aspectRatio {
-        let height = container.height
-        size = CGSize(width: height * aspectRatio, height: height)
-    } else {
-        let width = container.width
-        size = CGSize(width: width, height: width / aspectRatio)
-    }
-
-    return CGRect(
-        x: (container.width - size.width) * 0.5,
-        y: (container.height - size.height) * 0.5,
-        width: size.width,
-        height: size.height
-    )
 }
