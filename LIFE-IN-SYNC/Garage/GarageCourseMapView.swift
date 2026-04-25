@@ -117,11 +117,11 @@ struct GarageCourseMapView: View {
     @Environment(\.modelContext) private var modelContext
 
     @StateObject private var model: GarageCourseMappingModel
+    @StateObject private var overlayModel = GarageCourseMapOverlayModel()
     @State private var calibrationPresentation: GarageCourseCalibrationPresentation?
     @State private var blockerAlert: GarageCourseMapAlert?
     @State private var activeSession: GarageRoundSession?
     @State private var activeHole: GarageHoleMap?
-    @State private var selectedShotID: UUID?
     @State private var dockState: GarageCourseMapDockState = .compact
     @State private var reviewModeEnabled = false
     @State private var canvasImage: UIImage?
@@ -170,7 +170,7 @@ struct GarageCourseMapView: View {
             return editingDescriptor
         }
 
-        if let selectedShotID,
+        if let selectedShotID = overlayModel.selectedShotID,
            let descriptor = overlayDescriptors.first(where: { $0.id == selectedShotID }) {
             return descriptor
         }
@@ -220,12 +220,15 @@ struct GarageCourseMapView: View {
         }
         .background(garageReviewBackground.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: dockState)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: reviewModeEnabled)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.selectedShotID)
         .sheet(item: $calibrationPresentation) { presentation in
             GarageCourseCalibrationSheet(
                 hole: presentation.hole,
                 onComplete: {
                     refreshResolvedState(presentCalibrationIfNeeded: false)
-                    selectedShotID = activeHole?.shots.sorted(by: { $0.sequenceIndex < $1.sequenceIndex }).last?.id
+                    overlayModel.selectShot(activeHole?.shots.sorted(by: { $0.sequenceIndex < $1.sequenceIndex }).last?.id)
                 }
             )
             .presentationDetents([.large])
@@ -331,17 +334,24 @@ struct GarageCourseMapView: View {
                 .position(x: rect.midX, y: rect.midY)
 
                 GarageCourseCanvasOverlays(
+                    overlayModel: overlayModel,
                     hole: activeHole,
                     rect: rect,
                     descriptors: overlayDescriptors,
-                    selectedShotID: selectedShotID,
                     selectedDescriptor: selectedDescriptor,
                     reviewModeEnabled: reviewModeEnabled,
                     activeDraftDescriptor: activeDraftOverlayDescriptor(in: activeHole),
-                    startEditingSelectedShot: startEditingSelectedShot
+                    activeDraftShotID: dockState.editingShotID,
+                    isEditingPlacement: dockState.step == .placement,
+                    startEditingSelectedShot: startEditingSelectedShot,
+                    updateDraftPlacement: updateDraftPlacement,
+                    finalizeDraftPlacement: finalizeDraftPlacement,
+                    clearDraftInteraction: clearDraftInteraction
                 ) { descriptor in
                     garageTriggerImpact(.light)
-                    selectedShotID = descriptor.id
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        overlayModel.selectShot(descriptor.id)
+                    }
                     saveErrorMessage = nil
                 }
             }
@@ -350,6 +360,15 @@ struct GarageCourseMapView: View {
                 SpatialTapGesture()
                     .onEnded { value in
                         handleCanvasTap(value.location, in: rect)
+                    }
+            )
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                    .onChanged { value in
+                        handleCanvasDragChanged(value, in: rect)
+                    }
+                    .onEnded { value in
+                        handleCanvasDragEnded(value, in: rect)
                     }
             )
         }
@@ -800,34 +819,48 @@ struct GarageCourseMapView: View {
         }
     }
 
+    @MainActor
     private func handleDockBack(step: GarageCourseMapEditorStep) {
         garageTriggerImpact(.light)
 
         switch step {
         case .placement:
-            dockState = .compact
-            draft = nil
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                dockState = .compact
+                draft = nil
+            }
+            overlayModel.clearDraftPlacement()
             saveErrorMessage = nil
         case .shot:
-            dockState = .editing(step: .placement, shotID: dockState.editingShotID)
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                dockState = .editing(step: .placement, shotID: dockState.editingShotID)
+            }
         case .finish:
-            dockState = .editing(step: .shot, shotID: dockState.editingShotID)
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                dockState = .editing(step: .shot, shotID: dockState.editingShotID)
+            }
         }
     }
 
+    @MainActor
     private func handleDockPrimary(step: GarageCourseMapEditorStep, editingShotID: UUID?) {
         garageTriggerImpact(.medium)
 
         switch step {
         case .placement:
-            dockState = .editing(step: .shot, shotID: editingShotID)
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                dockState = .editing(step: .shot, shotID: editingShotID)
+            }
         case .shot:
-            dockState = .editing(step: .finish, shotID: editingShotID)
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                dockState = .editing(step: .finish, shotID: editingShotID)
+            }
         case .finish:
             persistDraft(editingShotID: editingShotID)
         }
     }
 
+    @MainActor
     private func handleAddShotTap() {
         garageTriggerImpact(.medium)
         saveErrorMessage = nil
@@ -840,14 +873,18 @@ struct GarageCourseMapView: View {
         }
 
         draft = GarageCourseShotDraft(hole: activeHole)
-        selectedShotID = nil
-        dockState = .editing(step: .placement, shotID: nil)
+        overlayModel.syncDraftPlacement(draft?.placement)
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            overlayModel.clearSelection()
+            dockState = .editing(step: .placement, shotID: nil)
+        }
     }
 
+    @MainActor
     private func startEditingSelectedShot() {
         guard
             let activeHole,
-            let selectedShotID,
+            let selectedShotID = overlayModel.selectedShotID,
             let selectedShot = activeHole.shots.first(where: { $0.id == selectedShotID })
         else {
             return
@@ -856,27 +893,82 @@ struct GarageCourseMapView: View {
         garageTriggerImpact(.light)
         saveErrorMessage = nil
         draft = GarageCourseShotDraft(hole: activeHole, selectedShot: selectedShot)
-        dockState = .editing(step: .shot, shotID: selectedShot.id)
+        overlayModel.syncDraftPlacement(draft?.placement)
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            dockState = .editing(step: .placement, shotID: selectedShot.id)
+        }
     }
 
+    @MainActor
     private func handleCanvasTap(_ location: CGPoint, in rect: CGRect) {
         guard rect.contains(location) else { return }
 
         if case .editing(.placement, _) = dockState {
-            let normalizedX = min(max((location.x - rect.minX) / rect.width, 0), 1)
-            let normalizedY = min(max((location.y - rect.minY) / rect.height, 0), 1)
-            draft?.placement = GarageShotPlacement(
-                normalizedX: normalizedX,
-                normalizedY: normalizedY
+            let updatedPlacement = overlayModel.placeShot(
+                at: location,
+                shotID: dockState.editingShotID,
+                in: rect
             )
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                draft?.placement = updatedPlacement
+            }
             saveErrorMessage = nil
             garageTriggerImpact(.light)
             return
         }
 
         if dockState == .compact {
-            selectedShotID = nil
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                overlayModel.clearSelection()
+            }
         }
+    }
+
+    @MainActor
+    private func handleCanvasDragChanged(_ value: DragGesture.Value, in rect: CGRect) {
+        guard case .editing(.placement, let shotID) = dockState else { return }
+        if overlayModel.activeDragTarget == nil, let draft {
+            overlayModel.beginShotDrag(initialPlacement: draft.placement, shotID: shotID)
+        }
+
+        if let updatedPlacement = overlayModel.updateShotDrag(location: value.location, in: rect) {
+            draft?.placement = updatedPlacement
+            saveErrorMessage = nil
+        }
+    }
+
+    @MainActor
+    private func handleCanvasDragEnded(_ value: DragGesture.Value, in rect: CGRect) {
+        guard case .editing(.placement, _) = dockState else { return }
+
+        if let updatedPlacement = overlayModel.updateShotDrag(location: value.location, in: rect) {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                draft?.placement = updatedPlacement
+            }
+        }
+        _ = overlayModel.endShotDrag()
+    }
+
+    @MainActor
+    private func updateDraftPlacement(_ placement: GarageShotPlacement) {
+        overlayModel.syncDraftPlacement(placement)
+        draft?.placement = placement
+        saveErrorMessage = nil
+    }
+
+    @MainActor
+    private func finalizeDraftPlacement(_ placement: GarageShotPlacement) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            draft?.placement = placement
+        }
+        overlayModel.syncDraftPlacement(placement)
+        _ = overlayModel.endShotDrag()
+        saveErrorMessage = nil
+    }
+
+    @MainActor
+    private func clearDraftInteraction() {
+        _ = overlayModel.endShotDrag()
     }
 
     private func activeDraftOverlayDescriptor(in hole: GarageHoleMap?) -> GarageCourseShotOverlayDescriptor? {
@@ -928,6 +1020,7 @@ struct GarageCourseMapView: View {
         )
     }
 
+    @MainActor
     private func persistDraft(editingShotID: UUID?) {
         guard
             let activeSession,
@@ -998,10 +1091,13 @@ struct GarageCourseMapView: View {
 
             GarageCourseMappingPersistence.reindexShots(in: activeSession)
             try modelContext.save()
-            selectedShotID = shot.id
+            overlayModel.clearDraftPlacement()
+            overlayModel.selectShot(shot.id)
             saveErrorMessage = nil
-            dockState = .compact
-            self.draft = nil
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                dockState = .compact
+                self.draft = nil
+            }
             refreshResolvedState(presentCalibrationIfNeeded: false)
         } catch {
             modelContext.rollback()
@@ -1010,6 +1106,7 @@ struct GarageCourseMapView: View {
         }
     }
 
+    @MainActor
     private func refreshResolvedState(presentCalibrationIfNeeded: Bool) {
         do {
             let session = try GarageCourseMappingPersistence.resolveActiveSession(
@@ -1026,8 +1123,14 @@ struct GarageCourseMapView: View {
             activeHole = hole
             loadCanvasImage()
 
-            if overlayDescriptors.contains(where: { $0.id == selectedShotID }) == false {
-                selectedShotID = overlayDescriptors.last?.id
+            if let draft {
+                overlayModel.syncDraftPlacement(draft.placement)
+            } else {
+                overlayModel.clearDraftPlacement()
+            }
+
+            if overlayDescriptors.contains(where: { $0.id == overlayModel.selectedShotID }) == false {
+                overlayModel.selectShot(overlayDescriptors.last?.id)
             }
 
             if presentCalibrationIfNeeded, hole.isCalibrated == false, hasPresentedInitialCalibration == false {
@@ -1040,18 +1143,11 @@ struct GarageCourseMapView: View {
         }
     }
 
+    @MainActor
     private func loadCanvasImage() {
-        let resolvedPath = activeHole?.localAssetPath ?? model.metadata.assetDescriptor?.localAssetPath
-        guard
-            let resolvedPath,
-            FileManager.default.fileExists(atPath: resolvedPath),
-            let image = UIImage(contentsOfFile: resolvedPath)
-        else {
-            canvasImage = nil
-            return
-        }
-
-        canvasImage = image
+        canvasImage = garageLoadCourseMapImage(
+            at: activeHole?.localAssetPath ?? model.metadata.assetDescriptor?.localAssetPath
+        )
     }
 }
 
@@ -1199,14 +1295,19 @@ private struct GarageCourseAnchorHints: View {
 }
 
 private struct GarageCourseCanvasOverlays: View {
+    @ObservedObject var overlayModel: GarageCourseMapOverlayModel
     let hole: GarageHoleMap?
     let rect: CGRect
     let descriptors: [GarageCourseShotOverlayDescriptor]
-    let selectedShotID: UUID?
     let selectedDescriptor: GarageCourseShotOverlayDescriptor?
     let reviewModeEnabled: Bool
     let activeDraftDescriptor: GarageCourseShotOverlayDescriptor?
+    let activeDraftShotID: UUID?
+    let isEditingPlacement: Bool
     let startEditingSelectedShot: () -> Void
+    let updateDraftPlacement: (GarageShotPlacement) -> Void
+    let finalizeDraftPlacement: (GarageShotPlacement) -> Void
+    let clearDraftInteraction: () -> Void
     let selectShot: (GarageCourseShotOverlayDescriptor) -> Void
 
     var body: some View {
@@ -1215,6 +1316,7 @@ private struct GarageCourseCanvasOverlays: View {
                 faintSequencePath(for: hole)
                 generatedFlightPaths
                 markers
+                activeDraftMarker
                 selectedCallout
             }
         }
@@ -1246,8 +1348,8 @@ private struct GarageCourseCanvasOverlays: View {
             ForEach(descriptors) { descriptor in
                 GarageCourseMapOverlayRenderer.flightPath(for: descriptor, in: rect)
                     .stroke(
-                        descriptor.id == selectedShotID ? Color.vibeElectricCyan.opacity(0.56) : Color.white.opacity(0.18),
-                        style: StrokeStyle(lineWidth: descriptor.id == selectedShotID ? 2.2 : 1.2, lineCap: .round, lineJoin: .round)
+                        descriptor.id == overlayModel.selectedShotID ? Color.vibeElectricCyan.opacity(0.56) : Color.white.opacity(0.18),
+                        style: StrokeStyle(lineWidth: descriptor.id == overlayModel.selectedShotID ? 2.2 : 1.2, lineCap: .round, lineJoin: .round)
                     )
             }
         } else if let selectedDescriptor {
@@ -1270,7 +1372,7 @@ private struct GarageCourseCanvasOverlays: View {
     private var markers: some View {
         ForEach(descriptors) { descriptor in
             let point = GarageCourseMapOverlayRenderer.point(for: descriptor.endPlacement, in: rect)
-            let isSelected = descriptor.id == selectedShotID
+            let isSelected = descriptor.id == overlayModel.selectedShotID
 
             Button {
                 selectShot(descriptor)
@@ -1292,6 +1394,82 @@ private struct GarageCourseCanvasOverlays: View {
             .buttonStyle(.plain)
             .position(point)
             .shadow(color: isSelected ? Color.vibeElectricCyan.opacity(0.3) : Color.black.opacity(0.18), radius: 12, x: 0, y: 6)
+            .opacity(activeDraftShotID == descriptor.id && isEditingPlacement ? 0.35 : 1)
+        }
+    }
+
+    @ViewBuilder
+    private var activeDraftMarker: some View {
+        if let activeDraftDescriptor {
+            let draftPlacement = overlayModel.activeShotPlacement ?? activeDraftDescriptor.endPlacement
+            let point = GarageCourseMapOverlayRenderer.point(for: draftPlacement, in: rect)
+
+            ZStack {
+                Circle()
+                    .fill(Color.vibeElectricCyan.opacity(0.18))
+                    .frame(width: 56, height: 56)
+
+                Circle()
+                    .stroke(Color.vibeElectricCyan.opacity(0.98), lineWidth: 2.4)
+                    .frame(width: 38, height: 38)
+
+                Circle()
+                    .fill(Color.black.opacity(0.36))
+                    .frame(width: 26, height: 26)
+
+                Text("\(activeDraftDescriptor.sequenceIndex)")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(garageReviewReadableText)
+            }
+            .overlay(alignment: .bottom) {
+                Text(isEditingPlacement ? "DRAG" : "SHOT")
+                    .font(.caption2.weight(.bold))
+                    .tracking(0.9)
+                    .foregroundStyle(garageReviewReadableText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(
+                        Capsule()
+                            .fill(garageReviewSurfaceDark.opacity(0.94))
+                            .overlay(
+                                Capsule()
+                                    .stroke(Color.vibeElectricCyan.opacity(0.24), lineWidth: 0.6)
+                            )
+                    )
+                    .offset(y: 34)
+            }
+            .position(point)
+            .shadow(color: Color.vibeElectricCyan.opacity(0.34), radius: 18, x: 0, y: 10)
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        guard isEditingPlacement else { return }
+                        if overlayModel.activeDragTarget == nil {
+                            overlayModel.beginShotDrag(
+                                initialPlacement: activeDraftDescriptor.endPlacement,
+                                shotID: activeDraftShotID
+                            )
+                        }
+                        if let updatedPlacement = overlayModel.updateShotDrag(translation: value.translation, in: rect) {
+                            updateDraftPlacement(updatedPlacement)
+                        }
+                    }
+                    .onEnded { value in
+                        guard isEditingPlacement else { return }
+                        if overlayModel.activeDragTarget == nil {
+                            overlayModel.beginShotDrag(
+                                initialPlacement: activeDraftDescriptor.endPlacement,
+                                shotID: activeDraftShotID
+                            )
+                        }
+                        if let updatedPlacement = overlayModel.updateShotDrag(translation: value.translation, in: rect) {
+                            finalizeDraftPlacement(updatedPlacement)
+                        } else {
+                            clearDraftInteraction()
+                        }
+                    }
+            )
+            .allowsHitTesting(isEditingPlacement)
         }
     }
 
@@ -1425,29 +1603,6 @@ private struct GarageCourseMapAlert: Identifiable {
 
         return (error as NSError).localizedDescription
     }
-}
-
-private func garageAspectFitRect(container: CGSize, aspectRatio: CGFloat) -> CGRect {
-    guard container.width > 0, container.height > 0, aspectRatio > 0 else {
-        return CGRect(origin: .zero, size: container)
-    }
-
-    let containerAspectRatio = container.width / container.height
-    let size: CGSize
-    if containerAspectRatio > aspectRatio {
-        let height = container.height
-        size = CGSize(width: height * aspectRatio, height: height)
-    } else {
-        let width = container.width
-        size = CGSize(width: width, height: width / aspectRatio)
-    }
-
-    return CGRect(
-        x: (container.width - size.width) * 0.5,
-        y: (container.height - size.height) * 0.5,
-        width: size.width,
-        height: size.height
-    )
 }
 
 #Preview {

@@ -179,6 +179,52 @@ struct LIFE_IN_SYNCTests {
         #expect(earlierShot.sequenceIndex == 1)
     }
 
+    @Test func garageCourseMapOverlayClampsDraftShotPlacementIntoVisibleBounds() async throws {
+        let overlayModel = GarageCourseMapOverlayModel()
+        let rect = CGRect(x: 20, y: 40, width: 200, height: 300)
+
+        overlayModel.beginShotDrag(
+            initialPlacement: GarageShotPlacement(normalizedX: 0.5, normalizedY: 0.5),
+            shotID: nil
+        )
+        let updatedPlacement = try #require(
+            overlayModel.updateShotDrag(
+                location: CGPoint(x: rect.maxX + 120, y: rect.minY - 80),
+                in: rect
+            )
+        )
+        let finalizedPlacement = try #require(overlayModel.endShotDrag())
+
+        #expect(updatedPlacement.normalizedX == 1)
+        #expect(updatedPlacement.normalizedY == 0)
+        #expect(finalizedPlacement == updatedPlacement)
+    }
+
+    @Test func garageCourseMapOverlayBuildsPlacedCalibrationDescriptorsInCanvasSpace() async throws {
+        let overlayModel = GarageCourseMapOverlayModel()
+        let rect = CGRect(x: 0, y: 0, width: 300, height: 450)
+        let teeAnchor = GarageMapAnchor(kind: .tee, normalizedX: 0.25, normalizedY: 0.8)
+        let greenAnchor = GarageMapAnchor(kind: .greenCenter, normalizedX: 0.55, normalizedY: 0.18)
+
+        let descriptors = overlayModel.calibrationAnchorDescriptors(
+            teeAnchor: teeAnchor,
+            fairwayCheckpointAnchor: nil,
+            greenCenterAnchor: greenAnchor,
+            activeKind: .fairwayCheckpoint,
+            in: rect
+        )
+
+        let teeDescriptor = try #require(descriptors.first(where: { $0.kind == .tee }))
+        let checkpointDescriptor = try #require(descriptors.first(where: { $0.kind == .fairwayCheckpoint }))
+        let greenDescriptor = try #require(descriptors.first(where: { $0.kind == .greenCenter }))
+
+        #expect(teeDescriptor.isPlaced)
+        #expect(teeDescriptor.point == CGPoint(x: 75, y: 360))
+        #expect(checkpointDescriptor.isPlaced == false)
+        #expect(checkpointDescriptor.isActive)
+        #expect(greenDescriptor.point == CGPoint(x: 165, y: 81))
+    }
+
     @Test func garageTacticalShotDefaultsTrajectoryToStraightAndPure() async throws {
         let shot = GarageTacticalShot(
             sequenceIndex: 1,

@@ -1,5 +1,198 @@
+import Combine
 import CoreGraphics
 import SwiftUI
+import UIKit
+
+enum GarageCourseMapOverlayDragTarget: Equatable {
+    case shot(UUID?)
+    case anchor(GarageMapAnchorKind)
+}
+
+struct GarageCourseCalibrationAnchorDescriptor: Identifiable, Equatable {
+    let kind: GarageMapAnchorKind
+    let title: String
+    let anchor: GarageMapAnchor?
+    let point: CGPoint?
+    let isActive: Bool
+
+    var id: GarageMapAnchorKind { kind }
+
+    var isPlaced: Bool {
+        anchor != nil
+    }
+}
+
+@MainActor
+final class GarageCourseMapOverlayModel: ObservableObject {
+    @Published private(set) var selectedShotID: UUID?
+    @Published private(set) var activeDragTarget: GarageCourseMapOverlayDragTarget?
+    @Published private(set) var activeShotPlacement: GarageShotPlacement?
+    @Published private(set) var activeAnchor: GarageMapAnchor?
+    @Published private(set) var isInteracting = false
+
+    private var shotDragOriginPlacement: GarageShotPlacement?
+    private var anchorDragOrigin: GarageMapAnchor?
+
+    func selectShot(_ shotID: UUID?) {
+        selectedShotID = shotID
+    }
+
+    func clearSelection() {
+        selectedShotID = nil
+    }
+
+    func syncDraftPlacement(_ placement: GarageShotPlacement?) {
+        activeShotPlacement = placement
+    }
+
+    func clearDraftPlacement() {
+        activeShotPlacement = nil
+    }
+
+    func beginShotDrag(initialPlacement: GarageShotPlacement, shotID: UUID?) {
+        shotDragOriginPlacement = initialPlacement
+        activeShotPlacement = initialPlacement
+        activeDragTarget = .shot(shotID)
+        isInteracting = true
+    }
+
+    func updateShotDrag(location: CGPoint, in rect: CGRect) -> GarageShotPlacement? {
+        guard case .shot = activeDragTarget else { return nil }
+        let placement = Self.placement(from: location, in: rect)
+        activeShotPlacement = placement
+        return placement
+    }
+
+    func updateShotDrag(translation: CGSize, in rect: CGRect) -> GarageShotPlacement? {
+        guard let originPlacement = shotDragOriginPlacement else { return nil }
+        let origin = Self.point(for: originPlacement, in: rect)
+        return updateShotDrag(
+            location: CGPoint(
+                x: origin.x + translation.width,
+                y: origin.y + translation.height
+            ),
+            in: rect
+        )
+    }
+
+    func placeShot(at location: CGPoint, shotID: UUID?, in rect: CGRect) -> GarageShotPlacement {
+        let placement = Self.placement(from: location, in: rect)
+        activeDragTarget = .shot(shotID)
+        activeShotPlacement = placement
+        return placement
+    }
+
+    func endShotDrag() -> GarageShotPlacement? {
+        let placement = activeShotPlacement
+        shotDragOriginPlacement = nil
+        activeDragTarget = nil
+        isInteracting = false
+        return placement
+    }
+
+    func beginAnchorDrag(_ anchor: GarageMapAnchor) {
+        anchorDragOrigin = anchor
+        activeAnchor = anchor
+        activeDragTarget = .anchor(anchor.kind)
+        isInteracting = true
+    }
+
+    func updateAnchorDrag(location: CGPoint, kind: GarageMapAnchorKind, in rect: CGRect) -> GarageMapAnchor? {
+        guard activeDragTarget == .anchor(kind) else { return nil }
+        let anchor = Self.anchor(kind: kind, at: location, in: rect)
+        activeAnchor = anchor
+        return anchor
+    }
+
+    func updateAnchorDrag(translation: CGSize, kind: GarageMapAnchorKind, in rect: CGRect) -> GarageMapAnchor? {
+        guard let originAnchor = anchorDragOrigin, originAnchor.kind == kind else { return nil }
+        let origin = Self.point(for: originAnchor, in: rect)
+        return updateAnchorDrag(
+            location: CGPoint(
+                x: origin.x + translation.width,
+                y: origin.y + translation.height
+            ),
+            kind: kind,
+            in: rect
+        )
+    }
+
+    func placeAnchor(kind: GarageMapAnchorKind, at location: CGPoint, in rect: CGRect) -> GarageMapAnchor {
+        let anchor = Self.anchor(kind: kind, at: location, in: rect)
+        activeAnchor = anchor
+        activeDragTarget = .anchor(kind)
+        return anchor
+    }
+
+    func endAnchorDrag() -> GarageMapAnchor? {
+        let anchor = activeAnchor
+        anchorDragOrigin = nil
+        activeDragTarget = nil
+        isInteracting = false
+        return anchor
+    }
+
+    func calibrationAnchorDescriptors(
+        teeAnchor: GarageMapAnchor?,
+        fairwayCheckpointAnchor: GarageMapAnchor?,
+        greenCenterAnchor: GarageMapAnchor?,
+        activeKind: GarageMapAnchorKind,
+        in rect: CGRect
+    ) -> [GarageCourseCalibrationAnchorDescriptor] {
+        GarageMapAnchorKind.allCases.map { kind in
+            let anchor = switch kind {
+            case .tee:
+                teeAnchor
+            case .fairwayCheckpoint:
+                fairwayCheckpointAnchor
+            case .greenCenter:
+                greenCenterAnchor
+            }
+
+            return GarageCourseCalibrationAnchorDescriptor(
+                kind: kind,
+                title: kind.title,
+                anchor: anchor,
+                point: anchor.map { Self.point(for: $0, in: rect) },
+                isActive: kind == activeKind
+            )
+        }
+    }
+
+    static func placement(from location: CGPoint, in rect: CGRect) -> GarageShotPlacement {
+        let width = max(rect.width, 1)
+        let height = max(rect.height, 1)
+        let normalizedX = min(max((location.x - rect.minX) / width, 0), 1)
+        let normalizedY = min(max((location.y - rect.minY) / height, 0), 1)
+        return GarageShotPlacement(normalizedX: normalizedX, normalizedY: normalizedY)
+    }
+
+    static func anchor(kind: GarageMapAnchorKind, at location: CGPoint, in rect: CGRect) -> GarageMapAnchor {
+        let placement = placement(from: location, in: rect)
+        return GarageMapAnchor(
+            kind: kind,
+            normalizedX: placement.normalizedX,
+            normalizedY: placement.normalizedY
+        )
+    }
+
+    static func point(for placement: GarageShotPlacement, in rect: CGRect) -> CGPoint {
+        CGPoint(
+            x: rect.minX + (rect.width * placement.normalizedX),
+            y: rect.minY + (rect.height * placement.normalizedY)
+        )
+    }
+
+    static func point(for anchor: GarageMapAnchor, in rect: CGRect) -> CGPoint {
+        point(
+            for: GarageShotPlacement(
+                normalizedX: anchor.normalizedX,
+                normalizedY: anchor.normalizedY
+            ),
+            in: rect
+        )
+    }
+}
 
 struct GarageCourseShotOverlayDescriptor: Identifiable, Equatable {
     let id: UUID
@@ -70,10 +263,7 @@ enum GarageCourseMapOverlayRenderer {
     }
 
     static func point(for placement: GarageShotPlacement, in rect: CGRect) -> CGPoint {
-        CGPoint(
-            x: rect.minX + (rect.width * placement.normalizedX),
-            y: rect.minY + (rect.height * placement.normalizedY)
-        )
+        GarageCourseMapOverlayModel.point(for: placement, in: rect)
     }
 
     static func sequencePath(
@@ -136,4 +326,39 @@ enum GarageCourseMapOverlayRenderer {
         path.addQuadCurve(to: end, control: control)
         return path
     }
+}
+
+func garageLoadCourseMapImage(at localAssetPath: String?) -> UIImage? {
+    guard
+        let localAssetPath,
+        FileManager.default.fileExists(atPath: localAssetPath),
+        let image = UIImage(contentsOfFile: localAssetPath)
+    else {
+        return nil
+    }
+
+    return image
+}
+
+func garageAspectFitRect(container: CGSize, aspectRatio: CGFloat) -> CGRect {
+    guard container.width > 0, container.height > 0, aspectRatio > 0 else {
+        return CGRect(origin: .zero, size: container)
+    }
+
+    let containerAspectRatio = container.width / container.height
+    let size: CGSize
+    if containerAspectRatio > aspectRatio {
+        let height = container.height
+        size = CGSize(width: height * aspectRatio, height: height)
+    } else {
+        let width = container.width
+        size = CGSize(width: width, height: width / aspectRatio)
+    }
+
+    return CGRect(
+        x: (container.width - size.width) * 0.5,
+        y: (container.height - size.height) * 0.5,
+        width: size.width,
+        height: size.height
+    )
 }
