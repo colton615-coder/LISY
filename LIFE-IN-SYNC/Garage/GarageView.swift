@@ -434,8 +434,19 @@ struct GarageView: View {
     }
 
     var body: some View {
-        GarageCustomScaffold(module: .garage, tabs: [], selectedTab: .constant(.hub)) { size in
-            garageContent(for: size)
+        Group {
+            if case .range = route {
+                GarageCourseMapView(
+                    bottomInset: 0,
+                    onExit: {
+                        route = .hub
+                    }
+                )
+            } else {
+                GarageCustomScaffold(module: .garage, tabs: [], selectedTab: .constant(.hub)) { size in
+                    garageContent(for: size)
+                }
+            }
         }
         .overlay {
             if let importState = importPresentationState {
@@ -466,7 +477,7 @@ struct GarageView: View {
             handleReviewableRecordKeysChange(keys)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if importPresentationState == nil {
+            if importPresentationState == nil, route != .range {
                 GarageBottomTabBar(selectedTab: selectedTabBinding)
             }
         }
@@ -474,6 +485,9 @@ struct GarageView: View {
             await recoverAndNormalizePersistedAnalysisPayloadsIfNeeded()
         }
         .toolbar({
+            if route == .range {
+                return .hidden
+            }
             if case let .analyzer(analyzerRoute) = route,
                case .review = analyzerRoute.normalizedForPresentation {
                 return .hidden

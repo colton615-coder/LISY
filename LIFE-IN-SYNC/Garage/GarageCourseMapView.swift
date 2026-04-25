@@ -2,6 +2,102 @@ import SwiftData
 import SwiftUI
 import UIKit
 
+private enum GarageCourseMapMode: Equatable {
+    case review
+    case shotEntry
+    case calibration
+}
+
+private enum GarageCourseCalibrationStep: Int, CaseIterable, Identifiable {
+    case tee
+    case fairwayCheckpoint
+    case greenCenter
+
+    var id: Int { rawValue }
+
+    var anchorKind: GarageMapAnchorKind {
+        switch self {
+        case .tee:
+            .tee
+        case .fairwayCheckpoint:
+            .fairwayCheckpoint
+        case .greenCenter:
+            .greenCenter
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .tee:
+            "Tee Anchor"
+        case .fairwayCheckpoint:
+            "Checkpoint Anchor"
+        case .greenCenter:
+            "Green Anchor"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .tee:
+            "Pin where the hole begins."
+        case .fairwayCheckpoint:
+            "Drop the fairway checkpoint."
+        case .greenCenter:
+            "Finish at the green center."
+        }
+    }
+
+    var statusTitle: String {
+        switch self {
+        case .tee:
+            "Start"
+        case .fairwayCheckpoint:
+            "Mid"
+        case .greenCenter:
+            "Finish"
+        }
+    }
+}
+
+private struct GarageCourseCalibrationDraft: Equatable {
+    var teeAnchor: GarageMapAnchor?
+    var fairwayCheckpointAnchor: GarageMapAnchor?
+    var greenCenterAnchor: GarageMapAnchor?
+
+    init(hole: GarageHoleMap) {
+        teeAnchor = hole.teeAnchor
+        fairwayCheckpointAnchor = hole.fairwayCheckpointAnchor
+        greenCenterAnchor = hole.greenCenterAnchor
+    }
+
+    var isComplete: Bool {
+        teeAnchor != nil && fairwayCheckpointAnchor != nil && greenCenterAnchor != nil
+    }
+
+    mutating func setAnchor(_ anchor: GarageMapAnchor) {
+        switch anchor.kind {
+        case .tee:
+            teeAnchor = anchor
+        case .fairwayCheckpoint:
+            fairwayCheckpointAnchor = anchor
+        case .greenCenter:
+            greenCenterAnchor = anchor
+        }
+    }
+
+    func anchor(for step: GarageCourseCalibrationStep) -> GarageMapAnchor? {
+        switch step {
+        case .tee:
+            teeAnchor
+        case .fairwayCheckpoint:
+            fairwayCheckpointAnchor
+        case .greenCenter:
+            greenCenterAnchor
+        }
+    }
+}
+
 private enum GarageCourseMapEditorStep: Int, CaseIterable, Identifiable {
     case placement
     case shot
@@ -118,14 +214,17 @@ struct GarageCourseMapView: View {
 
     @StateObject private var model: GarageCourseMappingModel
     @StateObject private var overlayModel = GarageCourseMapOverlayModel()
-    @State private var calibrationPresentation: GarageCourseCalibrationPresentation?
     @State private var blockerAlert: GarageCourseMapAlert?
     @State private var activeSession: GarageRoundSession?
     @State private var activeHole: GarageHoleMap?
+    @State private var mapMode: GarageCourseMapMode = .review
     @State private var dockState: GarageCourseMapDockState = .compact
     @State private var reviewModeEnabled = false
     @State private var canvasImage: UIImage?
     @State private var draft: GarageCourseShotDraft?
+    @State private var calibrationDraft: GarageCourseCalibrationDraft?
+    @State private var currentCalibrationStep: GarageCourseCalibrationStep = .tee
+    @State private var calibrationSaveErrorMessage: String?
     @State private var saveErrorMessage: String?
     @State private var hasPresentedInitialCalibration = false
 
@@ -190,6 +289,12 @@ struct GarageCourseMapView: View {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    private var activeCalibrationReadout: GarageCourseMapPrecisionReadout? {
+        overlayModel.activeAnchorReadout ?? overlayModel.precisionReadout(
+            for: calibrationDraft?.anchor(for: currentCalibrationStep)
+        )
+    }
+
     var body: some View {
         ZStack {
             courseCanvas
@@ -209,11 +314,14 @@ struct GarageCourseMapView: View {
         .background(garageReviewBackground.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: dockState)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: mapMode)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: reviewModeEnabled)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.selectedShotID)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.activeShotPlacement)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.activeAnchor)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.isInteracting)
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: calibrationPresentation != nil)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentCalibrationStep)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: calibrationDraft)
         .safeAreaInset(edge: .top, spacing: 0) {
             topStrip
                 .padding(.horizontal, 16)
@@ -225,20 +333,6 @@ struct GarageCourseMapView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 10)
                 .padding(.bottom, max(bottomInset - 24, 12))
-        }
-        .sheet(item: $calibrationPresentation) { presentation in
-            GarageCourseCalibrationSheet(
-                hole: presentation.hole,
-                onComplete: {
-                    refreshResolvedState(presentCalibrationIfNeeded: false)
-                    overlayModel.selectShot(activeHole?.shots.sorted(by: { $0.sequenceIndex < $1.sequenceIndex }).last?.id)
-                }
-            )
-            .presentationDetents([.fraction(0.25), .medium])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(.regularMaterial)
-            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
-            .presentationCornerRadius(32)
         }
         .alert(item: $blockerAlert) { alert in
             Alert(
@@ -252,7 +346,16 @@ struct GarageCourseMapView: View {
         }
     }
 
+    @ViewBuilder
     private var topStrip: some View {
+        if mapMode == .calibration {
+            calibrationTopStrip
+        } else {
+            normalTopStrip
+        }
+    }
+
+    private var normalTopStrip: some View {
         HStack(spacing: 12) {
             Button {
                 garageTriggerImpact(.light)
@@ -298,12 +401,53 @@ struct GarageCourseMapView: View {
         }
     }
 
+    private var calibrationTopStrip: some View {
+        HStack(spacing: 12) {
+            Button {
+                garageTriggerImpact(.light)
+                exitCalibration()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(garageReviewReadableText)
+                    .frame(width: 44, height: 44)
+                    .background(garageMaterialSurface(Circle()))
+            }
+            .buttonStyle(.plain)
+            .contentShape(Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("ANCHOR SETUP")
+                    .font(.caption2.weight(.bold))
+                    .tracking(1.2)
+                    .foregroundStyle(Color.vibeElectricCyan)
+
+                Text(currentCalibrationStep.detail)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(garageReviewReadableText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(garageMaterialSurface(RoundedRectangle(cornerRadius: 20, style: .continuous), material: .regularMaterial))
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 8) {
+                ForEach(GarageCourseCalibrationStep.allCases) { step in
+                    calibrationStatusPill(step)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .background(garageMaterialSurface(Capsule()))
+        }
+    }
+
     private var courseCanvas: some View {
         GeometryReader { proxy in
-            let rect = garageAspectFitRect(
-                container: proxy.size,
-                aspectRatio: canvasAspectRatio
-            )
+            let rect = CGRect(origin: .zero, size: proxy.size)
 
             ZStack {
                 Color.black.opacity(0.96)
@@ -314,13 +458,9 @@ struct GarageCourseMapView: View {
                     hole: activeHole,
                     metadata: model.metadata
                 )
-                .frame(width: rect.width, height: rect.height)
-                .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 30, style: .continuous)
-                        .stroke(Color.white.opacity(0.06), lineWidth: 0.8)
-                )
-                .position(x: rect.midX, y: rect.midY)
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .clipped()
+                .ignoresSafeArea()
 
                 GarageCourseCanvasOverlays(
                     overlayModel: overlayModel,
@@ -332,10 +472,17 @@ struct GarageCourseMapView: View {
                     activeDraftDescriptor: activeDraftOverlayDescriptor(in: activeHole),
                     activeDraftShotID: dockState.editingShotID,
                     isEditingPlacement: dockState.step == .placement,
+                    mapMode: mapMode,
+                    calibrationDraft: calibrationDraft,
+                    activeCalibrationStep: currentCalibrationStep,
+                    activeCalibrationReadout: activeCalibrationReadout,
                     startEditingSelectedShot: startEditingSelectedShot,
                     updateDraftPlacement: updateDraftPlacement,
                     finalizeDraftPlacement: finalizeDraftPlacement,
-                    clearDraftInteraction: clearDraftInteraction
+                    clearDraftInteraction: clearDraftInteraction,
+                    updateCalibrationAnchor: updateCalibrationAnchor,
+                    finalizeCalibrationAnchor: finalizeCalibrationAnchor,
+                    endCalibrationInteraction: endCalibrationInteraction
                 ) { descriptor in
                     garageTriggerImpact(.light)
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -383,11 +530,15 @@ struct GarageCourseMapView: View {
             }
 
             Group {
-                switch dockState {
-                case .compact:
-                    compactDock
-                case let .editing(step, shotID):
-                    expandedDock(step: step, editingShotID: shotID)
+                if mapMode == .calibration {
+                    calibrationDock
+                } else {
+                    switch dockState {
+                    case .compact:
+                        compactDock
+                    case let .editing(step, shotID):
+                        expandedDock(step: step, editingShotID: shotID)
+                    }
                 }
             }
         }
@@ -456,6 +607,149 @@ struct GarageCourseMapView: View {
         }
         .padding(14)
         .background(garageMaterialSurface(RoundedRectangle(cornerRadius: 26, style: .continuous), material: .regularMaterial))
+    }
+
+    private var calibrationDock: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if let calibrationSaveErrorMessage {
+                Text(calibrationSaveErrorMessage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(garageReviewFlagged)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        garageMaterialSurface(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous),
+                            material: .ultraThinMaterial,
+                            stroke: garageReviewFlagged.opacity(0.22)
+                        )
+                    )
+            }
+
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(currentCalibrationStep.title.uppercased())
+                        .font(.caption.weight(.bold))
+                        .tracking(1.2)
+                        .foregroundStyle(Color.vibeElectricCyan)
+
+                    Text("Tap the map to place. Drag a handle to refine.")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(garageReviewMutedText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+
+                Spacer(minLength: 0)
+
+                if let activeCalibrationReadout {
+                    precisionReadoutStrip(
+                        title: currentCalibrationStep.anchorKind.title,
+                        readout: activeCalibrationReadout
+                    )
+                    .frame(maxWidth: 190)
+                }
+            }
+
+            HStack(spacing: 8) {
+                ForEach(GarageCourseCalibrationStep.allCases) { step in
+                    Button {
+                        garageTriggerImpact(.light)
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            currentCalibrationStep = step
+                        }
+                    } label: {
+                        calibrationStepPill(step)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            HStack(spacing: 12) {
+                Button {
+                    handleCalibrationBack()
+                } label: {
+                    Text(currentCalibrationStep == .tee ? "Cancel" : "Back")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(garageReviewReadableText)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 15)
+                        .background(
+                            GarageInsetPanelBackground(
+                                shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
+                                fill: garageReviewSurfaceDark.opacity(0.88),
+                                stroke: garageReviewStroke.opacity(0.94)
+                            )
+                        )
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    handleCalibrationPrimary()
+                } label: {
+                    Text(calibrationDraft?.isComplete == true ? "Save Anchors" : "Continue")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(garageReviewCanvasFill)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 15)
+                        .background(
+                            GarageRaisedPanelBackground(
+                                shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
+                                fill: garageReviewAccent,
+                                stroke: garageReviewAccent.opacity(0.34),
+                                glow: garageReviewAccent
+                            )
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(primaryCalibrationButtonDisabled)
+                .opacity(primaryCalibrationButtonDisabled ? 0.55 : 1)
+            }
+        }
+        .padding(16)
+        .background(garageMaterialSurface(RoundedRectangle(cornerRadius: 26, style: .continuous), material: .regularMaterial))
+    }
+
+    private func calibrationStepPill(_ step: GarageCourseCalibrationStep) -> some View {
+        let isActive = currentCalibrationStep == step
+        let isComplete = calibrationDraft?.anchor(for: step) != nil
+
+        return HStack(spacing: 7) {
+            Circle()
+                .fill(isComplete ? Color.vibeElectricCyan : garageReviewMutedText.opacity(isActive ? 0.58 : 0.28))
+                .frame(width: 7, height: 7)
+
+            Text(step.statusTitle.uppercased())
+                .font(.caption2.weight(.bold))
+                .tracking(0.9)
+                .lineLimit(1)
+        }
+        .foregroundStyle(isActive ? garageReviewReadableText : garageReviewMutedText)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .background(
+            garageMaterialSurface(
+                Capsule(),
+                material: isActive ? .regularMaterial : .ultraThinMaterial,
+                stroke: isActive ? Color.vibeElectricCyan.opacity(0.28) : garageReviewStroke.opacity(0.88)
+            )
+        )
+    }
+
+    private func calibrationStatusPill(_ step: GarageCourseCalibrationStep) -> some View {
+        let isActive = currentCalibrationStep == step
+        let isComplete = calibrationDraft?.anchor(for: step) != nil
+
+        return Circle()
+            .fill(isComplete ? Color.vibeElectricCyan : garageReviewMutedText.opacity(isActive ? 0.66 : 0.28))
+            .frame(width: isActive ? 9 : 7, height: isActive ? 9 : 7)
+            .overlay {
+                Circle()
+                    .stroke(isActive ? Color.vibeElectricCyan.opacity(0.42) : .clear, lineWidth: 3)
+            }
+            .accessibilityLabel(Text("\(step.title) \(isComplete ? "placed" : "pending")"))
     }
 
     private func expandedDock(step: GarageCourseMapEditorStep, editingShotID: UUID?) -> some View {
@@ -872,6 +1166,7 @@ struct GarageCourseMapView: View {
         switch step {
         case .placement:
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                mapMode = .review
                 dockState = .compact
                 draft = nil
             }
@@ -914,7 +1209,7 @@ struct GarageCourseMapView: View {
 
         guard let activeHole else { return }
         if activeHole.isCalibrated == false {
-            calibrationPresentation = GarageCourseCalibrationPresentation(hole: activeHole)
+            enterCalibration(for: activeHole)
             return
         }
 
@@ -922,6 +1217,7 @@ struct GarageCourseMapView: View {
         overlayModel.syncDraftPlacement(draft?.placement)
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
             overlayModel.clearSelection()
+            mapMode = .shotEntry
             dockState = .editing(step: .placement, shotID: nil)
         }
     }
@@ -941,6 +1237,7 @@ struct GarageCourseMapView: View {
         draft = GarageCourseShotDraft(hole: activeHole, selectedShot: selectedShot)
         overlayModel.syncDraftPlacement(draft?.placement)
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            mapMode = .shotEntry
             dockState = .editing(step: .placement, shotID: selectedShot.id)
         }
     }
@@ -948,6 +1245,16 @@ struct GarageCourseMapView: View {
     @MainActor
     private func handleCanvasTap(_ location: CGPoint, in rect: CGRect) {
         guard rect.contains(location) else { return }
+
+        if mapMode == .calibration {
+            let anchor = overlayModel.placeAnchor(
+                kind: currentCalibrationStep.anchorKind,
+                at: location,
+                in: rect
+            )
+            placeCalibrationAnchor(anchor)
+            return
+        }
 
         if case .editing(.placement, _) = dockState {
             let updatedPlacement = overlayModel.placeShot(
@@ -972,6 +1279,7 @@ struct GarageCourseMapView: View {
 
     @MainActor
     private func handleCanvasDragChanged(_ value: DragGesture.Value, in rect: CGRect) {
+        guard mapMode != .calibration else { return }
         guard case .editing(.placement, let shotID) = dockState else { return }
         if overlayModel.activeDragTarget == nil, let draft {
             overlayModel.beginShotDrag(initialPlacement: draft.placement, shotID: shotID)
@@ -985,6 +1293,7 @@ struct GarageCourseMapView: View {
 
     @MainActor
     private func handleCanvasDragEnded(_ value: DragGesture.Value, in rect: CGRect) {
+        guard mapMode != .calibration else { return }
         guard case .editing(.placement, _) = dockState else { return }
 
         if let updatedPlacement = overlayModel.updateShotDrag(location: value.location, in: rect) {
@@ -1015,6 +1324,158 @@ struct GarageCourseMapView: View {
     @MainActor
     private func clearDraftInteraction() {
         _ = overlayModel.endShotDrag()
+    }
+
+    @MainActor
+    private func enterCalibration(for hole: GarageHoleMap) {
+        let anchorDraft = GarageCourseCalibrationDraft(hole: hole)
+        calibrationDraft = anchorDraft
+        currentCalibrationStep = GarageCourseCalibrationStep.allCases.first(where: { anchorDraft.anchor(for: $0) == nil }) ?? .tee
+        calibrationSaveErrorMessage = nil
+        saveErrorMessage = nil
+        draft = nil
+        overlayModel.clearDraftPlacement()
+        overlayModel.clearSelection()
+        _ = overlayModel.endShotDrag()
+        _ = overlayModel.endAnchorDrag()
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            mapMode = .calibration
+            dockState = .compact
+        }
+    }
+
+    @MainActor
+    private func exitCalibration() {
+        calibrationSaveErrorMessage = nil
+        calibrationDraft = nil
+        _ = overlayModel.endAnchorDrag()
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            mapMode = .review
+        }
+    }
+
+    @MainActor
+    private func handleCalibrationBack() {
+        garageTriggerImpact(.light)
+
+        if currentCalibrationStep == .tee {
+            exitCalibration()
+        } else if let previous = GarageCourseCalibrationStep(rawValue: currentCalibrationStep.rawValue - 1) {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                currentCalibrationStep = previous
+            }
+        }
+    }
+
+    private var primaryCalibrationButtonDisabled: Bool {
+        guard let calibrationDraft else { return true }
+        return calibrationDraft.isComplete == false && calibrationDraft.anchor(for: currentCalibrationStep) == nil
+    }
+
+    @MainActor
+    private func handleCalibrationPrimary() {
+        garageTriggerImpact(.medium)
+        calibrationSaveErrorMessage = nil
+
+        guard let calibrationDraft else {
+            calibrationSaveErrorMessage = "Garage could not find the active hole calibration draft."
+            return
+        }
+
+        if calibrationDraft.isComplete == false {
+            guard calibrationDraft.anchor(for: currentCalibrationStep) != nil else {
+                calibrationSaveErrorMessage = "Drop the \(currentCalibrationStep.title.lowercased()) before continuing."
+                return
+            }
+
+            if let nextStep = nextIncompleteStep(in: calibrationDraft, after: currentCalibrationStep) ?? GarageCourseCalibrationStep(rawValue: currentCalibrationStep.rawValue + 1) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    currentCalibrationStep = nextStep
+                }
+            }
+            return
+        }
+
+        persistCalibration()
+    }
+
+    private func nextIncompleteStep(
+        in draft: GarageCourseCalibrationDraft,
+        after step: GarageCourseCalibrationStep
+    ) -> GarageCourseCalibrationStep? {
+        let ordered = GarageCourseCalibrationStep.allCases
+        if let nextUnfinished = ordered.dropFirst(step.rawValue + 1).first(where: { draft.anchor(for: $0) == nil }) {
+            return nextUnfinished
+        }
+        return ordered.first(where: { draft.anchor(for: $0) == nil })
+    }
+
+    @MainActor
+    private func placeCalibrationAnchor(_ anchor: GarageMapAnchor) {
+        garageTriggerImpact(.light)
+        calibrationSaveErrorMessage = nil
+        calibrationDraft?.setAnchor(anchor)
+        _ = overlayModel.endAnchorDrag()
+    }
+
+    @MainActor
+    private func updateCalibrationAnchor(_ anchor: GarageMapAnchor) {
+        calibrationSaveErrorMessage = nil
+        calibrationDraft?.setAnchor(anchor)
+    }
+
+    @MainActor
+    private func finalizeCalibrationAnchor(_ anchor: GarageMapAnchor) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            calibrationDraft?.setAnchor(anchor)
+        }
+        calibrationSaveErrorMessage = nil
+        _ = overlayModel.endAnchorDrag()
+    }
+
+    @MainActor
+    private func endCalibrationInteraction() {
+        _ = overlayModel.endAnchorDrag()
+    }
+
+    @MainActor
+    private func persistCalibration() {
+        guard
+            let activeHole,
+            let teeAnchor = calibrationDraft?.teeAnchor,
+            let fairwayCheckpointAnchor = calibrationDraft?.fairwayCheckpointAnchor,
+            let greenCenterAnchor = calibrationDraft?.greenCenterAnchor
+        else {
+            calibrationSaveErrorMessage = "All three anchors must be pinned before Garage unlocks shot entry."
+            return
+        }
+
+        calibrationSaveErrorMessage = nil
+
+        do {
+            try teeAnchor.validate(fieldName: "Tee anchor")
+            try fairwayCheckpointAnchor.validate(fieldName: "Fairway checkpoint")
+            try greenCenterAnchor.validate(fieldName: "Green center")
+
+            activeHole.teeAnchor = teeAnchor
+            activeHole.fairwayCheckpointAnchor = fairwayCheckpointAnchor
+            activeHole.greenCenterAnchor = greenCenterAnchor
+            activeHole.updatedAt = .now
+
+            try activeHole.validateForShotLogging()
+            try modelContext.save()
+
+            calibrationDraft = nil
+            _ = overlayModel.endAnchorDrag()
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                mapMode = .review
+            }
+            refreshResolvedState(presentCalibrationIfNeeded: false)
+            overlayModel.selectShot(activeHole.shots.sorted(by: { $0.sequenceIndex < $1.sequenceIndex }).last?.id)
+        } catch {
+            modelContext.rollback()
+            calibrationSaveErrorMessage = GarageCourseMapAlert.message(for: error)
+        }
     }
 
     private func activeDraftOverlayDescriptor(in hole: GarageHoleMap?) -> GarageCourseShotOverlayDescriptor? {
@@ -1141,6 +1602,7 @@ struct GarageCourseMapView: View {
             overlayModel.selectShot(shot.id)
             saveErrorMessage = nil
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                mapMode = .review
                 dockState = .compact
                 self.draft = nil
             }
@@ -1181,7 +1643,7 @@ struct GarageCourseMapView: View {
 
             if presentCalibrationIfNeeded, hole.isCalibrated == false, hasPresentedInitialCalibration == false {
                 hasPresentedInitialCalibration = true
-                calibrationPresentation = GarageCourseCalibrationPresentation(hole: hole)
+                enterCalibration(for: hole)
             }
         } catch {
             modelContext.rollback()
@@ -1350,23 +1812,35 @@ private struct GarageCourseCanvasOverlays: View {
     let activeDraftDescriptor: GarageCourseShotOverlayDescriptor?
     let activeDraftShotID: UUID?
     let isEditingPlacement: Bool
+    let mapMode: GarageCourseMapMode
+    let calibrationDraft: GarageCourseCalibrationDraft?
+    let activeCalibrationStep: GarageCourseCalibrationStep
+    let activeCalibrationReadout: GarageCourseMapPrecisionReadout?
     let startEditingSelectedShot: () -> Void
     let updateDraftPlacement: (GarageShotPlacement) -> Void
     let finalizeDraftPlacement: (GarageShotPlacement) -> Void
     let clearDraftInteraction: () -> Void
+    let updateCalibrationAnchor: (GarageMapAnchor) -> Void
+    let finalizeCalibrationAnchor: (GarageMapAnchor) -> Void
+    let endCalibrationInteraction: () -> Void
     let selectShot: (GarageCourseShotOverlayDescriptor) -> Void
 
     var body: some View {
         ZStack {
             if let hole {
-                faintSequencePath(for: hole)
-                generatedFlightPaths
-                markers
-                activeDraftMarker
-                selectedCallout
+                if mapMode == .calibration {
+                    calibrationLayer(for: hole)
+                } else {
+                    faintSequencePath(for: hole)
+                    generatedFlightPaths
+                    markers
+                    activeDraftMarker
+                    selectedCallout
+                }
             }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.activeShotPlacement)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.activeAnchor)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.selectedShotID)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.isInteracting)
     }
@@ -1389,6 +1863,80 @@ private struct GarageCourseCanvasOverlays: View {
                         .position(point)
                 }
             }
+    }
+
+    @ViewBuilder
+    private func calibrationLayer(for hole: GarageHoleMap) -> some View {
+        if let calibrationDraft {
+            let anchorDescriptors = overlayModel.calibrationAnchorDescriptors(
+                teeAnchor: calibrationDraft.teeAnchor,
+                fairwayCheckpointAnchor: calibrationDraft.fairwayCheckpointAnchor,
+                greenCenterAnchor: calibrationDraft.greenCenterAnchor,
+                activeKind: activeCalibrationStep.anchorKind,
+                in: rect
+            )
+
+            GarageCourseCalibrationGuidePath(descriptors: anchorDescriptors)
+                .frame(width: rect.width, height: rect.height)
+                .position(x: rect.midX, y: rect.midY)
+
+            faintCalibrationReference(for: hole)
+
+            ForEach(anchorDescriptors) { descriptor in
+                if let point = descriptor.point {
+                    GarageCourseCalibrationHandle(
+                        descriptor: descriptor,
+                        point: point,
+                        isDragging: overlayModel.isDragging(kind: descriptor.kind)
+                    )
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                if overlayModel.activeDragTarget == nil, let anchor = descriptor.anchor {
+                                    overlayModel.beginAnchorDrag(anchor)
+                                }
+                                if let updatedAnchor = overlayModel.updateAnchorDrag(
+                                    translation: value.translation,
+                                    kind: descriptor.kind,
+                                    in: rect
+                                ) {
+                                    updateCalibrationAnchor(updatedAnchor)
+                                }
+                            }
+                            .onEnded { value in
+                                if overlayModel.activeDragTarget == nil, let anchor = descriptor.anchor {
+                                    overlayModel.beginAnchorDrag(anchor)
+                                }
+                                if let updatedAnchor = overlayModel.updateAnchorDrag(
+                                    translation: value.translation,
+                                    kind: descriptor.kind,
+                                    in: rect
+                                ) {
+                                    finalizeCalibrationAnchor(updatedAnchor)
+                                } else {
+                                    endCalibrationInteraction()
+                                }
+                            }
+                    )
+                    .zIndex(descriptor.isActive ? 3 : 2)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func faintCalibrationReference(for hole: GarageHoleMap) -> some View {
+        if let teeAnchor = hole.teeAnchor {
+            let point = GarageCourseMapOverlayRenderer.point(
+                for: GarageShotPlacement(normalizedX: teeAnchor.normalizedX, normalizedY: teeAnchor.normalizedY),
+                in: rect
+            )
+            Circle()
+                .fill(Color.white.opacity(0.44))
+                .frame(width: 8, height: 8)
+                .position(point)
+                .zIndex(1)
+        }
     }
 
     @ViewBuilder
@@ -1596,6 +2144,81 @@ private struct GarageCourseCanvasOverlays: View {
     }
 }
 
+private struct GarageCourseCalibrationGuidePath: View {
+    let descriptors: [GarageCourseCalibrationAnchorDescriptor]
+
+    var body: some View {
+        Canvas { context, _ in
+            let points = descriptors.compactMap(\.point)
+            guard points.count > 1 else { return }
+
+            var path = Path()
+            path.move(to: points[0])
+            for point in points.dropFirst() {
+                path.addLine(to: point)
+            }
+
+            context.stroke(
+                path,
+                with: .color(Color.vibeElectricCyan.opacity(0.32)),
+                style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round, dash: [5, 7])
+            )
+        }
+    }
+}
+
+private struct GarageCourseCalibrationHandle: View {
+    let descriptor: GarageCourseCalibrationAnchorDescriptor
+    let point: CGPoint
+    let isDragging: Bool
+
+    var body: some View {
+        VStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(.regularMaterial)
+                    .frame(width: descriptor.isActive ? 56 : 44, height: descriptor.isActive ? 56 : 44)
+                    .overlay(
+                        Circle()
+                            .fill(Color.vibeElectricCyan.opacity(descriptor.isActive ? 0.18 : 0.1))
+                    )
+
+                Circle()
+                    .stroke(
+                        descriptor.isActive ? Color.vibeElectricCyan.opacity(0.96) : Color.white.opacity(0.58),
+                        lineWidth: descriptor.isActive ? 2.6 : 1.8
+                    )
+                    .frame(width: descriptor.isActive ? 36 : 28, height: descriptor.isActive ? 36 : 28)
+
+                Circle()
+                    .fill(descriptor.isActive ? Color.vibeElectricCyan : Color.white.opacity(0.88))
+                    .frame(width: 9, height: 9)
+            }
+
+            Text(descriptor.title.uppercased())
+                .font(.caption2.weight(.bold))
+                .tracking(1.0)
+                .foregroundStyle(garageReviewReadableText)
+                .lineLimit(1)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 6)
+                .background(
+                    garageMaterialSurface(
+                        Capsule(),
+                        material: descriptor.isActive ? .regularMaterial : .ultraThinMaterial,
+                        stroke: descriptor.isActive ? Color.vibeElectricCyan.opacity(0.24) : garageReviewStroke.opacity(0.92)
+                    )
+                )
+        }
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
+        .position(point)
+        .scaleEffect(isDragging ? 1.15 : 1.0)
+        .shadow(color: .black.opacity(0.14), radius: isDragging ? 18 : 9, x: 0, y: isDragging ? 9 : 4)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isDragging)
+    }
+}
+
 private struct GarageCourseShotDraftBinding {
     let club: Binding<GarageTacticalClub?>
     let shotType: Binding<GarageTacticalShotType?>
@@ -1633,11 +2256,6 @@ extension GarageTacticalLie: GarageCourseMapSelectable {}
 extension GarageTacticalResult: GarageCourseMapSelectable {}
 extension GarageShotFlightShape: GarageCourseMapSelectable {}
 extension GarageShotStrikeQuality: GarageCourseMapSelectable {}
-
-private struct GarageCourseCalibrationPresentation: Identifiable {
-    let id = UUID()
-    let hole: GarageHoleMap
-}
 
 private struct GarageCourseMapAlert: Identifiable {
     let id = UUID()
