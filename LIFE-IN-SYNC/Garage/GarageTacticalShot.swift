@@ -18,6 +18,10 @@ final class GarageTacticalShot {
     var actualResult: GarageTacticalResult
     var flightShape: GarageShotFlightShape
     var strikeQuality: GarageShotStrikeQuality
+    var tempo: Double?
+    var backswingDuration: Double?
+    var downswingDuration: Double?
+    var handSpeed: Double?
 
     var session: GarageRoundSession?
 
@@ -37,6 +41,10 @@ final class GarageTacticalShot {
         actualResult: GarageTacticalResult,
         flightShape: GarageShotFlightShape = .straight,
         strikeQuality: GarageShotStrikeQuality = .pure,
+        tempo: Double? = nil,
+        backswingDuration: Double? = nil,
+        downswingDuration: Double? = nil,
+        handSpeed: Double? = nil,
         session: GarageRoundSession? = nil,
         hole: GarageHoleMap? = nil
     ) {
@@ -53,6 +61,10 @@ final class GarageTacticalShot {
         self.actualResult = actualResult
         self.flightShape = flightShape
         self.strikeQuality = strikeQuality
+        self.tempo = tempo
+        self.backswingDuration = backswingDuration
+        self.downswingDuration = downswingDuration
+        self.handSpeed = handSpeed
         self.session = session
         self.hole = hole
     }
