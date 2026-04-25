@@ -522,7 +522,7 @@ struct GarageTacticalEntryFlow: View {
             }
 
             let shot = GarageTacticalShot(
-                sequenceIndex: session.shots.count + 1,
+                sequenceIndex: session.totalShots + 1,
                 holeNumber: hole.holeNumber,
                 placement: draft.placement,
                 club: club,

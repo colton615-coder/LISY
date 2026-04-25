@@ -1,7 +1,9 @@
 import Foundation
 import SwiftData
 
+@preconcurrency
 @Model
+@MainActor
 final class GarageHoleMap {
     var id: UUID
     var createdAt: Date
@@ -64,5 +66,25 @@ final class GarageHoleMap {
 
     var isCalibrated: Bool {
         teeAnchor != nil && fairwayCheckpointAnchor != nil && greenCenterAnchor != nil
+    }
+
+    var totalShots: Int {
+        shots.count
+    }
+
+    var sortedShots: [GarageTacticalShot] {
+        shots.sorted { lhs, rhs in
+            if lhs.sequenceIndex != rhs.sequenceIndex {
+                return lhs.sequenceIndex < rhs.sequenceIndex
+            }
+            if lhs.createdAt != rhs.createdAt {
+                return lhs.createdAt < rhs.createdAt
+            }
+            return lhs.id.uuidString < rhs.id.uuidString
+        }
+    }
+
+    var lastShot: GarageTacticalShot? {
+        sortedShots.last
     }
 }

@@ -174,7 +174,7 @@ private struct GarageCourseShotDraft {
             return
         }
 
-        if let priorShot = hole.shots.sorted(by: { $0.sequenceIndex < $1.sequenceIndex }).last {
+        if let priorShot = hole.lastShot {
             placement = priorShot.placement
         } else if let checkpoint = hole.fairwayCheckpointAnchor {
             placement = GarageShotPlacement(
@@ -193,7 +193,7 @@ private struct GarageCourseShotDraft {
         club = nil
         shotType = nil
         intendedTarget = "Center Line"
-        lieBeforeShot = hole.shots.isEmpty ? .tee : nil
+        lieBeforeShot = hole.totalShots == 0 ? .tee : nil
         actualResult = nil
         flightShape = .straight
         strikeQuality = .pure
@@ -1471,7 +1471,7 @@ struct GarageCourseMapView: View {
                 mapMode = .review
             }
             refreshResolvedState(presentCalibrationIfNeeded: false)
-            overlayModel.selectShot(activeHole.shots.sorted(by: { $0.sequenceIndex < $1.sequenceIndex }).last?.id)
+            overlayModel.selectShot(activeHole.lastShot?.id)
         } catch {
             modelContext.rollback()
             calibrationSaveErrorMessage = GarageCourseMapAlert.message(for: error)
@@ -1487,7 +1487,7 @@ struct GarageCourseMapView: View {
             return nil
         }
 
-        let sortedShots = hole.shots.sorted { $0.sequenceIndex < $1.sequenceIndex }
+        let sortedShots = hole.sortedShots
         let existingShotCount = sortedShots.count
         let startPlacement: GarageShotPlacement
 
@@ -1573,7 +1573,7 @@ struct GarageCourseMapView: View {
                 shot.strikeQuality = draft.strikeQuality
             } else {
                 shot = GarageTacticalShot(
-                    sequenceIndex: activeSession.shots.count + 1,
+                    sequenceIndex: activeSession.totalShots + 1,
                     holeNumber: activeHole.holeNumber,
                     placement: draft.placement,
                     club: club,

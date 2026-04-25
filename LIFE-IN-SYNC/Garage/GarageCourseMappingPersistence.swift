@@ -131,17 +131,7 @@ enum GarageCourseMappingPersistence {
 
     @MainActor
     static func reindexShots(in session: GarageRoundSession) {
-        let sortedShots = session.shots.sorted { lhs, rhs in
-            if lhs.sequenceIndex != rhs.sequenceIndex {
-                return lhs.sequenceIndex < rhs.sequenceIndex
-            }
-            if lhs.createdAt != rhs.createdAt {
-                return lhs.createdAt < rhs.createdAt
-            }
-            return lhs.id.uuidString < rhs.id.uuidString
-        }
-
-        for (index, shot) in sortedShots.enumerated() {
+        for (index, shot) in session.sortedShots.enumerated() {
             shot.sequenceIndex = index + 1
             if let hole = shot.hole {
                 shot.holeNumber = hole.holeNumber

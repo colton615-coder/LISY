@@ -282,15 +282,7 @@ struct GarageCourseShotOverlayDescriptor: Identifiable, Equatable {
 
 enum GarageCourseMapOverlayRenderer {
     static func descriptors(for hole: GarageHoleMap) -> [GarageCourseShotOverlayDescriptor] {
-        let sortedShots = hole.shots.sorted { lhs, rhs in
-            if lhs.sequenceIndex != rhs.sequenceIndex {
-                return lhs.sequenceIndex < rhs.sequenceIndex
-            }
-            if lhs.createdAt != rhs.createdAt {
-                return lhs.createdAt < rhs.createdAt
-            }
-            return lhs.id.uuidString < rhs.id.uuidString
-        }
+        let sortedShots = hole.sortedShots
 
         return sortedShots.enumerated().map { index, shot in
             let startPlacement: GarageShotPlacement

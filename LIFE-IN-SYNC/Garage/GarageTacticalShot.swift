@@ -1,7 +1,9 @@
 import Foundation
 import SwiftData
 
+@preconcurrency
 @Model
+@MainActor
 final class GarageTacticalShot {
     var id: UUID
     var createdAt: Date

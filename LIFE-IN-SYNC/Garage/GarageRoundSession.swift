@@ -1,7 +1,9 @@
 import Foundation
 import SwiftData
 
+@preconcurrency
 @Model
+@MainActor
 final class GarageRoundSession {
     var id: UUID
     var createdAt: Date
@@ -37,5 +39,29 @@ final class GarageRoundSession {
         self.notes = notes
         self.holes = holes
         self.shots = shots
+    }
+
+    var totalShots: Int {
+        shots.count
+    }
+
+    var sortedShots: [GarageTacticalShot] {
+        shots.sorted { lhs, rhs in
+            if lhs.sequenceIndex != rhs.sequenceIndex {
+                return lhs.sequenceIndex < rhs.sequenceIndex
+            }
+            if lhs.createdAt != rhs.createdAt {
+                return lhs.createdAt < rhs.createdAt
+            }
+            return lhs.id.uuidString < rhs.id.uuidString
+        }
+    }
+
+    var playedHoleCount: Int {
+        Set(shots.map(\.holeNumber)).count
+    }
+
+    var lastShot: GarageTacticalShot? {
+        sortedShots.last
     }
 }
