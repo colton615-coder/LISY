@@ -1,7 +1,9 @@
 import AVFoundation
 import Foundation
 import ImageIO
+import Observation
 import simd
+import SwiftData
 import Vision
 
 private struct GaragePoseCoordinateMapper {
@@ -182,6 +184,110 @@ struct GarageAnalysisOutput {
     let handPathReviewReport: GarageHandPathReviewReport
     let analysisResult: AnalysisResult
     let syncFlow: GarageSyncFlowReport
+}
+
+struct GaragePendingShotMetrics {
+    let tempo: Double?
+    let backswingDuration: Double?
+    let downswingDuration: Double?
+    let handSpeed: Double?
+
+    init(
+        tempo: Double? = nil,
+        backswingDuration: Double? = nil,
+        downswingDuration: Double? = nil,
+        handSpeed: Double? = nil
+    ) {
+        self.tempo = tempo
+        self.backswingDuration = backswingDuration
+        self.downswingDuration = downswingDuration
+        self.handSpeed = handSpeed
+    }
+}
+
+struct GaragePendingShotPayload {
+    let holeNumber: Int
+    let placement: GarageShotPlacement
+    let club: GarageTacticalClub
+    let shotType: GarageTacticalShotType
+    let intendedTarget: String
+    let lieBeforeShot: GarageTacticalLie
+    let actualResult: GarageTacticalResult
+    let flightShape: GarageShotFlightShape
+    let strikeQuality: GarageShotStrikeQuality
+    let metrics: GaragePendingShotMetrics
+
+    init(
+        holeNumber: Int,
+        placement: GarageShotPlacement,
+        club: GarageTacticalClub,
+        shotType: GarageTacticalShotType,
+        intendedTarget: String,
+        lieBeforeShot: GarageTacticalLie,
+        actualResult: GarageTacticalResult,
+        flightShape: GarageShotFlightShape = .straight,
+        strikeQuality: GarageShotStrikeQuality = .pure,
+        metrics: GaragePendingShotMetrics = GaragePendingShotMetrics()
+    ) {
+        self.holeNumber = holeNumber
+        self.placement = placement
+        self.club = club
+        self.shotType = shotType
+        self.intendedTarget = intendedTarget
+        self.lieBeforeShot = lieBeforeShot
+        self.actualResult = actualResult
+        self.flightShape = flightShape
+        self.strikeQuality = strikeQuality
+        self.metrics = metrics
+    }
+}
+
+@MainActor
+@Observable
+final class GarageAnalysis {
+    private(set) var pendingShot: GarageTacticalShot?
+
+    func stageDetectedShot(_ payload: GaragePendingShotPayload) {
+        pendingShot = GarageTacticalShot(
+            sequenceIndex: 0,
+            holeNumber: payload.holeNumber,
+            placement: payload.placement,
+            club: payload.club,
+            shotType: payload.shotType,
+            intendedTarget: payload.intendedTarget,
+            lieBeforeShot: payload.lieBeforeShot,
+            actualResult: payload.actualResult,
+            flightShape: payload.flightShape,
+            strikeQuality: payload.strikeQuality,
+            tempo: payload.metrics.tempo,
+            backswingDuration: payload.metrics.backswingDuration,
+            downswingDuration: payload.metrics.downswingDuration,
+            handSpeed: payload.metrics.handSpeed
+        )
+    }
+
+    func confirmPendingShot(session: GarageRoundSession) {
+        guard let pendingShot else { return }
+
+        let nextSequenceIndex = (session.sortedShots.last?.sequenceIndex ?? 0) + 1
+        pendingShot.sequenceIndex = nextSequenceIndex
+        pendingShot.updatedAt = .now
+        pendingShot.session = session
+
+        if let modelContext = session.modelContext, pendingShot.modelContext == nil {
+            modelContext.insert(pendingShot)
+        }
+
+        if session.shots.contains(where: { $0.id == pendingShot.id }) == false {
+            session.shots.append(pendingShot)
+        }
+
+        self.pendingShot = nil
+    }
+
+    func discardPendingShot() {
+        pendingShot = nil
+    }
 }
 
 enum GarageHandPathSegmentKind: String, Equatable {
