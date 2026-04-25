@@ -191,7 +191,7 @@ struct GarageCourseMapView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        ZStack {
             courseCanvas
 
             LinearGradient(
@@ -205,24 +205,26 @@ struct GarageCourseMapView: View {
             )
             .ignoresSafeArea()
             .allowsHitTesting(false)
-
-            VStack(spacing: 0) {
-                topStrip
-                    .padding(.horizontal, 16)
-                    .padding(.top, 14)
-
-                Spacer(minLength: 0)
-            }
-
-            bottomDock
-                .padding(.horizontal, 16)
-                .padding(.bottom, bottomInset)
         }
         .background(garageReviewBackground.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: dockState)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: reviewModeEnabled)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.selectedShotID)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.activeShotPlacement)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: calibrationPresentation != nil)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            topStrip
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 10)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            bottomDock
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, max(bottomInset - 24, 12))
+        }
         .sheet(item: $calibrationPresentation) { presentation in
             GarageCourseCalibrationSheet(
                 hole: presentation.hole,
@@ -233,6 +235,8 @@ struct GarageCourseMapView: View {
             )
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
+            .presentationBackground(.regularMaterial)
+            .presentationCornerRadius(32)
         }
         .alert(item: $blockerAlert) { alert in
             Alert(
@@ -259,16 +263,11 @@ struct GarageCourseMapView: View {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(garageReviewReadableText)
-                    .frame(width: 38, height: 38)
-                    .background(
-                        GarageInsetPanelBackground(
-                            shape: Circle(),
-                            fill: garageReviewSurfaceDark.opacity(0.88),
-                            stroke: garageReviewStroke.opacity(0.94)
-                        )
-                    )
+                    .frame(width: 44, height: 44)
+                    .background(garageMaterialSurface(Circle()))
             }
             .buttonStyle(.plain)
+            .contentShape(Circle())
 
             HStack(spacing: 14) {
                 GarageCourseTopMetric(label: "Hole", value: activeHole.map { "\($0.holeNumber)" } ?? model.metadata.holeLabel.replacingOccurrences(of: "Hole ", with: ""))
@@ -277,13 +276,7 @@ struct GarageCourseMapView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
-            .background(
-                GarageRaisedPanelBackground(
-                    shape: RoundedRectangle(cornerRadius: 20, style: .continuous),
-                    fill: garageReviewSurfaceDark.opacity(0.84),
-                    stroke: garageReviewStroke.opacity(0.92)
-                )
-            )
+            .background(garageMaterialSurface(RoundedRectangle(cornerRadius: 20, style: .continuous), material: .regularMaterial))
 
             Spacer(minLength: 0)
 
@@ -298,13 +291,7 @@ struct GarageCourseMapView: View {
                 .foregroundStyle(garageReviewMutedText)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
-                .background(
-                    GarageInsetPanelBackground(
-                        shape: Capsule(),
-                        fill: garageReviewSurfaceDark.opacity(0.82),
-                        stroke: garageReviewStroke.opacity(0.92)
-                    )
-                )
+                .background(garageMaterialSurface(Capsule()))
             }
         }
     }
@@ -385,9 +372,9 @@ struct GarageCourseMapView: View {
                     .padding(.vertical, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
-                        GarageInsetPanelBackground(
-                            shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
-                            fill: garageReviewSurfaceDark.opacity(0.88),
+                        garageMaterialSurface(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous),
+                            material: .ultraThinMaterial,
                             stroke: garageReviewFlagged.opacity(0.22)
                         )
                     )
@@ -428,6 +415,7 @@ struct GarageCourseMapView: View {
                 )
             }
             .buttonStyle(.plain)
+            .contentShape(Rectangle())
 
             Button {
                 garageTriggerImpact(.light)
@@ -462,7 +450,10 @@ struct GarageCourseMapView: View {
                 )
             }
             .buttonStyle(.plain)
+            .contentShape(Rectangle())
         }
+        .padding(14)
+        .background(garageMaterialSurface(RoundedRectangle(cornerRadius: 26, style: .continuous), material: .regularMaterial))
     }
 
     private func expandedDock(step: GarageCourseMapEditorStep, editingShotID: UUID?) -> some View {
@@ -543,13 +534,7 @@ struct GarageCourseMapView: View {
             }
         }
         .padding(18)
-        .background(
-            GarageRaisedPanelBackground(
-                shape: RoundedRectangle(cornerRadius: 26, style: .continuous),
-                fill: garageReviewSurfaceDark.opacity(0.9),
-                stroke: garageReviewStroke.opacity(0.94)
-            )
-        )
+        .background(garageMaterialSurface(RoundedRectangle(cornerRadius: 26, style: .continuous), material: .regularMaterial))
     }
 
     private var placementEditor: some View {
@@ -1320,6 +1305,8 @@ private struct GarageCourseCanvasOverlays: View {
                 selectedCallout
             }
         }
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.activeShotPlacement)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.selectedShotID)
     }
 
     private func faintSequencePath(for hole: GarageHoleMap) -> some View {
@@ -1379,22 +1366,29 @@ private struct GarageCourseCanvasOverlays: View {
             } label: {
                 ZStack {
                     Circle()
-                        .fill(isSelected ? Color.white.opacity(0.18) : Color.black.opacity(0.44))
-                        .frame(width: isSelected ? 40 : 28, height: isSelected ? 40 : 28)
+                        .fill(.ultraThinMaterial)
+                        .frame(width: isSelected ? 40 : 30, height: isSelected ? 40 : 30)
+                        .overlay(
+                            Circle()
+                                .fill(isSelected ? Color.vibeElectricCyan.opacity(0.12) : Color.clear)
+                        )
 
                     Circle()
                         .stroke(isSelected ? Color.white.opacity(0.96) : Color.white.opacity(0.44), lineWidth: isSelected ? 2 : 1)
-                        .frame(width: isSelected ? 40 : 28, height: isSelected ? 40 : 28)
+                        .frame(width: isSelected ? 40 : 30, height: isSelected ? 40 : 30)
 
                     Text("\(descriptor.sequenceIndex)")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(isSelected ? garageReviewReadableText : garageReviewMutedText)
                 }
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .position(point)
-            .shadow(color: isSelected ? Color.vibeElectricCyan.opacity(0.3) : Color.black.opacity(0.18), radius: 12, x: 0, y: 6)
+            .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
             .opacity(activeDraftShotID == descriptor.id && isEditingPlacement ? 0.35 : 1)
+            .zIndex(isSelected ? 2 : 1)
         }
     }
 
@@ -1406,8 +1400,12 @@ private struct GarageCourseCanvasOverlays: View {
 
             ZStack {
                 Circle()
-                    .fill(Color.vibeElectricCyan.opacity(0.18))
+                    .fill(.regularMaterial)
                     .frame(width: 56, height: 56)
+                    .overlay(
+                        Circle()
+                            .fill(Color.vibeElectricCyan.opacity(0.16))
+                    )
 
                 Circle()
                     .stroke(Color.vibeElectricCyan.opacity(0.98), lineWidth: 2.4)
@@ -1421,6 +1419,8 @@ private struct GarageCourseCanvasOverlays: View {
                     .font(.caption.weight(.bold))
                     .foregroundStyle(garageReviewReadableText)
             }
+            .frame(width: 60, height: 60)
+            .contentShape(Rectangle())
             .overlay(alignment: .bottom) {
                 Text(isEditingPlacement ? "DRAG" : "SHOT")
                     .font(.caption2.weight(.bold))
@@ -1428,18 +1428,11 @@ private struct GarageCourseCanvasOverlays: View {
                     .foregroundStyle(garageReviewReadableText)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
-                    .background(
-                        Capsule()
-                            .fill(garageReviewSurfaceDark.opacity(0.94))
-                            .overlay(
-                                Capsule()
-                                    .stroke(Color.vibeElectricCyan.opacity(0.24), lineWidth: 0.6)
-                            )
-                    )
+                    .background(garageMaterialSurface(Capsule()))
                     .offset(y: 34)
             }
             .position(point)
-            .shadow(color: Color.vibeElectricCyan.opacity(0.34), radius: 18, x: 0, y: 10)
+            .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
@@ -1470,6 +1463,7 @@ private struct GarageCourseCanvasOverlays: View {
                     }
             )
             .allowsHitTesting(isEditingPlacement)
+            .zIndex(3)
         }
     }
 
@@ -1513,28 +1507,18 @@ private struct GarageCourseCanvasOverlays: View {
                             .foregroundStyle(garageReviewReadableText)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 7)
-                            .background(
-                                Capsule()
-                                    .fill(Color.vibeElectricCyan.opacity(0.14))
-                                    .overlay(
-                                        Capsule()
-                                            .stroke(Color.vibeElectricCyan.opacity(0.24), lineWidth: 0.6)
-                                    )
-                            )
+                            .background(garageMaterialSurface(Capsule()))
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
             }
             .padding(14)
             .frame(width: calloutWidth, alignment: .leading)
-            .background(
-                GarageRaisedPanelBackground(
-                    shape: RoundedRectangle(cornerRadius: 20, style: .continuous),
-                    fill: garageReviewSurfaceDark.opacity(0.92),
-                    stroke: garageReviewStroke.opacity(0.94)
-                )
-            )
+            .background(garageMaterialSurface(RoundedRectangle(cornerRadius: 20, style: .continuous), material: .regularMaterial))
             .position(x: clampedX, y: clampedY)
+            .zIndex(4)
         }
     }
 
@@ -1544,14 +1528,7 @@ private struct GarageCourseCanvasOverlays: View {
             .foregroundStyle(garageReviewMutedText)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-            .background(
-                Capsule()
-                    .fill(garageReviewSurface.opacity(0.88))
-                    .overlay(
-                        Capsule()
-                            .stroke(garageReviewStroke.opacity(0.92), lineWidth: 0.6)
-                    )
-            )
+            .background(garageMaterialSurface(Capsule()))
     }
 }
 
@@ -1603,6 +1580,19 @@ private struct GarageCourseMapAlert: Identifiable {
 
         return (error as NSError).localizedDescription
     }
+}
+
+private func garageMaterialSurface<S: Shape>(
+    _ shape: S,
+    material: Material = .ultraThinMaterial,
+    stroke: Color = Color.white.opacity(0.08)
+) -> some View {
+    shape
+        .fill(material)
+        .overlay(
+            shape.stroke(stroke, lineWidth: 0.7)
+        )
+        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
 }
 
 #Preview {

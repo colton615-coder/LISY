@@ -153,6 +153,9 @@ struct GarageCourseCalibrationSheet: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: draft.teeAnchor)
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: draft.fairwayCheckpointAnchor)
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: draft.greenCenterAnchor)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.activeAnchor)
+            .safeAreaPadding(.top, 8)
+            .safeAreaPadding(.bottom, 12)
         }
     }
 
@@ -182,17 +185,11 @@ struct GarageCourseCalibrationSheet: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(garageReviewReadableText.opacity(0.92))
-                        .frame(width: 34, height: 34)
-                        .background(
-                            Circle()
-                                .fill(garageReviewInsetSurface)
-                                .overlay(
-                                    Circle()
-                                        .stroke(garageReviewStroke, lineWidth: 0.6)
-                                )
-                        )
+                        .frame(width: 44, height: 44)
+                        .background(garageSheetMaterialSurface(Circle()))
                 }
                 .buttonStyle(.plain)
+                .contentShape(Circle())
             }
 
             HStack(spacing: 8) {
@@ -209,22 +206,15 @@ struct GarageCourseCalibrationSheet: View {
                     .padding(.vertical, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
-                        GarageInsetPanelBackground(
-                            shape: RoundedRectangle(cornerRadius: 16, style: .continuous),
-                            fill: garageReviewInsetSurface.opacity(0.96),
+                        garageSheetMaterialSurface(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous),
                             stroke: garageReviewFlagged.opacity(0.18)
                         )
                     )
             }
         }
         .padding(18)
-        .background(
-            GarageRaisedPanelBackground(
-                shape: RoundedRectangle(cornerRadius: 24, style: .continuous),
-                fill: garageReviewSurfaceRaised,
-                stroke: garageReviewStroke.opacity(0.92)
-            )
-        )
+        .background(garageSheetMaterialSurface(RoundedRectangle(cornerRadius: 24, style: .continuous), material: .regularMaterial))
     }
 
     private func calibrationStatusPill(step: GarageCourseCalibrationStep) -> some View {
@@ -244,15 +234,11 @@ struct GarageCourseCalibrationSheet: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .background(
-            Capsule()
-                .fill(isActive ? Color.vibeElectricCyan.opacity(0.12) : garageReviewInsetSurface.opacity(0.94))
-                .overlay(
-                    Capsule()
-                        .stroke(
-                            isActive ? Color.vibeElectricCyan.opacity(0.28) : garageReviewStroke.opacity(0.92),
-                            lineWidth: 0.6
-                        )
-                )
+            garageSheetMaterialSurface(
+                Capsule(),
+                material: .ultraThinMaterial,
+                stroke: isActive ? Color.vibeElectricCyan.opacity(0.28) : garageReviewStroke.opacity(0.92)
+            )
         )
     }
 
@@ -289,25 +275,15 @@ struct GarageCourseCalibrationSheet: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 14)
                     .background(
-                        isSelected
-                        ? AnyView(
-                            GarageRaisedPanelBackground(
-                                shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
-                                fill: garageReviewSurfaceRaised,
-                                stroke: Color.vibeElectricCyan.opacity(0.28),
-                                glow: Color.vibeElectricCyan.opacity(0.44)
-                            )
-                        )
-                        : AnyView(
-                            GarageInsetPanelBackground(
-                                shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
-                                fill: garageReviewInsetSurface.opacity(0.96),
-                                stroke: garageReviewStroke.opacity(0.94)
-                            )
+                        garageSheetMaterialSurface(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous),
+                            material: isSelected ? .regularMaterial : .ultraThinMaterial,
+                            stroke: isSelected ? Color.vibeElectricCyan.opacity(0.28) : garageReviewStroke.opacity(0.94)
                         )
                     )
                 }
                 .buttonStyle(.plain)
+                .contentShape(Rectangle())
             }
         }
     }
@@ -356,16 +332,12 @@ struct GarageCourseCalibrationSheet: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(garageReviewReadableText)
                     .frame(maxWidth: .infinity)
+                    .frame(minHeight: 44)
                     .padding(.vertical, 15)
-                    .background(
-                        GarageInsetPanelBackground(
-                            shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
-                            fill: garageReviewInsetSurface.opacity(0.96),
-                            stroke: garageReviewStroke.opacity(0.94)
-                        )
-                    )
+                    .background(garageSheetMaterialSurface(RoundedRectangle(cornerRadius: 18, style: .continuous)))
             }
             .buttonStyle(.plain)
+            .contentShape(Rectangle())
 
             Button {
                 garageTriggerImpact(.medium)
@@ -375,20 +347,29 @@ struct GarageCourseCalibrationSheet: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(garageReviewCanvasFill)
                     .frame(maxWidth: .infinity)
+                    .frame(minHeight: 44)
                     .padding(.vertical, 15)
                     .background(
-                        GarageRaisedPanelBackground(
-                            shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
-                            fill: Color.vibeElectricCyan,
-                            stroke: Color.vibeElectricCyan.opacity(0.34),
-                            glow: Color.vibeElectricCyan
+                        garageSheetMaterialSurface(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous),
+                            material: .regularMaterial,
+                            stroke: Color.vibeElectricCyan.opacity(0.34)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .fill(Color.vibeElectricCyan.opacity(0.78))
+                                .blendMode(.plusLighter)
+                                .opacity(0.9)
                         )
                     )
             }
             .buttonStyle(.plain)
             .disabled(primaryButtonDisabled)
             .opacity(primaryButtonDisabled ? 0.55 : 1)
+            .contentShape(Rectangle())
         }
+        .padding(14)
+        .background(garageSheetMaterialSurface(RoundedRectangle(cornerRadius: 24, style: .continuous), material: .regularMaterial))
     }
 
     private var primaryButtonDisabled: Bool {
@@ -522,11 +503,7 @@ private struct GarageCourseCalibrationCanvas: View {
             )
 
             ZStack {
-                GarageInsetPanelBackground(
-                    shape: RoundedRectangle(cornerRadius: 28, style: .continuous),
-                    fill: garageReviewInsetSurface.opacity(0.98),
-                    stroke: garageReviewStroke.opacity(0.96)
-                )
+                garageSheetMaterialSurface(RoundedRectangle(cornerRadius: 28, style: .continuous), material: .regularMaterial)
 
                 GarageCourseCalibrationSurface(image: image, hole: hole)
                     .frame(width: rect.width, height: rect.height)
@@ -603,6 +580,10 @@ private struct GarageCourseCalibrationCanvas: View {
                     }
             )
         }
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: overlayModel.activeAnchor)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: draft.teeAnchor)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: draft.fairwayCheckpointAnchor)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: draft.greenCenterAnchor)
     }
 
     private func calibrationLegendPill(_ descriptor: GarageCourseCalibrationAnchorDescriptor) -> some View {
@@ -619,15 +600,11 @@ private struct GarageCourseCalibrationCanvas: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
-            Capsule()
-                .fill(descriptor.isActive ? garageReviewSurfaceDark.opacity(0.96) : garageReviewInsetSurface.opacity(0.94))
-                .overlay(
-                    Capsule()
-                        .stroke(
-                            descriptor.isActive ? Color.vibeElectricCyan.opacity(0.24) : garageReviewStroke.opacity(0.92),
-                            lineWidth: 0.6
-                        )
-                )
+            garageSheetMaterialSurface(
+                Capsule(),
+                material: descriptor.isActive ? .regularMaterial : .ultraThinMaterial,
+                stroke: descriptor.isActive ? Color.vibeElectricCyan.opacity(0.24) : garageReviewStroke.opacity(0.92)
+            )
         )
     }
 }
@@ -722,8 +699,12 @@ private struct GarageCourseCalibrationHandle: View {
         VStack(spacing: 8) {
             ZStack {
                 Circle()
-                    .fill(Color.vibeElectricCyan.opacity(descriptor.isActive ? 0.2 : 0.1))
+                    .fill(.regularMaterial)
                     .frame(width: descriptor.isActive ? 52 : 42, height: descriptor.isActive ? 52 : 42)
+                    .overlay(
+                        Circle()
+                            .fill(Color.vibeElectricCyan.opacity(descriptor.isActive ? 0.18 : 0.1))
+                    )
 
                 Circle()
                     .stroke(
@@ -744,20 +725,31 @@ private struct GarageCourseCalibrationHandle: View {
                 .padding(.horizontal, 9)
                 .padding(.vertical, 6)
                 .background(
-                    Capsule()
-                        .fill(garageReviewSurfaceDark.opacity(0.94))
-                        .overlay(
-                            Capsule()
-                                .stroke(
-                                    descriptor.isActive ? Color.vibeElectricCyan.opacity(0.24) : garageReviewStroke.opacity(0.92),
-                                    lineWidth: 0.6
-                                )
-                        )
+                    garageSheetMaterialSurface(
+                        Capsule(),
+                        material: descriptor.isActive ? .regularMaterial : .ultraThinMaterial,
+                        stroke: descriptor.isActive ? Color.vibeElectricCyan.opacity(0.24) : garageReviewStroke.opacity(0.92)
+                    )
                 )
         }
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
         .position(point)
-        .shadow(color: Color.vibeElectricCyan.opacity(descriptor.isActive ? 0.3 : 0.14), radius: 14, x: 0, y: 0)
+        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
     }
+}
+
+private func garageSheetMaterialSurface<S: Shape>(
+    _ shape: S,
+    material: Material = .ultraThinMaterial,
+    stroke: Color = Color.white.opacity(0.08)
+) -> some View {
+    shape
+        .fill(material)
+        .overlay(
+            shape.stroke(stroke, lineWidth: 0.7)
+        )
+        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
 }
 
 #Preview {
