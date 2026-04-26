@@ -220,22 +220,41 @@ struct GarageCourseMapView: View {
     }
 
     var body: some View {
-        ZStack {
-            courseCanvas
+        GeometryReader { proxy in
+            ZStack {
+                courseCanvas(proxy: proxy)
+                    .ignoresSafeArea()
 
-            LinearGradient(
-                colors: [
-                    Color.black.opacity(0.34),
-                    Color.black.opacity(0.12),
-                    .clear
-                ],
-                startPoint: .top,
-                endPoint: .center
-            )
-            .ignoresSafeArea()
-            .allowsHitTesting(false)
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(0.34),
+                        Color.black.opacity(0.12),
+                        .clear
+                    ],
+                    startPoint: .top,
+                    endPoint: .center
+                )
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+
+                VStack(spacing: 0) {
+                    topStrip
+                        .padding(.horizontal, 16)
+                        .padding(.top, proxy.safeAreaInsets.top + 8)
+                        .padding(.bottom, 10)
+
+                    Spacer(minLength: 0)
+                        .allowsHitTesting(false)
+
+                    bottomDock
+                        .padding(.horizontal, 16)
+                        .padding(.top, 10)
+                        .padding(.bottom, proxy.safeAreaInsets.bottom + max(bottomInset - 24, 12))
+                }
+                .ignoresSafeArea()
+            }
         }
-        .background(garageReviewBackground.ignoresSafeArea())
+        .background(Color.black.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .animation(garageCourseMapSpring, value: mapMode)
         .animation(garageCourseMapSpring, value: reviewModeEnabled)
@@ -246,18 +265,6 @@ struct GarageCourseMapView: View {
         .animation(garageCourseMapSpring, value: currentCalibrationStep)
         .animation(garageCourseMapSpring, value: calibrationDraft)
         .animation(garageCourseMapSpring, value: draft?.placement)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            topStrip
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 10)
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            bottomDock
-                .padding(.horizontal, 16)
-                .padding(.top, 10)
-                .padding(.bottom, max(bottomInset - 24, 12))
-        }
         .alert(item: $blockerAlert) { alert in
             Alert(
                 title: Text(alert.title),
@@ -384,66 +391,65 @@ struct GarageCourseMapView: View {
         }
     }
 
-    private var courseCanvas: some View {
-        GeometryReader { proxy in
-            let imageRect = garageAspectFitRect(container: proxy.size, aspectRatio: canvasAspectRatio)
+    @ViewBuilder
+    private func courseCanvas(proxy: GeometryProxy) -> some View {
+        let imageRect = garageAspectFitRect(container: proxy.size, aspectRatio: canvasAspectRatio)
 
-            ZStack {
-                Color.black.opacity(0.96)
-                    .ignoresSafeArea()
+        ZStack {
+            Color.black.opacity(0.96)
+                .ignoresSafeArea()
 
-                GarageCourseCanvasSurface(
-                    image: canvasImage,
-                    hole: activeHole,
-                    metadata: model.metadata,
-                    imageRect: imageRect
-                )
+            GarageCourseCanvasSurface(
+                image: canvasImage,
+                hole: activeHole,
+                metadata: model.metadata,
+                imageRect: imageRect
+            )
 
-                GarageCourseCanvasOverlays(
-                    overlayModel: overlayModel,
-                    hole: activeHole,
-                    rect: imageRect,
-                    descriptors: overlayDescriptors,
-                    selectedDescriptor: selectedDescriptor,
-                    reviewModeEnabled: reviewModeEnabled,
-                    activeDraftDescriptor: activeDraftOverlayDescriptor(in: activeHole),
-                    activeDraftShotID: editingShotID,
-                    isEditingPlacement: mapMode == .shotEntry,
-                    mapMode: mapMode,
-                    calibrationDraft: calibrationDraft,
-                    activeCalibrationStep: currentCalibrationStep,
-                    updateDraftPlacement: updateDraftPlacement,
-                    finalizeDraftPlacement: finalizeDraftPlacement,
-                    clearDraftInteraction: clearDraftInteraction,
-                    updateCalibrationAnchor: updateCalibrationAnchor,
-                    finalizeCalibrationAnchor: finalizeCalibrationAnchor,
-                    endCalibrationInteraction: endCalibrationInteraction
-                ) { descriptor in
-                    garageTriggerImpact(.light)
-                    withAnimation(garageCourseMapSpring) {
-                        overlayModel.selectShot(descriptor.id)
-                    }
-                    saveErrorMessage = nil
+            GarageCourseCanvasOverlays(
+                overlayModel: overlayModel,
+                hole: activeHole,
+                rect: imageRect,
+                descriptors: overlayDescriptors,
+                selectedDescriptor: selectedDescriptor,
+                reviewModeEnabled: reviewModeEnabled,
+                activeDraftDescriptor: activeDraftOverlayDescriptor(in: activeHole),
+                activeDraftShotID: editingShotID,
+                isEditingPlacement: mapMode == .shotEntry,
+                mapMode: mapMode,
+                calibrationDraft: calibrationDraft,
+                activeCalibrationStep: currentCalibrationStep,
+                updateDraftPlacement: updateDraftPlacement,
+                finalizeDraftPlacement: finalizeDraftPlacement,
+                clearDraftInteraction: clearDraftInteraction,
+                updateCalibrationAnchor: updateCalibrationAnchor,
+                finalizeCalibrationAnchor: finalizeCalibrationAnchor,
+                endCalibrationInteraction: endCalibrationInteraction
+            ) { descriptor in
+                garageTriggerImpact(.light)
+                withAnimation(garageCourseMapSpring) {
+                    overlayModel.selectShot(descriptor.id)
                 }
+                saveErrorMessage = nil
             }
-            .contentShape(Rectangle())
-            .gesture(
-                SpatialTapGesture()
-                    .onEnded { value in
-                        handleCanvasTap(value.location, in: imageRect)
-                    }
-            )
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .local)
-                    .onChanged { value in
-                        handleCanvasDragChanged(value, in: imageRect)
-                    }
-                    .onEnded { value in
-                        handleCanvasDragEnded(value, in: imageRect)
-                    }
-            )
         }
-        .ignoresSafeArea()
+        .frame(width: proxy.size.width, height: proxy.size.height)
+        .contentShape(Rectangle())
+        .gesture(
+            SpatialTapGesture()
+                .onEnded { value in
+                    handleCanvasTap(value.location, in: imageRect)
+                }
+        )
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                .onChanged { value in
+                    handleCanvasDragChanged(value, in: imageRect)
+                }
+                .onEnded { value in
+                    handleCanvasDragEnded(value, in: imageRect)
+                }
+        )
     }
 
     private var bottomDock: some View {
