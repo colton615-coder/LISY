@@ -1,6 +1,59 @@
 import CoreGraphics
 
-func garageAspectFitRect(contentSize: CGSize, in container: CGRect) -> CGRect {
+enum GarageSpatialCoordinateSpace {
+    static let mapSpace = "MapSpace"
+    static let hudSpace = "HUDSpace"
+}
+
+func garageVisionAspectFitRect(contentSize: CGSize, in container: CGRect) -> CGRect {
+    garageAspectFitRectImpl(contentSize: contentSize, in: container)
+}
+
+func garageVisionAspectFitRect(container: CGSize, aspectRatio: CGFloat) -> CGRect {
+    garageAspectFitRectImpl(container: container, aspectRatio: aspectRatio)
+}
+
+func garageVisionMappedPoint(x: Double, y: Double, in rect: CGRect) -> CGPoint {
+    garageMappedPointImpl(x: x, y: y, in: rect)
+}
+
+func garageVisionMappedPoint(_ point: CGPoint, in rect: CGRect) -> CGPoint {
+    garageVisionMappedPoint(x: point.x, y: point.y, in: rect)
+}
+
+func garageVisionNormalizedPoint(from location: CGPoint, in rect: CGRect) -> CGPoint? {
+    garageNormalizedPointImpl(from: location, in: rect)
+}
+
+func garageClampedVisionNormalizedPoint(_ point: CGPoint) -> CGPoint {
+    garageClampedNormalizedPointImpl(point)
+}
+
+func garageCourseMapLayerRect(contentSize: CGSize, in container: CGRect) -> CGRect {
+    garageAspectFitRectImpl(contentSize: contentSize, in: container)
+}
+
+func garageCourseMapLayerRect(container: CGSize, aspectRatio: CGFloat) -> CGRect {
+    garageAspectFitRectImpl(container: container, aspectRatio: aspectRatio)
+}
+
+func garageCourseMapPoint(x: Double, y: Double, in rect: CGRect) -> CGPoint {
+    garageMappedPointImpl(x: x, y: y, in: rect)
+}
+
+func garageCourseMapPoint(_ point: CGPoint, in rect: CGRect) -> CGPoint {
+    garageCourseMapPoint(x: point.x, y: point.y, in: rect)
+}
+
+func garageCourseMapNormalizedPoint(from location: CGPoint, in rect: CGRect) -> CGPoint? {
+    garageNormalizedPointImpl(from: location, in: rect)
+}
+
+func garageClampedCourseMapNormalizedPoint(_ point: CGPoint) -> CGPoint {
+    garageClampedNormalizedPointImpl(point)
+}
+
+private func garageAspectFitRectImpl(contentSize: CGSize, in container: CGRect) -> CGRect {
     guard contentSize.width > 0, contentSize.height > 0, container.width > 0, container.height > 0 else {
         return .zero
     }
@@ -14,7 +67,7 @@ func garageAspectFitRect(contentSize: CGSize, in container: CGRect) -> CGRect {
     return CGRect(origin: origin, size: scaledSize)
 }
 
-func garageAspectFitRect(container: CGSize, aspectRatio: CGFloat) -> CGRect {
+private func garageAspectFitRectImpl(container: CGSize, aspectRatio: CGFloat) -> CGRect {
     guard container.width > 0, container.height > 0, aspectRatio > 0 else {
         return CGRect(origin: .zero, size: container)
     }
@@ -26,24 +79,20 @@ func garageAspectFitRect(container: CGSize, aspectRatio: CGFloat) -> CGRect {
         contentSize = CGSize(width: 1, height: 1 / aspectRatio)
     }
 
-    return garageAspectFitRect(
+    return garageAspectFitRectImpl(
         contentSize: contentSize,
         in: CGRect(origin: .zero, size: container)
     )
 }
 
-func garageMappedPoint(x: Double, y: Double, in rect: CGRect) -> CGPoint {
+private func garageMappedPointImpl(x: Double, y: Double, in rect: CGRect) -> CGPoint {
     CGPoint(
         x: rect.minX + (rect.width * x),
         y: rect.minY + (rect.height * y)
     )
 }
 
-func garageMappedPoint(_ point: CGPoint, in rect: CGRect) -> CGPoint {
-    garageMappedPoint(x: point.x, y: point.y, in: rect)
-}
-
-func garageNormalizedPoint(from location: CGPoint, in rect: CGRect) -> CGPoint? {
+private func garageNormalizedPointImpl(from location: CGPoint, in rect: CGRect) -> CGPoint? {
     guard rect.contains(location), rect.width > 0, rect.height > 0 else {
         return nil
     }
@@ -53,7 +102,7 @@ func garageNormalizedPoint(from location: CGPoint, in rect: CGRect) -> CGPoint? 
     return CGPoint(x: normalizedX, y: normalizedY)
 }
 
-func garageClampedNormalizedPoint(_ point: CGPoint) -> CGPoint {
+private func garageClampedNormalizedPointImpl(_ point: CGPoint) -> CGPoint {
     CGPoint(
         x: min(max(point.x, 0), 1),
         y: min(max(point.y, 0), 1)

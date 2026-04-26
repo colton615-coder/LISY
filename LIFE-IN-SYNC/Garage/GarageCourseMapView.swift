@@ -153,6 +153,8 @@ struct GarageCourseMapView: View {
 
                 overlays(proxy: proxy)
             }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .coordinateSpace(name: GarageSpatialCoordinateSpace.mapSpace)
         }
         .background(garageReviewBackground.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)

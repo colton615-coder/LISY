@@ -442,10 +442,12 @@ struct GarageView: View {
                         route = .hub
                     }
                 )
+                .coordinateSpace(name: GarageSpatialCoordinateSpace.mapSpace)
             } else {
                 GarageCustomScaffold(module: .garage, tabs: [], selectedTab: .constant(.hub)) { size in
                     garageContent(for: size)
                 }
+                .coordinateSpace(name: GarageSpatialCoordinateSpace.hudSpace)
             }
         }
         .overlay {

@@ -425,7 +425,7 @@ struct GarageFocusedReviewWorkspace: View {
 
     private var predictedAnchorPoint: CGPoint? {
         if let dragAnchorPoint {
-            return garageClampedNormalizedPoint(dragAnchorPoint)
+            return garageClampedVisionNormalizedPoint(dragAnchorPoint)
         }
 
         if let currentFrame {
@@ -433,7 +433,7 @@ struct GarageFocusedReviewWorkspace: View {
                 return CGPoint(x: selectedAnchor.x, y: selectedAnchor.y)
             }
 
-            return garageClampedNormalizedPoint(GarageAnalysisPipeline.handCenter(in: currentFrame))
+            return garageClampedVisionNormalizedPoint(GarageAnalysisPipeline.handCenter(in: currentFrame))
         }
 
         if let selectedAnchor {
@@ -1077,12 +1077,12 @@ struct GarageFocusedReviewWorkspace: View {
     }
 
     private func handleAnchorDragChanged(_ point: CGPoint) {
-        dragAnchorPoint = garageClampedNormalizedPoint(point)
+        dragAnchorPoint = garageClampedVisionNormalizedPoint(point)
         isDraggingAnchor = true
     }
 
     private func handleAnchorDragEnded(_ point: CGPoint) {
-        let clampedPoint = garageClampedNormalizedPoint(point)
+        let clampedPoint = garageClampedVisionNormalizedPoint(point)
         dragAnchorPoint = clampedPoint
         isDraggingAnchor = false
         persistSelection(
@@ -1127,7 +1127,7 @@ struct GarageFocusedReviewWorkspace: View {
     ) {
         guard let currentFrameIndex else { return }
 
-        let clampedPoint = garageClampedNormalizedPoint(point)
+        let clampedPoint = garageClampedVisionNormalizedPoint(point)
         let existingKeyframe = record.keyFrames.first(where: { $0.phase == selectedPhase })
         let needsAdjustedSource = forceAdjustedKeyframe || existingKeyframe?.frameIndex != currentFrameIndex
         let keyframeSource: KeyFrameSource = needsAdjustedSource ? .adjusted : (existingKeyframe?.source ?? .automatic)
@@ -2671,7 +2671,7 @@ private struct GarageReviewImageOverlay: View {
     var body: some View {
         GeometryReader { proxy in
             let containerRect = CGRect(origin: .zero, size: proxy.size)
-            let imageRect = garageAspectFitRect(
+            let imageRect = garageVisionAspectFitRect(
                 contentSize: CGSize(width: image.width, height: image.height),
                 in: containerRect
             )
@@ -2681,6 +2681,8 @@ private struct GarageReviewImageOverlay: View {
                     .resizable()
                     .frame(width: imageRect.width, height: imageRect.height)
                     .position(x: imageRect.midX, y: imageRect.midY)
+                    .coordinateSpace(name: GarageSpatialCoordinateSpace.mapSpace)
+                    .zIndex(0)
 
                 if reviewMode == .skeleton {
                     GarageSkeletonOverlay(
@@ -2703,6 +2705,8 @@ private struct GarageReviewImageOverlay: View {
                     .opacity(skeletonOverlayOpacity)
                     .frame(width: imageRect.width, height: imageRect.height)
                     .position(x: imageRect.midX, y: imageRect.midY)
+                    .coordinateSpace(name: GarageSpatialCoordinateSpace.hudSpace)
+                    .zIndex(1)
                 }
 
                 if reviewMode == .handPath, reviewSurface == .summary {
@@ -2782,6 +2786,8 @@ private struct GaragePoseFallbackOverlay: View {
             ZStack {
                 Rectangle()
                     .fill(garageReviewCanvasFill)
+                    .coordinateSpace(name: GarageSpatialCoordinateSpace.mapSpace)
+                    .zIndex(0)
 
                 if reviewMode == .skeleton {
                     GarageSkeletonOverlay(
@@ -2804,6 +2810,8 @@ private struct GaragePoseFallbackOverlay: View {
                     .opacity(skeletonOverlayOpacity)
                     .frame(width: drawRect.width, height: drawRect.height)
                     .position(x: drawRect.midX, y: drawRect.midY)
+                    .coordinateSpace(name: GarageSpatialCoordinateSpace.hudSpace)
+                    .zIndex(1)
                 }
 
                 if reviewMode == .handPath, reviewSurface == .summary {
@@ -2868,7 +2876,7 @@ private struct GarageReviewFrameOverlayCanvas: View {
             }
 
             if let selectedAnchor {
-                let anchorPoint = garageMappedPoint(x: selectedAnchor.x, y: selectedAnchor.y, in: drawRect)
+                let anchorPoint = garageVisionMappedPoint(x: selectedAnchor.x, y: selectedAnchor.y, in: drawRect)
                 let haloRect = CGRect(x: anchorPoint.x - 12, y: anchorPoint.y - 12, width: 24, height: 24)
                 context.fill(Ellipse().path(in: haloRect), with: .color(highlightTint.opacity(0.16)))
 
@@ -2926,8 +2934,8 @@ private struct GarageVelocityRibbonOverlay: View {
                 )
 
                 var segmentPath = Path()
-                segmentPath.move(to: garageMappedPoint(x: previous.x, y: previous.y, in: drawRect))
-                segmentPath.addLine(to: garageMappedPoint(x: current.x, y: current.y, in: drawRect))
+                segmentPath.move(to: garageVisionMappedPoint(x: previous.x, y: previous.y, in: drawRect))
+                segmentPath.addLine(to: garageVisionMappedPoint(x: current.x, y: current.y, in: drawRect))
 
                 context.stroke(
                     segmentPath,
@@ -2942,7 +2950,7 @@ private struct GarageVelocityRibbonOverlay: View {
             }
 
             if let visibleCurrentSample {
-                let point = garageMappedPoint(x: visibleCurrentSample.x, y: visibleCurrentSample.y, in: drawRect)
+                let point = garageVisionMappedPoint(x: visibleCurrentSample.x, y: visibleCurrentSample.y, in: drawRect)
                 let outerRect = CGRect(x: point.x - 5, y: point.y - 5, width: 10, height: 10)
                 let innerRect = CGRect(x: point.x - 2.5, y: point.y - 2.5, width: 5, height: 5)
                 context.fill(Ellipse().path(in: outerRect), with: .color(Color.white.opacity(0.92)))
@@ -2968,7 +2976,7 @@ private struct GaragePrecisionLoupe: View {
     private let sampleSize: CGFloat = 120
 
     private var mappedAnchor: CGPoint {
-        garageMappedPoint(anchorPoint, in: drawRect)
+        garageVisionMappedPoint(anchorPoint, in: drawRect)
     }
 
     private var croppedImage: CGImage? {
@@ -3034,7 +3042,7 @@ private struct GarageInteractiveAnchorHandle: View {
     @State private var dragOrigin: CGPoint?
 
     var body: some View {
-        let mappedAnchor = garageMappedPoint(anchorPoint, in: drawRect)
+        let mappedAnchor = garageVisionMappedPoint(anchorPoint, in: drawRect)
 
         ZStack {
             Circle()
@@ -3067,7 +3075,7 @@ private struct GarageInteractiveAnchorHandle: View {
                         x: origin.x + (value.translation.width / max(drawRect.width, 1)),
                         y: origin.y + (value.translation.height / max(drawRect.height, 1))
                     )
-                    onDragChanged(garageClampedNormalizedPoint(translatedPoint))
+                    onDragChanged(garageClampedVisionNormalizedPoint(translatedPoint))
                 }
                 .onEnded { value in
                     let origin = dragOrigin ?? anchorPoint
@@ -3076,7 +3084,7 @@ private struct GarageInteractiveAnchorHandle: View {
                         y: origin.y + (value.translation.height / max(drawRect.height, 1))
                     )
                     dragOrigin = nil
-                    onDragEnded(garageClampedNormalizedPoint(translatedPoint))
+                    onDragEnded(garageClampedVisionNormalizedPoint(translatedPoint))
                 }
         )
         .shadow(color: isManualAnchor ? garageManualAnchorAccent.opacity(0.7) : tint.opacity(0.2), radius: isManualAnchor ? 4 : 10, y: isManualAnchor ? 0 : 6)
@@ -3826,6 +3834,8 @@ private struct GarageSlowMotionVisualizationOverlay: View {
                 .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isScrubbing)
                 .frame(width: videoRect.width, height: videoRect.height)
                 .position(x: videoRect.midX, y: videoRect.midY)
+                .coordinateSpace(name: GarageSpatialCoordinateSpace.hudSpace)
+                .zIndex(1)
             } else {
                 Canvas { context, _ in
                     guard videoRect.isEmpty == false, visibleSampleCount >= 2 else {
@@ -4127,7 +4137,7 @@ func garageLoupeCropRect(
         return .zero
     }
 
-    let clampedAnchor = garageClampedNormalizedPoint(anchorPoint)
+    let clampedAnchor = garageClampedVisionNormalizedPoint(anchorPoint)
     let center = CGPoint(x: clampedAnchor.x * imageSize.width, y: clampedAnchor.y * imageSize.height)
     let maxX = max(imageSize.width - sampleSize, 0)
     let maxY = max(imageSize.height - sampleSize, 0)

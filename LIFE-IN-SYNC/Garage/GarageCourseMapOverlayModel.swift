@@ -222,7 +222,7 @@ final class GarageCourseMapOverlayModel: ObservableObject {
     }
 
     static func placement(from location: CGPoint, in rect: CGRect) -> GarageShotPlacement {
-        if let normalized = garageNormalizedPoint(from: location, in: rect) {
+        if let normalized = garageCourseMapNormalizedPoint(from: location, in: rect) {
             return GarageShotPlacement(
                 normalizedX: normalized.x,
                 normalizedY: normalized.y
@@ -231,7 +231,7 @@ final class GarageCourseMapOverlayModel: ObservableObject {
 
         let width = max(rect.width, 1)
         let height = max(rect.height, 1)
-        let clamped = garageClampedNormalizedPoint(
+        let clamped = garageClampedCourseMapNormalizedPoint(
             CGPoint(
                 x: (location.x - rect.minX) / width,
                 y: (location.y - rect.minY) / height
@@ -250,7 +250,7 @@ final class GarageCourseMapOverlayModel: ObservableObject {
     }
 
     static func point(for placement: GarageShotPlacement, in rect: CGRect) -> CGPoint {
-        garageMappedPoint(
+        garageCourseMapPoint(
             x: placement.normalizedX,
             y: placement.normalizedY,
             in: rect
