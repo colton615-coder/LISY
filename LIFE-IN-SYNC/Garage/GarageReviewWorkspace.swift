@@ -550,7 +550,7 @@ struct GarageFocusedReviewWorkspace: View {
 
     private var frameRequestID: String {
         [
-            garageRecordSelectionKey(for: record),
+            String(describing: record.id),
             reviewVideoURL?.absoluteString ?? "no-video",
             String(format: "%.4f", currentFrameTimestamp ?? currentTime)
         ].joined(separator: "::")
@@ -809,7 +809,7 @@ struct GarageFocusedReviewWorkspace: View {
                 )
             }
         }
-        .task(id: garageRecordSelectionKey(for: record)) {
+        .task(id: String(describing: record.id)) {
             record.hydrateCheckpointStatusesFromAggregateIfNeeded()
             record.refreshKeyframeValidationStatus()
             applyAutomaticHandPathApprovalIfNeeded()
@@ -3586,12 +3586,20 @@ private struct GaragePlaybackControlRow: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            GaragePlaybackScrubber(
-                duration: duration,
-                scrubTime: $scrubTime,
-                onScrub: onScrub,
-                onScrubEditingChanged: handleScrubEditingChanged
+            Slider(
+                value: Binding(
+                    get: { scrubTime },
+                    set: { newValue in
+                        let clampedValue = min(max(newValue, 0), sliderMaxValue)
+                        scrubTime = clampedValue
+                        onScrub(clampedValue)
+                    }
+                ),
+                in: 0...sliderMaxValue,
+                onEditingChanged: handleScrubEditingChanged
             )
+            .tint(garageReviewAccent)
+            .accessibilityLabel("Playback position")
 
             HStack(spacing: 12) {
                 Button(action: onTogglePlayPause) {

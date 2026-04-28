@@ -1,8 +1,6 @@
-import AVFoundation
 import CoreGraphics
 import Foundation
 import SwiftUI
-import UniformTypeIdentifiers
 
 enum GarageSkeletonHUDSeverity: Equatable {
     case neutral(String)
@@ -35,54 +33,6 @@ enum GarageSkeletonHUDSeverity: Equatable {
             Color.red.opacity(0.96)
         }
     }
-}
-
-struct GaragePickedMovie: Transferable {
-    let url: URL
-    let displayName: String
-
-    static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(importedContentType: .movie) { received in
-            let originalFilename = received.file.lastPathComponent.isEmpty ? "round.mov" : received.file.lastPathComponent
-            let stem = URL(fileURLWithPath: originalFilename).deletingPathExtension().lastPathComponent
-            let fileExtension = URL(fileURLWithPath: originalFilename).pathExtension.isEmpty ? "mov" : URL(fileURLWithPath: originalFilename).pathExtension
-            let sanitizedStem = stem.replacingOccurrences(of: "/", with: "-")
-            let destinationURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent("\(sanitizedStem)-\(UUID().uuidString.prefix(8))")
-                .appendingPathExtension(fileExtension)
-
-            if FileManager.default.fileExists(atPath: destinationURL.path()) {
-                try FileManager.default.removeItem(at: destinationURL)
-            }
-
-            try FileManager.default.copyItem(at: received.file, to: destinationURL)
-            return GaragePickedMovie(url: destinationURL, displayName: originalFilename)
-        }
-    }
-}
-
-enum GarageImportError: LocalizedError {
-    case unableToLoadSelection
-
-    var errorDescription: String? {
-        switch self {
-        case .unableToLoadSelection:
-            "The selected video could not be loaded from Photos."
-        }
-    }
-}
-
-func garageSuggestedRecordTitle(for filename: String, fallbackURL: URL) -> String {
-    let preferredName = filename.isEmpty ? fallbackURL.lastPathComponent : filename
-    let stem = URL(filePath: preferredName).deletingPathExtension().lastPathComponent
-        .replacingOccurrences(of: "_", with: " ")
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-
-    if stem.isEmpty == false {
-        return stem
-    }
-
-    return "Round \(Date.now.formatted(date: .abbreviated, time: .shortened))"
 }
 
 struct GarageAnalysisOutput {
@@ -284,6 +234,39 @@ struct GarageInsightReport: Equatable {
 
     var isReady: Bool {
         readiness == "Ready"
+    }
+}
+
+struct GarageStep2ScorePresentation: Equatable {
+    let title: String
+    let subtitle: String
+    let scoreValue: String
+    let scoreLimit: String
+}
+
+struct GarageStep2MetricPresentation: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let value: String
+    let grade: GarageMetricGrade
+}
+
+struct GarageStep2UnavailablePresentation: Equatable {
+    let title: String
+    let message: String
+}
+
+enum GarageStep2Presentation: Equatable {
+    case ready(score: GarageStep2ScorePresentation, metrics: [GarageStep2MetricPresentation])
+    case unavailable(GarageStep2UnavailablePresentation)
+
+    static func make(scorecard: GarageSwingScorecard?) -> GarageStep2Presentation {
+        .unavailable(
+            GarageStep2UnavailablePresentation(
+                title: "Silent Tracker active",
+                message: GarageScorecardEngine.unavailableMessage
+            )
+        )
     }
 }
 
@@ -575,21 +558,6 @@ enum GarageMediaStore {
     }
 
     static func resolvedReviewVideo(for record: SwingRecord) -> GarageResolvedReviewVideo? {
-        let candidates: [(GarageResolvedReviewVideoOrigin, URL?)] = [
-            (.reviewMasterStorage, persistedVideoURL(for: record.reviewMasterFilename)),
-            (.reviewMasterBookmark, resolvedBookmarkURL(from: record.reviewMasterBookmark)),
-            (.legacyMediaStorage, persistedVideoURL(for: record.mediaFilename)),
-            (.legacyMediaBookmark, resolvedBookmarkURL(from: record.mediaFileBookmark)),
-            (.exportStorage, persistedVideoURL(for: record.preferredExportFilename)),
-            (.exportBookmark, resolvedBookmarkURL(from: record.exportAssetBookmark))
-        ]
-
-        for (origin, url) in candidates {
-            if let url {
-                return GarageResolvedReviewVideo(url: url, origin: origin)
-            }
-        }
-
         return nil
     }
 
@@ -598,10 +566,6 @@ enum GarageMediaStore {
     }
 
     static func reviewFrameSource(for record: SwingRecord) -> GarageReviewFrameSourceState {
-        if resolvedReviewVideo(for: record) != nil {
-            return .video
-        }
-
         if record.swingFrames.isEmpty == false {
             return .poseFallback
         }
@@ -610,21 +574,11 @@ enum GarageMediaStore {
     }
 
     static func resolvedExportVideoURL(for record: SwingRecord) -> URL? {
-        persistedVideoURL(for: record.preferredExportFilename) ?? resolvedBookmarkURL(from: record.exportAssetBookmark)
+        nil
     }
 
     static func purgeManagedAssets(for record: SwingRecord) -> [String] {
-        [
-            record.reviewMasterFilename,
-            record.mediaFilename,
-            record.preferredExportFilename
-        ]
-        .compactMap { $0 }
-        .filter { filename in
-            guard let url = persistedVideoURL(for: filename) else { return false }
-            try? FileManager.default.removeItem(at: url)
-            return true
-        }
+        []
     }
 
     static func thumbnail(
@@ -634,13 +588,7 @@ enum GarageMediaStore {
         priority: GarageThumbnailLoadPriority = .normal,
         exactFrame: Bool = false
     ) async -> CGImage? {
-        let asset = AVURLAsset(url: videoURL)
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = maximumSize
-        generator.requestedTimeToleranceBefore = exactFrame ? .zero : CMTime(seconds: 0.2, preferredTimescale: 600)
-        generator.requestedTimeToleranceAfter = exactFrame ? .zero : CMTime(seconds: 0.2, preferredTimescale: 600)
-        return try? generator.copyCGImage(at: CMTime(seconds: timestamp, preferredTimescale: 600), actualTime: nil)
+        nil
     }
 
     static func prefetchThumbnails(
@@ -648,27 +596,10 @@ enum GarageMediaStore {
         requests: [GarageThumbnailRequest],
         priority: GarageThumbnailLoadPriority = .low
     ) async {
-        for request in requests.prefix(3) {
-            _ = await thumbnail(for: videoURL, at: request.timestamp, maximumSize: request.maximumSize, priority: priority)
-        }
     }
 
     static func assetMetadata(for videoURL: URL) async -> GarageVideoAssetMetadata? {
-        do {
-            let asset = AVURLAsset(url: videoURL)
-            let duration = try await asset.load(.duration)
-            let tracks = try await asset.loadTracks(withMediaType: .video)
-            let track = tracks.first
-            let naturalSize = try await track?.load(.naturalSize) ?? .zero
-            let frameRate = try await track?.load(.nominalFrameRate) ?? 0
-            return GarageVideoAssetMetadata(
-                duration: max(duration.seconds, 0),
-                frameRate: Double(frameRate),
-                naturalSize: naturalSize
-            )
-        } catch {
-            return nil
-        }
+        nil
     }
 
     private static func preparedGarageDirectoryURL(named folderName: String) throws -> URL {
@@ -699,13 +630,8 @@ enum GarageMediaStore {
 
 enum GarageAnalysisPipeline {
     static func analyzeVideo(
-        at videoURL: URL,
-        progress: (@MainActor @Sendable (GarageAnalysisProgressUpdate) async -> Void)? = nil
+        at videoURL: URL
     ) async throws -> GarageAnalysisOutput {
-        await progress?(GarageAnalysisProgressUpdate(step: .loadingVideo))
-        await progress?(GarageAnalysisProgressUpdate(step: .savingSwing))
-
-        let metadata = await GarageMediaStore.assetMetadata(for: videoURL)
         let report = GarageHandPathReviewReport(
             score: 0,
             requiresManualReview: false,
@@ -722,7 +648,7 @@ enum GarageAnalysisPipeline {
         )
 
         return GarageAnalysisOutput(
-            frameRate: metadata?.frameRate ?? 0,
+            frameRate: 0,
             swingFrames: [],
             keyFrames: [],
             handAnchors: [],
