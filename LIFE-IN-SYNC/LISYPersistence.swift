@@ -18,14 +18,7 @@ enum LISYModelRegistry {
         StudyEntry.self,
         SwingRecord.self
     ]
-
-    static let garageCourseMappingModels: [any PersistentModel.Type] = [
-        GarageRoundSession.self,
-        GarageHoleMap.self,
-        GarageTacticalShot.self
-    ]
-
-    static let models: [any PersistentModel.Type] = coreModels + garageCourseMappingModels
+    static let models: [any PersistentModel.Type] = coreModels
 }
 
 enum LISYSchemaV1: VersionedSchema {

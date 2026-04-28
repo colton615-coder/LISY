@@ -77,7 +77,7 @@ enum AppModule: String, CaseIterable, Identifiable {
         case .ironTemple:
             "Plan workouts and log sessions."
         case .garage:
-            "Review swing records and coaching notes."
+            "Temporary shell for the next Garage direction."
         case .habitStack:
             "Manage recurring habits and streaks."
         case .taskProtocol:

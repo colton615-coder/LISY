@@ -409,7 +409,7 @@ struct GarageCustomScaffold<Content: View>: View {
         GeometryReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: HubSectionSpacing.outer) {
-                    GarageAnalysisHeaderBar()
+                    GarageModuleHeaderBar()
 
                     if tabs.isEmpty == false {
                         HubTabPicker(tabs: tabs, selectedTab: $selectedTab, theme: module.theme)
@@ -426,7 +426,7 @@ struct GarageCustomScaffold<Content: View>: View {
     }
 }
 
-struct GarageAnalysisHeaderBar: View {
+struct GarageModuleHeaderBar: View {
     var body: some View {
         HStack(alignment: .center, spacing: ModuleSpacing.medium) {
             VStack(alignment: .leading, spacing: 4) {
@@ -435,7 +435,7 @@ struct GarageAnalysisHeaderBar: View {
                     .tracking(1.8)
                     .foregroundStyle(AppModule.garage.theme.textMuted)
 
-                Text("ANALYSIS")
+                Text("GARAGE")
                     .font(.system(size: 28, weight: .black, design: .rounded))
                     .tracking(1.4)
                     .foregroundStyle(AppModule.garage.theme.textPrimary)
