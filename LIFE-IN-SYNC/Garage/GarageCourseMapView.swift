@@ -6,10 +6,11 @@ import SwiftData
 import SwiftUI
 
 private let garageCourseMapSpring = Animation.spring(response: 0.35, dampingFraction: 0.8)
-private let garageLISYSystemBlue = Color(uiColor: .systemBlue)
+private let garageCourseAccent = ModuleTheme.electricCyan
 private let garageMetersPerYard = 0.9144
 private let garageGPSHoleToleranceMeters = 100 * garageMetersPerYard
 
+@MainActor
 struct GarageCourseMapView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -189,8 +190,8 @@ struct GarageCourseMapView: View {
         ) {
             if let headingConeCoordinates {
                 MapPolygon(coordinates: headingConeCoordinates)
-                    .foregroundStyle(garageLISYSystemBlue.opacity(0.18))
-                    .stroke(garageLISYSystemBlue.opacity(0.42), lineWidth: 1)
+                    .foregroundStyle(garageCourseAccent.opacity(0.16))
+                    .stroke(garageCourseAccent.opacity(0.36), lineWidth: 1)
             }
 
             MapPolyline(coordinates: pathCoordinates)
@@ -211,7 +212,8 @@ struct GarageCourseMapView: View {
 
             UserAnnotation()
         }
-        .mapStyle(.imagery(elevation: .flat))
+        .mapStyle(.imagery)
+        .ignoresSafeArea(.all, edges: .top)
         .mapControls {
             MapCompass()
             MapScaleView()
@@ -245,8 +247,8 @@ struct GarageCourseMapView: View {
     }
 
     private func topHUD(proxy: GeometryProxy) -> some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 10) {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
                 Button {
                     garageTriggerImpact(.light)
                     if let onExit {
@@ -266,7 +268,7 @@ struct GarageCourseMapView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Close course map")
 
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(activeModel.metadata.courseName)
                         .font(.system(.caption, design: .rounded).weight(.semibold))
                         .foregroundStyle(garageReviewMutedText)
@@ -276,7 +278,6 @@ struct GarageCourseMapView: View {
                     HStack(spacing: 10) {
                         metricText("Hole \(activeHoleNumber)")
                         metricText("Par \(activeHole?.par ?? activeModel.metadata.par)")
-                        metricText("HCP --")
                         metricText("\(centerGreenDistanceYards) yd COG")
                     }
                     .font(.system(.subheadline, design: .rounded).weight(.semibold))
@@ -285,42 +286,45 @@ struct GarageCourseMapView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
                 }
-
-                Spacer(minLength: 0)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(
+                    GarageCourseGlassBackground(
+                        shape: RoundedRectangle(cornerRadius: 22, style: .continuous),
+                        stroke: Color.white.opacity(0.1)
+                    )
+                )
             }
-            .padding(.trailing, 14)
-            .background(
-                GarageCourseGlassBackground(shape: Capsule(), stroke: Color.white.opacity(0.1))
-            )
-            .frame(maxWidth: min(proxy.size.width - 28, 520))
 
             if networkMonitor.isOnline == false {
                 GarageCourseMapNotice(
                     systemImage: "wifi.slash",
                     message: "Satellite imagery requires network; cached Apple tiles may still appear."
                 )
-                .frame(maxWidth: min(proxy.size.width - 28, 520))
+                .frame(maxWidth: min(proxy.size.width - 28, 420), alignment: .leading)
             } else if locationController.userCoordinate == nil {
                 GarageCourseMapNotice(
                     systemImage: "location",
                     message: locationController.locationStatusMessage
                 )
-                .frame(maxWidth: min(proxy.size.width - 28, 520))
+                .frame(maxWidth: min(proxy.size.width - 28, 420), alignment: .leading)
             } else if isUsingTeeFallbackOrigin {
                 GarageCourseMapNotice(
                     systemImage: "scope",
                     message: "GPS is outside this hole. Garage is using the tee box as origin."
                 )
-                .frame(maxWidth: min(proxy.size.width - 28, 520))
+                .frame(maxWidth: min(proxy.size.width - 28, 420), alignment: .leading)
             }
 
             if let errorMessage {
                 GarageCourseMapNotice(systemImage: "exclamationmark.triangle.fill", message: errorMessage, isError: true)
-                    .frame(maxWidth: min(proxy.size.width - 28, 520))
+                    .frame(maxWidth: min(proxy.size.width - 28, 420), alignment: .leading)
             } else if let statusMessage {
                 GarageCourseMapNotice(systemImage: "checkmark.circle.fill", message: statusMessage)
-                    .frame(maxWidth: min(proxy.size.width - 28, 520))
+                    .frame(maxWidth: min(proxy.size.width - 28, 420), alignment: .leading)
             }
+
+            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity)
     }
@@ -349,35 +353,76 @@ struct GarageCourseMapView: View {
                 }
 
                 Spacer(minLength: 0)
-
-                shotFAB
             }
 
-            holeCarousel
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .center, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("HOLE STATUS")
+                            .font(.system(.caption2, design: .rounded).weight(.bold))
+                            .tracking(1.0)
+                            .foregroundStyle(garageReviewMutedText)
+
+                        Text("Hole \(activeHoleNumber) • Par \(activeHole?.par ?? activeModel.metadata.par)")
+                            .font(.system(.headline, design: .rounded).weight(.semibold))
+                            .foregroundStyle(garageReviewReadableText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+
+                        Text("\(originToTargetYards) yd to target • \(targetToGreenYards) yd in")
+                            .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                            .monospacedDigit()
+                            .foregroundStyle(garageReviewMutedText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.78)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    recordShotButton
+                }
+
+                holeCarousel
+            }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(Color.black.opacity(0.44))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                            .stroke(Color.white.opacity(0.1), lineWidth: 0.7)
+                    )
+                    .shadow(color: .black.opacity(0.34), radius: 18, x: 0, y: 12)
+            )
         }
     }
 
-    private var shotFAB: some View {
+    private var recordShotButton: some View {
         Button {
             garageTriggerImpact(.medium)
             errorMessage = nil
             statusMessage = nil
             isShotDrawerPresented.toggle()
         } label: {
-            Image(systemName: isShotDrawerPresented ? "xmark" : "plus")
-                .font(.system(size: 22, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-                .frame(width: 56, height: 56)
+            Text(isShotDrawerPresented ? "Close" : "Record Shot")
+                .font(.system(.headline, design: .rounded).weight(.semibold))
+                .foregroundStyle(.black)
+                .frame(minWidth: 148, minHeight: 52)
+                .padding(.horizontal, 8)
                 .background(
-                    Circle()
-                        .fill(garageLISYSystemBlue)
-                        .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 0.7))
-                        .shadow(color: garageLISYSystemBlue.opacity(0.34), radius: 18, x: 0, y: 10)
-                        .shadow(color: .black.opacity(0.36), radius: 10, x: 0, y: 7)
+                    Capsule()
+                        .fill(garageCourseAccent)
+                        .overlay(Capsule().stroke(Color.white.opacity(0.22), lineWidth: 0.7))
+                        .shadow(color: garageCourseAccent.opacity(0.28), radius: 18, x: 0, y: 10)
+                        .shadow(color: .black.opacity(0.34), radius: 10, x: 0, y: 7)
                 )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(isShotDrawerPresented ? "Close stroke registration" : "Register stroke")
+        .accessibilityLabel(isShotDrawerPresented ? "Close stroke registration" : "Record shot")
     }
 
     private var holeCarousel: some View {
@@ -399,15 +444,15 @@ struct GarageCourseMapView: View {
                             .frame(width: 44, height: 44)
                             .background(
                                 Circle()
-                                    .fill(isSelected ? garageLISYSystemBlue : garageReviewSurfaceDark.opacity(isAvailable ? 0.9 : 0.58))
+                                    .fill(isSelected ? garageCourseAccent : garageReviewSurfaceDark.opacity(isAvailable ? 0.9 : 0.58))
                                     .overlay(
                                         Circle()
                                             .stroke(
-                                                isSelected ? garageLISYSystemBlue.opacity(0.72) : Color.white.opacity(isAvailable ? 0.1 : 0.04),
+                                                isSelected ? garageCourseAccent.opacity(0.72) : Color.white.opacity(isAvailable ? 0.1 : 0.04),
                                                 lineWidth: 0.7
                                             )
                                     )
-                                    .shadow(color: isSelected ? garageLISYSystemBlue.opacity(0.24) : .black.opacity(0.24), radius: isSelected ? 12 : 6, x: 0, y: 6)
+                                    .shadow(color: isSelected ? garageCourseAccent.opacity(0.24) : .black.opacity(0.24), radius: isSelected ? 12 : 6, x: 0, y: 6)
                             )
                     }
                     .buttonStyle(.plain)
@@ -875,7 +920,7 @@ private struct GarageCourseMapGreenMarker: View {
     var body: some View {
         ZStack {
             Circle()
-                .fill(garageLISYSystemBlue.opacity(0.18))
+                .fill(garageCourseAccent.opacity(0.18))
                 .frame(width: 34, height: 34)
 
             Circle()
@@ -938,7 +983,7 @@ private struct GarageGPSShotDrawer: View {
                     Text("STROKE REGISTRATION")
                         .font(.system(.caption2, design: .rounded).weight(.bold))
                         .tracking(1.0)
-                        .foregroundStyle(garageLISYSystemBlue)
+                        .foregroundStyle(garageCourseAccent)
 
                     Text("Save the reticle target to the active hole.")
                         .font(.system(.caption, design: .rounded).weight(.semibold))
@@ -996,12 +1041,12 @@ private struct GarageGPSShotDrawer: View {
                                     .font(.system(.caption, design: .rounded).weight(.semibold))
                                     .lineLimit(1)
                             }
-                            .foregroundStyle(isSelected ? .white : garageReviewReadableText.opacity(0.86))
+                            .foregroundStyle(isSelected ? .black : garageReviewReadableText.opacity(0.86))
                             .frame(minHeight: 44)
                             .padding(.horizontal, 12)
                             .background(
                                 Capsule()
-                                    .fill(isSelected ? garageLISYSystemBlue.opacity(0.88) : garageReviewSurfaceDark.opacity(0.74))
+                                    .fill(isSelected ? garageCourseAccent.opacity(0.96) : garageReviewSurfaceDark.opacity(0.74))
                                     .overlay(Capsule().stroke(Color.white.opacity(isSelected ? 0.18 : 0.08), lineWidth: 0.6))
                             )
                         }
@@ -1024,12 +1069,12 @@ private struct GarageGPSShotDrawer: View {
             action()
         } label: {
             Text(title)
-                .font(.system(.subheadline, design: .rounded).weight(.bold))
-                .foregroundStyle(isPrimary ? .white : garageReviewReadableText)
+                .font(.system(.headline, design: .rounded).weight(.semibold))
+                .foregroundStyle(isPrimary ? .black : garageReviewReadableText)
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .background(
                     Capsule()
-                        .fill(isPrimary ? garageLISYSystemBlue.opacity(isEnabled ? 1 : 0.34) : garageReviewSurfaceDark.opacity(0.82))
+                        .fill(isPrimary ? garageCourseAccent.opacity(isEnabled ? 1 : 0.34) : garageReviewSurfaceDark.opacity(0.82))
                         .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 0.6))
                 )
         }
