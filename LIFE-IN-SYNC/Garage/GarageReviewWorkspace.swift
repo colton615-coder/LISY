@@ -2684,31 +2684,6 @@ private struct GarageReviewImageOverlay: View {
                     .coordinateSpace(name: GarageSpatialCoordinateSpace.mapSpace)
                     .zIndex(0)
 
-                if reviewMode == .skeleton {
-                    GarageSkeletonOverlay(
-                        presentation: GarageOverlayAdapter.makePresentation(
-                            mode: skeletonOverlayMode,
-                            selectedLens: selectedLens,
-                            drawSize: imageRect.size,
-                            frames: swingFrames,
-                            currentFrameIndex: currentFrameIndex,
-                            currentFrame: currentFrame,
-                            keyFrames: keyFrames,
-                            currentTime: currentTime,
-                            pulseProgress: pulseProgress,
-                            scorecard: scorecard,
-                            syncFlow: syncFlow
-                        ),
-                        onSelectMode: onSelectOverlayMode,
-                        onSelectLens: onSelectOverlayLens
-                    )
-                    .opacity(skeletonOverlayOpacity)
-                    .frame(width: imageRect.width, height: imageRect.height)
-                    .position(x: imageRect.midX, y: imageRect.midY)
-                    .coordinateSpace(name: GarageSpatialCoordinateSpace.hudSpace)
-                    .zIndex(1)
-                }
-
                 if reviewMode == .handPath, reviewSurface == .summary {
                     GarageVelocityRibbonOverlay(
                         drawRect: imageRect,
@@ -2788,31 +2763,6 @@ private struct GaragePoseFallbackOverlay: View {
                     .fill(garageReviewCanvasFill)
                     .coordinateSpace(name: GarageSpatialCoordinateSpace.mapSpace)
                     .zIndex(0)
-
-                if reviewMode == .skeleton {
-                    GarageSkeletonOverlay(
-                        presentation: GarageOverlayAdapter.makePresentation(
-                            mode: skeletonOverlayMode,
-                            selectedLens: selectedLens,
-                            drawSize: drawRect.size,
-                            frames: swingFrames,
-                            currentFrameIndex: currentFrameIndex,
-                            currentFrame: currentFrame,
-                            keyFrames: keyFrames,
-                            currentTime: currentTime,
-                            pulseProgress: pulseProgress,
-                            scorecard: scorecard,
-                            syncFlow: syncFlow
-                        ),
-                        onSelectMode: onSelectOverlayMode,
-                        onSelectLens: onSelectOverlayLens
-                    )
-                    .opacity(skeletonOverlayOpacity)
-                    .frame(width: drawRect.width, height: drawRect.height)
-                    .position(x: drawRect.midX, y: drawRect.midY)
-                    .coordinateSpace(name: GarageSpatialCoordinateSpace.hudSpace)
-                    .zIndex(1)
-                }
 
                 if reviewMode == .handPath, reviewSurface == .summary {
                     GarageVelocityRibbonOverlay(
@@ -3812,31 +3762,7 @@ private struct GarageSlowMotionVisualizationOverlay: View {
             let containerRect = CGRect(origin: .zero, size: proxy.size)
             let videoRect = aspectFitRect(videoSize: videoSize, in: containerRect)
 
-            if mode == .skeleton {
-                GarageSkeletonOverlay(
-                    presentation: GarageOverlayAdapter.makePresentation(
-                        mode: skeletonOverlayMode,
-                        selectedLens: selectedLens,
-                        drawSize: videoRect.size,
-                        frames: frames,
-                        currentFrameIndex: currentFrameIndex,
-                        currentFrame: currentFrame,
-                        keyFrames: [],
-                        currentTime: currentTime,
-                        pulseProgress: pulseProgress,
-                        scorecard: nil,
-                        syncFlow: syncFlow
-                    ),
-                    onSelectMode: onSelectOverlayMode,
-                    onSelectLens: onSelectOverlayLens
-                )
-                .opacity(isScrubbing ? 0 : 1)
-                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isScrubbing)
-                .frame(width: videoRect.width, height: videoRect.height)
-                .position(x: videoRect.midX, y: videoRect.midY)
-                .coordinateSpace(name: GarageSpatialCoordinateSpace.hudSpace)
-                .zIndex(1)
-            } else {
+            if mode != .skeleton {
                 Canvas { context, _ in
                     guard videoRect.isEmpty == false, visibleSampleCount >= 2 else {
                         return
