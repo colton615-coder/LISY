@@ -45,22 +45,6 @@ final class GarageRoundSession {
         shots.count
     }
 
-    var avgTempo: Double {
-        rollingAverage(for: \.tempo)
-    }
-
-    var avgBackswing: Double {
-        rollingAverage(for: \.backswingDuration)
-    }
-
-    var avgDownswing: Double {
-        rollingAverage(for: \.downswingDuration)
-    }
-
-    var handSpeed: Double {
-        rollingAverage(for: \.handSpeed)
-    }
-
     var sortedShots: [GarageTacticalShot] {
         shots.sorted { lhs, rhs in
             if lhs.sequenceIndex != rhs.sequenceIndex {
@@ -79,15 +63,5 @@ final class GarageRoundSession {
 
     var lastShot: GarageTacticalShot? {
         sortedShots.last
-    }
-
-    private var rollingMetricShots: ArraySlice<GarageTacticalShot> {
-        sortedShots.suffix(10)
-    }
-
-    private func rollingAverage(for keyPath: KeyPath<GarageTacticalShot, Double?>) -> Double {
-        let samples = rollingMetricShots.compactMap { $0[keyPath: keyPath] }
-        guard samples.isEmpty == false else { return 0 }
-        return samples.reduce(0, +) / Double(samples.count)
     }
 }

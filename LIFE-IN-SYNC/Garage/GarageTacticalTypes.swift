@@ -70,6 +70,16 @@ struct GarageShotPlacement: Codable, Hashable {
     }
 }
 
+enum GarageLieState: String, Codable {
+    case teeBox
+    case fairway
+    case rough
+    case sand
+    case green
+    case penalty
+    case unknown
+}
+
 enum GarageTacticalClub: String, Codable, CaseIterable, Identifiable {
     case driver
     case threeWood
