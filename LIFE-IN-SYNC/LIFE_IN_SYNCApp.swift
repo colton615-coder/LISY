@@ -1,3 +1,4 @@
+import Foundation
 import SwiftData
 import SwiftUI
 
@@ -5,14 +6,15 @@ import SwiftUI
 struct LifeInSyncApp: App {
     private var sharedModelContainer: ModelContainer = {
         let schema = Schema(LISYSchemaV4.models)
-        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let isRunningForPreviews = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: isRunningForPreviews)
 
         do {
-            return try ModelContainer(
-                for: schema,
-                migrationPlan: LISYMigrationPlan.self,
-                configurations: [configuration]
-            )
+            if isRunningForPreviews {
+                return try ModelContainer(for: schema, configurations: [configuration])
+            }
+
+            return try ModelContainer(for: schema, migrationPlan: LISYMigrationPlan.self, configurations: [configuration])
         } catch {
             fatalError("Could not create ModelContainer: \(error)")
         }
