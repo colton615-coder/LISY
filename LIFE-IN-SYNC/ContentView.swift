@@ -10,9 +10,6 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            ModuleTheme.rootBackground
-                .ignoresSafeArea()
-
             if isShowingLaunchAffirmation {
                 LaunchAffirmationView()
                     .transition(.opacity)
@@ -31,7 +28,6 @@ struct ContentView: View {
                 isShowingLaunchAffirmation = false
             }
         }
-        .puttingGreenRootBackground()
     }
 }
 

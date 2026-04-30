@@ -12,7 +12,7 @@ struct AppShellView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                ModuleTheme.rootBackground
+                selectedModule.theme.screenGradient
                     .ignoresSafeArea()
 
                 currentModuleView
@@ -36,15 +36,14 @@ struct AppShellView: View {
                             }
                         }
                     }
+                    .tint(selectedModule.tintColor)
             }
         }
-        .puttingGreenNavigationChrome()
-        .puttingGreenRootBackground()
         .sheet(isPresented: $isShowingModuleMenu) {
             NavigationStack {
                 ModuleMenuView(selectedModule: $selectedModule)
+                    .tint(selectedModule.tintColor)
             }
-            .puttingGreenSheetChrome()
         }
     }
 

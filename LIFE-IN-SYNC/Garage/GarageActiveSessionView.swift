@@ -27,14 +27,15 @@ struct GarageActiveSessionView: View {
 
                     Text(session.environment.displayName)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppModule.garage.theme.textSecondary)
 
                     Text(progressSummary)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppModule.garage.theme.textSecondary)
                 }
                 .padding(.vertical, 4)
             }
+            .listRowBackground(ModuleTheme.garageSurface)
 
             Section("Checklist") {
                 ForEach(session.orderedDrillEntries) { entry in
@@ -45,6 +46,7 @@ struct GarageActiveSessionView: View {
                     )
                 }
             }
+            .listRowBackground(ModuleTheme.garageSurface)
 
             Section {
                 Button(action: endSession) {
@@ -53,8 +55,10 @@ struct GarageActiveSessionView: View {
                 }
                 .buttonStyle(.borderedProminent)
             }
+            .listRowBackground(ModuleTheme.garageSurface)
         }
         .listStyle(.insetGrouped)
+        .garagePuttingGreenListChrome()
         .navigationTitle("Checklist")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $noteEditor) { editor in
@@ -123,7 +127,7 @@ private struct GaragePracticeDrillRow: View {
             Button(action: onToggle) {
                 Image(systemName: entry.progress.isCompleted ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
-                    .foregroundStyle(entry.progress.isCompleted ? Color.accentColor : .secondary)
+                    .foregroundStyle(entry.progress.isCompleted ? AppModule.garage.tintColor : AppModule.garage.theme.textSecondary)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(entry.progress.isCompleted ? "Mark incomplete" : "Mark complete")
@@ -134,13 +138,13 @@ private struct GaragePracticeDrillRow: View {
 
                 Text(entry.drill.metadataSummary)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppModule.garage.theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if entry.progress.note.isEmpty == false {
                     Text(entry.progress.note)
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppModule.garage.theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -180,12 +184,15 @@ private struct GarageDrillNoteEditorSheet: View {
                 Section("Drill") {
                     Text(drillTitle)
                 }
+                .listRowBackground(ModuleTheme.garageSurface)
 
                 Section("Note") {
                     TextField("Add a brief note", text: $draftNote, axis: .vertical)
                         .lineLimit(2...4)
                 }
+                .listRowBackground(ModuleTheme.garageSurface)
             }
+            .garagePuttingGreenFormChrome()
             .navigationTitle("Drill Note")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -204,6 +211,7 @@ private struct GarageDrillNoteEditorSheet: View {
                 }
             }
         }
+        .garagePuttingGreenSheetChrome()
     }
 }
 

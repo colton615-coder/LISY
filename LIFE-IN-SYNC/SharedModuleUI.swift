@@ -24,85 +24,36 @@ extension Color {
         )
     }
 
-    static let vibeBackground = ModuleTheme.rootBackground
-    static let vibeSurface = ModuleTheme.elevatedSurface
-    static let vibeElectricCyan = ModuleTheme.accent
+    static let vibeBackground = ModuleTheme.garageBackground
+    static let vibeSurface = ModuleTheme.garageSurfaceInset
+    static let vibeElectricCyan = ModuleTheme.electricCyan
 }
 
-struct MonochromeOutlineButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(ModuleTheme.primaryText.opacity(configuration.isPressed ? 0.74 : 1))
-            .padding(.horizontal, ModuleSpacing.medium)
-            .padding(.vertical, ModuleSpacing.small)
-            .background(
-                RoundedRectangle(cornerRadius: ModuleCornerRadius.chip, style: .continuous)
-                    .fill(Color.clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: ModuleCornerRadius.chip, style: .continuous)
-                    .stroke(ModuleTheme.divider.opacity(configuration.isPressed ? 0.7 : 1), lineWidth: 1)
-            )
-    }
-}
-
-private struct PuttingGreenSurfaceModifier: ViewModifier {
-    let cornerRadius: CGFloat
-
+private struct GaragePuttingGreenSheetModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .background(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(ModuleTheme.elevatedSurface)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(ModuleTheme.divider, lineWidth: 1)
-            )
-    }
-}
-
-private struct PuttingGreenRootBackgroundModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .background(ModuleTheme.rootBackground.ignoresSafeArea())
+            .tint(AppModule.garage.tintColor)
             .preferredColorScheme(.dark)
-    }
-}
-
-private struct PuttingGreenNavigationChromeModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .tint(ModuleTheme.accent)
             .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbarBackground(.hidden, for: .tabBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .presentationBackground(ModuleTheme.garageBackground)
+            .background(ModuleTheme.garageBackground.ignoresSafeArea())
     }
 }
 
-private struct PuttingGreenSheetChromeModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .modifier(PuttingGreenNavigationChromeModifier())
-            .modifier(PuttingGreenRootBackgroundModifier())
-            .presentationBackground(ModuleTheme.rootBackground)
-    }
-}
-
-private struct PuttingGreenFormChromeModifier: ViewModifier {
+private struct GaragePuttingGreenFormModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .scrollContentBackground(.hidden)
-            .background(ModuleTheme.rootBackground)
+            .background(ModuleTheme.garageBackground)
     }
 }
 
-private struct PuttingGreenListChromeModifier: ViewModifier {
+private struct GaragePuttingGreenListModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .scrollContentBackground(.hidden)
-            .background(ModuleTheme.rootBackground)
+            .background(ModuleTheme.garageBackground)
     }
 }
 
@@ -123,7 +74,7 @@ private struct GarageModalPresenter<ModalContent: View, BottomDock: View>: ViewM
                             bottomDock()
                         }
                 }
-                .puttingGreenSheetChrome()
+                .garagePuttingGreenSheetChrome()
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
             }
@@ -131,28 +82,16 @@ private struct GarageModalPresenter<ModalContent: View, BottomDock: View>: ViewM
 }
 
 extension View {
-    func puttingGreenRootBackground() -> some View {
-        modifier(PuttingGreenRootBackgroundModifier())
+    func garagePuttingGreenSheetChrome() -> some View {
+        modifier(GaragePuttingGreenSheetModifier())
     }
 
-    func puttingGreenNavigationChrome() -> some View {
-        modifier(PuttingGreenNavigationChromeModifier())
+    func garagePuttingGreenFormChrome() -> some View {
+        modifier(GaragePuttingGreenFormModifier())
     }
 
-    func puttingGreenSheetChrome() -> some View {
-        modifier(PuttingGreenSheetChromeModifier())
-    }
-
-    func puttingGreenFormChrome() -> some View {
-        modifier(PuttingGreenFormChromeModifier())
-    }
-
-    func puttingGreenListChrome() -> some View {
-        modifier(PuttingGreenListChromeModifier())
-    }
-
-    func puttingGreenSurface(cornerRadius: CGFloat = ModuleCornerRadius.card) -> some View {
-        modifier(PuttingGreenSurfaceModifier(cornerRadius: cornerRadius))
+    func garagePuttingGreenListChrome() -> some View {
+        modifier(GaragePuttingGreenListModifier())
     }
 
     func garageModal<ModalContent: View>(
@@ -237,8 +176,6 @@ struct PreviewScreenContainer<Content: View>: View {
         NavigationStack {
             content
         }
-        .puttingGreenNavigationChrome()
-        .puttingGreenRootBackground()
     }
 }
 
@@ -254,8 +191,8 @@ struct ModuleScreen<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
         }
-        .puttingGreenNavigationChrome()
-        .puttingGreenRootBackground()
+        .tint(theme.primary)
+        .background(theme.screenGradient)
     }
 }
 
@@ -274,7 +211,11 @@ struct ModuleHeader: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(ModuleSpacing.medium)
-        .puttingGreenSurface(cornerRadius: ModuleCornerRadius.hero)
+        .background(theme.heroGradient, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.hero, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: ModuleCornerRadius.hero, style: .continuous)
+                .stroke(theme.borderSubtle, lineWidth: 1)
+        )
     }
 }
 
@@ -288,7 +229,11 @@ struct ModuleRowSurface<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(ModuleSpacing.medium)
-        .puttingGreenSurface(cornerRadius: ModuleCornerRadius.row)
+        .background(theme.surfaceSecondary, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous)
+                .stroke(theme.borderSubtle, lineWidth: 1)
+        )
     }
 }
 
@@ -573,8 +518,8 @@ struct ModuleHubScaffold<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
         }
-        .puttingGreenNavigationChrome()
-        .puttingGreenRootBackground()
+        .tint(module.theme.primary)
+        .background(module.theme.screenGradient)
     }
 }
 
@@ -627,17 +572,27 @@ struct GarageModuleHeaderBar: View {
 
                 ZStack {
                     Circle()
-                        .fill(ModuleTheme.accent)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    ModuleTheme.electricCyan.opacity(0.9),
+                                    Color(hex: "#138DB1")
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
 
                     Text("CT")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(ModuleTheme.rootBackground)
+                        .foregroundStyle(ModuleTheme.garageSurfaceInset)
                 }
                 .frame(width: 40, height: 40)
                 .overlay(
                     Circle()
-                        .stroke(ModuleTheme.divider, lineWidth: 1)
+                        .stroke(ModuleTheme.electricCyan.opacity(0.55), lineWidth: 0.5)
                 )
+                .shadow(color: Color.black.opacity(0.22), radius: 8, x: 0, y: 4)
             }
         }
     }
@@ -654,14 +609,15 @@ private struct GarageHeaderIconButton: View {
                 .frame(width: 40, height: 40)
                 .background(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(ModuleTheme.elevatedSurface)
+                        .fill(ModuleTheme.garageSurfaceRaised.opacity(0.96))
                         .overlay(
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(ModuleTheme.divider, lineWidth: 1)
+                                .stroke(ModuleTheme.electricCyan.opacity(0.45), lineWidth: 0.5)
                         )
                 )
         }
         .buttonStyle(.plain)
+        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
     }
 }
 
@@ -679,17 +635,34 @@ struct GarageTelemetrySurface<Content: View>: View {
         .padding(padding)
         .background(
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(ModuleTheme.elevatedSurface)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            ModuleTheme.garageSurfaceRaised.opacity(0.98),
+                            ModuleTheme.garageSurface.opacity(0.98),
+                            ModuleTheme.garageSurfaceInset.opacity(0.96)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
                 .overlay(
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(ModuleTheme.divider, lineWidth: 1)
+                        .stroke(Color.white.opacity(0.05), lineWidth: 0.5)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .stroke(
-                            isActive ? ModuleTheme.accent : Color.clear,
-                            lineWidth: 1
+                            isActive ? ModuleTheme.electricCyan.opacity(0.65) : Color.clear,
+                            lineWidth: 0.5
                         )
+                )
+                .shadow(color: Color.black.opacity(0.24), radius: 10, x: 0, y: 8)
+                .shadow(
+                    color: isActive ? ModuleTheme.electricCyan.opacity(0.08) : .clear,
+                    radius: isActive ? 14 : 0,
+                    x: 0,
+                    y: 0
                 )
         )
     }
@@ -704,13 +677,16 @@ private struct HubStatusCard: View {
         VStack(alignment: .leading, spacing: HubSectionSpacing.content) {
             Text(title)
                 .font(ModuleTypography.cardTitle)
-                .foregroundStyle(module.theme.textPrimary)
             Text(bodyText)
-                .foregroundStyle(module.theme.textSecondary)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(ModuleSpacing.medium)
-        .puttingGreenSurface()
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
+                .stroke(module.theme.primary.opacity(0.12), lineWidth: 1)
+        )
     }
 }
 
@@ -729,16 +705,12 @@ private struct HubTabPicker: View {
                         Text(tab.rawValue)
                             .font(.subheadline)
                             .fontWeight(.semibold)
-                            .foregroundStyle(selectedTab == tab ? ModuleTheme.rootBackground : theme.textPrimary)
+                            .foregroundStyle(selectedTab == tab ? Color.white : .primary)
                             .padding(.horizontal, 12)
                             .padding(.vertical, ModuleSpacing.xSmall)
                             .background(
                                 RoundedRectangle(cornerRadius: ModuleSpacing.small, style: .continuous)
                                     .fill(selectedTab == tab ? theme.primary : theme.surfaceSecondary)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: ModuleSpacing.small, style: .continuous)
-                                            .stroke(ModuleTheme.divider, lineWidth: selectedTab == tab ? 0 : 1)
-                                    )
                             )
                     }
                     .buttonStyle(.plain)
@@ -768,8 +740,8 @@ struct ModuleRootPlaceholderView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
         }
-        .puttingGreenNavigationChrome()
-        .puttingGreenRootBackground()
+        .tint(module.theme.primary)
+        .background(module.theme.screenGradient)
     }
 }
 
@@ -788,13 +760,16 @@ struct ModuleHeroCard: View {
             Text(title)
                 .font(.title2)
                 .fontWeight(.bold)
-                .foregroundStyle(module.theme.textPrimary)
             Text(message)
-                .foregroundStyle(module.theme.textSecondary)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(ModuleSpacing.medium)
-        .puttingGreenSurface()
+        .background(module.theme.heroGradient, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
+                .stroke(module.theme.primary.opacity(0.18), lineWidth: 1)
+        )
     }
 }
 
@@ -806,7 +781,6 @@ struct ModuleFocusCard: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Current Focus")
                 .font(ModuleTypography.cardTitle)
-                .foregroundStyle(module.theme.textPrimary)
 
             ForEach(highlights, id: \.self) { highlight in
                 HStack(spacing: 10) {
@@ -814,13 +788,13 @@ struct ModuleFocusCard: View {
                         .fill(module.theme.primary)
                         .frame(width: 8, height: 8)
                     Text(highlight)
-                        .foregroundStyle(module.theme.textPrimary)
+                        .foregroundStyle(.primary)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(ModuleSpacing.medium)
-        .puttingGreenSurface()
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
     }
 }
 
@@ -832,11 +806,10 @@ struct ModuleSnapshotCard<Content: View>: View {
         VStack(alignment: .leading, spacing: ModuleSpacing.medium) {
             Text(title)
                 .font(ModuleTypography.cardTitle)
-                .foregroundStyle(ModuleTheme.primaryText)
             content
         }
         .padding(ModuleSpacing.medium)
-        .puttingGreenSurface()
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
     }
 }
 
@@ -849,14 +822,13 @@ struct ModuleMetricChip: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(value)
                 .font(ModuleTypography.metricValue)
-                .foregroundStyle(theme.textPrimary)
             Text(title)
                 .font(ModuleTypography.supportingLabel)
-                .foregroundStyle(theme.textSecondary)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(ModuleSpacing.medium)
-        .puttingGreenSurface(cornerRadius: ModuleCornerRadius.chip)
+        .background(theme.chipBackground, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.chip, style: .continuous))
     }
 }
 
@@ -871,16 +843,15 @@ struct ModuleEmptyStateCard: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title)
                 .font(ModuleTypography.cardTitle)
-                .foregroundStyle(theme.textPrimary)
             Text(message)
-                .foregroundStyle(theme.textSecondary)
+                .foregroundStyle(.secondary)
             Button(actionTitle, action: action)
                 .buttonStyle(.borderedProminent)
                 .tint(theme.primary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(ModuleSpacing.medium)
-        .puttingGreenSurface()
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
     }
 }
 
@@ -892,12 +863,11 @@ struct ModuleVisualizationContainer<Content: View>: View {
         VStack(alignment: .leading, spacing: ModuleSpacing.small) {
             Text(title)
                 .font(ModuleTypography.cardTitle)
-                .foregroundStyle(ModuleTheme.primaryText)
             content
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(ModuleSpacing.medium)
-        .puttingGreenSurface()
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
     }
 }
 
@@ -909,7 +879,6 @@ struct ModuleActivityFeedSection<Content: View>: View {
         VStack(alignment: .leading, spacing: ModuleSpacing.small) {
             Text(title)
                 .font(ModuleTypography.sectionTitle)
-                .foregroundStyle(ModuleTheme.primaryText)
             content
         }
     }
@@ -932,11 +901,6 @@ struct ModuleBottomActionBar: View {
             .tint(theme.primary)
         }
         .padding()
-        .background(ModuleTheme.rootBackground)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(ModuleTheme.divider)
-                .frame(height: 1)
-        }
+        .background(.ultraThinMaterial)
     }
 }

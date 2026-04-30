@@ -222,22 +222,20 @@ private struct DashboardHeroCard: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Today")
                 .font(.headline)
-                .foregroundStyle(ModuleTheme.primaryText)
             Text("Progress-first routing with quiet urgency.")
                 .font(.subheadline)
-                .foregroundStyle(ModuleTheme.secondaryText)
+                .foregroundStyle(.secondary)
             HStack {
                 Text(keyMetricTitle)
-                    .foregroundStyle(ModuleTheme.secondaryText)
+                    .foregroundStyle(.secondary)
                 Spacer()
                 Text(keyMetricValue)
                     .font(.title3)
                     .fontWeight(.bold)
-                    .foregroundStyle(ModuleTheme.primaryText)
             }
         }
         .padding()
-        .puttingGreenSurface(cornerRadius: 20)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 
@@ -250,7 +248,6 @@ private struct DashboardSection<Content: View>: View {
             Text(title)
                 .font(.headline)
                 .fontWeight(.semibold)
-                .foregroundStyle(ModuleTheme.primaryText)
             content
         }
     }
@@ -273,23 +270,23 @@ private struct DashboardModuleEntryCard: View {
                 Text(module.title)
                     .font(.subheadline)
                     .fontWeight(.semibold)
-                    .foregroundStyle(ModuleTheme.primaryText)
+                    .foregroundStyle(.primary)
                 Text(progressSummary)
                     .font(.caption)
-                    .foregroundStyle(ModuleTheme.secondaryText)
+                    .foregroundStyle(.secondary)
                 HStack {
                     Text(urgencyLabel)
                         .font(.caption2)
-                        .foregroundStyle(ModuleTheme.secondaryText)
+                        .foregroundStyle(.secondary)
                     Spacer()
                     Text(importanceLabel)
                         .font(.caption2)
-                        .foregroundStyle(ModuleTheme.secondaryText)
+                        .foregroundStyle(.secondary)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
-            .puttingGreenSurface(cornerRadius: 16)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("dashboard-module-\(module.rawValue)")
@@ -311,17 +308,16 @@ private struct DashboardStatCard: View {
             Text(title)
                 .font(.subheadline)
                 .fontWeight(.semibold)
-                .foregroundStyle(ModuleTheme.primaryText)
             Text(detail)
                 .font(.caption)
-                .foregroundStyle(ModuleTheme.secondaryText)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
-        .puttingGreenSurface(cornerRadius: 16)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(module.theme.primary.opacity(0.24), lineWidth: 1)
+                .stroke(module.theme.primary.opacity(0.2), lineWidth: 1)
         )
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier(accessibilityID)

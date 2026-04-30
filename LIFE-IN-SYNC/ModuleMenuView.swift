@@ -17,10 +17,9 @@ struct ModuleMenuView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(module.title)
                             .font(.headline)
-                            .foregroundStyle(ModuleTheme.primaryText)
                         Text(module.summary)
                             .font(.subheadline)
-                            .foregroundStyle(ModuleTheme.secondaryText)
+                            .foregroundStyle(.secondary)
                     }
                     Spacer()
                     if selectedModule == module {
@@ -32,19 +31,12 @@ struct ModuleMenuView: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("module-menu-\(module.rawValue)")
-            .listRowSeparator(.hidden)
             .listRowBackground(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(module == selectedModule ? ModuleTheme.elevatedSurface : Color.clear)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(module == selectedModule ? ModuleTheme.divider : Color.clear, lineWidth: 1)
-                    )
+                    .fill(module == selectedModule ? module.theme.chipBackground : .clear)
             )
         }
         .navigationTitle("Modules")
-        .puttingGreenListChrome()
-        .puttingGreenRootBackground()
     }
 }
 

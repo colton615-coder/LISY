@@ -185,7 +185,7 @@ private struct HabitCard: View {
                         .font(.headline)
                     Text("\(progressCount) of \(habit.targetCount) today")
                         .font(.subheadline)
-                        .foregroundStyle(ModuleTheme.secondaryText)
+                        .foregroundStyle(.secondary)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 6) {
@@ -195,7 +195,7 @@ private struct HabitCard: View {
                     if let lastLoggedAt {
                         Text(lastLoggedAt.formatted(date: .omitted, time: .shortened))
                             .font(.caption)
-                            .foregroundStyle(ModuleTheme.secondaryText)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -209,7 +209,7 @@ private struct HabitCard: View {
                 } label: {
                     Label("Undo", systemImage: "minus")
                 }
-                .buttonStyle(MonochromeOutlineButtonStyle())
+                .buttonStyle(.bordered)
                 .disabled(progressCount == 0)
 
                 Spacer()
@@ -224,7 +224,7 @@ private struct HabitCard: View {
             }
         }
         .padding()
-        .puttingGreenSurface(cornerRadius: 20)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(progressCount >= habit.targetCount ? AppModule.habitStack.theme.primary.opacity(0.4) : .clear, lineWidth: 1.5)
@@ -248,9 +248,7 @@ private struct AddHabitSheet: View {
                         Text("Daily target: \(targetCount)")
                     }
                 }
-                .listRowBackground(ModuleTheme.elevatedSurface)
             }
-            .puttingGreenFormChrome()
             .navigationTitle("New Habit")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -268,7 +266,6 @@ private struct AddHabitSheet: View {
                 }
             }
         }
-        .puttingGreenSheetChrome()
     }
 }
 

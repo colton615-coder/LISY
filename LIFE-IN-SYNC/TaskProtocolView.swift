@@ -85,23 +85,23 @@ private struct TaskRow: View {
             } label: {
                 Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
-                    .foregroundStyle(task.isCompleted ? AppModule.taskProtocol.theme.primary : ModuleTheme.secondaryText)
+                    .foregroundStyle(task.isCompleted ? AppModule.taskProtocol.theme.primary : .secondary)
             }
             .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(task.title)
                     .font(.headline)
-                    .strikethrough(task.isCompleted, color: ModuleTheme.secondaryText)
+                    .strikethrough(task.isCompleted, color: .secondary)
                 Text(taskMetaLine)
                     .font(.caption)
-                    .foregroundStyle(ModuleTheme.secondaryText)
-        }
+                    .foregroundStyle(.secondary)
+            }
 
             Spacer()
         }
         .padding()
-        .puttingGreenSurface(cornerRadius: ModuleCornerRadius.row)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
     }
 
     private var taskMetaLine: String {
@@ -139,9 +139,7 @@ private struct AddTaskSheet: View {
                         DatePicker("Due", selection: $dueDate, displayedComponents: [.date, .hourAndMinute])
                     }
                 }
-                .listRowBackground(ModuleTheme.elevatedSurface)
             }
-            .puttingGreenFormChrome()
             .navigationTitle("New Task")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -168,7 +166,6 @@ private struct AddTaskSheet: View {
                 }
             }
         }
-        .puttingGreenSheetChrome()
     }
 }
 

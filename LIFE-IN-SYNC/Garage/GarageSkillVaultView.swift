@@ -15,8 +15,9 @@ struct GarageSkillVaultView: View {
             if groupedRecords.isEmpty {
                 Section {
                     Text("Completed Garage sessions will appear here once you end a checklist session.")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppModule.garage.theme.textSecondary)
                 }
+                .listRowBackground(ModuleTheme.garageSurface)
             } else {
                 ForEach(groupedRecords, id: \.templateName) { group in
                     Section(group.templateName) {
@@ -24,10 +25,12 @@ struct GarageSkillVaultView: View {
                             GarageSkillVaultRecordRow(record: record)
                         }
                     }
+                    .listRowBackground(ModuleTheme.garageSurface)
                 }
             }
         }
         .listStyle(.insetGrouped)
+        .garagePuttingGreenListChrome()
         .navigationTitle("Skill Vault")
         .navigationBarTitleDisplayMode(.large)
     }
@@ -58,17 +61,17 @@ private struct GarageSkillVaultRecordRow: View {
 
                 Text(record.date.formatted(date: .abbreviated, time: .omitted))
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppModule.garage.theme.textSecondary)
             }
 
             Text(record.environmentDisplayName)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppModule.garage.theme.textSecondary)
 
             if record.aggregatedNotes.isEmpty == false {
                 Text(record.aggregatedNotes)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppModule.garage.theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

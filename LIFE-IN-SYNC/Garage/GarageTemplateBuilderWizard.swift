@@ -33,6 +33,7 @@ struct GarageTemplateBuilderWizard: View {
                 }
             }
         }
+        .garagePuttingGreenSheetChrome()
         .sheet(isPresented: $isPresentingNewDrillSheet) {
             GarageDrillDefinitionEditorView { definition in
                 draft.toggle(definition)
@@ -125,6 +126,7 @@ private struct GarageTemplateSetupStep: View {
             Section("Template") {
                 TextField("Template Title", text: $draft.title)
             }
+            .listRowBackground(ModuleTheme.garageSurface)
 
             Section("Environment") {
                 Picker("Environment", selection: $draft.environment) {
@@ -134,6 +136,7 @@ private struct GarageTemplateSetupStep: View {
                 }
                 .pickerStyle(.segmented)
             }
+            .listRowBackground(ModuleTheme.garageSurface)
 
             Section {
                 Button("Continue", action: onNext)
@@ -141,7 +144,9 @@ private struct GarageTemplateSetupStep: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(draft.canContinueFromSetup == false)
             }
+            .listRowBackground(ModuleTheme.garageSurface)
         }
+        .garagePuttingGreenFormChrome()
         .navigationTitle("New Template")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -160,7 +165,7 @@ private struct GarageTemplateDictionaryStep: View {
             Section("Dictionary") {
                 if definitions.isEmpty {
                     Text("No drills exist yet. Tap + to create the first reusable drill.")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppModule.garage.theme.textSecondary)
                 } else {
                     ForEach(definitions, id: \.id) { definition in
                         Button {
@@ -175,11 +180,12 @@ private struct GarageTemplateDictionaryStep: View {
                     }
                 }
             }
+            .listRowBackground(ModuleTheme.garageSurface)
 
             Section("Selected") {
                 if draft.drills.isEmpty {
                     Text("Pick drills from the dictionary to build this template.")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppModule.garage.theme.textSecondary)
                 } else {
                     ForEach(draft.drills) { drill in
                         VStack(alignment: .leading, spacing: 4) {
@@ -187,12 +193,13 @@ private struct GarageTemplateDictionaryStep: View {
                                 .font(.headline)
                             Text(drill.metadataSummary)
                                 .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(AppModule.garage.theme.textSecondary)
                         }
                         .padding(.vertical, 2)
                     }
                 }
             }
+            .listRowBackground(ModuleTheme.garageSurface)
 
             Section {
                 Button("Review Template", action: onReview)
@@ -200,8 +207,10 @@ private struct GarageTemplateDictionaryStep: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(draft.canReview == false)
             }
+            .listRowBackground(ModuleTheme.garageSurface)
         }
         .listStyle(.insetGrouped)
+        .garagePuttingGreenListChrome()
         .navigationTitle("Drill Dictionary")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -228,14 +237,14 @@ private struct GarageDictionaryDefinitionRow: View {
                     .font(.headline)
                 Text(definition.metadataSummary)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppModule.garage.theme.textSecondary)
             }
 
             Spacer()
 
             if isSelected {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(AppModule.garage.tintColor)
             }
         }
         .padding(.vertical, 4)
@@ -254,6 +263,7 @@ private struct GarageTemplateReviewStep: View {
                 LabeledContent("Environment", value: draft.environment.displayName)
                 LabeledContent("Drills", value: "\(draft.drills.count)")
             }
+            .listRowBackground(ModuleTheme.garageSurface)
 
             Section("Checklist") {
                 ForEach(Array(draft.drills.enumerated()), id: \.element.id) { offset, drill in
@@ -262,19 +272,22 @@ private struct GarageTemplateReviewStep: View {
                             .font(.headline)
                         Text(drill.metadataSummary)
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(AppModule.garage.theme.textSecondary)
                     }
                     .padding(.vertical, 2)
                 }
             }
+            .listRowBackground(ModuleTheme.garageSurface)
 
             Section {
                 Button("Save Template", action: onSave)
                     .frame(maxWidth: .infinity)
                     .buttonStyle(.borderedProminent)
             }
+            .listRowBackground(ModuleTheme.garageSurface)
         }
         .listStyle(.insetGrouped)
+        .garagePuttingGreenListChrome()
         .navigationTitle("Review")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -302,7 +315,9 @@ private struct GarageDrillDefinitionEditorView: View {
                     TextField("Target Club", text: $targetClub)
                     Stepper("Default Reps: \(defaultRepCount)", value: $defaultRepCount, in: 1...50)
                 }
+                .listRowBackground(ModuleTheme.garageSurface)
             }
+            .garagePuttingGreenFormChrome()
             .navigationTitle("New Drill")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -325,6 +340,7 @@ private struct GarageDrillDefinitionEditorView: View {
                 Text(saveErrorMessage ?? "An unexpected error occurred.")
             }
         }
+        .garagePuttingGreenSheetChrome()
     }
 
     private var trimmedTitle: String {

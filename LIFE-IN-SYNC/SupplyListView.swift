@@ -118,23 +118,23 @@ private struct SupplyItemRow: View {
             } label: {
                 Image(systemName: item.isPurchased ? "checkmark.circle.fill" : "circle")
                     .font(.title2)
-                    .foregroundStyle(item.isPurchased ? AppModule.supplyList.theme.primary : ModuleTheme.secondaryText)
+                    .foregroundStyle(item.isPurchased ? AppModule.supplyList.theme.primary : .secondary)
             }
             .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.title)
                     .font(.headline)
-                    .strikethrough(item.isPurchased, color: ModuleTheme.secondaryText)
+                    .strikethrough(item.isPurchased, color: .secondary)
                 Text(item.category)
                     .font(.caption)
-                    .foregroundStyle(ModuleTheme.secondaryText)
-        }
+                    .foregroundStyle(.secondary)
+            }
 
             Spacer()
         }
         .padding()
-        .puttingGreenSurface(cornerRadius: ModuleCornerRadius.row)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
     }
 }
 
@@ -172,9 +172,7 @@ private struct AddSupplyItemSheet: View {
                         }
                     }
                 }
-                .listRowBackground(ModuleTheme.elevatedSurface)
             }
-            .puttingGreenFormChrome()
             .navigationTitle("New Item")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -202,7 +200,6 @@ private struct AddSupplyItemSheet: View {
                 }
             }
         }
-        .puttingGreenSheetChrome()
     }
 }
 

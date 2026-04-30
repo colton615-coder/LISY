@@ -12,8 +12,9 @@ struct GarageView: View {
                 Section {
                     Text("Choose where you are practicing right now. Garage will only show the routines that make sense for that environment.")
                         .font(.body)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppModule.garage.theme.textSecondary)
                 }
+                .listRowBackground(ModuleTheme.garageSurface)
 
                 Section("Practice Environment") {
                     ForEach(PracticeEnvironment.allCases) { environment in
@@ -22,8 +23,10 @@ struct GarageView: View {
                         }
                     }
                 }
+                .listRowBackground(ModuleTheme.garageSurface)
             }
             .listStyle(.insetGrouped)
+            .garagePuttingGreenListChrome()
             .navigationTitle("Garage")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
@@ -43,6 +46,7 @@ struct GarageView: View {
                     }
                 }
             }
+            .tint(AppModule.garage.tintColor)
             .navigationDestination(for: GarageNavigationDestination.self) { destination in
                 switch destination {
                 case let .environment(environment):
@@ -60,6 +64,7 @@ struct GarageView: View {
                 GarageTemplateBuilderWizard()
             }
         }
+        .garagePuttingGreenSheetChrome()
     }
 
     @ViewBuilder
@@ -131,11 +136,11 @@ private struct GarageEnvironmentSelectionRow: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(environment.displayName)
                     .font(.system(.title3, design: .default).weight(.bold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(AppModule.garage.theme.textPrimary)
 
                 Text(environment.description)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppModule.garage.theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.vertical, 6)
@@ -166,17 +171,18 @@ private struct GarageEnvironmentDashboardView: View {
                         Text(environment.displayName)
                             .font(.headline)
                         Text(environment.description)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(AppModule.garage.theme.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .padding(.vertical, 4)
             }
+            .listRowBackground(ModuleTheme.garageSurface)
 
             Section("Templates") {
                 if templates.isEmpty {
                     Text("No templates exist for this environment yet. Use the + button to build one.")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppModule.garage.theme.textSecondary)
                 } else {
                     ForEach(templates, id: \.id) { template in
                         Button {
@@ -188,8 +194,10 @@ private struct GarageEnvironmentDashboardView: View {
                     }
                 }
             }
+            .listRowBackground(ModuleTheme.garageSurface)
         }
         .listStyle(.insetGrouped)
+        .garagePuttingGreenListChrome()
         .navigationTitle(environment.displayName)
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -206,12 +214,12 @@ private struct GarageTemplateRow: View {
 
             Text("\(template.drills.count) drills")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppModule.garage.theme.textSecondary)
 
             if let firstDrill = template.drills.first {
                 Text(firstDrill.title)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppModule.garage.theme.textSecondary)
                     .lineLimit(1)
             }
         }

@@ -100,7 +100,7 @@ private struct IronTempleBuilderTab: View {
             HStack {
                 Spacer()
                 Button("Add Template", action: addTemplate)
-                    .buttonStyle(MonochromeOutlineButtonStyle())
+                    .buttonStyle(.bordered)
             }
 
             if templates.isEmpty {
@@ -147,12 +147,12 @@ private struct WorkoutTemplateCard: View {
                     .font(.headline)
                 Text(template.createdAt.formatted(date: .abbreviated, time: .omitted))
                     .font(.caption)
-                    .foregroundStyle(ModuleTheme.secondaryText)
+                    .foregroundStyle(.secondary)
             }
             Spacer()
         }
         .padding()
-        .puttingGreenSurface(cornerRadius: ModuleCornerRadius.row)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
     }
 }
 
@@ -166,8 +166,8 @@ private struct WorkoutSessionCard: View {
                     .font(.headline)
                 Text(session.performedAt.formatted(date: .abbreviated, time: .shortened))
                     .font(.caption)
-                    .foregroundStyle(ModuleTheme.secondaryText)
-        }
+                    .foregroundStyle(.secondary)
+            }
 
             Spacer()
 
@@ -177,7 +177,7 @@ private struct WorkoutSessionCard: View {
                 .foregroundStyle(AppModule.ironTemple.theme.primary)
         }
         .padding()
-        .puttingGreenSurface(cornerRadius: ModuleCornerRadius.row)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
     }
 }
 
@@ -209,9 +209,7 @@ private struct AddWorkoutTemplateSheet: View {
                 Section("Template Details") {
                     TextField("Template name", text: $name)
                 }
-                .listRowBackground(ModuleTheme.elevatedSurface)
             }
-            .puttingGreenFormChrome()
             .navigationTitle("New Template")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -234,7 +232,6 @@ private struct AddWorkoutTemplateSheet: View {
                 }
             }
         }
-        .puttingGreenSheetChrome()
     }
 }
 
@@ -262,9 +259,7 @@ private struct LogWorkoutSessionSheet: View {
 
                     DatePicker("Performed", selection: $performedAt)
                 }
-                .listRowBackground(ModuleTheme.elevatedSurface)
             }
-            .puttingGreenFormChrome()
             .navigationTitle("Log Session")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -297,7 +292,6 @@ private struct LogWorkoutSessionSheet: View {
                 }
             }
         }
-        .puttingGreenSheetChrome()
     }
 }
 
