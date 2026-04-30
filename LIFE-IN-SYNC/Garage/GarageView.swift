@@ -1,9 +1,13 @@
+import SwiftData
 import SwiftUI
 
 @MainActor
 struct GarageView: View {
+    @State private var path: [GarageNavigationDestination] = []
+    @State private var isShowingTemplateBuilder = false
+
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 Section {
                     Text("Choose where you are practicing right now. Garage will only show the routines that make sense for that environment.")
@@ -13,9 +17,7 @@ struct GarageView: View {
 
                 Section("Practice Environment") {
                     ForEach(PracticeEnvironment.allCases) { environment in
-                        NavigationLink {
-                            destination(for: environment)
-                        } label: {
+                        NavigationLink(value: GarageNavigationDestination.environment(environment)) {
                             GarageEnvironmentSelectionRow(environment: environment)
                         }
                     }
@@ -24,40 +26,94 @@ struct GarageView: View {
             .listStyle(.insetGrouped)
             .navigationTitle("Garage")
             .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        path.append(.skillVault)
+                    } label: {
+                        Label("Skill Vault", systemImage: "archivebox")
+                    }
+                }
+
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        isShowingTemplateBuilder = true
+                    } label: {
+                        Label("New Template", systemImage: "plus")
+                    }
+                }
+            }
+            .navigationDestination(for: GarageNavigationDestination.self) { destination in
+                switch destination {
+                case let .environment(environment):
+                    environmentDashboard(for: environment)
+                case let .activeSession(session):
+                    GarageActiveSessionView(
+                        session: session,
+                        onEndSession: { path.removeAll() }
+                    )
+                case .skillVault:
+                    GarageSkillVaultView()
+                }
+            }
+            .sheet(isPresented: $isShowingTemplateBuilder) {
+                GarageTemplateBuilderWizard()
+            }
         }
     }
 
     @ViewBuilder
-    private func destination(for environment: PracticeEnvironment) -> some View {
+    private func environmentDashboard(for environment: PracticeEnvironment) -> some View {
         switch environment {
         case .net:
-            GarageNetDashboardView()
+            GarageNetDashboardView { template in
+                path.append(.activeSession(ActivePracticeSession(template: template)))
+            }
         case .range:
-            GarageRangeDashboardView()
+            GarageRangeDashboardView { template in
+                path.append(.activeSession(ActivePracticeSession(template: template)))
+            }
         case .puttingGreen:
-            GaragePuttingDashboardView()
+            GaragePuttingDashboardView { template in
+                path.append(.activeSession(ActivePracticeSession(template: template)))
+            }
         }
     }
 }
 
 @MainActor
 struct GarageNetDashboardView: View {
+    let onSelectTemplate: (PracticeTemplate) -> Void
+
     var body: some View {
-        GarageEnvironmentDashboardView(environment: .net)
+        GarageEnvironmentDashboardView(
+            environment: .net,
+            onSelectTemplate: onSelectTemplate
+        )
     }
 }
 
 @MainActor
 struct GarageRangeDashboardView: View {
+    let onSelectTemplate: (PracticeTemplate) -> Void
+
     var body: some View {
-        GarageEnvironmentDashboardView(environment: .range)
+        GarageEnvironmentDashboardView(
+            environment: .range,
+            onSelectTemplate: onSelectTemplate
+        )
     }
 }
 
 @MainActor
 struct GaragePuttingDashboardView: View {
+    let onSelectTemplate: (PracticeTemplate) -> Void
+
     var body: some View {
-        GarageEnvironmentDashboardView(environment: .puttingGreen)
+        GarageEnvironmentDashboardView(
+            environment: .puttingGreen,
+            onSelectTemplate: onSelectTemplate
+        )
     }
 }
 
@@ -89,10 +145,13 @@ private struct GarageEnvironmentSelectionRow: View {
 
 @MainActor
 private struct GarageEnvironmentDashboardView: View {
+    @Query(sort: \PracticeTemplate.title) private var allTemplates: [PracticeTemplate]
+
     let environment: PracticeEnvironment
+    let onSelectTemplate: (PracticeTemplate) -> Void
 
     private var templates: [PracticeTemplate] {
-        PracticeTemplate.starterTemplates.filter { $0.environments.contains(environment) }
+        allTemplates.filter { $0.environment == environment.rawValue }
     }
 
     var body: some View {
@@ -114,24 +173,18 @@ private struct GarageEnvironmentDashboardView: View {
                 .padding(.vertical, 4)
             }
 
-            ForEach(templates) { template in
-                Section(template.title) {
-                    ForEach(template.drills) { drill in
-                        HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: "circle")
-                                .foregroundStyle(.secondary)
-                                .frame(width: 20)
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(drill.title)
-                                    .font(.headline)
-                                Text(drill.detail)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
+            Section("Templates") {
+                if templates.isEmpty {
+                    Text("No templates exist for this environment yet. Use the + button to build one.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(templates, id: \.id) { template in
+                        Button {
+                            onSelectTemplate(template)
+                        } label: {
+                            GarageTemplateRow(template: template)
                         }
-                        .padding(.vertical, 2)
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -142,12 +195,44 @@ private struct GarageEnvironmentDashboardView: View {
     }
 }
 
+@MainActor
+private struct GarageTemplateRow: View {
+    let template: PracticeTemplate
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(template.title)
+                .font(.headline)
+
+            Text("\(template.drills.count) drills")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            if let firstDrill = template.drills.first {
+                Text(firstDrill.title)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
 #Preview("Garage Environment Selector") {
     GarageView()
+        .modelContainer(PreviewCatalog.populatedApp)
 }
 
 #Preview("Garage Net Dashboard") {
     NavigationStack {
-        GarageNetDashboardView()
+        GarageNetDashboardView { _ in }
     }
+    .modelContainer(PreviewCatalog.populatedApp)
+}
+
+private enum GarageNavigationDestination: Hashable {
+    case environment(PracticeEnvironment)
+    case activeSession(ActivePracticeSession)
+    case skillVault
 }

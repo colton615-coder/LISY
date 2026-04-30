@@ -4,7 +4,7 @@ import SwiftUI
 @main
 struct LifeInSyncApp: App {
     private var sharedModelContainer: ModelContainer = {
-        let schema = Schema(LISYSchemaV2.models)
+        let schema = Schema(LISYSchemaV4.models)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
         do {

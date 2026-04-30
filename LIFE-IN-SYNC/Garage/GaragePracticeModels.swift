@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 enum PracticeEnvironment: String, CaseIterable, Codable, Identifiable, Hashable {
     case net
@@ -41,150 +42,100 @@ enum PracticeEnvironment: String, CaseIterable, Codable, Identifiable, Hashable 
     }
 }
 
-struct PracticeDrill: Identifiable, Hashable, Codable {
-    let id: UUID
-    let title: String
-    let detail: String
+@Model
+final class PracticeDrillDefinition {
+    var id: UUID
+    var title: String
+    var focusArea: String
+    var targetClub: String
+    var defaultRepCount: Int
 
     init(
         id: UUID = UUID(),
         title: String,
-        detail: String
+        focusArea: String,
+        targetClub: String,
+        defaultRepCount: Int
     ) {
         self.id = id
         self.title = title
-        self.detail = detail
+        self.focusArea = focusArea
+        self.targetClub = targetClub
+        self.defaultRepCount = defaultRepCount
     }
 }
 
-struct PracticeTemplate: Identifiable, Hashable, Codable {
+struct PracticeTemplateDrill: Identifiable, Hashable, Codable {
     let id: UUID
+    let definitionID: UUID?
     let title: String
-    let environments: [PracticeEnvironment]
-    let drills: [PracticeDrill]
+    let focusArea: String
+    let targetClub: String
+    let defaultRepCount: Int
+
+    init(
+        id: UUID = UUID(),
+        definitionID: UUID? = nil,
+        title: String,
+        focusArea: String,
+        targetClub: String,
+        defaultRepCount: Int
+    ) {
+        self.id = id
+        self.definitionID = definitionID
+        self.title = title
+        self.focusArea = focusArea
+        self.targetClub = targetClub
+        self.defaultRepCount = defaultRepCount
+    }
+
+    init(definition: PracticeDrillDefinition) {
+        self.init(
+            definitionID: definition.id,
+            title: definition.title,
+            focusArea: definition.focusArea,
+            targetClub: definition.targetClub,
+            defaultRepCount: definition.defaultRepCount
+        )
+    }
+
+    var metadataSummary: String {
+        var parts: [String] = []
+
+        if focusArea.isEmpty == false {
+            parts.append(focusArea)
+        }
+
+        if targetClub.isEmpty == false {
+            parts.append(targetClub)
+        }
+
+        parts.append("\(defaultRepCount) reps")
+        return parts.joined(separator: " • ")
+    }
+}
+
+@Model
+final class PracticeTemplate {
+    var id: UUID
+    var title: String
+    var environment: String
+    var drills: [PracticeTemplateDrill]
+    var createdAt: Date
 
     init(
         id: UUID = UUID(),
         title: String,
-        environments: [PracticeEnvironment],
-        drills: [PracticeDrill]
+        environment: String,
+        drills: [PracticeTemplateDrill],
+        createdAt: Date = .now
     ) {
         self.id = id
         self.title = title
-        self.environments = environments
+        self.environment = environment
         self.drills = drills
+        self.createdAt = createdAt
     }
-
-    static let starterTemplates: [PracticeTemplate] = [
-        PracticeTemplate(
-            title: "Net Start-Line Calibration",
-            environments: [.net],
-            drills: [
-                PracticeDrill(
-                    title: "Nine-ball setup check",
-                    detail: "Hit three stock shots each with wedge, 8-iron, and driver while holding the same start-line gate."
-                ),
-                PracticeDrill(
-                    title: "Face-to-path rehearsal",
-                    detail: "Alternate one slow-motion rehearsal with one live swing for six reps."
-                ),
-                PracticeDrill(
-                    title: "Miss pattern note",
-                    detail: "Write one sentence on the most common start direction before ending the block."
-                )
-            ]
-        ),
-        PracticeTemplate(
-            title: "100-Yard Wedge Matrix",
-            environments: [.range],
-            drills: [
-                PracticeDrill(
-                    title: "Carry ladder",
-                    detail: "Hit five balls each to 80, 90, 100, and 110 yards with one wedge."
-                ),
-                PracticeDrill(
-                    title: "Window discipline",
-                    detail: "Keep every shot inside one launch-window intention: low, stock, or high."
-                ),
-                PracticeDrill(
-                    title: "Distance audit",
-                    detail: "Record the best and worst carry numbers from the set."
-                )
-            ]
-        ),
-        PracticeTemplate(
-            title: "Pressure Putting Ladder",
-            environments: [.puttingGreen],
-            drills: [
-                PracticeDrill(
-                    title: "Three-foot circle",
-                    detail: "Make 12 in a row before moving back."
-                ),
-                PracticeDrill(
-                    title: "Six-foot gate",
-                    detail: "Roll 10 putts through a start-line gate with matching pace."
-                ),
-                PracticeDrill(
-                    title: "One-ball finish",
-                    detail: "End with one putt from your weakest distance and document the result."
-                )
-            ]
-        ),
-        PracticeTemplate(
-            title: "Tempo and Contact Reset",
-            environments: [.net, .range],
-            drills: [
-                PracticeDrill(
-                    title: "Metronome block",
-                    detail: "Match backswing and downswing cadence for eight reps before removing the cue."
-                ),
-                PracticeDrill(
-                    title: "Center-face check",
-                    detail: "Hit 10 shots focusing only on strike location, not result."
-                ),
-                PracticeDrill(
-                    title: "Commitment rep",
-                    detail: "Finish with three full-routine swings at game speed."
-                )
-            ]
-        ),
-        PracticeTemplate(
-            title: "Short Game Landing Spot Circuit",
-            environments: [.range, .puttingGreen],
-            drills: [
-                PracticeDrill(
-                    title: "Landing towel",
-                    detail: "Choose one landing spot and hit eight chips or pitches trying to land on it."
-                ),
-                PracticeDrill(
-                    title: "Release pattern",
-                    detail: "Alternate low-checking and higher-releasing trajectories for six reps each."
-                ),
-                PracticeDrill(
-                    title: "Up-and-down finish",
-                    detail: "Simulate three one-ball save attempts with full routine."
-                )
-            ]
-        ),
-        PracticeTemplate(
-            title: "Pre-Round Readiness",
-            environments: [.net, .range, .puttingGreen],
-            drills: [
-                PracticeDrill(
-                    title: "Body and grip reset",
-                    detail: "Take five unrushed rehearsals with alignment and grip pressure awareness."
-                ),
-                PracticeDrill(
-                    title: "One-club confidence rep",
-                    detail: "Choose the club or stroke you trust most and bank five clean executions."
-                ),
-                PracticeDrill(
-                    title: "Single intention close",
-                    detail: "Leave with one simple swing or stroke cue for the next session."
-                )
-            ]
-        )
-    ]
 }
 
 struct PracticeDrillProgress: Hashable, Codable {
@@ -205,27 +156,156 @@ struct PracticeDrillProgress: Hashable, Codable {
 
 struct ActivePracticeSession: Identifiable, Hashable, Codable {
     let id: UUID
-    let template: PracticeTemplate
+    let templateID: UUID?
+    let templateName: String
     let environment: PracticeEnvironment
     let startedAt: Date
     var endedAt: Date?
+    let drills: [PracticeTemplateDrill]
     var drillProgress: [PracticeDrillProgress]
 
     init(
         id: UUID = UUID(),
         template: PracticeTemplate,
-        environment: PracticeEnvironment,
         startedAt: Date = .now,
         endedAt: Date? = nil,
         drillProgress: [PracticeDrillProgress]? = nil
     ) {
+        let environmentValue = PracticeEnvironment(rawValue: template.environment) ?? .net
+
         self.id = id
-        self.template = template
-        self.environment = environment
+        self.templateID = template.id
+        self.templateName = template.title
+        self.environment = environmentValue
         self.startedAt = startedAt
         self.endedAt = endedAt
+        self.drills = template.drills
         self.drillProgress = drillProgress ?? template.drills.map {
             PracticeDrillProgress(drillID: $0.id)
         }
+    }
+}
+
+@Model
+final class PracticeSessionRecord {
+    var id: UUID
+    var date: Date
+    var templateName: String
+    var environment: String
+    var completedDrills: Int
+    var totalDrills: Int
+    var aggregatedNotes: String
+
+    init(
+        id: UUID = UUID(),
+        date: Date = .now,
+        templateName: String,
+        environment: String,
+        completedDrills: Int,
+        totalDrills: Int,
+        aggregatedNotes: String = ""
+    ) {
+        self.id = id
+        self.date = date
+        self.templateName = templateName
+        self.environment = environment
+        self.completedDrills = completedDrills
+        self.totalDrills = totalDrills
+        self.aggregatedNotes = aggregatedNotes
+    }
+}
+
+extension PracticeTemplate {
+    var environmentValue: PracticeEnvironment {
+        PracticeEnvironment(rawValue: environment) ?? .net
+    }
+
+    var environmentDisplayName: String {
+        environmentValue.displayName
+    }
+}
+
+extension PracticeDrillDefinition {
+    var metadataSummary: String {
+        PracticeTemplateDrill(definition: self).metadataSummary
+    }
+}
+
+extension ActivePracticeSession {
+    var completedDrillCount: Int {
+        drillProgress.filter(\.isCompleted).count
+    }
+
+    var totalDrillCount: Int {
+        drills.count
+    }
+
+    var orderedDrillEntries: [PracticeSessionDrillEntry] {
+        drills.map { drill in
+            PracticeSessionDrillEntry(
+                drill: drill,
+                progress: progress(for: drill.id) ?? PracticeDrillProgress(drillID: drill.id)
+            )
+        }
+    }
+
+    mutating func toggleCompletion(for drillID: UUID) {
+        guard let index = drillProgress.firstIndex(where: { $0.drillID == drillID }) else {
+            return
+        }
+
+        drillProgress[index].isCompleted.toggle()
+    }
+
+    mutating func updateNote(_ note: String, for drillID: UUID) {
+        guard let index = drillProgress.firstIndex(where: { $0.drillID == drillID }) else {
+            return
+        }
+
+        drillProgress[index].note = note.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func progress(for drillID: UUID) -> PracticeDrillProgress? {
+        drillProgress.first(where: { $0.drillID == drillID })
+    }
+
+    var aggregatedNotes: String {
+        orderedDrillEntries
+            .compactMap { entry in
+                let note = entry.progress.note.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard note.isEmpty == false else {
+                    return nil
+                }
+
+                return "\(entry.drill.title): \(note)"
+            }
+            .joined(separator: "\n")
+    }
+
+    var record: PracticeSessionRecord {
+        PracticeSessionRecord(
+            templateName: templateName,
+            environment: environment.rawValue,
+            completedDrills: completedDrillCount,
+            totalDrills: totalDrillCount,
+            aggregatedNotes: aggregatedNotes
+        )
+    }
+}
+
+struct PracticeSessionDrillEntry: Identifiable, Hashable {
+    let drill: PracticeTemplateDrill
+    let progress: PracticeDrillProgress
+
+    var id: UUID { drill.id }
+}
+
+extension PracticeSessionRecord {
+    var completionRatioText: String {
+        "\(completedDrills)/\(totalDrills)"
+    }
+
+    var environmentDisplayName: String {
+        PracticeEnvironment(rawValue: environment)?.displayName ?? environment
     }
 }

@@ -2,7 +2,7 @@ import SwiftData
 
 /// Centralized model list so app, previews, migrations, and persistence helpers share one schema source of truth.
 enum LISYModelRegistry {
-    static let coreModels: [any PersistentModel.Type] = [
+    static let legacySharedModels: [any PersistentModel.Type] = [
         CompletionRecord.self,
         TagRecord.self,
         NoteRecord.self,
@@ -18,22 +18,38 @@ enum LISYModelRegistry {
         StudyEntry.self,
         SwingRecord.self
     ]
-    static let models: [any PersistentModel.Type] = coreModels
+    static let v3Models: [any PersistentModel.Type] = legacySharedModels + [
+        PracticeSessionRecord.self
+    ]
+    static let currentModels: [any PersistentModel.Type] = v3Models + [
+        PracticeDrillDefinition.self,
+        PracticeTemplate.self
+    ]
 }
 
 enum LISYSchemaV1: VersionedSchema {
     static var versionIdentifier: Schema.Version = .init(1, 0, 0)
-    static var models: [any PersistentModel.Type] { LISYModelRegistry.coreModels }
+    static var models: [any PersistentModel.Type] { LISYModelRegistry.legacySharedModels }
 }
 
 enum LISYSchemaV2: VersionedSchema {
     static var versionIdentifier: Schema.Version = .init(2, 0, 0)
-    static var models: [any PersistentModel.Type] { LISYModelRegistry.models }
+    static var models: [any PersistentModel.Type] { LISYModelRegistry.legacySharedModels }
+}
+
+enum LISYSchemaV3: VersionedSchema {
+    static var versionIdentifier: Schema.Version = .init(3, 0, 0)
+    static var models: [any PersistentModel.Type] { LISYModelRegistry.v3Models }
+}
+
+enum LISYSchemaV4: VersionedSchema {
+    static var versionIdentifier: Schema.Version = .init(4, 0, 0)
+    static var models: [any PersistentModel.Type] { LISYModelRegistry.currentModels }
 }
 
 enum LISYMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [LISYSchemaV1.self, LISYSchemaV2.self]
+        [LISYSchemaV1.self, LISYSchemaV2.self, LISYSchemaV3.self, LISYSchemaV4.self]
     }
 
     static var stages: [MigrationStage] {
@@ -56,11 +72,19 @@ enum LISYMigrationPlan: SchemaMigrationPlan {
                         try context.save()
                     }
                 }
+            ),
+            .lightweight(
+                fromVersion: LISYSchemaV2.self,
+                toVersion: LISYSchemaV3.self
+            ),
+            .lightweight(
+                fromVersion: LISYSchemaV3.self,
+                toVersion: LISYSchemaV4.self
             )
         ]
     }
 }
 
 enum LISYPersistence {
-    static let schema = Schema(LISYSchemaV2.models)
+    static let schema = Schema(LISYSchemaV4.models)
 }

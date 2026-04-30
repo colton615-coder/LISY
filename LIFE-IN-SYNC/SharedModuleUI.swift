@@ -209,7 +209,7 @@ enum PreviewCatalog {
     private static func makeContainer(seed: SeedStyle = .empty) -> ModelContainer {
         do {
             let container = try ModelContainer(
-                for: Schema(LISYSchemaV2.models),
+                for: Schema(LISYSchemaV4.models),
                 configurations: ModelConfiguration(isStoredInMemoryOnly: true)
             )
 
@@ -272,6 +272,89 @@ enum PreviewCatalog {
             )
         ]
         tasks.forEach(context.insert)
+
+        let drillDefinitions = [
+            PracticeDrillDefinition(
+                title: "Carry Ladder",
+                focusArea: "Distance Control",
+                targetClub: "Wedge",
+                defaultRepCount: 12
+            ),
+            PracticeDrillDefinition(
+                title: "Start-Line Gate",
+                focusArea: "Start Line",
+                targetClub: "Putter",
+                defaultRepCount: 10
+            ),
+            PracticeDrillDefinition(
+                title: "Tempo Rehearsal",
+                focusArea: "Tempo",
+                targetClub: "7 Iron",
+                defaultRepCount: 8
+            ),
+            PracticeDrillDefinition(
+                title: "Start-Line Calibration",
+                focusArea: "Start Line",
+                targetClub: "Driver",
+                defaultRepCount: 9
+            )
+        ]
+        drillDefinitions.forEach(context.insert)
+
+        let practiceTemplates = [
+            PracticeTemplate(
+                title: "Net Start-Line Calibration",
+                environment: PracticeEnvironment.net.rawValue,
+                drills: [
+                    PracticeTemplateDrill(definition: drillDefinitions[3]),
+                    PracticeTemplateDrill(definition: drillDefinitions[2])
+                ]
+            ),
+            PracticeTemplate(
+                title: "100-Yard Wedge Matrix",
+                environment: PracticeEnvironment.range.rawValue,
+                drills: [
+                    PracticeTemplateDrill(definition: drillDefinitions[0]),
+                    PracticeTemplateDrill(definition: drillDefinitions[2])
+                ]
+            ),
+            PracticeTemplate(
+                title: "Bench Putting Reset",
+                environment: PracticeEnvironment.puttingGreen.rawValue,
+                drills: [
+                    PracticeTemplateDrill(definition: drillDefinitions[1])
+                ]
+            )
+        ]
+        practiceTemplates.forEach(context.insert)
+
+        let practiceSessions = [
+            PracticeSessionRecord(
+                date: calendar.date(byAdding: .day, value: -1, to: now) ?? now,
+                templateName: "Net Start-Line Calibration",
+                environment: PracticeEnvironment.net.rawValue,
+                completedDrills: 2,
+                totalDrills: 3,
+                aggregatedNotes: "Face-to-path rehearsal: Stayed synced when I slowed the transition."
+            ),
+            PracticeSessionRecord(
+                date: calendar.date(byAdding: .day, value: -3, to: now) ?? now,
+                templateName: "100-Yard Wedge Matrix",
+                environment: PracticeEnvironment.range.rawValue,
+                completedDrills: 3,
+                totalDrills: 3,
+                aggregatedNotes: "Distance audit: 100-yard stock shot carried 97-101."
+            ),
+            PracticeSessionRecord(
+                date: calendar.date(byAdding: .day, value: -6, to: now) ?? now,
+                templateName: "100-Yard Wedge Matrix",
+                environment: PracticeEnvironment.range.rawValue,
+                completedDrills: 2,
+                totalDrills: 3,
+                aggregatedNotes: "Window discipline: High window got loose into the wind."
+            )
+        ]
+        practiceSessions.forEach(context.insert)
 
         let standupStart = calendar.date(byAdding: .hour, value: 9, to: startOfToday) ?? now
         let workoutStart = calendar.date(byAdding: .hour, value: 17, to: startOfToday) ?? now
