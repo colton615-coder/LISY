@@ -5,7 +5,7 @@ import SwiftUI
 @main
 struct LifeInSyncApp: App {
     private var sharedModelContainer: ModelContainer = {
-        let schema = Schema(LISYSchemaV4.models)
+        let schema = Schema(LISYSchemaV8.models)
         let isRunningForPreviews = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: isRunningForPreviews)
 

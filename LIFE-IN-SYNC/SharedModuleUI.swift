@@ -250,7 +250,7 @@ enum PreviewCatalog {
     private static func makeContainer(seed: SeedStyle = .empty) -> ModelContainer {
         do {
             let container = try ModelContainer(
-                for: Schema(LISYSchemaV4.models),
+                for: Schema(LISYSchemaV8.models),
                 configurations: ModelConfiguration(isStoredInMemoryOnly: true)
             )
 
@@ -376,6 +376,14 @@ enum PreviewCatalog {
                 environment: PracticeEnvironment.net.rawValue,
                 completedDrills: 2,
                 totalDrills: 3,
+                drillResults: [
+                    DrillResult(name: "Start-Line Calibration", successfulReps: 7, totalReps: 9),
+                    DrillResult(name: "Tempo Rehearsal", successfulReps: 6, totalReps: 8)
+                ],
+                sessionFeelNote: "Best when the chest stayed quiet through the strike.",
+                aiCoachingInsight: "{\"keyCues\":[\"Keep the chest quieter through impact to preserve your start line.\",\"Begin the next session with tempo rehearsals before calibration reps.\"],\"focusDrills\":[\"Start-Line Calibration\"]}",
+                coachingEfficacyScore: nil,
+                isPersonalRecord: true,
                 aggregatedNotes: "Face-to-path rehearsal: Stayed synced when I slowed the transition."
             ),
             PracticeSessionRecord(
@@ -384,6 +392,14 @@ enum PreviewCatalog {
                 environment: PracticeEnvironment.range.rawValue,
                 completedDrills: 3,
                 totalDrills: 3,
+                drillResults: [
+                    DrillResult(name: "Carry Ladder", successfulReps: 8, totalReps: 12),
+                    DrillResult(name: "Tempo Rehearsal", successfulReps: 7, totalReps: 8)
+                ],
+                sessionFeelNote: "Center contact stayed reliable when tempo stayed soft.",
+                aiCoachingInsight: "{\"keyCues\":[\"Hold the softer tempo that kept center contact stable.\",\"Start the next wedge ladder with the same stock window before pushing speed.\"],\"focusDrills\":[\"Carry Ladder\"]}",
+                coachingEfficacyScore: 0.208,
+                isPersonalRecord: true,
                 aggregatedNotes: "Distance audit: 100-yard stock shot carried 97-101."
             ),
             PracticeSessionRecord(
@@ -392,6 +408,14 @@ enum PreviewCatalog {
                 environment: PracticeEnvironment.range.rawValue,
                 completedDrills: 2,
                 totalDrills: 3,
+                drillResults: [
+                    DrillResult(name: "Carry Ladder", successfulReps: 5, totalReps: 12),
+                    DrillResult(name: "Tempo Rehearsal", successfulReps: 6, totalReps: 8)
+                ],
+                sessionFeelNote: "Wind exposed the high-window miss quickly.",
+                aiCoachingInsight: "{\"keyCues\":[\"Keep the chest quieter through transition to flatten the launch window.\",\"Start with three carry-ladder reps before adding speed.\"],\"focusDrills\":[\"Carry Ladder\"]}",
+                coachingEfficacyScore: nil,
+                isPersonalRecord: false,
                 aggregatedNotes: "Window discipline: High window got loose into the wind."
             )
         ]

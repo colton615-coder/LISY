@@ -154,6 +154,22 @@ struct PracticeDrillProgress: Hashable, Codable {
     }
 }
 
+struct DrillResult: Hashable, Codable, Identifiable, Sendable {
+    var name: String
+    var successfulReps: Int
+    var totalReps: Int
+
+    var id: String { name }
+
+    var successRatio: Double {
+        guard totalReps > 0 else {
+            return 0
+        }
+
+        return Double(successfulReps) / Double(totalReps)
+    }
+}
+
 struct ActivePracticeSession: Identifiable, Hashable, Codable {
     let id: UUID
     let templateID: UUID?
@@ -194,6 +210,11 @@ final class PracticeSessionRecord {
     var environment: String
     var completedDrills: Int
     var totalDrills: Int
+    var drillResults: [DrillResult]
+    var sessionFeelNote: String
+    var aiCoachingInsight: String?
+    var coachingEfficacyScore: Double?
+    var isPersonalRecord: Bool
     var aggregatedNotes: String
 
     init(
@@ -203,6 +224,11 @@ final class PracticeSessionRecord {
         environment: String,
         completedDrills: Int,
         totalDrills: Int,
+        drillResults: [DrillResult] = [],
+        sessionFeelNote: String = "",
+        aiCoachingInsight: String? = nil,
+        coachingEfficacyScore: Double? = nil,
+        isPersonalRecord: Bool = false,
         aggregatedNotes: String = ""
     ) {
         self.id = id
@@ -211,6 +237,11 @@ final class PracticeSessionRecord {
         self.environment = environment
         self.completedDrills = completedDrills
         self.totalDrills = totalDrills
+        self.drillResults = drillResults
+        self.sessionFeelNote = sessionFeelNote
+        self.aiCoachingInsight = aiCoachingInsight
+        self.coachingEfficacyScore = coachingEfficacyScore
+        self.isPersonalRecord = isPersonalRecord
         self.aggregatedNotes = aggregatedNotes
     }
 }
@@ -282,12 +313,27 @@ extension ActivePracticeSession {
             .joined(separator: "\n")
     }
 
-    var record: PracticeSessionRecord {
+    func defaultDrillResults() -> [DrillResult] {
+        orderedDrillEntries.map { entry in
+            DrillResult(
+                name: entry.drill.title,
+                successfulReps: entry.progress.isCompleted ? entry.drill.defaultRepCount : 0,
+                totalReps: entry.drill.defaultRepCount
+            )
+        }
+    }
+
+    func makeRecord(
+        drillResults: [DrillResult],
+        sessionFeelNote: String
+    ) -> PracticeSessionRecord {
         PracticeSessionRecord(
             templateName: templateName,
             environment: environment.rawValue,
             completedDrills: completedDrillCount,
             totalDrills: totalDrillCount,
+            drillResults: drillResults,
+            sessionFeelNote: sessionFeelNote.trimmingCharacters(in: .whitespacesAndNewlines),
             aggregatedNotes: aggregatedNotes
         )
     }
@@ -305,7 +351,330 @@ extension PracticeSessionRecord {
         "\(completedDrills)/\(totalDrills)"
     }
 
+    var totalSuccessfulReps: Int {
+        drillResults.reduce(0) { $0 + $1.successfulReps }
+    }
+
+    var totalAttemptedReps: Int {
+        drillResults.reduce(0) { $0 + $1.totalReps }
+    }
+
+    var aggregateEfficiency: Double {
+        guard totalAttemptedReps > 0 else {
+            return 0
+        }
+
+        return Double(totalSuccessfulReps) / Double(totalAttemptedReps)
+    }
+
+    var aggregateEfficiencyPercentage: Int {
+        Int((aggregateEfficiency * 100).rounded())
+    }
+
+    var aggregateEfficiencyText: String {
+        "\(aggregateEfficiencyPercentage)%"
+    }
+
     var environmentDisplayName: String {
         PracticeEnvironment(rawValue: environment)?.displayName ?? environment
+    }
+
+    var coachingEfficacyPercentagePoints: Int? {
+        coachingEfficacyScore.map { Int(($0 * 100).rounded()) }
+    }
+}
+
+struct GarageDrillBenchmark: Identifiable, Hashable {
+    let name: String
+    let averageSuccessRatio: Double
+    let sampleCount: Int
+
+    var id: String { name }
+
+    func projectedSuccessfulReps(for totalReps: Int) -> Int {
+        let projectedValue = Int((averageSuccessRatio * Double(totalReps)).rounded())
+        return min(max(projectedValue, 0), totalReps)
+    }
+}
+
+struct GarageTemplateBenchmarkSnapshot: Hashable {
+    let templateName: String
+    let sourceSessionCount: Int
+    let totalSuccess: Int
+    let totalAttempts: Int
+    let drillBenchmarks: [GarageDrillBenchmark]
+
+    var projectedEfficiency: Double {
+        guard totalAttempts > 0 else {
+            return 0
+        }
+
+        return Double(totalSuccess) / Double(totalAttempts)
+    }
+
+    var projectedEfficiencyText: String {
+        "\(Int((projectedEfficiency * 100).rounded()))%"
+    }
+
+    func projectedSuccessfulReps(for drillName: String, totalReps: Int) -> Int? {
+        drillBenchmarks
+            .first(where: { $0.name == drillName })?
+            .projectedSuccessfulReps(for: totalReps)
+    }
+}
+
+struct GarageDrillDelta: Identifiable, Hashable {
+    let name: String
+    let previousRatio: Double
+    let currentRatio: Double
+
+    var id: String { name }
+
+    var delta: Double {
+        currentRatio - previousRatio
+    }
+
+    var deltaPercentagePoints: Int {
+        Int((delta * 100).rounded())
+    }
+
+    var deltaText: String {
+        let value = deltaPercentagePoints
+        let sign = value > 0 ? "+" : ""
+        return "\(sign)\(value)%"
+    }
+
+    var improved: Bool {
+        delta > 0
+    }
+}
+
+struct GarageCoachingAuditSnapshot: Identifiable, Hashable {
+    let currentRecordID: UUID
+    let previousRecordID: UUID
+    let templateName: String
+    let previousCue: String
+    let drillDeltas: [GarageDrillDelta]
+    let isPersonalRecord: Bool
+
+    var id: UUID { currentRecordID }
+
+    var leadingDelta: GarageDrillDelta? {
+        drillDeltas.max { lhs, rhs in
+            abs(lhs.delta) < abs(rhs.delta)
+        }
+    }
+
+    var averageDelta: Double {
+        guard drillDeltas.isEmpty == false else {
+            return 0
+        }
+
+        let totalDelta = drillDeltas.reduce(0) { partialResult, delta in
+            partialResult + delta.delta
+        }
+        return totalDelta / Double(drillDeltas.count)
+    }
+
+    var averageDeltaPercentagePoints: Int {
+        Int((averageDelta * 100).rounded())
+    }
+
+    var deltaBadgeText: String {
+        let sign = averageDeltaPercentagePoints > 0 ? "+" : ""
+        return "\(sign)\(averageDeltaPercentagePoints)%"
+    }
+
+    var impactDirectionText: String {
+        if averageDeltaPercentagePoints > 0 {
+            return "Improved"
+        }
+
+        if averageDeltaPercentagePoints < 0 {
+            return "Slipped"
+        }
+
+        return "Held"
+    }
+
+    var weightedOutcomeWeight: Double {
+        isPersonalRecord ? 1.5 : 1
+    }
+
+    var cueGivenText: String {
+        previousCue
+    }
+
+    var progressSummaryText: String {
+        if let leadingDelta {
+            return "\(leadingDelta.name) \(leadingDelta.deltaText)"
+        }
+
+        return deltaBadgeText
+    }
+}
+
+struct GarageCoachingImpactDashboard: Hashable {
+    let auditSnapshots: [GarageCoachingAuditSnapshot]
+
+    var weightedSuccessRatio: Double {
+        let totalWeight = auditSnapshots.reduce(0) { $0 + $1.weightedOutcomeWeight }
+        guard totalWeight > 0 else {
+            return 0
+        }
+
+        let positiveWeight = auditSnapshots.reduce(0) { partialResult, snapshot in
+            partialResult + (snapshot.averageDelta > 0 ? snapshot.weightedOutcomeWeight : 0)
+        }
+        return positiveWeight / totalWeight
+    }
+
+    var efficacyPercentage: Int {
+        Int((weightedSuccessRatio * 100).rounded())
+    }
+
+    var efficacyText: String {
+        "\(efficacyPercentage)% of AI cues led to performance gains"
+    }
+}
+
+extension Array where Element == PracticeSessionRecord {
+    func recentTemplateSessions(
+        named templateName: String,
+        upTo referenceDate: Date = .distantFuture,
+        limit: Int = 5
+    ) -> [PracticeSessionRecord] {
+        filter { record in
+            record.templateName == templateName && record.date <= referenceDate
+        }
+        .sorted { $0.date > $1.date }
+        .prefix(limit)
+        .map { $0 }
+    }
+
+    func benchmarkSnapshot(
+        for templateName: String,
+        upTo referenceDate: Date = .distantFuture,
+        limit: Int = 5
+    ) -> GarageTemplateBenchmarkSnapshot? {
+        let recentRecords = recentTemplateSessions(
+            named: templateName,
+            upTo: referenceDate,
+            limit: limit
+        )
+
+        guard recentRecords.isEmpty == false else {
+            return nil
+        }
+
+        let totalSuccess = recentRecords.reduce(0) { $0 + $1.totalSuccessfulReps }
+        let totalAttempts = recentRecords.reduce(0) { $0 + $1.totalAttemptedReps }
+
+        let groupedBenchmarks: [GarageDrillBenchmark] = Dictionary(grouping: recentRecords.flatMap(\.drillResults), by: \.name)
+            .map { drillName, drillResults in
+                let totalDrillSuccess = drillResults.reduce(0) { $0 + $1.successfulReps }
+                let totalDrillAttempts = drillResults.reduce(0) { $0 + $1.totalReps }
+                let averageSuccessRatio: Double
+
+                if totalDrillAttempts > 0 {
+                    averageSuccessRatio = Double(totalDrillSuccess) / Double(totalDrillAttempts)
+                } else {
+                    averageSuccessRatio = 0
+                }
+
+                return GarageDrillBenchmark(
+                    name: drillName,
+                    averageSuccessRatio: averageSuccessRatio,
+                    sampleCount: drillResults.count
+                )
+            }
+            .sorted { lhs, rhs in
+                lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+
+        return GarageTemplateBenchmarkSnapshot(
+            templateName: templateName,
+            sourceSessionCount: recentRecords.count,
+            totalSuccess: totalSuccess,
+            totalAttempts: totalAttempts,
+            drillBenchmarks: groupedBenchmarks
+        )
+    }
+
+    func personalRecordHolder(for templateName: String) -> PracticeSessionRecord? {
+        filter { $0.templateName == templateName }
+            .max { lhs, rhs in
+                if lhs.aggregateEfficiency == rhs.aggregateEfficiency {
+                    return lhs.date < rhs.date
+                }
+
+                return lhs.aggregateEfficiency < rhs.aggregateEfficiency
+            }
+    }
+
+    func latestTemplateSession(named templateName: String) -> PracticeSessionRecord? {
+        filter { $0.templateName == templateName }
+            .max { lhs, rhs in
+                lhs.date < rhs.date
+            }
+    }
+
+    func previousTemplateSession(for record: PracticeSessionRecord) -> PracticeSessionRecord? {
+        filter { candidate in
+            candidate.templateName == record.templateName &&
+            candidate.id != record.id &&
+            candidate.date < record.date
+        }
+        .max { lhs, rhs in
+            lhs.date < rhs.date
+        }
+    }
+
+    func coachingAuditSnapshot(for currentRecord: PracticeSessionRecord) -> GarageCoachingAuditSnapshot? {
+        guard let previousRecord = previousTemplateSession(for: currentRecord),
+              let previousInsight = GarageCoachingInsight.decode(from: previousRecord.aiCoachingInsight),
+              let previousCue = previousInsight.primaryCue else {
+            return nil
+        }
+
+        let focusDrillNames = previousInsight.focusDrillNames(matching: previousRecord.drillResults)
+        let previousResultMap = Dictionary(uniqueKeysWithValues: previousRecord.drillResults.map { ($0.name, $0) })
+        let currentResultMap = Dictionary(uniqueKeysWithValues: currentRecord.drillResults.map { ($0.name, $0) })
+
+        let drillDeltas = focusDrillNames.compactMap { drillName -> GarageDrillDelta? in
+            guard let previousResult = previousResultMap[drillName],
+                  let currentResult = currentResultMap[drillName] else {
+                return nil
+            }
+
+            return GarageDrillDelta(
+                name: drillName,
+                previousRatio: previousResult.successRatio,
+                currentRatio: currentResult.successRatio
+            )
+        }
+
+        guard drillDeltas.isEmpty == false else {
+            return nil
+        }
+
+        return GarageCoachingAuditSnapshot(
+            currentRecordID: currentRecord.id,
+            previousRecordID: previousRecord.id,
+            templateName: currentRecord.templateName,
+            previousCue: previousCue,
+            drillDeltas: drillDeltas,
+            isPersonalRecord: currentRecord.isPersonalRecord
+        )
+    }
+
+    func coachingImpactDashboard(limit: Int = 5) -> GarageCoachingImpactDashboard {
+        let snapshots = sorted { $0.date > $1.date }
+            .filter { $0.coachingEfficacyScore != nil }
+            .compactMap { coachingAuditSnapshot(for: $0) }
+            .prefix(limit)
+            .map { $0 }
+
+        return GarageCoachingImpactDashboard(auditSnapshots: snapshots)
     }
 }

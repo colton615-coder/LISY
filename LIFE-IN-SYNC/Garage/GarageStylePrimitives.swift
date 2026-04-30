@@ -82,6 +82,7 @@ struct GarageInsetPanelBackground<S: Shape>: View {
 enum GarageImpactWeight {
     case light
     case medium
+    case heavy
 }
 
 func garageTriggerImpact(_ weight: GarageImpactWeight) {
@@ -91,6 +92,8 @@ func garageTriggerImpact(_ weight: GarageImpactWeight) {
         style = .light
     case .medium:
         style = .medium
+    case .heavy:
+        style = .heavy
     }
 
     let generator = UIImpactFeedbackGenerator(style: style)
