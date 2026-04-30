@@ -45,19 +45,13 @@ struct CapitalCoreView: View {
             }
         }
         .safeAreaInset(edge: .bottom) {
-            HStack {
-                Spacer()
-                Button {
-                    isShowingAddExpense = true
-                } label: {
-                    Label("Add Expense", systemImage: "plus")
-                        .fontWeight(.semibold)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(AppModule.capitalCore.theme.primary)
+            ModuleBottomActionBar(
+                theme: AppModule.capitalCore.theme,
+                title: "Add Expense",
+                systemImage: "plus"
+            ) {
+                isShowingAddExpense = true
             }
-            .padding()
-            .background(.ultraThinMaterial)
         }
         .sheet(isPresented: $isShowingAddExpense) {
             AddExpenseSheet()
@@ -97,7 +91,7 @@ private struct CapitalOverviewTab: View {
                 HStack {
                     Spacer()
                     Button("Add Budget", action: createBudget)
-                        .buttonStyle(.bordered)
+                        .buttonStyle(MonochromeOutlineButtonStyle())
                 }
 
                 if budgets.isEmpty {
@@ -166,7 +160,7 @@ private struct CapitalMetricChip: View {
                 .font(ModuleTypography.metricValue)
             Text(title)
                 .font(ModuleTypography.supportingLabel)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(ModuleTheme.secondaryText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(ModuleSpacing.medium)
@@ -199,19 +193,19 @@ private struct BudgetCard: View {
                         .font(.headline)
                     Text(budget.periodLabel)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(ModuleTheme.secondaryText)
                 }
                 Spacer()
                 Text("\(spentAmount.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD"))) / \(budget.limitAmount.formatted(.currency(code: Locale.current.currency?.identifier ?? "USD")))")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(ModuleTheme.secondaryText)
             }
 
             ProgressView(value: progress)
                 .tint(AppModule.capitalCore.theme.primary)
         }
         .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
+        .puttingGreenSurface()
     }
 }
 
@@ -225,7 +219,7 @@ private struct ExpenseCard: View {
                     .font(.headline)
                 Text(expense.category)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(ModuleTheme.secondaryText)
             }
 
             Spacer()
@@ -235,11 +229,11 @@ private struct ExpenseCard: View {
                     .font(.headline)
                 Text(expense.recordedAt.formatted(date: .abbreviated, time: .omitted))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+                    .foregroundStyle(ModuleTheme.secondaryText)
+        }
         }
         .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
+        .puttingGreenSurface(cornerRadius: ModuleCornerRadius.row)
     }
 }
 
@@ -284,7 +278,9 @@ private struct AddExpenseSheet: View {
                         }
                     }
                 }
+                .listRowBackground(ModuleTheme.elevatedSurface)
             }
+            .puttingGreenFormChrome()
             .navigationTitle("New Expense")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -313,6 +309,7 @@ private struct AddExpenseSheet: View {
                 }
             }
         }
+        .puttingGreenSheetChrome()
     }
 }
 
@@ -347,7 +344,9 @@ private struct AddBudgetSheet: View {
                         }
                     }
                 }
+                .listRowBackground(ModuleTheme.elevatedSurface)
             }
+            .puttingGreenFormChrome()
             .navigationTitle("New Budget")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -375,6 +374,7 @@ private struct AddBudgetSheet: View {
                 }
             }
         }
+        .puttingGreenSheetChrome()
     }
 }
 

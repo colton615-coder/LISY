@@ -5,7 +5,7 @@ struct LaunchAffirmationView: View {
 
     var body: some View {
         ZStack {
-            AppModule.dashboard.theme.screenGradient
+            ModuleTheme.rootBackground
                 .ignoresSafeArea()
 
             VStack(spacing: ModuleSpacing.xLarge) {
@@ -22,17 +22,18 @@ struct LaunchAffirmationView: View {
 
                     Text(entry.title)
                         .font(.title.weight(.bold))
+                        .foregroundStyle(ModuleTheme.primaryText)
                         .multilineTextAlignment(.center)
 
                     Text(entry.message)
                         .font(.body)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(ModuleTheme.secondaryText)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: 320)
 
                     Text(entry.attribution)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(ModuleTheme.secondaryText)
                 }
 
                 ProgressView()
@@ -42,6 +43,7 @@ struct LaunchAffirmationView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.horizontal, ModuleSpacing.xLarge)
         }
+        .puttingGreenRootBackground()
         .accessibilityIdentifier("launch-affirmation-screen")
     }
 }

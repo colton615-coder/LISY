@@ -15,6 +15,32 @@ struct ModuleTheme {
     private let shadowLightOverride: Color?
     private let shadowDarkOverride: Color?
 
+    static let rootBackground = Color(hex: "#2D7A3E")
+    static let elevatedSurface = Color(hex: "#236331")
+    static let divider = Color.white.opacity(0.25)
+    static let secondaryText = Color(hex: "#A1E4B5")
+    static let accent = Color(hex: "#FDE047")
+    static let primaryText = Color.white
+
+    static let mediaBlack = Color.black
+    static let mediaOverlay = Color.black.opacity(0.82)
+
+    static let puttingGreen = ModuleTheme(
+        primary: ModuleTheme.accent,
+        secondary: ModuleTheme.accent.opacity(0.78),
+        backgroundTop: ModuleTheme.rootBackground,
+        backgroundBottom: ModuleTheme.rootBackground,
+        accentText: ModuleTheme.accent,
+        textPrimary: ModuleTheme.primaryText,
+        textSecondary: ModuleTheme.secondaryText,
+        textMuted: ModuleTheme.secondaryText.opacity(0.88),
+        surfaceBase: ModuleTheme.elevatedSurface,
+        surfaceElevated: ModuleTheme.elevatedSurface,
+        glow: ModuleTheme.accent,
+        shadowLight: Color.white.opacity(0.08),
+        shadowDark: Color.black.opacity(0.18)
+    )
+
     init(
         primary: Color,
         secondary: Color,
@@ -45,24 +71,24 @@ struct ModuleTheme {
         self.shadowDarkOverride = shadowDark
     }
 
-    static let electricCyan = Color(hex: "#00F5FF")
-    static let garageBackground = Color(hex: "#151B22")
-    static let garageBackgroundLift = Color(hex: "#1B232D")
-    static let garageSurface = Color(hex: "#222A34")
-    static let garageSurfaceRaised = Color(hex: "#2A3441")
-    static let garageSurfaceInset = Color(hex: "#101821")
-    static let garageSurfaceDark = Color(hex: "#0B1118")
-    static let garageCanvas = Color(hex: "#0D141B")
-    static let garageTrack = Color(hex: "#17202A")
-    static let garageTextPrimary = Color(hex: "#F2FAFF")
-    static let garageTextSecondary = Color(hex: "#A7B7C7")
-    static let garageTextMuted = Color(hex: "#8092A4")
-    static let garageShadowLight = Color.white.opacity(0.06)
-    static let garageShadowDark = Color.black.opacity(0.42)
+    static let electricCyan = accent
+    static let garageBackground = rootBackground
+    static let garageBackgroundLift = elevatedSurface
+    static let garageSurface = elevatedSurface
+    static let garageSurfaceRaised = elevatedSurface
+    static let garageSurfaceInset = elevatedSurface
+    static let garageSurfaceDark = elevatedSurface
+    static let garageCanvas = mediaBlack
+    static let garageTrack = elevatedSurface
+    static let garageTextPrimary = primaryText
+    static let garageTextSecondary = secondaryText
+    static let garageTextMuted = secondaryText.opacity(0.88)
+    static let garageShadowLight = Color.white.opacity(0.08)
+    static let garageShadowDark = Color.black.opacity(0.18)
 
     var heroGradient: LinearGradient {
         LinearGradient(
-            colors: [primary.opacity(0.32), secondary.opacity(0.18)],
+            colors: [backgroundTop, backgroundBottom],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
@@ -77,46 +103,46 @@ struct ModuleTheme {
     }
 
     var chipBackground: Color {
-        primary.opacity(0.14)
+        ModuleTheme.elevatedSurface
     }
 
     var surfaceSecondary: Color {
-        surfaceBaseOverride ?? primary.opacity(0.08)
+        surfaceBaseOverride ?? ModuleTheme.elevatedSurface
     }
 
     var surfaceInteractive: Color {
-        surfaceElevatedOverride ?? primary.opacity(0.14)
+        surfaceElevatedOverride ?? ModuleTheme.elevatedSurface
     }
 
     var borderSubtle: Color {
-        primary.opacity(0.18)
+        ModuleTheme.divider
     }
 
     var borderStrong: Color {
-        primary.opacity(0.4)
+        ModuleTheme.divider
     }
 
     var textPrimary: Color {
-        textPrimaryOverride ?? .primary
+        textPrimaryOverride ?? ModuleTheme.primaryText
     }
 
     var textSecondary: Color {
-        textSecondaryOverride ?? .secondary
+        textSecondaryOverride ?? ModuleTheme.secondaryText
     }
 
     var textMuted: Color {
-        textMutedOverride ?? .secondary.opacity(0.85)
+        textMutedOverride ?? ModuleTheme.secondaryText.opacity(0.88)
     }
 
     var electricGlow: Color {
-        glowOverride ?? primary
+        glowOverride ?? ModuleTheme.accent
     }
 
     var shadowLight: Color {
-        shadowLightOverride ?? Color.white.opacity(0.04)
+        shadowLightOverride ?? Color.white.opacity(0.08)
     }
 
     var shadowDark: Color {
-        shadowDarkOverride ?? Color.black.opacity(0.25)
+        shadowDarkOverride ?? Color.black.opacity(0.18)
     }
 }

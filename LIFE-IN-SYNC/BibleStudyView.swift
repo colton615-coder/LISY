@@ -36,19 +36,13 @@ struct BibleStudyView: View {
         }
         .background(AppModule.bibleStudy.theme.screenGradient)
         .safeAreaInset(edge: .bottom) {
-            HStack {
-                Spacer()
-                Button {
-                    isShowingAddEntry = true
-                } label: {
-                    Label("Add Study Entry", systemImage: "plus")
-                        .fontWeight(.semibold)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(AppModule.bibleStudy.theme.primary)
+            ModuleBottomActionBar(
+                theme: AppModule.bibleStudy.theme,
+                title: "Add Study Entry",
+                systemImage: "plus"
+            ) {
+                isShowingAddEntry = true
             }
-            .padding()
-            .background(.ultraThinMaterial)
         }
         .sheet(isPresented: $isShowingAddEntry) {
             AddStudyEntrySheet()
@@ -84,17 +78,17 @@ private struct StudyEntryCard: View {
             if entry.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
                 Text(entry.notes)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(ModuleTheme.secondaryText)
                     .lineLimit(3)
             }
 
             Text(entry.createdAt.formatted(date: .abbreviated, time: .shortened))
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(ModuleTheme.secondaryText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .puttingGreenSurface(cornerRadius: 18)
     }
 }
 
@@ -128,7 +122,9 @@ private struct AddStudyEntrySheet: View {
                     TextField("Notes", text: $notes, axis: .vertical)
                         .lineLimit(4, reservesSpace: true)
                 }
+                .listRowBackground(ModuleTheme.elevatedSurface)
             }
+            .puttingGreenFormChrome()
             .navigationTitle("New Study Entry")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -161,6 +157,7 @@ private struct AddStudyEntrySheet: View {
                 }
             }
         }
+        .puttingGreenSheetChrome()
     }
 }
 

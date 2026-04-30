@@ -63,19 +63,13 @@ struct CalendarView: View {
         }
         .background(AppModule.calendar.theme.screenGradient)
         .safeAreaInset(edge: .bottom) {
-            HStack {
-                Spacer()
-                Button {
-                    isShowingAddEvent = true
-                } label: {
-                    Label("Add Event", systemImage: "plus")
-                        .fontWeight(.semibold)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(AppModule.calendar.theme.primary)
+            ModuleBottomActionBar(
+                theme: AppModule.calendar.theme,
+                title: "Add Event",
+                systemImage: "plus"
+            ) {
+                isShowingAddEvent = true
             }
-            .padding()
-            .background(.ultraThinMaterial)
         }
         .sheet(isPresented: $isShowingAddEvent) {
             AddEventSheet(defaultDate: selectedDate)
@@ -127,7 +121,7 @@ private struct CalendarDateCard: View {
             .labelsHidden()
         }
         .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .puttingGreenSurface(cornerRadius: 20)
     }
 }
 
@@ -151,13 +145,13 @@ private struct CalendarEventCard: View {
                     .font(.headline)
                 Text(timeRangeText)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(ModuleTheme.secondaryText)
             }
 
             Spacer()
         }
         .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .puttingGreenSurface(cornerRadius: 20)
     }
 
     private var timeRangeText: String {
@@ -178,13 +172,13 @@ private struct CalendarTaskCard: View {
                 if let dueDate = task.dueDate {
                     Text(dueDate.formatted(date: .omitted, time: .omitted))
                         .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                        .foregroundStyle(ModuleTheme.secondaryText)
+        }
             }
             Spacer()
         }
         .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .puttingGreenSurface(cornerRadius: 18)
     }
 }
 
@@ -199,14 +193,14 @@ private struct CalendarEmptyStateView: View {
             Text(title)
                 .font(.headline)
             Text(message)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(ModuleTheme.secondaryText)
             Button(actionTitle, action: action)
                 .buttonStyle(.borderedProminent)
                 .tint(AppModule.calendar.theme.primary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .puttingGreenSurface(cornerRadius: 20)
     }
 }
 
@@ -232,7 +226,9 @@ private struct AddEventSheet: View {
                     DatePicker("Start", selection: $startDate)
                     DatePicker("End", selection: $endDate, in: startDate...)
                 }
+                .listRowBackground(ModuleTheme.elevatedSurface)
             }
+            .puttingGreenFormChrome()
             .navigationTitle("New Event")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -261,6 +257,7 @@ private struct AddEventSheet: View {
                 }
             }
         }
+        .puttingGreenSheetChrome()
     }
 }
 
