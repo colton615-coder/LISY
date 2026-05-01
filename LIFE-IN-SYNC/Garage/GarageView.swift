@@ -3,7 +3,7 @@ import SwiftUI
 
 @MainActor
 struct GarageView: View {
-    @Query(sort: \PracticeTemplate.title) private var templates: [PracticeTemplate]
+    @Query(sort: \PracticeTemplate.title) private var userTemplates: [PracticeTemplate]
     @Query(sort: \PracticeSessionRecord.date, order: .reverse) private var records: [PracticeSessionRecord]
 
     @State private var path: [GarageNavigationDestination] = []
@@ -15,6 +15,10 @@ struct GarageView: View {
 
         let success = records.reduce(0) { $0 + $1.totalSuccessfulReps }
         return "\(Int((Double(success) / Double(attempts) * 100).rounded()))%"
+    }
+
+    private var displayedRoutineCount: Int {
+        DrillVault.predefinedRoutines.count + userTemplates.count
     }
 
     var body: some View {
@@ -61,7 +65,7 @@ struct GarageView: View {
             eyebrow: "Dark Masters Practice",
             title: "Garage",
             subtitle: "Choose the training environment, launch a routine, then write the finished session into the Skill Vault.",
-            value: "\(templates.count)",
+            value: "\(displayedRoutineCount)",
             valueLabel: "Routines"
         ) {
             Button {
@@ -116,7 +120,7 @@ struct GarageView: View {
                     } label: {
                         GarageProEnvironmentCard(
                             environment: environment,
-                            templateCount: templates.filter { $0.environment == environment.rawValue }.count,
+                            routineCount: routineCount(for: environment),
                             sessionCount: records.filter { $0.environment == environment.rawValue }.count
                         )
                     }
@@ -167,7 +171,7 @@ struct GarageView: View {
             Spacer()
 
             GarageProPrimaryButton(
-                title: "New Template",
+                title: "New Routine",
                 systemImage: "plus"
             ) {
                 isShowingTemplateBuilder = true
@@ -209,6 +213,11 @@ struct GarageView: View {
                 }
             )
         }
+    }
+
+    private func routineCount(for environment: PracticeEnvironment) -> Int {
+        DrillVault.routineCount(in: environment) +
+            userTemplates.filter { $0.environment == environment.rawValue }.count
     }
 }
 
@@ -263,16 +272,28 @@ private struct GarageEnvironmentDashboardView: View {
     let onSelectTemplate: (PracticeTemplate) -> Void
     let onOpenDiagnostic: () -> Void
 
-    private var templates: [PracticeTemplate] {
-        allTemplates.filter { $0.environment == environment.rawValue }
+    private var builtInRoutines: [GarageDisplayedRoutine] {
+        DrillVault.predefinedRoutines
+            .filter { $0.environment == environment }
+            .map(GarageDisplayedRoutine.init(routine:))
+    }
+
+    private var savedRoutines: [GarageDisplayedRoutine] {
+        allTemplates
+            .filter { $0.environment == environment.rawValue }
+            .map(GarageDisplayedRoutine.init(template:))
+    }
+
+    private var displayedRoutines: [GarageDisplayedRoutine] {
+        builtInRoutines + savedRoutines
     }
 
     private var environmentRecords: [PracticeSessionRecord] {
         records.filter { $0.environment == environment.rawValue }
     }
 
-    private var totalDrills: Int {
-        templates.reduce(0) { $0 + $1.drills.count }
+    private var catalogDrillCount: Int {
+        DrillVault.drillCount(in: environment)
     }
 
     var body: some View {
@@ -281,8 +302,8 @@ private struct GarageEnvironmentDashboardView: View {
                 eyebrow: "Environment",
                 title: environment.displayName,
                 subtitle: environment.description,
-                value: "\(templates.count)",
-                valueLabel: "Templates"
+                value: "\(displayedRoutines.count)",
+                valueLabel: "Routines"
             ) {
                 Image(systemName: environment.systemImage)
                     .font(.system(size: 24, weight: .bold))
@@ -296,7 +317,7 @@ private struct GarageEnvironmentDashboardView: View {
             }
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
-                GarageProMetricCard(title: "Drills", value: "\(totalDrills)", systemImage: "list.bullet.clipboard")
+                GarageProMetricCard(title: "Drills", value: "\(catalogDrillCount)", systemImage: "list.bullet.clipboard")
                 GarageProMetricCard(title: "Sessions", value: "\(environmentRecords.count)", systemImage: "chart.bar.xaxis")
             }
 
@@ -310,28 +331,28 @@ private struct GarageEnvironmentDashboardView: View {
 
             GarageProSectionHeader(
                 eyebrow: "Launch Routine",
-                title: "Templates"
+                title: "Routines"
             )
 
-            if templates.isEmpty {
+            if displayedRoutines.isEmpty {
                 GarageProCard {
-                    Text("No templates yet")
+                    Text("No routines available")
                         .font(.system(.title3, design: .rounded).weight(.black))
                         .foregroundStyle(GarageProTheme.textPrimary)
 
-                    Text("Build a template for \(environment.displayName) from the Garage home screen, then start the practice session here.")
+                    Text("Built-in routines should appear here for \(environment.displayName).")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(GarageProTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             } else {
                 VStack(spacing: 14) {
-                    ForEach(templates, id: \.id) { template in
+                    ForEach(displayedRoutines) { routine in
                         Button {
                             garageTriggerImpact(.heavy)
-                            onSelectTemplate(template)
+                            onSelectTemplate(routine.launchTemplate)
                         } label: {
-                            GarageProTemplateCard(template: template)
+                            GarageProRoutineCard(routine: routine)
                         }
                         .buttonStyle(.plain)
                     }
@@ -340,6 +361,41 @@ private struct GarageEnvironmentDashboardView: View {
         }
         .navigationTitle(environment.displayName)
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct GarageDisplayedRoutine: Identifiable {
+    let id: String
+    let title: String
+    let environment: PracticeEnvironment
+    let drillCount: Int
+    let detailText: String
+    let sourceLabel: String
+    let launchTemplate: PracticeTemplate
+    let accentStyle: Color
+
+    init(routine: GarageRoutine) {
+        let launchTemplate = routine.makePracticeTemplate()
+
+        self.id = "built-in:\(routine.id)"
+        self.title = routine.title
+        self.environment = routine.environment
+        self.drillCount = launchTemplate.drills.count
+        self.detailText = routine.purpose
+        self.sourceLabel = "Built-in routine"
+        self.launchTemplate = launchTemplate
+        self.accentStyle = GarageProTheme.accent.opacity(0.9)
+    }
+
+    init(template: PracticeTemplate) {
+        self.id = "saved:\(template.id.uuidString)"
+        self.title = template.title
+        self.environment = template.environmentValue
+        self.drillCount = template.drills.count
+        self.detailText = template.drills.first?.title ?? "Saved routine"
+        self.sourceLabel = "Saved routine"
+        self.launchTemplate = template
+        self.accentStyle = GarageProTheme.textSecondary
     }
 }
 
@@ -402,11 +458,11 @@ private struct GarageProSectionHeader: View {
 
 private struct GarageProEnvironmentCard: View {
     let environment: PracticeEnvironment
-    let templateCount: Int
+    let routineCount: Int
     let sessionCount: Int
 
     var body: some View {
-        GarageProCard(isActive: templateCount > 0) {
+        GarageProCard(isActive: routineCount > 0) {
             HStack(alignment: .center, spacing: 16) {
                 Image(systemName: environment.systemImage)
                     .font(.system(size: 22, weight: .bold))
@@ -424,7 +480,7 @@ private struct GarageProEnvironmentCard: View {
                         .foregroundStyle(GarageProTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("\(templateCount) templates • \(sessionCount) sessions")
+                    Text("\(routineCount) routines • \(sessionCount) sessions")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(GarageProTheme.accent.opacity(0.9))
                 }
@@ -440,34 +496,36 @@ private struct GarageProEnvironmentCard: View {
     }
 }
 
-struct GarageProTemplateCard: View {
-    let template: PracticeTemplate
+private struct GarageProRoutineCard: View {
+    let routine: GarageDisplayedRoutine
 
     var body: some View {
-        GarageProCard(isActive: template.drills.isEmpty == false) {
+        GarageProCard(isActive: routine.drillCount > 0) {
             HStack(alignment: .top, spacing: 14) {
-                Image(systemName: template.environmentValue.systemImage)
+                Image(systemName: routine.environment.systemImage)
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(GarageProTheme.accent)
                     .frame(width: 60, height: 60)
                     .background(GarageProTheme.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(template.title)
+                    Text(routine.title)
                         .font(.system(.title3, design: .rounded).weight(.black))
                         .foregroundStyle(GarageProTheme.textPrimary)
                         .multilineTextAlignment(.leading)
 
-                    Text("\(template.drills.count) drills • \(template.environmentDisplayName)")
+                    Text("\(routine.drillCount) drills • \(routine.environment.displayName)")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(GarageProTheme.textSecondary)
 
-                    if let firstDrill = template.drills.first {
-                        Text(firstDrill.title)
-                            .font(.footnote.weight(.medium))
-                            .foregroundStyle(GarageProTheme.textSecondary)
-                            .lineLimit(1)
-                    }
+                    Text(routine.detailText)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(routine.sourceLabel)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(routine.accentStyle)
                 }
 
                 Spacer(minLength: 8)
