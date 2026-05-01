@@ -21,48 +21,62 @@ struct GarageActiveSessionView: View {
     }
 
     var body: some View {
-        List {
-            Section("Session") {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(session.templateName)
-                        .font(.title3.weight(.bold))
-
-                    Text(session.environment.displayName)
-                        .font(.subheadline)
-                        .foregroundStyle(AppModule.garage.theme.textSecondary)
-
-                    Text(progressSummary)
-                        .font(.subheadline)
-                        .foregroundStyle(AppModule.garage.theme.textSecondary)
-                }
-                .padding(.vertical, 4)
+        GarageProScaffold {
+            GarageProHeroCard(
+                eyebrow: "Active Checklist",
+                title: session.templateName,
+                subtitle: "\(session.environment.displayName) • \(progressSummary)",
+                value: "\(session.completedDrillCount)/\(session.totalDrillCount)",
+                valueLabel: "Complete"
+            ) {
+                Image(systemName: session.environment.systemImage)
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(GarageProTheme.accent)
+                    .frame(width: 60, height: 60)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .stroke(GarageProTheme.accent.opacity(0.3), lineWidth: 1)
+                    )
             }
-            .listRowBackground(ModuleTheme.garageSurface)
 
-            Section("Checklist") {
+            GarageSessionProgressCard(
+                completed: session.completedDrillCount,
+                total: session.totalDrillCount
+            )
+
+            VStack(alignment: .leading, spacing: 14) {
+                GarageChecklistHeader(title: "Drill Stack")
+
                 ForEach(session.orderedDrillEntries) { entry in
                     GaragePracticeDrillRow(
                         entry: entry,
-                        onToggle: { session.toggleCompletion(for: entry.drill.id) },
+                        onToggle: {
+                            garageTriggerSelection()
+                            session.toggleCompletion(for: entry.drill.id)
+                        },
                         onEditNote: { presentNoteEditor(for: entry) }
                     )
                 }
             }
-            .listRowBackground(ModuleTheme.garageSurface)
-
-            Section {
-                Button(action: presentSummary) {
-                    Text("Finish & Review")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-            }
-            .listRowBackground(ModuleTheme.garageSurface)
         }
-        .listStyle(.insetGrouped)
-        .garagePuttingGreenListChrome()
         .navigationTitle("Checklist")
         .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            HStack {
+                Spacer()
+
+                GarageProPrimaryButton(
+                    title: "Finish & Review",
+                    systemImage: "checkmark.seal.fill"
+                ) {
+                    presentSummary()
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .background(.ultraThinMaterial)
+        }
         .sheet(item: $noteEditor) { editor in
             GarageDrillNoteEditorSheet(
                 drillTitle: editor.drillTitle,
@@ -168,42 +182,122 @@ struct GarageActiveSessionView: View {
 }
 
 @MainActor
+private struct GarageSessionProgressCard: View {
+    let completed: Int
+    let total: Int
+
+    private var ratio: Double {
+        guard total > 0 else { return 0 }
+        return Double(completed) / Double(total)
+    }
+
+    var body: some View {
+        GarageProCard(isActive: completed > 0) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Session Progress")
+                        .font(.system(.headline, design: .rounded).weight(.black))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+
+                    Text("\(completed) of \(total) drills completed")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                }
+
+                Spacer()
+
+                Text("\(Int((ratio * 100).rounded()))%")
+                    .font(.system(size: 32, weight: .black, design: .monospaced))
+                    .foregroundStyle(GarageProTheme.accent)
+            }
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(GarageProTheme.accent.opacity(0.2))
+
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(GarageProTheme.accent)
+                        .frame(width: proxy.size.width * ratio)
+                        .animation(.easeOut(duration: 0.28), value: ratio)
+                }
+            }
+            .frame(height: 12)
+        }
+    }
+}
+
+@MainActor
+private struct GarageChecklistHeader: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.system(.title2, design: .rounded).weight(.black))
+            .foregroundStyle(GarageProTheme.textPrimary)
+    }
+}
+
+@MainActor
 private struct GaragePracticeDrillRow: View {
     let entry: PracticeSessionDrillEntry
     let onToggle: () -> Void
     let onEditNote: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Button(action: onToggle) {
-                Image(systemName: entry.progress.isCompleted ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(entry.progress.isCompleted ? AppModule.garage.tintColor : AppModule.garage.theme.textSecondary)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(entry.progress.isCompleted ? "Mark incomplete" : "Mark complete")
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(entry.drill.title)
-                    .font(.headline)
-
-                Text(entry.drill.metadataSummary)
-                    .font(.subheadline)
-                    .foregroundStyle(AppModule.garage.theme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if entry.progress.note.isEmpty == false {
-                    Text(entry.progress.note)
-                        .font(.footnote)
-                        .foregroundStyle(AppModule.garage.theme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+        GarageProCard(isActive: entry.progress.isCompleted) {
+            HStack(alignment: .top, spacing: 14) {
+                Button(action: onToggle) {
+                    Image(systemName: entry.progress.isCompleted ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(entry.progress.isCompleted ? GarageProTheme.accent : GarageProTheme.textSecondary)
+                        .frame(width: 60, height: 60)
+                        .background(GarageProTheme.accent.opacity(entry.progress.isCompleted ? 0.18 : 0.08), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .stroke(entry.progress.isCompleted ? GarageProTheme.accent.opacity(0.38) : GarageProTheme.border, lineWidth: 1)
+                        )
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(entry.progress.isCompleted ? "Mark incomplete" : "Mark complete")
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(entry.drill.title)
+                        .font(.system(.headline, design: .rounded).weight(.black))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+
+                    Text(entry.drill.metadataSummary)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if entry.progress.note.isEmpty == false {
+                        Text(entry.progress.note)
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(GarageProTheme.accent.opacity(0.86))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                Button {
+                    garageTriggerSelection()
+                    onEditNote()
+                } label: {
+                    Image(systemName: entry.progress.note.isEmpty ? "square.and.pencil" : "note.text")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(GarageProTheme.accent)
+                        .frame(width: 60, height: 60)
+                        .background(GarageProTheme.insetSurface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .stroke(GarageProTheme.border, lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(entry.progress.note.isEmpty ? "Add note" : "Edit note")
             }
-        }
-        .padding(.vertical, 4)
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(entry.progress.note.isEmpty ? "Add Note" : "Edit Note", action: onEditNote)
-                .tint(.blue)
         }
     }
 }
@@ -488,19 +582,30 @@ private struct GarageDrillNoteEditorSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Drill") {
-                    Text(drillTitle)
-                }
-                .listRowBackground(ModuleTheme.garageSurface)
+            GarageProScaffold(bottomPadding: 32) {
+                GarageProHeroCard(
+                    eyebrow: "Drill Note",
+                    title: drillTitle,
+                    subtitle: "Capture the feel cue or correction that matters for the next rep."
+                )
 
-                Section("Note") {
+                GarageProCard {
+                    Text("Note")
+                        .font(.system(.headline, design: .rounded).weight(.black))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+
                     TextField("Add a brief note", text: $draftNote, axis: .vertical)
                         .lineLimit(2...4)
+                        .padding(16)
+                        .frame(minHeight: 120, alignment: .topLeading)
+                        .foregroundStyle(GarageProTheme.textPrimary)
+                        .background(GarageProTheme.insetSurface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .stroke(GarageProTheme.border, lineWidth: 1)
+                        )
                 }
-                .listRowBackground(ModuleTheme.garageSurface)
             }
-            .garagePuttingGreenFormChrome()
             .navigationTitle("Drill Note")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

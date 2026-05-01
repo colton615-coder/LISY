@@ -14,85 +14,78 @@ struct GarageSkillVaultView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: ModuleSpacing.large) {
-                if records.isEmpty {
-                    emptyState
-                } else {
-                    heroCard
-                    coachingImpactSection
-                    sessionsSection
-                }
+        GarageProScaffold(bottomPadding: 48) {
+            if records.isEmpty {
+                emptyState
+            } else {
+                heroCard
+                vaultMetricGrid
+                coachingImpactSection
+                sessionsSection
             }
-            .padding(.horizontal, ModuleSpacing.large)
-            .padding(.top, ModuleSpacing.large)
-            .padding(.bottom, 40)
         }
-        .background(AppModule.garage.theme.screenGradient.ignoresSafeArea())
         .navigationTitle("Skill Vault")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private var emptyState: some View {
-        GarageTelemetrySurface {
-            Text("GLOBAL EFFICIENCY")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .kerning(2.6)
-                .foregroundStyle(AppModule.garage.theme.textSecondary)
-
-            Text("No sessions yet")
-                .font(.system(size: 30, weight: .bold, design: .rounded))
-                .foregroundStyle(AppModule.garage.theme.textPrimary)
-
-            Text("Completed Garage sessions will appear here once you finish a practice session.")
-                .font(.subheadline)
-                .foregroundStyle(AppModule.garage.theme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+        GarageProHeroCard(
+            eyebrow: "Skill Vault",
+            title: "No sessions yet",
+            subtitle: "Completed Garage sessions will appear here once you finish a practice routine.",
+            value: "0",
+            valueLabel: "Sessions"
+        )
     }
 
     private var heroCard: some View {
-        GarageTelemetrySurface(isActive: dashboardMetrics.totalAttempts > 0) {
-            Text("GLOBAL EFFICIENCY")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .kerning(2.8)
-                .foregroundStyle(AppModule.garage.theme.textSecondary)
-
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(dashboardMetrics.globalEfficiencyText)
-                    .font(.system(size: 52, weight: .black, design: .rounded))
-                    .foregroundStyle(AppModule.garage.theme.textPrimary)
-
-                Text("last 30 days")
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(AppModule.garage.theme.textSecondary)
-            }
-
-            Text("\(dashboardMetrics.totalSuccess) successful reps across \(dashboardMetrics.totalAttempts) attempts")
-                .font(.subheadline)
-                .foregroundStyle(AppModule.garage.theme.textSecondary)
-
-            HStack {
+        GarageProHeroCard(
+            eyebrow: "Skill Vault",
+            title: "Global Efficiency",
+            subtitle: "\(dashboardMetrics.totalSuccess) successful reps across \(dashboardMetrics.totalAttempts) attempts.",
+            value: dashboardMetrics.globalEfficiencyText,
+            valueLabel: "Last 30 Days"
+        ) {
+            if dashboardMetrics.recordsInWindow > 0 {
                 Text(dashboardMetrics.momentumText)
-                    .font(.footnote.weight(.semibold))
+                    .font(.caption.weight(.black))
+                    .textCase(.uppercase)
+                    .tracking(1.4)
                     .foregroundStyle(dashboardMetrics.momentumTint)
-
-                Spacer()
-
-                if dashboardMetrics.recordsInWindow > 0 {
-                    Text("\(dashboardMetrics.recordsInWindow) tracked sessions")
-                        .font(.footnote)
-                        .foregroundStyle(AppModule.garage.theme.textSecondary)
-                }
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 44)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(dashboardMetrics.momentumTint.opacity(0.32), lineWidth: 1)
+                    )
             }
+        }
+    }
+
+    private var vaultMetricGrid: some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
+            GarageProMetricCard(
+                title: "Sessions",
+                value: "\(dashboardMetrics.recordsInWindow)",
+                systemImage: "calendar.badge.clock",
+                isActive: dashboardMetrics.recordsInWindow > 0
+            )
+
+            GarageProMetricCard(
+                title: "Attempts",
+                value: "\(dashboardMetrics.totalAttempts)",
+                systemImage: "target",
+                isActive: dashboardMetrics.totalAttempts > 0
+            )
         }
     }
 
     private var sessionsSection: some View {
         VStack(alignment: .leading, spacing: ModuleSpacing.medium) {
             Text("Recent Sessions")
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(AppModule.garage.theme.textPrimary)
+                .font(.system(.title2, design: .rounded).weight(.black))
+                .foregroundStyle(GarageProTheme.textPrimary)
 
             LazyVStack(spacing: ModuleSpacing.medium) {
                 ForEach(records, id: \.id) { record in

@@ -3,50 +3,34 @@ import SwiftUI
 
 @MainActor
 struct GarageView: View {
+    @Query(sort: \PracticeTemplate.title) private var templates: [PracticeTemplate]
+    @Query(sort: \PracticeSessionRecord.date, order: .reverse) private var records: [PracticeSessionRecord]
+
     @State private var path: [GarageNavigationDestination] = []
     @State private var isShowingTemplateBuilder = false
 
+    private var averageEfficiencyText: String {
+        let attempts = records.reduce(0) { $0 + $1.totalAttemptedReps }
+        guard attempts > 0 else { return "--" }
+
+        let success = records.reduce(0) { $0 + $1.totalSuccessfulReps }
+        return "\(Int((Double(success) / Double(attempts) * 100).rounded()))%"
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
-            List {
-                Section {
-                    Text("Choose where you are practicing right now. Garage will only show the routines that make sense for that environment.")
-                        .font(.body)
-                        .foregroundStyle(AppModule.garage.theme.textSecondary)
-                }
-                .listRowBackground(ModuleTheme.garageSurface)
-
-                Section("Practice Environment") {
-                    ForEach(PracticeEnvironment.allCases) { environment in
-                        NavigationLink(value: GarageNavigationDestination.environment(environment)) {
-                            GarageEnvironmentSelectionRow(environment: environment)
-                        }
-                    }
-                }
-                .listRowBackground(ModuleTheme.garageSurface)
+            GarageProScaffold {
+                heroCard
+                metricGrid
+                environmentSection
+                vaultCard
             }
-            .listStyle(.insetGrouped)
-            .garagePuttingGreenListChrome()
             .navigationTitle("Garage")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        path.append(.skillVault)
-                    } label: {
-                        Label("Skill Vault", systemImage: "archivebox")
-                    }
-                }
-
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        isShowingTemplateBuilder = true
-                    } label: {
-                        Label("New Template", systemImage: "plus")
-                    }
-                }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                bottomActionBar
             }
-            .tint(AppModule.garage.tintColor)
             .navigationDestination(for: GarageNavigationDestination.self) { destination in
                 switch destination {
                 case let .environment(environment):
@@ -65,6 +49,128 @@ struct GarageView: View {
             }
         }
         .garagePuttingGreenSheetChrome()
+    }
+
+    private var heroCard: some View {
+        GarageProHeroCard(
+            eyebrow: "Dark Masters Practice",
+            title: "Garage",
+            subtitle: "Choose the training environment, launch a routine, then write the finished session into the Skill Vault.",
+            value: "\(templates.count)",
+            valueLabel: "Routines"
+        ) {
+            Button {
+                garageTriggerSelection()
+                path.append(.skillVault)
+            } label: {
+                Image(systemName: "archivebox.fill")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(GarageProTheme.accent)
+                    .frame(width: 60, height: 60)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .stroke(GarageProTheme.accent.opacity(0.3), lineWidth: 1)
+                    )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open Skill Vault")
+        }
+    }
+
+    private var metricGrid: some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
+            GarageProMetricCard(
+                title: "Sessions",
+                value: "\(records.count)",
+                systemImage: "checkmark.seal.fill",
+                isActive: records.isEmpty == false
+            )
+
+            GarageProMetricCard(
+                title: "Efficiency",
+                value: averageEfficiencyText,
+                systemImage: "scope",
+                isActive: records.isEmpty == false
+            )
+        }
+    }
+
+    private var environmentSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            GarageProSectionHeader(
+                eyebrow: "Practice Environment",
+                title: "Pick The Surface"
+            )
+
+            VStack(spacing: 14) {
+                ForEach(PracticeEnvironment.allCases) { environment in
+                    Button {
+                        garageTriggerSelection()
+                        path.append(.environment(environment))
+                    } label: {
+                        GarageProEnvironmentCard(
+                            environment: environment,
+                            templateCount: templates.filter { $0.environment == environment.rawValue }.count,
+                            sessionCount: records.filter { $0.environment == environment.rawValue }.count
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var vaultCard: some View {
+        Button {
+            garageTriggerSelection()
+            path.append(.skillVault)
+        } label: {
+            GarageProCard(isActive: records.isEmpty == false) {
+                HStack(alignment: .center, spacing: 14) {
+                    Image(systemName: "chart.xyaxis.line")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(GarageProTheme.accent)
+                        .frame(width: 60, height: 60)
+                        .background(GarageProTheme.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Skill Vault")
+                            .font(.system(.title3, design: .rounded).weight(.black))
+                            .foregroundStyle(GarageProTheme.textPrimary)
+
+                        Text(records.isEmpty ? "Completed sessions land here." : "\(records.count) sessions tracked across Garage.")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(GarageProTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Image(systemName: "chevron.right")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                }
+                .frame(minHeight: 60)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var bottomActionBar: some View {
+        HStack {
+            Spacer()
+
+            GarageProPrimaryButton(
+                title: "New Template",
+                systemImage: "plus"
+            ) {
+                isShowingTemplateBuilder = true
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .background(.ultraThinMaterial)
     }
 
     @ViewBuilder
@@ -123,34 +229,9 @@ struct GaragePuttingDashboardView: View {
 }
 
 @MainActor
-private struct GarageEnvironmentSelectionRow: View {
-    let environment: PracticeEnvironment
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: environment.systemImage)
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(AppModule.garage.tintColor)
-                .frame(width: 30)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(environment.displayName)
-                    .font(.system(.title3, design: .default).weight(.bold))
-                    .foregroundStyle(AppModule.garage.theme.textPrimary)
-
-                Text(environment.description)
-                    .font(.subheadline)
-                    .foregroundStyle(AppModule.garage.theme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.vertical, 6)
-        }
-    }
-}
-
-@MainActor
 private struct GarageEnvironmentDashboardView: View {
     @Query(sort: \PracticeTemplate.title) private var allTemplates: [PracticeTemplate]
+    @Query(sort: \PracticeSessionRecord.date, order: .reverse) private var records: [PracticeSessionRecord]
 
     let environment: PracticeEnvironment
     let onSelectTemplate: (PracticeTemplate) -> Void
@@ -159,71 +240,171 @@ private struct GarageEnvironmentDashboardView: View {
         allTemplates.filter { $0.environment == environment.rawValue }
     }
 
+    private var environmentRecords: [PracticeSessionRecord] {
+        records.filter { $0.environment == environment.rawValue }
+    }
+
+    private var totalDrills: Int {
+        templates.reduce(0) { $0 + $1.drills.count }
+    }
+
     var body: some View {
-        List {
-            Section("Current Focus") {
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: environment.systemImage)
-                        .foregroundStyle(AppModule.garage.tintColor)
-                        .frame(width: 24)
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(environment.displayName)
-                            .font(.headline)
-                        Text(environment.description)
-                            .foregroundStyle(AppModule.garage.theme.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .padding(.vertical, 4)
+        GarageProScaffold {
+            GarageProHeroCard(
+                eyebrow: "Environment",
+                title: environment.displayName,
+                subtitle: environment.description,
+                value: "\(templates.count)",
+                valueLabel: "Templates"
+            ) {
+                Image(systemName: environment.systemImage)
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(GarageProTheme.accent)
+                    .frame(width: 60, height: 60)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .stroke(GarageProTheme.accent.opacity(0.3), lineWidth: 1)
+                    )
             }
-            .listRowBackground(ModuleTheme.garageSurface)
 
-            Section("Templates") {
-                if templates.isEmpty {
-                    Text("No templates exist for this environment yet. Use the + button to build one.")
-                        .foregroundStyle(AppModule.garage.theme.textSecondary)
-                } else {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
+                GarageProMetricCard(title: "Drills", value: "\(totalDrills)", systemImage: "list.bullet.clipboard")
+                GarageProMetricCard(title: "Sessions", value: "\(environmentRecords.count)", systemImage: "chart.bar.xaxis")
+            }
+
+            GarageProSectionHeader(
+                eyebrow: "Launch Routine",
+                title: "Templates"
+            )
+
+            if templates.isEmpty {
+                GarageProCard {
+                    Text("No templates yet")
+                        .font(.system(.title3, design: .rounded).weight(.black))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+
+                    Text("Build a template for \(environment.displayName) from the Garage home screen, then start the practice session here.")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
+                VStack(spacing: 14) {
                     ForEach(templates, id: \.id) { template in
                         Button {
+                            garageTriggerImpact(.heavy)
                             onSelectTemplate(template)
                         } label: {
-                            GarageTemplateRow(template: template)
+                            GarageProTemplateCard(template: template)
                         }
                         .buttonStyle(.plain)
                     }
                 }
             }
-            .listRowBackground(ModuleTheme.garageSurface)
         }
-        .listStyle(.insetGrouped)
-        .garagePuttingGreenListChrome()
         .navigationTitle(environment.displayName)
         .navigationBarTitleDisplayMode(.inline)
     }
 }
 
-@MainActor
-private struct GarageTemplateRow: View {
+private struct GarageProSectionHeader: View {
+    let eyebrow: String
+    let title: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(eyebrow)
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(2)
+                .foregroundStyle(GarageProTheme.accent)
+
+            Text(title)
+                .font(.system(.title2, design: .rounded).weight(.black))
+                .foregroundStyle(GarageProTheme.textPrimary)
+        }
+    }
+}
+
+private struct GarageProEnvironmentCard: View {
+    let environment: PracticeEnvironment
+    let templateCount: Int
+    let sessionCount: Int
+
+    var body: some View {
+        GarageProCard(isActive: templateCount > 0) {
+            HStack(alignment: .center, spacing: 16) {
+                Image(systemName: environment.systemImage)
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(GarageProTheme.accent)
+                    .frame(width: 60, height: 60)
+                    .background(GarageProTheme.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(environment.displayName)
+                        .font(.system(.title3, design: .rounded).weight(.black))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+
+                    Text(environment.description)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text("\(templateCount) templates • \(sessionCount) sessions")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(GarageProTheme.accent.opacity(0.9))
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(GarageProTheme.textSecondary)
+            }
+            .frame(minHeight: 60)
+        }
+    }
+}
+
+struct GarageProTemplateCard: View {
     let template: PracticeTemplate
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(template.title)
-                .font(.headline)
+        GarageProCard(isActive: template.drills.isEmpty == false) {
+            HStack(alignment: .top, spacing: 14) {
+                Image(systemName: template.environmentValue.systemImage)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(GarageProTheme.accent)
+                    .frame(width: 60, height: 60)
+                    .background(GarageProTheme.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
 
-            Text("\(template.drills.count) drills")
-                .font(.subheadline)
-                .foregroundStyle(AppModule.garage.theme.textSecondary)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(template.title)
+                        .font(.system(.title3, design: .rounded).weight(.black))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+                        .multilineTextAlignment(.leading)
 
-            if let firstDrill = template.drills.first {
-                Text(firstDrill.title)
-                    .font(.footnote)
-                    .foregroundStyle(AppModule.garage.theme.textSecondary)
-                    .lineLimit(1)
+                    Text("\(template.drills.count) drills • \(template.environmentDisplayName)")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+
+                    if let firstDrill = template.drills.first {
+                        Text(firstDrill.title)
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(GarageProTheme.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "play.fill")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(GarageProTheme.accent)
             }
+            .frame(minHeight: 60)
         }
-        .padding(.vertical, 4)
     }
 }
 
