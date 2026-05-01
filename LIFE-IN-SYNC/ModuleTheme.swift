@@ -66,9 +66,21 @@ struct ModuleTheme {
     static let garageShadowLight = Color.white.opacity(0.08)
     static let garageShadowDark = Color.black.opacity(0.18)
 
+    var rootBackground: Color {
+        surfaceBaseOverride == nil ? Color(.systemGroupedBackground) : backgroundBottom
+    }
+
+    var cardBackground: Color {
+        surfaceBaseOverride ?? Color(.secondarySystemGroupedBackground)
+    }
+
+    var elevatedCardBackground: Color {
+        surfaceElevatedOverride ?? cardBackground
+    }
+
     var heroGradient: LinearGradient {
         LinearGradient(
-            colors: [primary.opacity(0.32), secondary.opacity(0.18)],
+            colors: [primary.opacity(0.9), secondary.opacity(0.8)],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
@@ -76,30 +88,34 @@ struct ModuleTheme {
 
     var screenGradient: LinearGradient {
         LinearGradient(
-            colors: [backgroundTop, backgroundBottom],
+            colors: [rootBackground, backgroundTop.opacity(surfaceBaseOverride == nil ? 0.24 : 0.94), backgroundBottom],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
     }
 
+    var pillBackground: Color {
+        primary.opacity(0.15)
+    }
+
     var chipBackground: Color {
-        primary.opacity(0.14)
+        pillBackground
     }
 
     var surfaceSecondary: Color {
-        surfaceBaseOverride ?? primary.opacity(0.08)
+        cardBackground
     }
 
     var surfaceInteractive: Color {
-        surfaceElevatedOverride ?? primary.opacity(0.14)
+        elevatedCardBackground
     }
 
     var borderSubtle: Color {
-        primary.opacity(0.18)
+        textPrimary.opacity(0.05)
     }
 
     var borderStrong: Color {
-        primary.opacity(0.4)
+        primary.opacity(0.18)
     }
 
     var textPrimary: Color {
@@ -124,5 +140,9 @@ struct ModuleTheme {
 
     var shadowDark: Color {
         shadowDarkOverride ?? Color.black.opacity(0.25)
+    }
+
+    var tintedShadow: Color {
+        primary.opacity(0.3)
     }
 }

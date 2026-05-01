@@ -163,10 +163,42 @@ enum ModuleCornerRadius {
 }
 
 enum ModuleTypography {
-    static let sectionTitle: Font = .headline
-    static let cardTitle: Font = .headline
-    static let metricValue: Font = .title3.weight(.bold)
-    static let supportingLabel: Font = .caption
+    static let sectionTitle: Font = .system(.title3, design: .rounded).weight(.bold)
+    static let cardTitle: Font = .system(.headline, design: .rounded).weight(.bold)
+    static let metricValue: Font = .system(size: 40, weight: .black, design: .monospaced)
+    static let supportingLabel: Font = .caption2
+    static let overline: Font = .caption2
+    static let heroTitle: Font = .system(.title2, design: .rounded).weight(.bold)
+}
+
+private extension View {
+    func moduleFloatingCard(
+        theme: ModuleTheme? = nil,
+        cornerRadius: CGFloat = ModuleCornerRadius.card,
+        fill: Color? = nil,
+        shadowColor: Color? = nil
+    ) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        let resolvedFill = fill ?? theme?.cardBackground ?? Color(.secondarySystemGroupedBackground)
+        let resolvedBorder = theme?.borderSubtle ?? Color.primary.opacity(0.05)
+        let resolvedShadow = shadowColor ?? theme?.tintedShadow.opacity(0.22) ?? Color.black.opacity(0.03)
+
+        return self
+            .background(resolvedFill)
+            .clipShape(shape)
+            .overlay(shape.stroke(resolvedBorder, lineWidth: 1))
+            .shadow(color: resolvedShadow, radius: 15, x: 0, y: 10)
+    }
+
+    func moduleHeroSurface(theme: ModuleTheme) -> some View {
+        let shape = RoundedRectangle(cornerRadius: ModuleCornerRadius.hero, style: .continuous)
+
+        return self
+            .background(theme.heroGradient)
+            .clipShape(shape)
+            .overlay(shape.stroke(theme.borderSubtle, lineWidth: 1))
+            .shadow(color: theme.tintedShadow.opacity(0.32), radius: 15, x: 0, y: 10)
+    }
 }
 
 struct PreviewScreenContainer<Content: View>: View {
@@ -184,15 +216,23 @@ struct ModuleScreen<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: HubSectionSpacing.outer) {
-                content
+        ZStack {
+            theme.rootBackground
+                .ignoresSafeArea()
+
+            theme.screenGradient
+                .ignoresSafeArea()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: HubSectionSpacing.outer) {
+                    content
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, ModuleSpacing.medium)
+                .padding(.vertical, ModuleSpacing.medium)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding()
         }
         .tint(theme.primary)
-        .background(theme.screenGradient)
     }
 }
 
@@ -204,18 +244,15 @@ struct ModuleHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title)
-                .font(.title2.weight(.bold))
+                .font(ModuleTypography.heroTitle)
                 .foregroundStyle(theme.textPrimary)
             Text(subtitle)
+                .font(.body)
                 .foregroundStyle(theme.textSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(ModuleSpacing.medium)
-        .background(theme.heroGradient, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.hero, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: ModuleCornerRadius.hero, style: .continuous)
-                .stroke(theme.borderSubtle, lineWidth: 1)
-        )
+        .moduleHeroSurface(theme: theme)
     }
 }
 
@@ -229,11 +266,7 @@ struct ModuleRowSurface<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(ModuleSpacing.medium)
-        .background(theme.surfaceSecondary, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous)
-                .stroke(theme.borderSubtle, lineWidth: 1)
-        )
+        .moduleFloatingCard(theme: theme, cornerRadius: ModuleCornerRadius.row, fill: theme.surfaceSecondary)
     }
 }
 
@@ -540,10 +573,18 @@ struct ModuleHubScaffold<Content: View>: View {
                 content
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding()
+            .padding(.horizontal, ModuleSpacing.medium)
+            .padding(.vertical, ModuleSpacing.medium)
         }
         .tint(module.theme.primary)
-        .background(module.theme.screenGradient)
+        .background {
+            ZStack {
+                module.theme.rootBackground
+                    .ignoresSafeArea()
+                module.theme.screenGradient
+                    .ignoresSafeArea()
+            }
+        }
     }
 }
 
@@ -566,10 +607,18 @@ struct GarageCustomScaffold<Content: View>: View {
                     content(proxy.size)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
+                .padding(.horizontal, ModuleSpacing.medium)
+                .padding(.vertical, ModuleSpacing.medium)
             }
             .tint(module.theme.primary)
-            .background(module.theme.screenGradient)
+            .background {
+                ZStack {
+                    module.theme.rootBackground
+                        .ignoresSafeArea()
+                    module.theme.screenGradient
+                        .ignoresSafeArea()
+                }
+            }
         }
     }
 }
@@ -579,7 +628,8 @@ struct GarageModuleHeaderBar: View {
         HStack(alignment: .center, spacing: ModuleSpacing.medium) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Garage")
-                    .font(.caption.weight(.semibold))
+                    .font(ModuleTypography.overline.weight(.bold))
+                    .textCase(.uppercase)
                     .tracking(1.8)
                     .foregroundStyle(AppModule.garage.theme.textMuted)
 
@@ -616,7 +666,7 @@ struct GarageModuleHeaderBar: View {
                     Circle()
                         .stroke(ModuleTheme.electricCyan.opacity(0.55), lineWidth: 0.5)
                 )
-                .shadow(color: Color.black.opacity(0.22), radius: 8, x: 0, y: 4)
+                .shadow(color: AppModule.garage.theme.tintedShadow.opacity(0.28), radius: 15, x: 0, y: 10)
             }
         }
     }
@@ -630,18 +680,15 @@ private struct GarageHeaderIconButton: View {
             Image(systemName: systemImage)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(AppModule.garage.theme.textPrimary)
-                .frame(width: 40, height: 40)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(ModuleTheme.garageSurfaceRaised.opacity(0.96))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(ModuleTheme.electricCyan.opacity(0.45), lineWidth: 0.5)
-                        )
+                .frame(width: 44, height: 44)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.chip, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: ModuleCornerRadius.chip, style: .continuous)
+                        .stroke(ModuleTheme.electricCyan.opacity(0.18), lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
-        .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+        .shadow(color: AppModule.garage.theme.tintedShadow.opacity(0.24), radius: 15, x: 0, y: 10)
     }
 }
 
@@ -657,36 +704,17 @@ struct GarageTelemetrySurface<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(padding)
-        .background(
+        .moduleFloatingCard(
+            theme: AppModule.garage.theme,
+            cornerRadius: cornerRadius,
+            fill: AppModule.garage.theme.elevatedCardBackground,
+            shadowColor: isActive ? AppModule.garage.theme.tintedShadow.opacity(0.28) : AppModule.garage.theme.shadowDark.opacity(0.22)
+        )
+        .overlay(
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            ModuleTheme.garageSurfaceRaised.opacity(0.98),
-                            ModuleTheme.garageSurface.opacity(0.98),
-                            ModuleTheme.garageSurfaceInset.opacity(0.96)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(Color.white.opacity(0.05), lineWidth: 0.5)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(
-                            isActive ? ModuleTheme.electricCyan.opacity(0.65) : Color.clear,
-                            lineWidth: 0.5
-                        )
-                )
-                .shadow(color: Color.black.opacity(0.24), radius: 10, x: 0, y: 8)
-                .shadow(
-                    color: isActive ? ModuleTheme.electricCyan.opacity(0.08) : .clear,
-                    radius: isActive ? 14 : 0,
-                    x: 0,
-                    y: 0
+                .stroke(
+                    isActive ? ModuleTheme.electricCyan.opacity(0.22) : Color.clear,
+                    lineWidth: 1
                 )
         )
     }
@@ -702,15 +730,11 @@ private struct HubStatusCard: View {
             Text(title)
                 .font(ModuleTypography.cardTitle)
             Text(bodyText)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(module.theme.textSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(ModuleSpacing.medium)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
-                .stroke(module.theme.primary.opacity(0.12), lineWidth: 1)
-        )
+        .moduleFloatingCard(theme: module.theme)
     }
 }
 
@@ -729,12 +753,16 @@ private struct HubTabPicker: View {
                         Text(tab.rawValue)
                             .font(.subheadline)
                             .fontWeight(.semibold)
-                            .foregroundStyle(selectedTab == tab ? Color.white : .primary)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, ModuleSpacing.xSmall)
+                            .foregroundStyle(selectedTab == tab ? theme.primary : theme.textSecondary)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
                             .background(
-                                RoundedRectangle(cornerRadius: ModuleSpacing.small, style: .continuous)
-                                    .fill(selectedTab == tab ? theme.primary : theme.surfaceSecondary)
+                                RoundedRectangle(cornerRadius: ModuleCornerRadius.chip, style: .continuous)
+                                    .fill(selectedTab == tab ? theme.pillBackground : theme.cardBackground)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: ModuleCornerRadius.chip, style: .continuous)
+                                    .stroke(selectedTab == tab ? theme.primary.opacity(0.18) : theme.borderSubtle, lineWidth: 1)
                             )
                     }
                     .buttonStyle(.plain)
@@ -762,10 +790,18 @@ struct ModuleRootPlaceholderView: View {
                 ModuleFocusCard(module: module, highlights: highlights)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding()
+            .padding(.horizontal, ModuleSpacing.medium)
+            .padding(.vertical, ModuleSpacing.medium)
         }
         .tint(module.theme.primary)
-        .background(module.theme.screenGradient)
+        .background {
+            ZStack {
+                module.theme.rootBackground
+                    .ignoresSafeArea()
+                module.theme.screenGradient
+                    .ignoresSafeArea()
+            }
+        }
     }
 }
 
@@ -778,22 +814,18 @@ struct ModuleHeroCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(eyebrow.uppercased())
-                .font(.caption)
-                .fontWeight(.semibold)
+                .font(ModuleTypography.overline.weight(.bold))
+                .tracking(2)
                 .foregroundStyle(module.theme.accentText)
             Text(title)
-                .font(.title2)
-                .fontWeight(.bold)
+                .font(ModuleTypography.heroTitle)
+                .foregroundStyle(module.theme.textPrimary)
             Text(message)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(module.theme.textSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(ModuleSpacing.medium)
-        .background(module.theme.heroGradient, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
-                .stroke(module.theme.primary.opacity(0.18), lineWidth: 1)
-        )
+        .moduleHeroSurface(theme: module.theme)
     }
 }
 
@@ -809,20 +841,25 @@ struct ModuleFocusCard: View {
             ForEach(highlights, id: \.self) { highlight in
                 HStack(spacing: 10) {
                     Circle()
-                        .fill(module.theme.primary)
+                        .fill(module.theme.pillBackground)
                         .frame(width: 8, height: 8)
+                        .overlay(
+                            Circle()
+                                .stroke(module.theme.primary.opacity(0.18), lineWidth: 1)
+                        )
                     Text(highlight)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(module.theme.textPrimary)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(ModuleSpacing.medium)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
+        .moduleFloatingCard(theme: module.theme)
     }
 }
 
 struct ModuleSnapshotCard<Content: View>: View {
+    var theme: ModuleTheme? = nil
     let title: String
     @ViewBuilder let content: Content
 
@@ -833,7 +870,7 @@ struct ModuleSnapshotCard<Content: View>: View {
             content
         }
         .padding(ModuleSpacing.medium)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
+        .moduleFloatingCard(theme: theme)
     }
 }
 
@@ -846,13 +883,22 @@ struct ModuleMetricChip: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(value)
                 .font(ModuleTypography.metricValue)
+                .tracking(-1)
+                .foregroundStyle(theme.textPrimary)
             Text(title)
-                .font(ModuleTypography.supportingLabel)
-                .foregroundStyle(.secondary)
+                .font(ModuleTypography.supportingLabel.weight(.bold))
+                .textCase(.uppercase)
+                .tracking(2)
+                .foregroundStyle(theme.textSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(ModuleSpacing.medium)
-        .background(theme.chipBackground, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.chip, style: .continuous))
+        .moduleFloatingCard(
+            theme: theme,
+            cornerRadius: ModuleCornerRadius.chip,
+            fill: theme.pillBackground,
+            shadowColor: theme.tintedShadow.opacity(0.16)
+        )
     }
 }
 
@@ -868,18 +914,19 @@ struct ModuleEmptyStateCard: View {
             Text(title)
                 .font(ModuleTypography.cardTitle)
             Text(message)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.textSecondary)
             Button(actionTitle, action: action)
                 .buttonStyle(.borderedProminent)
                 .tint(theme.primary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(ModuleSpacing.medium)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
+        .moduleFloatingCard(theme: theme)
     }
 }
 
 struct ModuleVisualizationContainer<Content: View>: View {
+    var theme: ModuleTheme? = nil
     let title: String
     @ViewBuilder let content: Content
 
@@ -891,7 +938,7 @@ struct ModuleVisualizationContainer<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(ModuleSpacing.medium)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
+        .moduleFloatingCard(theme: theme)
     }
 }
 
@@ -920,11 +967,24 @@ struct ModuleBottomActionBar: View {
             Button(action: action) {
                 Label(title, systemImage: systemImage)
                     .fontWeight(.semibold)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 12)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(theme.primary)
+            .buttonStyle(.plain)
+            .background(theme.pillBackground, in: RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: ModuleCornerRadius.card, style: .continuous)
+                    .stroke(theme.primary.opacity(0.18), lineWidth: 1)
+            )
+            .foregroundStyle(theme.primary)
         }
-        .padding()
+        .padding(.horizontal, ModuleSpacing.medium)
+        .padding(.vertical, ModuleSpacing.small)
         .background(.ultraThinMaterial)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(theme.borderSubtle)
+                .frame(height: 1)
+        }
     }
 }

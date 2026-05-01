@@ -82,7 +82,7 @@ private struct SupplyOverviewCard: View {
     let purchasedCount: Int
 
     var body: some View {
-        ModuleVisualizationContainer(title: "List Snapshot") {
+        ModuleVisualizationContainer(theme: AppModule.supplyList.theme, title: "List Snapshot") {
             HStack(spacing: 12) {
                 ModuleMetricChip(theme: AppModule.supplyList.theme, title: "Total", value: "\(totalCount)")
                 ModuleMetricChip(theme: AppModule.supplyList.theme, title: "Remaining", value: "\(remainingCount)")

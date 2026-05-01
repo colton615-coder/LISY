@@ -60,7 +60,7 @@ private struct BibleStudyOverviewCard: View {
     let entryCount: Int
 
     var body: some View {
-        ModuleSnapshotCard(title: "Study Snapshot") {
+        ModuleSnapshotCard(theme: AppModule.bibleStudy.theme, title: "Study Snapshot") {
             HStack(spacing: 12) {
                 ModuleMetricChip(theme: AppModule.bibleStudy.theme, title: "Entries", value: "\(entryCount)")
                 ModuleMetricChip(theme: AppModule.bibleStudy.theme, title: "Focus", value: "Scripture")

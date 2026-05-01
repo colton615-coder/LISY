@@ -140,7 +140,7 @@ private struct HabitOverviewCard: View {
     let totalTodayProgress: Int
 
     var body: some View {
-        ModuleSnapshotCard(title: "Today Snapshot") {
+        ModuleSnapshotCard(theme: AppModule.habitStack.theme, title: "Today Snapshot") {
             HStack(spacing: 12) {
                 ModuleMetricChip(theme: AppModule.habitStack.theme, title: "Habits", value: "\(habitCount)")
                 ModuleMetricChip(theme: AppModule.habitStack.theme, title: "Completed", value: "\(completedTodayCount)")

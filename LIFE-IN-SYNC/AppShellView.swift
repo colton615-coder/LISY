@@ -12,6 +12,9 @@ struct AppShellView: View {
     var body: some View {
         NavigationStack {
             ZStack {
+                selectedModule.theme.rootBackground
+                    .ignoresSafeArea()
+
                 selectedModule.theme.screenGradient
                     .ignoresSafeArea()
 

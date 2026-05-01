@@ -145,7 +145,7 @@ private struct CapitalOverviewCard: View {
     let budgetCount: Int
 
     var body: some View {
-        ModuleVisualizationContainer(title: "Month Snapshot") {
+        ModuleVisualizationContainer(theme: AppModule.capitalCore.theme, title: "Month Snapshot") {
             HStack(spacing: 12) {
                 CapitalMetricChip(title: "Spent", value: monthlySpend, currency: true)
                 CapitalMetricChip(title: "Expenses", value: Double(expenseCount), currency: false)

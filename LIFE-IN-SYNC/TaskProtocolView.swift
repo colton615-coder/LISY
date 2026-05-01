@@ -16,7 +16,7 @@ struct TaskProtocolView: View {
                     message: "Task Protocol tracks priority, due dates, and completion state without turning into a full project manager."
                 )
 
-                ModuleVisualizationContainer(title: "Task Snapshot") {
+                ModuleVisualizationContainer(theme: AppModule.taskProtocol.theme, title: "Task Snapshot") {
                     HStack(spacing: 12) {
                         ModuleMetricChip(theme: AppModule.taskProtocol.theme, title: "Open", value: "\(openTasks.count)")
                         ModuleMetricChip(theme: AppModule.taskProtocol.theme, title: "Due Soon", value: "\(dueSoonTasks.count)")

@@ -125,7 +125,7 @@ private struct IronTempleOverviewCard: View {
     let totalMinutes: Int
 
     var body: some View {
-        ModuleVisualizationContainer(title: "Training Snapshot") {
+        ModuleVisualizationContainer(theme: AppModule.ironTemple.theme, title: "Training Snapshot") {
             HStack(spacing: 12) {
                 ModuleMetricChip(theme: AppModule.ironTemple.theme, title: "Templates", value: "\(templateCount)")
                 ModuleMetricChip(theme: AppModule.ironTemple.theme, title: "Sessions", value: "\(sessionCount)")
