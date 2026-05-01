@@ -35,6 +35,11 @@ struct GarageView: View {
                 switch destination {
                 case let .environment(environment):
                     environmentDashboard(for: environment)
+                case let .diagnostic(environment):
+                    GarageDiagnosticView(initialEnvironment: environment) { drill in
+                        garageTriggerSelection()
+                        path.append(.activeSession(ActivePracticeSession(template: drill.makePracticeTemplate())))
+                    }
                 case let .activeSession(session):
                     GarageActiveSessionView(
                         session: session,
@@ -177,17 +182,32 @@ struct GarageView: View {
     private func environmentDashboard(for environment: PracticeEnvironment) -> some View {
         switch environment {
         case .net:
-            GarageNetDashboardView { template in
-                path.append(.activeSession(ActivePracticeSession(template: template)))
-            }
+            GarageNetDashboardView(
+                onSelectTemplate: { template in
+                    path.append(.activeSession(ActivePracticeSession(template: template)))
+                },
+                onOpenDiagnostic: {
+                    path.append(.diagnostic(.net))
+                }
+            )
         case .range:
-            GarageRangeDashboardView { template in
-                path.append(.activeSession(ActivePracticeSession(template: template)))
-            }
+            GarageRangeDashboardView(
+                onSelectTemplate: { template in
+                    path.append(.activeSession(ActivePracticeSession(template: template)))
+                },
+                onOpenDiagnostic: {
+                    path.append(.diagnostic(.range))
+                }
+            )
         case .puttingGreen:
-            GaragePuttingDashboardView { template in
-                path.append(.activeSession(ActivePracticeSession(template: template)))
-            }
+            GaragePuttingDashboardView(
+                onSelectTemplate: { template in
+                    path.append(.activeSession(ActivePracticeSession(template: template)))
+                },
+                onOpenDiagnostic: {
+                    path.append(.diagnostic(.puttingGreen))
+                }
+            )
         }
     }
 }
@@ -195,11 +215,13 @@ struct GarageView: View {
 @MainActor
 struct GarageNetDashboardView: View {
     let onSelectTemplate: (PracticeTemplate) -> Void
+    let onOpenDiagnostic: () -> Void
 
     var body: some View {
         GarageEnvironmentDashboardView(
             environment: .net,
-            onSelectTemplate: onSelectTemplate
+            onSelectTemplate: onSelectTemplate,
+            onOpenDiagnostic: onOpenDiagnostic
         )
     }
 }
@@ -207,11 +229,13 @@ struct GarageNetDashboardView: View {
 @MainActor
 struct GarageRangeDashboardView: View {
     let onSelectTemplate: (PracticeTemplate) -> Void
+    let onOpenDiagnostic: () -> Void
 
     var body: some View {
         GarageEnvironmentDashboardView(
             environment: .range,
-            onSelectTemplate: onSelectTemplate
+            onSelectTemplate: onSelectTemplate,
+            onOpenDiagnostic: onOpenDiagnostic
         )
     }
 }
@@ -219,11 +243,13 @@ struct GarageRangeDashboardView: View {
 @MainActor
 struct GaragePuttingDashboardView: View {
     let onSelectTemplate: (PracticeTemplate) -> Void
+    let onOpenDiagnostic: () -> Void
 
     var body: some View {
         GarageEnvironmentDashboardView(
             environment: .puttingGreen,
-            onSelectTemplate: onSelectTemplate
+            onSelectTemplate: onSelectTemplate,
+            onOpenDiagnostic: onOpenDiagnostic
         )
     }
 }
@@ -235,6 +261,7 @@ private struct GarageEnvironmentDashboardView: View {
 
     let environment: PracticeEnvironment
     let onSelectTemplate: (PracticeTemplate) -> Void
+    let onOpenDiagnostic: () -> Void
 
     private var templates: [PracticeTemplate] {
         allTemplates.filter { $0.environment == environment.rawValue }
@@ -273,6 +300,14 @@ private struct GarageEnvironmentDashboardView: View {
                 GarageProMetricCard(title: "Sessions", value: "\(environmentRecords.count)", systemImage: "chart.bar.xaxis")
             }
 
+            Button {
+                garageTriggerSelection()
+                onOpenDiagnostic()
+            } label: {
+                GaragePrescriptionLaunchCard(environment: environment)
+            }
+            .buttonStyle(.plain)
+
             GarageProSectionHeader(
                 eyebrow: "Launch Routine",
                 title: "Templates"
@@ -305,6 +340,44 @@ private struct GarageEnvironmentDashboardView: View {
         }
         .navigationTitle(environment.displayName)
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct GaragePrescriptionLaunchCard: View {
+    let environment: PracticeEnvironment
+
+    var body: some View {
+        GarageProCard(isActive: true) {
+            HStack(alignment: .center, spacing: 16) {
+                Image(systemName: "waveform.path.ecg")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(GarageProTheme.accent)
+                    .frame(width: 60, height: 60)
+                    .background(GarageProTheme.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("Need A Prescription?")
+                        .font(.system(.title3, design: .rounded).weight(.black))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+
+                    Text("Answer three vibe-based questions for \(environment.displayName), then jump straight into a guided rehearsal.")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text("Coach-led launch")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(GarageProTheme.accent.opacity(0.9))
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(GarageProTheme.textSecondary)
+            }
+            .frame(minHeight: 60)
+        }
     }
 }
 
@@ -415,13 +488,17 @@ struct GarageProTemplateCard: View {
 
 #Preview("Garage Net Dashboard") {
     NavigationStack {
-        GarageNetDashboardView { _ in }
+        GarageNetDashboardView(
+            onSelectTemplate: { _ in },
+            onOpenDiagnostic: { }
+        )
     }
     .modelContainer(PreviewCatalog.populatedApp)
 }
 
 private enum GarageNavigationDestination: Hashable {
     case environment(PracticeEnvironment)
+    case diagnostic(PracticeEnvironment?)
     case activeSession(ActivePracticeSession)
     case skillVault
 }
