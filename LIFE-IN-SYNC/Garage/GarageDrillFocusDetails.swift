@@ -1,0 +1,315 @@
+import Foundation
+
+struct GarageDrillFocusDetail: Hashable {
+    let purpose: String
+    let setup: [String]
+    let execution: [String]
+    let successCriteria: [String]
+    let commonMisses: [String]
+    let resetCue: String
+    let equipment: [String]
+    let estimatedMinutes: Int
+
+    func repTargetText(for drill: PracticeTemplateDrill) -> String {
+        "\(max(drill.defaultRepCount, 0)) planned reps"
+    }
+}
+
+enum GarageDrillFocusDetails {
+    static func detail(for drill: PracticeTemplateDrill) -> GarageDrillFocusDetail {
+        guard let canonicalDrill = DrillVault.canonicalDrill(for: drill) else {
+            return customDetail(for: drill)
+        }
+
+        return detail(for: canonicalDrill)
+    }
+
+    static func detail(for drill: GarageDrill) -> GarageDrillFocusDetail {
+        switch drill.id {
+        case "n1":
+            GarageDrillFocusDetail(
+                purpose: "Train low-point control so the club reaches the ball before the ground. The towel gives immediate strike feedback without needing ball flight.",
+                setup: ["Place a towel roughly two inches behind the ball.", "Use a scoring iron and a net-safe ball.", "Start at half speed before building pace."],
+                execution: ["Make a controlled swing without touching the towel.", "Hold the finish for one count.", "Count only clean strikes where the towel stays still."],
+                successCriteria: ["Ball-first contact.", "Towel remains untouched.", "Balanced finish with no scoop."],
+                commonMisses: ["Clipping the towel first.", "Standing up to avoid the towel.", "Flipping the clubhead past the hands."],
+                resetCue: "Chest stays down. Handle wins.",
+                equipment: ["Towel", "Ball or foam ball", "Scoring iron", "Net"],
+                estimatedMinutes: 8
+            )
+        case "n2":
+            GarageDrillFocusDetail(
+                purpose: "Teach the hands and clubhead to arrive in the correct order so impact feels compressed instead of scooped.",
+                setup: ["Use a wedge.", "Separate the hands on the grip by roughly three inches.", "Begin with waist-to-waist swings at half speed."],
+                execution: ["Take the split-hand grip.", "Swing through while the handle leads.", "Hold the finish with the clubhead trailing the hands."],
+                successCriteria: ["Handle leads through impact.", "Clubhead does not pass the hands early.", "Contact feels heavy and controlled."],
+                commonMisses: ["Trail hand takes over.", "Transition gets rushed.", "Finish collapses after impact."],
+                resetCue: "Handle leads. Clubhead stays heavy behind you.",
+                equipment: ["Wedge", "Ball or foam ball", "Net"],
+                estimatedMinutes: 7
+            )
+        case "n3":
+            GarageDrillFocusDetail(
+                purpose: "Keep space through the turn by training hip depth and posture control instead of thrusting toward the ball.",
+                setup: ["Stand with the trail hip a few inches from a wall or safe vertical surface.", "Use no ball at first.", "Keep the rehearsal slow and balanced."],
+                execution: ["Rehearse the backswing while keeping hip depth.", "Turn through without lunging toward the ball.", "Add a club only after the body pattern holds."],
+                successCriteria: ["Posture stays athletic.", "Hips rotate instead of crowding the ball.", "Chest finishes fully turned."],
+                commonMisses: ["Trail hip drives toward the ball.", "Chest lifts early.", "Weight falls into the toes."],
+                resetCue: "Turn the pockets behind you.",
+                equipment: ["Wall or safe vertical reference", "Club optional", "Net area optional"],
+                estimatedMinutes: 7
+            )
+        case "n4":
+            GarageDrillFocusDetail(
+                purpose: "Train clubface awareness by matching the face to a narrow start window before speed is added.",
+                setup: ["Set an alignment stick or visual rail just outside the ball.", "Use a scoring iron.", "Pick a tiny net start window."],
+                execution: ["Make smooth swings through the same window.", "Freeze only when the face feels centered.", "Restart the set after a clear face miss."],
+                successCriteria: ["Face returns through the chosen window.", "Start line feels predictable.", "Tempo stays smooth."],
+                commonMisses: ["Steering the clubface late.", "Changing the window after each miss.", "Adding speed before face control is stable."],
+                resetCue: "Small window. Quiet face.",
+                equipment: ["Alignment stick or visual rail", "Ball or foam ball", "Scoring iron", "Net"],
+                estimatedMinutes: 7
+            )
+        case "n5":
+            GarageDrillFocusDetail(
+                purpose: "Expose sway and rushed tempo by narrowing the base so centered rotation and balance become non-negotiable.",
+                setup: ["Use a wood or hybrid.", "Set the feet close together.", "Start at roughly sixty percent speed."],
+                execution: ["Make a smooth backswing while staying centered.", "Swing through without falling off balance.", "Hold the finish for a full two-count."],
+                successCriteria: ["Balanced finish.", "No major sway.", "Rhythm stays smooth from start to finish."],
+                commonMisses: ["Over-swinging.", "Falling toward the ball.", "Rushing from the top."],
+                resetCue: "Swing inside a phone booth.",
+                equipment: ["Wood or hybrid", "Ball or foam ball", "Net"],
+                estimatedMinutes: 8
+            )
+        case "n6":
+            GarageDrillFocusDetail(
+                purpose: "Calm the transition and sequence the downswing from the ground before the arms fire.",
+                setup: ["Use a wedge or short iron.", "Choose a net-safe ball.", "Commit to a clear one-beat pause at the top."],
+                execution: ["Make a full backswing and pause.", "Shift pressure forward before the arms unwind.", "Hit soft shots while keeping the pause honest."],
+                successCriteria: ["Pause is visible.", "Pressure moves forward before the throw.", "Finish stays balanced."],
+                commonMisses: ["Fake pause while still drifting.", "Arms fire first.", "Tempo speeds up after one good rep."],
+                resetCue: "Pause. Pressure. Then club.",
+                equipment: ["Wedge or short iron", "Ball or foam ball", "Net"],
+                estimatedMinutes: 7
+            )
+        case "n7":
+            GarageDrillFocusDetail(
+                purpose: "Replace a thrown clubhead with a shallower exit and continued chest rotation through impact.",
+                setup: ["Use a wood or hybrid.", "Place a headcover just outside the ball line after impact.", "Start with controlled half-speed swings."],
+                execution: ["Brush through impact without clipping the headcover.", "Keep the chest turning.", "Count only reps with a low, clean exit."],
+                successCriteria: ["Headcover stays untouched.", "Exit stays low and shallow.", "Chest keeps rotating."],
+                commonMisses: ["Throwing the club at the ball.", "Stopping the chest.", "Lifting the handle to avoid the object."],
+                resetCue: "Turn through the low window.",
+                equipment: ["Wood or hybrid", "Headcover", "Ball or foam ball", "Net"],
+                estimatedMinutes: 8
+            )
+        case "n8":
+            GarageDrillFocusDetail(
+                purpose: "Stabilize strike location by teaching the trail hand to brush the same spot without excess hit.",
+                setup: ["Use a scoring iron.", "Begin with trail-hand-only half swings.", "Pick a brush point just after the ball position."],
+                execution: ["Swing with the trail hand only.", "Listen for a crisp brush after the ball.", "Add the lead hand back once the brush point repeats."],
+                successCriteria: ["Brush point repeats.", "Contact is crisp.", "The added lead hand does not change the bottom."],
+                commonMisses: ["Trail hand slaps at the ball.", "Brush point moves behind the ball.", "Player speeds up before control appears."],
+                resetCue: "Brush the same blade of grass.",
+                equipment: ["Scoring iron", "Ball or foam ball", "Net"],
+                estimatedMinutes: 7
+            )
+        case "r10":
+            GarageDrillFocusDetail(
+                purpose: "Separate start-line control from curve so driver face delivery can be read honestly.",
+                setup: ["Pick a narrow gate about ten yards in front.", "Use driver.", "Choose the same launch gate for the whole set."],
+                execution: ["Hit five shots through the same gate.", "Judge start line before final curve.", "Reset if the target keeps changing."],
+                successCriteria: ["Ball starts through the intended gate.", "Finish is balanced.", "Miss is identified by start direction first."],
+                commonMisses: ["Reacting only to curve.", "Changing target after each miss.", "Swinging harder to fix direction."],
+                resetCue: "Own the first ten yards.",
+                equipment: ["Driver", "Range balls", "Downrange start gate"],
+                estimatedMinutes: 9
+            )
+        case "r11":
+            GarageDrillFocusDetail(
+                purpose: "Train long-iron start-line discipline by sending the ball through a defined window before judging curve.",
+                setup: ["Use a long iron.", "Pick a ten-by-ten downrange window.", "Use an alignment reference if available."],
+                execution: ["Commit to the same target window.", "Hit the shot and read start direction immediately.", "Only then observe curve."],
+                successCriteria: ["Ball starts through or near the window.", "Setup stays consistent.", "Misses are logged honestly."],
+                commonMisses: ["Reacting to curve first.", "Steering the club.", "Swinging harder because it is a long iron."],
+                resetCue: "Face sends it. Path bends it.",
+                equipment: ["Long iron", "Range balls", "Downrange target", "Alignment stick optional"],
+                estimatedMinutes: 9
+            )
+        case "r12":
+            GarageDrillFocusDetail(
+                purpose: "Connect strike quality to carry control so contact stays stable across a target ladder.",
+                setup: ["Choose one scoring iron.", "Pick three carry targets.", "Use the same pre-shot routine for each ball."],
+                execution: ["Hit one ball to each target.", "Restart the ladder if contact gets heavy or thin.", "Keep tempo constant across distances."],
+                successCriteria: ["Contact stays centered.", "Carry window is repeatable.", "Tempo does not change under pressure."],
+                commonMisses: ["Chasing distance with speed.", "Ignoring strike quality.", "Changing target after a poor contact."],
+                resetCue: "Strike first. Distance second.",
+                equipment: ["Scoring iron", "Range balls", "Three carry targets"],
+                estimatedMinutes: 10
+            )
+        case "r13":
+            GarageDrillFocusDetail(
+                purpose: "Calibrate wedge carry numbers by changing swing length while rhythm stays stable.",
+                setup: ["Use wedges.", "Pick three carry numbers such as fifty, sixty-five, and eighty yards.", "Track carry result, not rollout."],
+                execution: ["Hit one ball to the short number.", "Hit one ball to the middle number.", "Hit one ball to the long number.", "Adjust swing length, not tempo."],
+                successCriteria: ["Ball lands near the intended carry.", "Rhythm stays consistent.", "Player knows which swing length produced the distance."],
+                commonMisses: ["Swinging harder for longer wedges.", "Decelerating on short wedges.", "Changing both speed and length."],
+                resetCue: "Same rhythm. Different volume knob.",
+                equipment: ["Wedges", "Range balls", "Known yardage targets"],
+                estimatedMinutes: 10
+            )
+        case "r14":
+            GarageDrillFocusDetail(
+                purpose: "Build flight control by changing launch window while effort and rhythm stay constant.",
+                setup: ["Pick one wedge distance.", "Choose low, stock, and high windows.", "Use the same ball position reference for the set."],
+                execution: ["Hit low, stock, and high windows in order.", "Keep effort the same.", "Change finish height and face feel deliberately."],
+                successCriteria: ["All three windows are distinct.", "Distance remains playable.", "Tempo does not spike."],
+                commonMisses: ["Adding effort for the high shot.", "De-lofting the low shot into a dig.", "Losing the target while chasing trajectory."],
+                resetCue: "Change the window, not the engine.",
+                equipment: ["Wedge", "Range balls", "Single carry target"],
+                estimatedMinutes: 10
+            )
+        case "r15":
+            GarageDrillFocusDetail(
+                purpose: "Make driver practice measurable by requiring a fairway-sized start gate and a held finish.",
+                setup: ["Use driver.", "Pick a fairway-width landing picture.", "Define what counts as inside the gate before swinging."],
+                execution: ["Hit only when the target is clear.", "Hold the finish for two counts.", "Reset after any start outside the gate."],
+                successCriteria: ["Start line fits the chosen fairway.", "Finish holds in balance.", "Player does not chase speed after a miss."],
+                commonMisses: ["Overswinging.", "Changing the fairway picture.", "Ignoring balance because the ball flew far."],
+                resetCue: "Fairway first. Speed second.",
+                equipment: ["Driver", "Range balls", "Fairway target"],
+                estimatedMinutes: 9
+            )
+        case "r16":
+            GarageDrillFocusDetail(
+                purpose: "Improve handle structure and flighted contact through a shorter nine-to-three motion.",
+                setup: ["Use a mid or scoring iron.", "Pick a boring flight window.", "Start with a shorter backswing and finish."],
+                execution: ["Make nine-to-three swings.", "Hold the handle forward through the exit.", "Lengthen only after the flight stays controlled."],
+                successCriteria: ["Flight is lower and stable.", "Handle stays organized.", "Contact feels compressed."],
+                commonMisses: ["Flipping to help the ball up.", "Making a full swing too soon.", "Stopping rotation after impact."],
+                resetCue: "Heavy club. Boring flight.",
+                equipment: ["Mid iron or scoring iron", "Range balls", "Target window"],
+                estimatedMinutes: 8
+            )
+        case "r17":
+            GarageDrillFocusDetail(
+                purpose: "Add target pressure while preserving rotation, posture, and fairway discipline.",
+                setup: ["Use a wood or hybrid.", "Choose three fairway targets of increasing difficulty.", "Define restart rules before the ladder starts."],
+                execution: ["Start with the easiest fairway target.", "Advance after a balanced finish inside the window.", "Restart if the body stalls or crowds the ball."],
+                successCriteria: ["Finish remains athletic.", "Body keeps turning.", "Ball starts inside the current window."],
+                commonMisses: ["Adding pressure by swinging harder.", "Standing up through impact.", "Skipping restart rules."],
+                resetCue: "Pressure only counts if posture holds.",
+                equipment: ["Wood or hybrid", "Range balls", "Three fairway targets"],
+                estimatedMinutes: 10
+            )
+        case "p1":
+            GarageDrillFocusDetail(
+                purpose: "Train end-over-end roll and face stability by using the ball line as immediate feedback.",
+                setup: ["Draw or use a visible line on the ball.", "Start from roughly five feet.", "Pick a straight or mostly straight putt."],
+                execution: ["Aim the ball line at the target.", "Stroke the putt while watching the roll.", "Count only stable end-over-end rolls."],
+                successCriteria: ["Ball rolls end-over-end.", "Start line is stable.", "Stroke finish is calm."],
+                commonMisses: ["Wobbly roll from off-center strike.", "Face twists open or closed.", "Peeking early."],
+                resetCue: "Roll the coin, do not slap it.",
+                equipment: ["Putter", "Ball with line", "Marker", "Coin or start-line reference optional"],
+                estimatedMinutes: 7
+            )
+        case "p2":
+            GarageDrillFocusDetail(
+                purpose: "Build lag putting touch by requiring each ball to finish slightly past the previous one.",
+                setup: ["Use multiple balls.", "Start around ten feet and work toward thirty.", "Choose a consistent target corridor."],
+                execution: ["Putt the first ball to the starting distance.", "Roll each next ball one foot past the previous ball.", "Restart if a ball finishes short or races too far."],
+                successCriteria: ["Each ball finishes slightly farther.", "Distance gaps stay controlled.", "Stroke rhythm remains smooth."],
+                commonMisses: ["First ball hit too far.", "Decelerating to guide the ball.", "Obsessing over line instead of pace."],
+                resetCue: "Paint the distance with stroke length.",
+                equipment: ["Putter", "Multiple balls", "Putting green", "Optional tees or markers"],
+                estimatedMinutes: 8
+            )
+        case "p3":
+            GarageDrillFocusDetail(
+                purpose: "Tighten putting start line by forcing the ball and putter through a small gate.",
+                setup: ["Set two tees just wider than the putter head.", "Start from four feet.", "Choose a straight putt or clear start line."],
+                execution: ["Stroke the putt through the gate.", "Count only clean starts that avoid both tees.", "Reset if the stroke gets steered."],
+                successCriteria: ["Putter moves through the gate.", "Ball starts online.", "Face stays quiet."],
+                commonMisses: ["Clipping a tee.", "Guiding the face late.", "Short jab under pressure."],
+                resetCue: "Gate first. Hole second.",
+                equipment: ["Putter", "Ball", "Two tees", "Putting green"],
+                estimatedMinutes: 7
+            )
+        case "p4":
+            GarageDrillFocusDetail(
+                purpose: "Blend pace control and changing reads while preserving one repeatable stroke tempo.",
+                setup: ["Place tees at four distances around one hole.", "Use one ball from each station.", "Choose distances that require different stroke lengths."],
+                execution: ["Putt one ball from each spot.", "Keep the same rhythm as distance changes.", "Restart if pace jumps or the stroke gets jabby."],
+                successCriteria: ["Pace finishes near the hole.", "Tempo stays consistent.", "Distance changes come from stroke length."],
+                commonMisses: ["Rushing longer putts.", "Babying shorter putts.", "Letting read complexity change rhythm."],
+                resetCue: "Same tempo around the clock.",
+                equipment: ["Putter", "Balls", "Four tees", "Putting green"],
+                estimatedMinutes: 9
+            )
+        case "p5":
+            GarageDrillFocusDetail(
+                purpose: "Let the lead hand organize the putter face so the stroke starts online without extra hit.",
+                setup: ["Use short putts.", "Remove the trail hand from the club.", "Pick a narrow start line."],
+                execution: ["Hit short putts with the lead hand only.", "Keep the face square through the hitting zone.", "Add the trail hand back when start line holds."],
+                successCriteria: ["Face stays square.", "Start line holds.", "Trail hand returns without adding hit."],
+                commonMisses: ["Lead wrist breaks down.", "Stroke gets jabby.", "Trail hand dominates when added back."],
+                resetCue: "Lead hand owns the face.",
+                equipment: ["Putter", "Ball", "Putting green"],
+                estimatedMinutes: 7
+            )
+        case "p6":
+            GarageDrillFocusDetail(
+                purpose: "Improve pace discipline by landing three balls in the same stop zone without one racing or dying early.",
+                setup: ["Pick a stop zone two feet past the hole.", "Use three balls.", "Choose a putt long enough to require pace control."],
+                execution: ["Roll all three balls toward the stop zone.", "Restart if any ball finishes outside the zone.", "Keep the stroke length matched to the same finish picture."],
+                successCriteria: ["All three balls finish in the zone.", "No ball races well past.", "Stroke length feels repeatable."],
+                commonMisses: ["First putt hit defensively.", "Third putt over-corrected.", "Changing target after one miss."],
+                resetCue: "Brake at the same finish line.",
+                equipment: ["Putter", "Three balls", "Putting green", "Stop-zone markers optional"],
+                estimatedMinutes: 8
+            )
+        default:
+            customDetail(for: PracticeTemplateDrill(
+                title: drill.title,
+                focusArea: drill.faultType.sensoryDescription,
+                targetClub: drill.clubRange.displayName,
+                defaultRepCount: drill.defaultRepCount
+            ))
+        }
+    }
+
+    private static func customDetail(for drill: PracticeTemplateDrill) -> GarageDrillFocusDetail {
+        let focus = drill.focusArea.trimmingCharacters(in: .whitespacesAndNewlines)
+        let targetClub = drill.targetClub.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return GarageDrillFocusDetail(
+            purpose: focus.isEmpty ? "Focus on the stated session cue and record only reps that meet the drill standard." : "Work the stated focus area: \(focus).",
+            setup: [
+                targetClub.isEmpty ? "Use the club or tool assigned to this custom drill." : "Use \(targetClub).",
+                "Prepare the practice environment safely.",
+                "Keep the goal narrow and measurable."
+            ],
+            execution: [
+                "Complete the planned rep count.",
+                "Record only reps that match the intended standard.",
+                "Add a note describing the main feel or miss."
+            ],
+            successCriteria: [
+                "Rep matches the stated focus.",
+                "Contact, start line, or pace is honest enough to count.",
+                "You can describe what improved or failed."
+            ],
+            commonMisses: [
+                "Rushing reps just to finish.",
+                "Counting unclear reps as successful.",
+                "Changing the goal halfway through the set."
+            ],
+            resetCue: "Slow down. Make the rep count mean something.",
+            equipment: [
+                targetClub.isEmpty ? "Assigned club or tool" : targetClub,
+                "Environment-appropriate practice setup"
+            ],
+            estimatedMinutes: max(5, min(12, Int(ceil(Double(max(drill.defaultRepCount, 1)) * 0.75))))
+        )
+    }
+}

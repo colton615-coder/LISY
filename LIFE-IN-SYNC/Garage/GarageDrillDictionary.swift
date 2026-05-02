@@ -126,6 +126,19 @@ enum DrillVault {
         return catalogDrills.first(where: { $0.id == id })
     }
 
+    static func canonicalDrill(for templateDrill: PracticeTemplateDrill) -> GarageDrill? {
+        _ = catalogValidationMarker
+
+        if let definitionID = templateDrill.definitionID,
+           let matchedDrill = catalogDrills.first(where: { GarageCatalogBridge.uuid(for: "catalog-drill:\($0.id)") == definitionID }) {
+            return matchedDrill
+        }
+
+        return catalogDrills.first {
+            $0.title.caseInsensitiveCompare(templateDrill.title) == .orderedSame
+        }
+    }
+
     static func routine(for id: String) -> GarageRoutine? {
         _ = catalogValidationMarker
         return catalogRoutines.first(where: { $0.id == id })
