@@ -671,6 +671,10 @@ extension GarageDrill {
         return drills
     }
 
+    func makeGeneratedPracticeTemplateDrill(seedKey: String) -> PracticeTemplateDrill {
+        makePracticeTemplateDrill(seedKey: seedKey)
+    }
+
     fileprivate func makePracticeTemplateDrill(seedKey: String) -> PracticeTemplateDrill {
         PracticeTemplateDrill(
             id: GarageCatalogBridge.uuid(for: "routine-drill:\(seedKey)"),

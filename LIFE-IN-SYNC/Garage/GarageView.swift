@@ -7,6 +7,7 @@ struct GarageView: View {
     @Query(sort: \PracticeSessionRecord.date, order: .reverse) private var records: [PracticeSessionRecord]
 
     @State private var path: [GarageNavigationDestination] = []
+    @State private var isPresentingTemplateBuilder = false
 
     private var averageEfficiencyText: String {
         let attempts = records.reduce(0) { $0 + $1.totalAttemptedReps }
@@ -26,21 +27,10 @@ struct GarageView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            ScrollViewReader { proxy in
-                garageHomeScaffold {
-                    homeSummaryCard
-                    carryForwardSection
-                    environmentSection
-                    vaultCard
-                }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    bottomActionBar {
-                        garageTriggerSelection()
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            proxy.scrollTo(GarageHomeScrollTarget.environments, anchor: .top)
-                        }
-                    }
-                }
+            garageHomeScaffold {
+                environmentSection
+                carryForwardSection
+                homeSecondaryActions
             }
             .navigationTitle("Garage")
             .navigationBarTitleDisplayMode(.inline)
@@ -48,7 +38,12 @@ struct GarageView: View {
             .navigationDestination(for: GarageNavigationDestination.self) { destination in
                 switch destination {
                 case let .environment(environment):
-                    environmentDashboard(for: environment)
+                    environmentFocus(for: environment)
+                case let .coachPlan(plan):
+                    GarageCoachPlanReviewView(plan: plan) { reviewedPlan in
+                        garageTriggerSelection()
+                        path.append(.activeSession(ActivePracticeSession(template: reviewedPlan.makePracticeTemplate())))
+                    }
                 case let .diagnostic(environment):
                     GarageDiagnosticView(initialEnvironment: environment) { drill in
                         garageTriggerSelection()
@@ -70,6 +65,9 @@ struct GarageView: View {
             }
         }
         .garagePuttingGreenSheetChrome()
+        .sheet(isPresented: $isPresentingTemplateBuilder) {
+            GarageTemplateBuilderWizard()
+        }
     }
 
     @ViewBuilder
@@ -193,8 +191,8 @@ struct GarageView: View {
     private var environmentSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             GarageProSectionHeader(
-                eyebrow: "Practice Environment",
-                title: "Choose Environment"
+                eyebrow: "Start Here",
+                title: "Where Are You Practicing?"
             )
 
             VStack(spacing: 14) {
@@ -214,6 +212,41 @@ struct GarageView: View {
             }
         }
         .id(GarageHomeScrollTarget.environments)
+    }
+
+    private var homeSecondaryActions: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            GarageProSectionHeader(
+                eyebrow: "Secondary",
+                title: "Manage And Review"
+            )
+
+            HStack(spacing: 12) {
+                Button {
+                    garageTriggerSelection()
+                    path.append(.skillVault)
+                } label: {
+                    GarageHomeSecondaryActionCard(
+                        title: "Skill Vault",
+                        subtitle: records.isEmpty ? "Session history" : "\(records.count) sessions",
+                        systemImage: "archivebox.fill"
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    garageTriggerSelection()
+                    isPresentingTemplateBuilder = true
+                } label: {
+                    GarageHomeSecondaryActionCard(
+                        title: "Templates",
+                        subtitle: userTemplates.isEmpty ? "Build routine" : "\(userTemplates.count) saved",
+                        systemImage: "plus.rectangle.on.folder.fill"
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     private var vaultCard: some View {
@@ -269,36 +302,19 @@ struct GarageView: View {
     }
 
     @ViewBuilder
-    private func environmentDashboard(for environment: PracticeEnvironment) -> some View {
-        switch environment {
-        case .net:
-            GarageNetDashboardView(
-                onSelectTemplate: { template in
-                    path.append(.activeSession(ActivePracticeSession(template: template)))
-                },
-                onOpenDiagnostic: {
-                    path.append(.diagnostic(.net))
-                }
-            )
-        case .range:
-            GarageRangeDashboardView(
-                onSelectTemplate: { template in
-                    path.append(.activeSession(ActivePracticeSession(template: template)))
-                },
-                onOpenDiagnostic: {
-                    path.append(.diagnostic(.range))
-                }
-            )
-        case .puttingGreen:
-            GaragePuttingDashboardView(
-                onSelectTemplate: { template in
-                    path.append(.activeSession(ActivePracticeSession(template: template)))
-                },
-                onOpenDiagnostic: {
-                    path.append(.diagnostic(.puttingGreen))
-                }
-            )
-        }
+    private func environmentFocus(for environment: PracticeEnvironment) -> some View {
+        GarageEnvironmentFocusView(
+            environment: environment,
+            onGeneratePlan: { plan in
+                path.append(.coachPlan(plan))
+            },
+            onSelectTemplate: { template in
+                path.append(.activeSession(ActivePracticeSession(template: template)))
+            },
+            onOpenDiagnostic: {
+                path.append(.diagnostic(environment))
+            }
+        )
     }
 
     private func routineCount(for environment: PracticeEnvironment) -> Int {
@@ -840,6 +856,35 @@ private struct GarageHomeMetricPill: View {
                         .stroke(isActive ? GarageProTheme.accent.opacity(0.24) : GarageProTheme.border, lineWidth: 1)
                 )
         )
+    }
+}
+
+private struct GarageHomeSecondaryActionCard: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+
+    var body: some View {
+        GarageProCard(cornerRadius: 22, padding: 16) {
+            Image(systemName: systemImage)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(GarageProTheme.accent)
+                .frame(width: 48, height: 48)
+                .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+
+            Text(title)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(GarageProTheme.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+
+            Text(subtitle)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(GarageProTheme.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -1403,6 +1448,7 @@ private enum GarageHomeScrollTarget: Hashable {
 
 private enum GarageNavigationDestination: Hashable {
     case environment(PracticeEnvironment)
+    case coachPlan(GarageGeneratedPracticePlan)
     case diagnostic(PracticeEnvironment?)
     case activeSession(ActivePracticeSession)
     case sessionRecord(PracticeSessionRecord)
