@@ -386,12 +386,16 @@ private struct GarageEnvironmentDashboardView: View {
         environmentRecords.first
     }
 
-    private var environmentEfficiencyText: String {
-        let attempts = environmentRecords.reduce(0) { $0 + $1.totalAttemptedReps }
-        guard attempts > 0 else { return "--" }
+    private var recentRecords: [PracticeSessionRecord] {
+        Array(environmentRecords.prefix(5))
+    }
 
-        let success = environmentRecords.reduce(0) { $0 + $1.totalSuccessfulReps }
-        return "\(Int((Double(success) / Double(attempts) * 100).rounded()))%"
+    private var lifetimeStats: GarageEnvironmentLifetimeStats {
+        GarageEnvironmentLifetimeStats(records: environmentRecords)
+    }
+
+    private var environmentEfficiencyText: String {
+        lifetimeStats.efficiencyText
     }
 
     private var headerFootnote: String {
@@ -408,11 +412,11 @@ private struct GarageEnvironmentDashboardView: View {
     var body: some View {
         GarageProScaffold {
             environmentHeaderCard
+            lifetimeStatsSection
             carryForwardSection
-            builtInRoutineSection
-            savedRoutineSection
+            routineEntrySection
             secondaryActionSection
-            archiveSection
+            recentSessionsSection
         }
         .navigationTitle(environment.displayName)
         .navigationBarTitleDisplayMode(.inline)
@@ -467,6 +471,21 @@ private struct GarageEnvironmentDashboardView: View {
         }
     }
 
+    private var lifetimeStatsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            GarageProSectionHeader(
+                eyebrow: "Practice History",
+                title: "Lifetime Readback"
+            )
+
+            GarageEnvironmentLifetimeStatsCard(
+                stats: lifetimeStats,
+                bestRecord: environmentRecords.bestEfficiencyRecord,
+                mostPracticedRoutineName: environmentRecords.mostPracticedRoutineName
+            )
+        }
+    }
+
     private var carryForwardSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             GarageProSectionHeader(
@@ -481,11 +500,18 @@ private struct GarageEnvironmentDashboardView: View {
         }
     }
 
+    private var routineEntrySection: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            builtInRoutineSection
+            savedRoutineSection
+        }
+    }
+
     private var builtInRoutineSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             GarageProSectionHeader(
-                eyebrow: "Built-In Routine",
-                title: "Start Here"
+                eyebrow: "Routine Entry Points",
+                title: "Built-In Routines"
             )
 
             if builtInRoutines.isEmpty {
@@ -544,18 +570,18 @@ private struct GarageEnvironmentDashboardView: View {
         }
     }
 
-    private var archiveSection: some View {
+    private var recentSessionsSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             GarageProSectionHeader(
-                eyebrow: "Completed Sessions",
-                title: "Archive"
+                eyebrow: "Recent Sessions",
+                title: "Review The Last Five"
             )
 
-            if environmentRecords.isEmpty {
+            if recentRecords.isEmpty {
                 GarageEnvironmentArchiveEmptyState()
             } else {
                 LazyVStack(spacing: 14) {
-                    ForEach(environmentRecords, id: \.id) { record in
+                    ForEach(recentRecords, id: \.id) { record in
                         NavigationLink {
                             GarageSessionDetailView(
                                 record: record,
@@ -812,6 +838,161 @@ private struct GarageHomeMetricPill: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .stroke(isActive ? GarageProTheme.accent.opacity(0.24) : GarageProTheme.border, lineWidth: 1)
+                )
+        )
+    }
+}
+
+private struct GarageEnvironmentLifetimeStats: Hashable {
+    let sessionCount: Int
+    let completedDrills: Int
+    let totalDrills: Int
+    let successfulReps: Int
+    let attemptedReps: Int
+
+    init(records: [PracticeSessionRecord]) {
+        sessionCount = records.count
+        completedDrills = records.reduce(0) { $0 + $1.completedDrills }
+        totalDrills = records.reduce(0) { $0 + $1.totalDrills }
+        successfulReps = records.reduce(0) { $0 + $1.totalSuccessfulReps }
+        attemptedReps = records.reduce(0) { $0 + $1.totalAttemptedReps }
+    }
+
+    var efficiencyText: String {
+        guard attemptedReps > 0 else { return "--" }
+        return "\(Int((Double(successfulReps) / Double(attemptedReps) * 100).rounded()))%"
+    }
+
+    var repReadbackText: String {
+        guard attemptedReps > 0 else { return "No reps logged" }
+        return "\(successfulReps)/\(attemptedReps)"
+    }
+
+    var drillCompletionText: String {
+        guard totalDrills > 0 else { return "--" }
+        return "\(completedDrills)/\(totalDrills)"
+    }
+}
+
+private struct GarageEnvironmentLifetimeStatsCard: View {
+    let stats: GarageEnvironmentLifetimeStats
+    let bestRecord: PracticeSessionRecord?
+    let mostPracticedRoutineName: String?
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10)
+    ]
+
+    var body: some View {
+        GarageProCard(isActive: stats.sessionCount > 0, cornerRadius: 24, padding: 18) {
+            LazyVGrid(columns: columns, spacing: 10) {
+                GarageEnvironmentLifetimeMetric(
+                    title: "Sessions",
+                    value: "\(stats.sessionCount)",
+                    systemImage: "calendar.badge.clock"
+                )
+
+                GarageEnvironmentLifetimeMetric(
+                    title: "Efficiency",
+                    value: stats.efficiencyText,
+                    systemImage: "scope"
+                )
+
+                GarageEnvironmentLifetimeMetric(
+                    title: "Reps",
+                    value: stats.repReadbackText,
+                    systemImage: "repeat"
+                )
+
+                GarageEnvironmentLifetimeMetric(
+                    title: "Drills",
+                    value: stats.drillCompletionText,
+                    systemImage: "checkmark.seal"
+                )
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                GarageEnvironmentReadbackRow(
+                    title: "Best Readback",
+                    value: bestRecord?.environmentBestReadbackText ?? "No completed sessions yet"
+                )
+
+                GarageEnvironmentReadbackRow(
+                    title: "Most Practiced",
+                    value: mostPracticedRoutineName ?? "No routine history yet"
+                )
+            }
+        }
+    }
+}
+
+private struct GarageEnvironmentLifetimeMetric: View {
+    let title: String
+    let value: String
+    let systemImage: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(GarageProTheme.accent)
+                .frame(width: 34, height: 34)
+                .background(GarageProTheme.accent.opacity(0.13), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+
+            Text(value)
+                .font(.system(size: 24, weight: .black, design: .monospaced))
+                .foregroundStyle(GarageProTheme.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+
+            Text(title)
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(1.5)
+                .foregroundStyle(GarageProTheme.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, minHeight: 112, alignment: .leading)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(GarageProTheme.insetSurface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(GarageProTheme.border, lineWidth: 1)
+                )
+        )
+    }
+}
+
+private struct GarageEnvironmentReadbackRow: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.weight(.bold))
+                .textCase(.uppercase)
+                .tracking(1.6)
+                .foregroundStyle(GarageProTheme.textSecondary)
+
+            Text(value)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(GarageProTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(GarageProTheme.insetSurface.opacity(0.72))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(GarageProTheme.border, lineWidth: 1)
                 )
         )
     }
@@ -1077,7 +1258,44 @@ private struct GarageEnvironmentEfficiencyBadge: View {
     }
 }
 
+private extension Array where Element == PracticeSessionRecord {
+    var bestEfficiencyRecord: PracticeSessionRecord? {
+        filter { $0.totalAttemptedReps > 0 }
+            .max { lhs, rhs in
+                if lhs.aggregateEfficiency == rhs.aggregateEfficiency {
+                    return lhs.date < rhs.date
+                }
+
+                return lhs.aggregateEfficiency < rhs.aggregateEfficiency
+            }
+    }
+
+    var mostPracticedRoutineName: String? {
+        guard isEmpty == false else {
+            return nil
+        }
+
+        return Dictionary(grouping: self, by: \.templateName)
+            .sorted { lhs, rhs in
+                if lhs.value.count == rhs.value.count {
+                    return lhs.key.localizedCaseInsensitiveCompare(rhs.key) == .orderedAscending
+                }
+
+                return lhs.value.count > rhs.value.count
+            }
+            .first
+            .map { routineName, sessions in
+                let label = sessions.count == 1 ? "session" : "sessions"
+                return "\(routineName) • \(sessions.count) \(label)"
+            }
+    }
+}
+
 private extension PracticeSessionRecord {
+    var environmentBestReadbackText: String {
+        "\(templateName) • \(aggregateEfficiencyText) • \(date.formatted(date: .abbreviated, time: .omitted))"
+    }
+
     var homeTacticalCue: GarageHomeTacticalCue {
         if let primaryCue = decodedHomeCoachingPrimaryCue {
             return GarageHomeTacticalCue(
