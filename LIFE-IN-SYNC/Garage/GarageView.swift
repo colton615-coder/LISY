@@ -59,6 +59,11 @@ struct GarageView: View {
                         session: session,
                         onEndSession: { path.removeAll() }
                     )
+                case let .sessionRecord(record):
+                    GarageSessionDetailView(
+                        record: record,
+                        allowsInsightGeneration: false
+                    )
                 case .skillVault:
                     GarageSkillVaultView()
                 }
@@ -169,8 +174,9 @@ struct GarageView: View {
             )
 
             if let latestRecord {
-                NavigationLink {
-                    GarageSessionDetailView(record: latestRecord)
+                Button {
+                    garageTriggerSelection()
+                    path.append(.sessionRecord(latestRecord))
                 } label: {
                     GarageHomeCarryForwardCard(record: latestRecord)
                 }
@@ -815,9 +821,8 @@ private struct GarageHomeCarryForwardCard: View {
         GarageProCard(isActive: true, cornerRadius: 26, padding: 20) {
             HStack(alignment: .top, spacing: 14) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(record.date.formatted(date: .abbreviated, time: .omitted))
+                    Text(record.carryForwardRelativeDateText)
                         .font(.caption.weight(.bold))
-                        .textCase(.uppercase)
                         .tracking(1.6)
                         .foregroundStyle(GarageProTheme.accent.opacity(0.92))
 
@@ -836,22 +841,18 @@ private struct GarageHomeCarryForwardCard: View {
                 GarageEnvironmentEfficiencyBadge(value: record.aggregateEfficiencyText)
             }
 
-            if let noteText = record.primarySessionNoteText {
-                Text(noteText)
+            VStack(alignment: .leading, spacing: 6) {
+                if let directiveTitle = record.carryForwardDirectiveTitle {
+                    Text(directiveTitle)
+                        .font(.caption.weight(.bold))
+                        .tracking(1.4)
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                }
+
+                Text(record.carryForwardDirectiveText)
                     .font(.system(.title3, design: .rounded).weight(.bold))
                     .foregroundStyle(GarageProTheme.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
-            } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("No notes were captured last time.")
-                        .font(.system(.title3, design: .rounded).weight(.black))
-                        .foregroundStyle(GarageProTheme.textPrimary)
-
-                    Text("Your latest session finished cleanly, but there is no written lesson to carry forward yet.")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(GarageProTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
             }
 
             Text(record.practiceReadbackSummary)
@@ -1113,5 +1114,6 @@ private enum GarageNavigationDestination: Hashable {
     case environment(PracticeEnvironment)
     case diagnostic(PracticeEnvironment?)
     case activeSession(ActivePracticeSession)
+    case sessionRecord(PracticeSessionRecord)
     case skillVault
 }

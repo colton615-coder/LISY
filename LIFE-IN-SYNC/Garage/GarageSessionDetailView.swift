@@ -7,6 +7,7 @@ struct GarageSessionDetailView: View {
     @Query(sort: \PracticeSessionRecord.date, order: .reverse) private var records: [PracticeSessionRecord]
 
     let record: PracticeSessionRecord
+    let allowsInsightGeneration: Bool
 
     @State private var insight: GarageCoachingInsight?
     @State private var isLoadingInsight = false
@@ -26,6 +27,11 @@ struct GarageSessionDetailView: View {
 
     private var canGenerateInsight: Bool {
         records.latestTemplateSession(named: record.templateName)?.id == record.id
+    }
+
+    init(record: PracticeSessionRecord, allowsInsightGeneration: Bool = true) {
+        self.record = record
+        self.allowsInsightGeneration = allowsInsightGeneration
     }
 
     var body: some View {
@@ -211,6 +217,10 @@ struct GarageSessionDetailView: View {
     private func loadInsightIfNeeded() async {
         if let existing = GarageCoachingInsight.decode(from: record.aiCoachingInsight) {
             insight = existing
+            return
+        }
+
+        guard allowsInsightGeneration else {
             return
         }
 
