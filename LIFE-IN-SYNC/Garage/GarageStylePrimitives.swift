@@ -206,7 +206,7 @@ struct GarageProHeroCard<Trailing: View>: View {
     }
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack {
             LinearGradient(
                 colors: [
                     ModuleTheme.garageTurfSurface.opacity(0.98),
@@ -217,47 +217,51 @@ struct GarageProHeroCard<Trailing: View>: View {
                 endPoint: .bottomTrailing
             )
 
-            VStack(alignment: .leading, spacing: 14) {
-                Text(eyebrow)
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .textCase(.uppercase)
-                    .tracking(2.4)
-                    .foregroundStyle(GarageProTheme.accent.opacity(0.88))
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(eyebrow)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .textCase(.uppercase)
+                        .tracking(2.4)
+                        .foregroundStyle(GarageProTheme.accent.opacity(0.88))
 
-                Text(title)
-                    .font(.system(size: 34, weight: .black, design: .rounded))
-                    .foregroundStyle(GarageProTheme.textPrimary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.78)
+                    Text(title)
+                        .font(.system(size: 34, weight: .black, design: .rounded))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.78)
 
-                if let value {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(value)
-                            .font(.system(size: 48, weight: .black, design: .monospaced))
-                            .foregroundStyle(GarageProTheme.textPrimary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.62)
+                    if let value {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(value)
+                                .font(.system(size: 48, weight: .black, design: .monospaced))
+                                .foregroundStyle(GarageProTheme.textPrimary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.62)
 
-                        if let valueLabel {
-                            Text(valueLabel)
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
-                                .textCase(.uppercase)
-                                .tracking(2.2)
-                                .foregroundStyle(GarageProTheme.textPrimary.opacity(0.66))
+                            if let valueLabel {
+                                Text(valueLabel)
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .textCase(.uppercase)
+                                    .tracking(2.2)
+                                    .foregroundStyle(GarageProTheme.textPrimary.opacity(0.66))
+                            }
                         }
                     }
+
+                    Text(subtitle)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
 
-                Text(subtitle)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(GarageProTheme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                trailing
+                    .fixedSize(horizontal: true, vertical: false)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
             .padding(24)
-
-            trailing
-                .padding(18)
         }
         .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
         .overlay(

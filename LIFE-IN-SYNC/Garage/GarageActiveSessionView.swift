@@ -8,6 +8,7 @@ struct GarageActiveSessionView: View {
     @State private var session: ActivePracticeSession
     @State private var phase: GarageActiveSessionPhase = .lobby
     @State private var currentDrillIndex = 0
+    @State private var expandedDetailSection: GarageDrillDetailSection = .purpose
     @State private var noteEditor: DrillNoteEditorState?
     @State private var summaryDraft: GarageSessionSummaryDraft?
     @State private var saveErrorMessage: String?
@@ -42,6 +43,7 @@ struct GarageActiveSessionView: View {
                     currentEntry: currentEntry,
                     detail: currentEntry.map { GarageDrillFocusDetails.detail(for: $0.drill) },
                     overallProgressRatio: overallProgressRatio,
+                    expandedDetailSection: $expandedDetailSection,
                     note: currentEntry.map { noteBinding(for: $0.drill.id) } ?? .constant(""),
                     onSelectDrill: selectDrill(at:),
                     onPrevious: moveToPreviousDrill,
@@ -191,6 +193,7 @@ struct GarageActiveSessionView: View {
         garageTriggerSelection()
         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
             currentDrillIndex = index
+            expandedDetailSection = .purpose
         }
     }
 
@@ -202,6 +205,7 @@ struct GarageActiveSessionView: View {
         garageTriggerSelection()
         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
             currentDrillIndex -= 1
+            expandedDetailSection = .purpose
         }
     }
 
@@ -218,6 +222,7 @@ struct GarageActiveSessionView: View {
         if currentDrillIndex < session.totalDrillCount - 1 {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                 currentDrillIndex += 1
+                expandedDetailSection = .purpose
             }
         } else {
             presentReview()
@@ -276,6 +281,56 @@ private enum GarageActiveSessionPhase {
     case review
 }
 
+private enum GarageSessionDockLayout {
+    static let contentBottomPadding: CGFloat = 176
+    static let reviewBottomPadding: CGFloat = 196
+}
+
+private enum GarageDrillDetailSection: String, CaseIterable, Identifiable {
+    case purpose
+    case setup
+    case execution
+    case successStandard
+    case commonMiss
+    case equipment
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .purpose:
+            "Purpose"
+        case .setup:
+            "Setup"
+        case .execution:
+            "Execution"
+        case .successStandard:
+            "Success Standard"
+        case .commonMiss:
+            "Common Miss"
+        case .equipment:
+            "Equipment"
+        }
+    }
+
+    var collapsedSummary: String {
+        switch self {
+        case .purpose:
+            "Why this drill matters"
+        case .setup:
+            "Build the station before the rep"
+        case .execution:
+            "One clean rep sequence"
+        case .successStandard:
+            "Know what counts"
+        case .commonMiss:
+            "Watch the failure pattern"
+        case .equipment:
+            "What needs to be in the room"
+        }
+    }
+}
+
 @MainActor
 private struct GarageSessionLobbyView: View {
     let session: ActivePracticeSession
@@ -287,24 +342,8 @@ private struct GarageSessionLobbyView: View {
     let onEnter: () -> Void
 
     var body: some View {
-        GarageProScaffold {
-            GarageProHeroCard(
-                eyebrow: "Session Lobby",
-                title: session.templateName,
-                subtitle: "Enter the room with one cue, one routine, and no extra noise.",
-                value: "\(session.totalDrillCount)",
-                valueLabel: session.totalDrillCount == 1 ? "Drill" : "Drills"
-            ) {
-                Image(systemName: session.environment.systemImage)
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(GarageProTheme.accent)
-                    .frame(width: 60, height: 60)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .stroke(GarageProTheme.accent.opacity(0.3), lineWidth: 1)
-                    )
-            }
+        GarageProScaffold(bottomPadding: GarageSessionDockLayout.contentBottomPadding) {
+            GarageSessionLobbyLeadCard(session: session)
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 GarageProMetricCard(title: "Environment", value: session.environment.displayName, systemImage: session.environment.systemImage, isActive: true)
@@ -357,6 +396,7 @@ private struct GarageFocusSessionView: View {
     let currentEntry: PracticeSessionDrillEntry?
     let detail: GarageDrillFocusDetail?
     let overallProgressRatio: Double
+    @Binding var expandedDetailSection: GarageDrillDetailSection
     @Binding var note: String
     let onSelectDrill: (Int) -> Void
     let onPrevious: () -> Void
@@ -365,7 +405,7 @@ private struct GarageFocusSessionView: View {
     let onReview: () -> Void
 
     var body: some View {
-        GarageProScaffold {
+        GarageProScaffold(bottomPadding: GarageSessionDockLayout.contentBottomPadding) {
             GarageFocusHeaderCard(
                 session: session,
                 currentDrillIndex: currentDrillIndex,
@@ -378,6 +418,7 @@ private struct GarageFocusSessionView: View {
                     detail: detail,
                     drillNumber: currentDrillIndex + 1,
                     totalDrills: session.totalDrillCount,
+                    expandedDetailSection: $expandedDetailSection,
                     note: $note,
                     onEditNote: onEditNote
                 )
@@ -471,6 +512,7 @@ private struct GarageFocusedDrillCard: View {
     let detail: GarageDrillFocusDetail
     let drillNumber: Int
     let totalDrills: Int
+    @Binding var expandedDetailSection: GarageDrillDetailSection
     @Binding var note: String
     let onEditNote: () -> Void
 
@@ -500,7 +542,11 @@ private struct GarageFocusedDrillCard: View {
                 )
             }
 
-            GarageDrillDetailPanel(detail: detail, repTarget: detail.repTargetText(for: entry.drill))
+            GarageDrillDetailPanel(
+                detail: detail,
+                repTarget: detail.repTargetText(for: entry.drill),
+                expandedSection: $expandedDetailSection
+            )
 
             GarageFocusNotesCard(note: $note, onEditNote: onEditNote)
         }
@@ -511,22 +557,78 @@ private struct GarageFocusedDrillCard: View {
 private struct GarageDrillDetailPanel: View {
     let detail: GarageDrillFocusDetail
     let repTarget: String
+    @Binding var expandedSection: GarageDrillDetailSection
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            GarageDetailTextSection(title: "Purpose", text: detail.purpose)
-            GarageDetailListSection(title: "Setup", items: detail.setup)
-            GarageDetailListSection(title: "Execution", items: detail.execution)
-            GarageDetailListSection(title: "Success Standard", items: detail.successCriteria)
-            GarageDetailListSection(title: "Common Miss", items: detail.commonMisses)
-
             HStack(alignment: .top, spacing: 10) {
                 GarageDetailCompactBlock(title: "Reset Cue", value: detail.resetCue, isAccent: true)
                 GarageDetailCompactBlock(title: "Rep Target", value: repTarget, isAccent: false)
             }
 
-            GarageDetailListSection(title: "Equipment", items: detail.equipment)
+            VStack(alignment: .leading, spacing: 10) {
+                GarageFocusLabel("Drill Detail")
+
+                ForEach(GarageDrillDetailSection.allCases) { section in
+                    GarageDrillAccordionSection(
+                        title: section.title,
+                        collapsedSummary: collapsedSummary(for: section),
+                        isExpanded: expandedSection == section,
+                        action: {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                                expandedSection = section
+                            }
+                        }
+                    ) {
+                        detailContent(for: section)
+                    }
+                }
+            }
         }
+    }
+
+    @ViewBuilder
+    private func detailContent(for section: GarageDrillDetailSection) -> some View {
+        switch section {
+        case .purpose:
+            GarageDetailTextSection(title: section.title, text: detail.purpose)
+        case .setup:
+            GarageDetailListSection(title: section.title, items: detail.setup)
+        case .execution:
+            GarageDetailListSection(title: section.title, items: detail.execution)
+        case .successStandard:
+            GarageDetailListSection(title: section.title, items: detail.successCriteria)
+        case .commonMiss:
+            GarageDetailListSection(title: section.title, items: detail.commonMisses)
+        case .equipment:
+            GarageDetailListSection(title: section.title, items: detail.equipment)
+        }
+    }
+
+    private func collapsedSummary(for section: GarageDrillDetailSection) -> String {
+        switch section {
+        case .purpose:
+            return section.collapsedSummary
+        case .setup:
+            return itemCountSummary(count: detail.setup.count, noun: "step", fallback: section.collapsedSummary)
+        case .execution:
+            return itemCountSummary(count: detail.execution.count, noun: "move", fallback: section.collapsedSummary)
+        case .successStandard:
+            return itemCountSummary(count: detail.successCriteria.count, noun: "check", fallback: section.collapsedSummary)
+        case .commonMiss:
+            return itemCountSummary(count: detail.commonMisses.count, noun: "miss", fallback: section.collapsedSummary)
+        case .equipment:
+            return itemCountSummary(count: detail.equipment.count, noun: "item", fallback: section.collapsedSummary)
+        }
+    }
+
+    private func itemCountSummary(count: Int, noun: String, fallback: String) -> String {
+        guard count > 0 else {
+            return fallback
+        }
+
+        let suffix = count == 1 ? noun : "\(noun)s"
+        return "\(count) \(suffix)"
     }
 }
 
@@ -650,14 +752,8 @@ private struct GarageSessionReviewView: View {
     let onSave: (GarageSessionSummaryDraft) -> Void
 
     var body: some View {
-        GarageProScaffold {
-            GarageProHeroCard(
-                eyebrow: "Session Review",
-                title: draft.templateName,
-                subtitle: "Confirm successful reps, carry forward the useful feel, then write the session to the vault.",
-                value: draft.aggregateEfficiencyText,
-                valueLabel: "Efficiency"
-            )
+        GarageProScaffold(bottomPadding: GarageSessionDockLayout.reviewBottomPadding) {
+            GarageSessionReviewLeadCard(draft: draft)
 
             GarageSessionReviewNotes(entries: entries)
 
@@ -812,6 +908,147 @@ private struct GarageDetailCompactBlock: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(GarageProTheme.insetSurface.opacity(0.74), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
+
+private struct GarageDrillAccordionSection<Content: View>: View {
+    let title: String
+    let collapsedSummary: String
+    let isExpanded: Bool
+    let action: () -> Void
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: action) {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(title)
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(GarageProTheme.textPrimary)
+
+                        if isExpanded == false {
+                            Text(collapsedSummary)
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(GarageProTheme.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Image(systemName: isExpanded ? "chevron.up.circle.fill" : "chevron.down.circle")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(isExpanded ? GarageProTheme.accent : GarageProTheme.textSecondary)
+                }
+                .padding(14)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(GarageProTheme.insetSurface.opacity(isExpanded ? 0.92 : 0.72))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(isExpanded ? GarageProTheme.accent.opacity(0.34) : GarageProTheme.border, lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                content
+                    .padding(.top, 10)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+}
+
+private struct GarageSessionLobbyLeadCard: View {
+    let session: ActivePracticeSession
+
+    var body: some View {
+        GarageProCard(isActive: true, cornerRadius: 28, padding: 20) {
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 10) {
+                    GarageFocusLabel("Session Lobby")
+
+                    Text(session.templateName)
+                        .font(.system(size: 28, weight: .black, design: .rounded))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.76)
+
+                    Text("Enter the room with one cue, one routine, and no extra noise.")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                VStack(alignment: .trailing, spacing: 10) {
+                    Image(systemName: session.environment.systemImage)
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(GarageProTheme.accent)
+                        .frame(width: 58, height: 58)
+                        .background(GarageProTheme.insetSurface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .stroke(GarageProTheme.accent.opacity(0.3), lineWidth: 1)
+                        )
+
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("\(session.totalDrillCount)")
+                            .font(.system(size: 32, weight: .black, design: .monospaced))
+                            .foregroundStyle(GarageProTheme.textPrimary)
+
+                        Text(session.totalDrillCount == 1 ? "Drill" : "Drills")
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .textCase(.uppercase)
+                            .tracking(1.8)
+                            .foregroundStyle(GarageProTheme.textSecondary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct GarageSessionReviewLeadCard: View {
+    let draft: GarageSessionSummaryDraft
+
+    var body: some View {
+        GarageProCard(isActive: true, cornerRadius: 28, padding: 20) {
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 10) {
+                    GarageFocusLabel("Session Review")
+
+                    Text(draft.templateName)
+                        .font(.system(size: 28, weight: .black, design: .rounded))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.76)
+
+                    Text("Confirm successful reps, carry forward the useful feel, then write the session to the vault.")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(draft.aggregateEfficiencyText)
+                        .font(.system(size: 34, weight: .black, design: .monospaced))
+                        .foregroundStyle(GarageProTheme.accent)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+
+                    Text("Efficiency")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .textCase(.uppercase)
+                        .tracking(1.8)
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                }
+            }
+        }
     }
 }
 
