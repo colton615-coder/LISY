@@ -347,38 +347,6 @@ struct PracticeSessionDrillEntry: Identifiable, Hashable {
 }
 
 extension PracticeSessionRecord {
-    var carryForwardDirectiveTitle: String? {
-        carryForwardPrimaryCue == nil ? nil : "Coach's Directive"
-    }
-
-    var carryForwardDirectiveText: String {
-        if let carryForwardPrimaryCue {
-            return carryForwardPrimaryCue
-        }
-
-        if let trimmedSessionFeelNote {
-            return trimmedSessionFeelNote
-        }
-
-        return "No carry-forward note yet. Complete a session to build your next cue."
-    }
-
-    var carryForwardRelativeDateText: String {
-        let calendar = Calendar.current
-
-        if calendar.isDateInToday(date) {
-            return "Today"
-        }
-
-        if calendar.isDateInYesterday(date) {
-            return "Yesterday"
-        }
-
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        return formatter.localizedString(for: date, relativeTo: .now)
-    }
-
     var completionRatioText: String {
         "\(completedDrills)/\(totalDrills)"
     }
@@ -413,15 +381,6 @@ extension PracticeSessionRecord {
 
     var coachingEfficacyPercentagePoints: Int? {
         coachingEfficacyScore.map { Int(($0 * 100).rounded()) }
-    }
-
-    private var carryForwardPrimaryCue: String? {
-        GarageCoachingInsight.decode(from: aiCoachingInsight)?.primaryCue
-    }
-
-    private var trimmedSessionFeelNote: String? {
-        let feel = sessionFeelNote.trimmingCharacters(in: .whitespacesAndNewlines)
-        return feel.isEmpty ? nil : feel
     }
 }
 

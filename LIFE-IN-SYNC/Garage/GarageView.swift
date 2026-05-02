@@ -821,10 +821,12 @@ private struct GarageHomeCarryForwardCard: View {
     let record: PracticeSessionRecord
 
     var body: some View {
+        let tacticalCue = record.homeTacticalCue
+
         GarageProCard(isActive: true, cornerRadius: 26, padding: 20) {
             HStack(alignment: .top, spacing: 14) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(record.carryForwardRelativeDateText)
+                    Text(record.homeCarryForwardSubtitleText)
                         .font(.caption.weight(.bold))
                         .tracking(1.6)
                         .foregroundStyle(GarageProTheme.accent.opacity(0.92))
@@ -845,14 +847,14 @@ private struct GarageHomeCarryForwardCard: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                if let directiveTitle = record.carryForwardDirectiveTitle {
+                if let directiveTitle = tacticalCue.title {
                     Text(directiveTitle)
                         .font(.caption.weight(.bold))
                         .tracking(1.4)
                         .foregroundStyle(GarageProTheme.textSecondary)
                 }
 
-                Text(record.carryForwardDirectiveText)
+                Text(tacticalCue.text)
                     .font(.system(.title3, design: .rounded).weight(.bold))
                     .foregroundStyle(GarageProTheme.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -933,10 +935,12 @@ private struct GarageEnvironmentCarryForwardCard: View {
     var body: some View {
         GarageProCard(isActive: record != nil) {
             if let record {
+                let tacticalCue = record.homeTacticalCue
+
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .top, spacing: 12) {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(record.date.formatted(date: .abbreviated, time: .omitted))
+                            Text(record.homeCarryForwardRelativeDateText)
                                 .font(.caption.weight(.bold))
                                 .textCase(.uppercase)
                                 .tracking(1.6)
@@ -957,14 +961,14 @@ private struct GarageEnvironmentCarryForwardCard: View {
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
-                        if let directiveTitle = record.carryForwardDirectiveTitle {
+                        if let directiveTitle = tacticalCue.title {
                             Text(directiveTitle)
                                 .font(.caption.weight(.bold))
                                 .tracking(1.4)
                                 .foregroundStyle(GarageProTheme.textSecondary)
                         }
 
-                        Text(record.carryForwardDirectiveText)
+                        Text(tacticalCue.text)
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(GarageProTheme.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -1074,6 +1078,41 @@ private struct GarageEnvironmentEfficiencyBadge: View {
 }
 
 private extension PracticeSessionRecord {
+    var homeTacticalCue: GarageHomeTacticalCue {
+        if let primaryCue = decodedHomeCoachingPrimaryCue {
+            return GarageHomeTacticalCue(
+                title: "Coach's Directive",
+                text: primaryCue
+            )
+        }
+
+        if let feelNote = trimmedHomeSessionFeelNote {
+            return GarageHomeTacticalCue(text: feelNote)
+        }
+
+        return GarageHomeTacticalCue(text: "No cues recorded yet")
+    }
+
+    var homeCarryForwardRelativeDateText: String {
+        let calendar = Calendar.current
+
+        if calendar.isDateInToday(date) {
+            return "Today"
+        }
+
+        if calendar.isDateInYesterday(date) {
+            return "Yesterday"
+        }
+
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter.localizedString(for: date, relativeTo: .now)
+    }
+
+    var homeCarryForwardSubtitleText: String {
+        "Last Session • \(homeCarryForwardRelativeDateText)"
+    }
+
     var primarySessionNoteText: String? {
         let feel = sessionFeelNote.trimmingCharacters(in: .whitespacesAndNewlines)
         if feel.isEmpty == false {
@@ -1096,6 +1135,32 @@ private extension PracticeSessionRecord {
         }
 
         return parts.joined(separator: " • ")
+    }
+
+    private var decodedHomeCoachingPrimaryCue: String? {
+        guard let cue = GarageCoachingInsight.decode(from: aiCoachingInsight)?
+            .primaryCue?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            cue.isEmpty == false else {
+            return nil
+        }
+
+        return cue
+    }
+
+    private var trimmedHomeSessionFeelNote: String? {
+        let feel = sessionFeelNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        return feel.isEmpty ? nil : feel
+    }
+}
+
+private struct GarageHomeTacticalCue {
+    let title: String?
+    let text: String
+
+    init(title: String? = nil, text: String) {
+        self.title = title
+        self.text = text
     }
 }
 
