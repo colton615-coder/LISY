@@ -90,7 +90,10 @@ struct GarageSkillVaultView: View {
             LazyVStack(spacing: ModuleSpacing.medium) {
                 ForEach(records, id: \.id) { record in
                     NavigationLink {
-                        GarageSessionDetailView(record: record)
+                        GarageSessionDetailView(
+                            record: record,
+                            allowsInsightGeneration: false
+                        )
                     } label: {
                         GarageSkillVaultSessionCard(
                             record: record,

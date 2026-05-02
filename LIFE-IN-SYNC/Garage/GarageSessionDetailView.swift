@@ -29,7 +29,7 @@ struct GarageSessionDetailView: View {
         records.latestTemplateSession(named: record.templateName)?.id == record.id
     }
 
-    init(record: PracticeSessionRecord, allowsInsightGeneration: Bool = true) {
+    init(record: PracticeSessionRecord, allowsInsightGeneration: Bool = false) {
         self.record = record
         self.allowsInsightGeneration = allowsInsightGeneration
     }

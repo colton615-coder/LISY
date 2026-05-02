@@ -141,7 +141,7 @@ struct GarageView: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Open Vault")
+                .accessibilityLabel("Open Skill Vault")
             }
 
             HStack(alignment: .top, spacing: 12) {
@@ -230,7 +230,7 @@ struct GarageView: View {
                         .background(GarageProTheme.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Vault")
+                        Text("Skill Vault")
                             .font(.system(.title3, design: .rounded).weight(.black))
                             .foregroundStyle(GarageProTheme.textPrimary)
 
@@ -557,7 +557,10 @@ private struct GarageEnvironmentDashboardView: View {
                 LazyVStack(spacing: 14) {
                     ForEach(environmentRecords, id: \.id) { record in
                         NavigationLink {
-                            GarageSessionDetailView(record: record)
+                            GarageSessionDetailView(
+                                record: record,
+                                allowsInsightGeneration: false
+                            )
                         } label: {
                             GarageEnvironmentArchiveCard(record: record)
                         }
@@ -953,10 +956,19 @@ private struct GarageEnvironmentCarryForwardCard: View {
                         GarageEnvironmentEfficiencyBadge(value: record.aggregateEfficiencyText)
                     }
 
-                    Text(record.carryForwardNoteText)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(GarageProTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 6) {
+                        if let directiveTitle = record.carryForwardDirectiveTitle {
+                            Text(directiveTitle)
+                                .font(.caption.weight(.bold))
+                                .tracking(1.4)
+                                .foregroundStyle(GarageProTheme.textSecondary)
+                        }
+
+                        Text(record.carryForwardDirectiveText)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(GarageProTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
 
                     Text(record.practiceReadbackSummary)
                         .font(.footnote.weight(.bold))
@@ -1074,10 +1086,6 @@ private extension PracticeSessionRecord {
         }
 
         return nil
-    }
-
-    var carryForwardNoteText: String {
-        primarySessionNoteText ?? "No notes were captured last time. Use this routine as a fresh baseline."
     }
 
     var practiceReadbackSummary: String {
