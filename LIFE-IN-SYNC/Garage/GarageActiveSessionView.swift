@@ -282,8 +282,8 @@ private enum GarageActiveSessionPhase {
 }
 
 private enum GarageSessionDockLayout {
-    static let contentBottomPadding: CGFloat = 176
-    static let reviewBottomPadding: CGFloat = 196
+    static let contentBottomPadding: CGFloat = 230
+    static let reviewBottomPadding: CGFloat = 244
 }
 
 private enum GarageDrillDetailSection: String, CaseIterable, Identifiable {
@@ -346,10 +346,10 @@ private struct GarageSessionLobbyView: View {
             GarageSessionLobbyLeadCard(session: session)
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                GarageProMetricCard(title: "Environment", value: session.environment.displayName, systemImage: session.environment.systemImage, isActive: true)
-                GarageProMetricCard(title: "Planned Reps", value: "\(totalPlannedReps)", systemImage: "repeat", isActive: totalPlannedReps > 0)
-                GarageProMetricCard(title: "Est. Time", value: "\(estimatedMinutes)m", systemImage: "timer", isActive: estimatedMinutes > 0)
-                GarageProMetricCard(title: "Completed", value: "\(session.completedDrillCount)/\(session.totalDrillCount)", systemImage: "checkmark.seal", isActive: session.completedDrillCount > 0)
+                GarageCompactMetricCard(title: "Environment", value: session.environment.displayName, systemImage: session.environment.systemImage, isActive: true)
+                GarageCompactMetricCard(title: "Planned Reps", value: "\(totalPlannedReps)", systemImage: "repeat", isActive: totalPlannedReps > 0)
+                GarageCompactMetricCard(title: "Est. Time", value: "\(estimatedMinutes)m", systemImage: "timer", isActive: estimatedMinutes > 0)
+                GarageCompactMetricCard(title: "Completed", value: "\(session.completedDrillCount)/\(session.totalDrillCount)", systemImage: "checkmark.seal", isActive: session.completedDrillCount > 0)
             }
 
             GarageProCard(isActive: true) {
@@ -383,7 +383,8 @@ private struct GarageSessionLobbyView: View {
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 14)
+            .padding(.vertical, 10)
+            .padding(.top, 4)
             .background(.ultraThinMaterial)
         }
     }
@@ -464,7 +465,8 @@ private struct GarageFocusSessionView: View {
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 14)
+            .padding(.vertical, 10)
+            .padding(.top, 4)
             .background(.ultraThinMaterial)
         }
     }
@@ -477,19 +479,22 @@ private struct GarageFocusHeaderCard: View {
     let overallProgressRatio: Double
 
     var body: some View {
-        GarageProCard(isActive: true, cornerRadius: 26, padding: 18) {
+        GarageProCard(isActive: true, cornerRadius: 24, padding: 16) {
             HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
                     GarageFocusLabel("Focus Room")
 
                     Text(session.templateName)
-                        .font(.system(.title2, design: .rounded).weight(.black))
+                        .font(.system(size: 36, weight: .black, design: .rounded))
                         .foregroundStyle(GarageProTheme.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
 
                     Text("\(session.environment.displayName) • Drill \(min(currentDrillIndex + 1, max(session.totalDrillCount, 1))) of \(session.totalDrillCount)")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.footnote.weight(.semibold))
                         .foregroundStyle(GarageProTheme.textSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.84)
                 }
 
                 Spacer(minLength: 8)
@@ -502,6 +507,7 @@ private struct GarageFocusHeaderCard: View {
             }
 
             GarageLinearProgressBar(ratio: overallProgressRatio)
+                .padding(.top, 2)
         }
     }
 }
@@ -517,18 +523,19 @@ private struct GarageFocusedDrillCard: View {
     let onEditNote: () -> Void
 
     var body: some View {
-        GarageProCard(isActive: true, cornerRadius: 28, padding: 20) {
+        GarageProCard(isActive: true, cornerRadius: 26, padding: 16) {
             HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
                     GarageFocusLabel("Current Drill")
 
                     Text(entry.drill.title)
-                        .font(.system(size: 30, weight: .black, design: .rounded))
+                        .font(.system(size: 26, weight: .black, design: .rounded))
                         .foregroundStyle(GarageProTheme.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
 
                     Text(entry.drill.metadataSummary)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.footnote.weight(.semibold))
                         .foregroundStyle(GarageProTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -547,8 +554,10 @@ private struct GarageFocusedDrillCard: View {
                 repTarget: detail.repTargetText(for: entry.drill),
                 expandedSection: $expandedDetailSection
             )
+            .padding(.top, 2)
 
             GarageFocusNotesCard(note: $note, onEditNote: onEditNote)
+                .padding(.top, 2)
         }
     }
 }
@@ -560,13 +569,13 @@ private struct GarageDrillDetailPanel: View {
     @Binding var expandedSection: GarageDrillDetailSection
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
                 GarageDetailCompactBlock(title: "Reset Cue", value: detail.resetCue, isAccent: true)
                 GarageDetailCompactBlock(title: "Rep Target", value: repTarget, isAccent: false)
             }
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 GarageFocusLabel("Drill Detail")
 
                 ForEach(GarageDrillDetailSection.allCases) { section in
@@ -801,7 +810,8 @@ private struct GarageSessionReviewView: View {
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 14)
+            .padding(.vertical, 10)
+            .padding(.top, 4)
             .background(.ultraThinMaterial)
         }
     }
@@ -966,29 +976,30 @@ private struct GarageSessionLobbyLeadCard: View {
     let session: ActivePracticeSession
 
     var body: some View {
-        GarageProCard(isActive: true, cornerRadius: 28, padding: 20) {
+        GarageProCard(isActive: true, cornerRadius: 24, padding: 16) {
             HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 8) {
                     GarageFocusLabel("Session Lobby")
 
                     Text(session.templateName)
-                        .font(.system(size: 28, weight: .black, design: .rounded))
+                        .font(.system(size: 24, weight: .black, design: .rounded))
                         .foregroundStyle(GarageProTheme.textPrimary)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.76)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
 
                     Text("Enter the room with one cue, one routine, and no extra noise.")
-                        .font(.subheadline.weight(.medium))
+                        .font(.footnote.weight(.semibold))
                         .foregroundStyle(GarageProTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.85)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                VStack(alignment: .trailing, spacing: 10) {
+                VStack(alignment: .trailing, spacing: 8) {
                     Image(systemName: session.environment.systemImage)
-                        .font(.system(size: 22, weight: .bold))
+                        .font(.system(size: 20, weight: .bold))
                         .foregroundStyle(GarageProTheme.accent)
-                        .frame(width: 58, height: 58)
+                        .frame(width: 50, height: 50)
                         .background(GarageProTheme.insetSurface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -997,7 +1008,7 @@ private struct GarageSessionLobbyLeadCard: View {
 
                     VStack(alignment: .trailing, spacing: 2) {
                         Text("\(session.totalDrillCount)")
-                            .font(.system(size: 32, weight: .black, design: .monospaced))
+                            .font(.system(size: 27, weight: .black, design: .monospaced))
                             .foregroundStyle(GarageProTheme.textPrimary)
 
                         Text(session.totalDrillCount == 1 ? "Drill" : "Drills")
@@ -1008,6 +1019,41 @@ private struct GarageSessionLobbyLeadCard: View {
                     }
                 }
             }
+        }
+    }
+}
+
+private struct GarageCompactMetricCard: View {
+    let title: String
+    let value: String
+    let systemImage: String
+    var isActive = false
+
+    var body: some View {
+        GarageProCard(isActive: isActive, cornerRadius: 20, padding: 12) {
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(GarageProTheme.accent)
+                    .frame(width: 32, height: 32)
+                    .background(GarageProTheme.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                Spacer(minLength: 8)
+            }
+
+            Text(value)
+                .font(.system(size: 24, weight: .black, design: .rounded))
+                .foregroundStyle(GarageProTheme.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+
+            Text(title)
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(1.4)
+                .foregroundStyle(GarageProTheme.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
         }
     }
 }
