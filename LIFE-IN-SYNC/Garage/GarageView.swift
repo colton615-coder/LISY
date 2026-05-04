@@ -74,6 +74,14 @@ struct GarageView: View {
                     garageTriggerSelection()
                     path.append(.environment(environment))
                 },
+                onStartRoutine: { routine in
+                    garageTriggerSelection()
+                    path.append(.activeSession(ActivePracticeSession(template: routine.makePracticeTemplate())))
+                },
+                onGenerateRoutine: { environment, recentRecords in
+                    garageTriggerSelection()
+                    path.append(.coachPlan(GarageLocalCoachPlanner.generatePlan(for: environment, recentRecords: recentRecords)))
+                },
                 onOpenLatestSession: { record in
                     garageTriggerSelection()
                     path.append(.sessionRecord(record))
@@ -162,8 +170,11 @@ struct GarageProSectionHeader: View {
 private struct GarageHomeTabView: View {
     @Query(sort: \PracticeTemplate.title) private var savedRoutines: [PracticeTemplate]
     @Query(sort: \PracticeSessionRecord.date, order: .reverse) private var records: [PracticeSessionRecord]
+    @State private var selectedRoutineIDs: [String: String] = [:]
 
     let onOpenEnvironment: (PracticeEnvironment) -> Void
+    let onStartRoutine: (GarageRoutine) -> Void
+    let onGenerateRoutine: (PracticeEnvironment, [PracticeSessionRecord]) -> Void
     let onOpenLatestSession: (PracticeSessionRecord) -> Void
 
     private var latestRecord: PracticeSessionRecord? {
@@ -213,16 +224,24 @@ private struct GarageHomeTabView: View {
 
             VStack(spacing: 14) {
                 ForEach(PracticeEnvironment.allCases) { environment in
-                    Button {
-                        onOpenEnvironment(environment)
-                    } label: {
-                        GarageHomeEnvironmentCard(
-                            environment: environment,
-                            routineCount: routineCount(for: environment),
-                            sessionCount: records.filter { $0.environment == environment.rawValue }.count
-                        )
-                    }
-                    .buttonStyle(.plain)
+                    GarageHomeEnvironmentCard(
+                        environment: environment,
+                        sessionCount: records.filter { $0.environment == environment.rawValue }.count,
+                        selectedRoutine: selectedRoutine(for: environment),
+                        routines: DrillVault.routines(in: environment),
+                        onSelectRoutine: { routine in
+                            selectedRoutineIDs[environment.rawValue] = routine.id
+                        },
+                        onStartRoutine: {
+                            onStartRoutine(selectedRoutine(for: environment))
+                        },
+                        onGenerateRoutine: {
+                            onGenerateRoutine(environment, records)
+                        },
+                        onBrowseAll: {
+                            onOpenEnvironment(environment)
+                        }
+                    )
                 }
             }
         }
@@ -276,9 +295,16 @@ private struct GarageHomeTabView: View {
         }
     }
 
-    private func routineCount(for environment: PracticeEnvironment) -> Int {
-        DrillVault.routineCount(in: environment) +
-            savedRoutines.filter { $0.environment == environment.rawValue }.count
+    private func selectedRoutine(for environment: PracticeEnvironment) -> GarageRoutine {
+        let routines = DrillVault.routines(in: environment)
+        let storedID = selectedRoutineIDs[environment.rawValue]
+
+        if let storedID,
+           let matched = routines.first(where: { $0.id == storedID }) {
+            return matched
+        }
+
+        return routines.first ?? DrillVault.predefinedRoutines.first(where: { $0.environment == environment }) ?? DrillVault.predefinedRoutines[0]
     }
 
     private func carryForwardNote(for record: PracticeSessionRecord) -> String {
@@ -307,11 +333,16 @@ private struct GarageHomeTabView: View {
 
 private struct GarageHomeEnvironmentCard: View {
     let environment: PracticeEnvironment
-    let routineCount: Int
     let sessionCount: Int
+    let selectedRoutine: GarageRoutine
+    let routines: [GarageRoutine]
+    let onSelectRoutine: (GarageRoutine) -> Void
+    let onStartRoutine: () -> Void
+    let onGenerateRoutine: () -> Void
+    let onBrowseAll: () -> Void
 
     var body: some View {
-        GarageProCard(isActive: routineCount > 0, cornerRadius: 24, padding: 18) {
+        GarageProCard(isActive: true, cornerRadius: 28, padding: 18) {
             HStack(alignment: .top, spacing: 14) {
                 Image(systemName: environment.systemImage)
                     .font(.system(size: 18, weight: .bold))
@@ -329,18 +360,176 @@ private struct GarageHomeEnvironmentCard: View {
                         .foregroundStyle(GarageProTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("\(routineCount) routines ready • \(sessionCount) saved sessions")
+                    Text("\(routines.count) preset routines • \(sessionCount) saved sessions")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(GarageProTheme.accent.opacity(0.88))
                 }
 
                 Spacer(minLength: 8)
 
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.bold))
-                    .foregroundStyle(GarageProTheme.textSecondary)
+                Button("View All") {
+                    onBrowseAll()
+                }
+                .font(.caption.weight(.bold))
+                .foregroundStyle(GarageProTheme.textSecondary)
+                .buttonStyle(.plain)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Preset Routines")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .textCase(.uppercase)
+                    .tracking(2)
+                    .foregroundStyle(GarageProTheme.accent)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(routines) { routine in
+                            let isSelected = routine.id == selectedRoutine.id
+                            Button {
+                                guard isSelected == false else { return }
+                                garageTriggerSelection()
+                                onSelectRoutine(routine)
+                            } label: {
+                                Text(routine.title)
+                                    .font(.subheadline.weight(.bold))
+                                    .foregroundStyle(isSelected ? ModuleTheme.garageSurfaceDark : GarageProTheme.textPrimary)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 12)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                            .fill(isSelected ? GarageProTheme.accent : GarageProTheme.insetSurface)
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                            .stroke(isSelected ? GarageProTheme.accent.opacity(0.34) : GarageProTheme.border, lineWidth: 1)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+
+            GarageHomeRoutineDetailPanel(routine: selectedRoutine)
+
+            HStack(spacing: 12) {
+                GarageHomeSecondaryButton(
+                    title: "AI Generate New Routine",
+                    systemImage: "sparkles",
+                    action: onGenerateRoutine
+                )
+
+                GarageProPrimaryButton(
+                    title: "Start Routine",
+                    systemImage: "play.fill",
+                    action: onStartRoutine
+                )
             }
         }
+    }
+}
+
+private struct GarageHomeRoutineDetailPanel: View {
+    let routine: GarageRoutine
+
+    private var drillCount: Int {
+        routine.drillIDs.count
+    }
+
+    private var totalRepCount: Int {
+        DrillVault.drills(for: routine).reduce(0) { $0 + $1.defaultRepCount }
+    }
+
+    var body: some View {
+        GarageProCard(cornerRadius: 22, padding: 16) {
+            Text("Selected Routine")
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(2)
+                .foregroundStyle(GarageProTheme.accent)
+
+            Text(routine.title)
+                .font(.system(.title3, design: .rounded).weight(.black))
+                .foregroundStyle(GarageProTheme.textPrimary)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Aims to help with")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(GarageProTheme.textSecondary)
+
+                Text(routine.purpose)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(GarageProTheme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 10) {
+                GarageHomeRoutineMetric(title: "Time", value: "\(routine.estimatedMinutes) min")
+                GarageHomeRoutineMetric(title: "Difficulty", value: routine.difficulty.displayName)
+                GarageHomeRoutineMetric(title: "Stack", value: "\(drillCount) drills")
+                GarageHomeRoutineMetric(title: "Reps", value: "\(totalRepCount)")
+            }
+        }
+    }
+}
+
+private struct GarageHomeRoutineMetric: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(1.6)
+                .foregroundStyle(GarageProTheme.textSecondary)
+
+            Text(value)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(GarageProTheme.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(GarageProTheme.insetSurface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(GarageProTheme.border, lineWidth: 1)
+                )
+        )
+    }
+}
+
+private struct GarageHomeSecondaryButton: View {
+    let title: String
+    let systemImage: String
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            garageTriggerSelection()
+            action()
+        } label: {
+            Label(title, systemImage: systemImage)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(GarageProTheme.textPrimary)
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity, minHeight: 60)
+                .background(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .fill(GarageProTheme.insetSurface)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(GarageProTheme.accent.opacity(0.3), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
     }
 }
 

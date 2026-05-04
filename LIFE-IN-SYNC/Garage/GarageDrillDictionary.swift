@@ -69,6 +69,16 @@ enum GarageDrillLibraryCategory: String, CaseIterable, Codable, Identifiable, Ha
     var displayName: String { rawValue }
 }
 
+enum GarageRoutineDifficulty: String, CaseIterable, Codable, Identifiable, Hashable {
+    case foundation = "Foundation"
+    case focused = "Focused"
+    case advanced = "Advanced"
+
+    var id: String { rawValue }
+
+    var displayName: String { rawValue }
+}
+
 struct GarageDrill: Identifiable, Codable, Equatable, Hashable {
     let id: String
     let title: String
@@ -115,19 +125,25 @@ struct GarageRoutine: Identifiable, Codable, Equatable, Hashable {
     let environment: PracticeEnvironment
     let purpose: String
     let drillIDs: [String]
+    let estimatedMinutes: Int
+    let difficulty: GarageRoutineDifficulty
 
     init(
         id: String,
         title: String,
         environment: PracticeEnvironment,
         purpose: String,
-        drillIDs: [String]
+        drillIDs: [String],
+        estimatedMinutes: Int,
+        difficulty: GarageRoutineDifficulty
     ) {
         self.id = id
         self.title = title
         self.environment = environment
         self.purpose = purpose
         self.drillIDs = drillIDs
+        self.estimatedMinutes = estimatedMinutes
+        self.difficulty = difficulty
     }
 }
 
@@ -585,56 +601,72 @@ enum DrillVault {
             title: "Contact Reset",
             environment: .net,
             purpose: "Sharpen strike and low-point control before speed.",
-            drillIDs: ["n1", "n8", "n2"]
+            drillIDs: ["n1", "n8", "n2"],
+            estimatedMinutes: 18,
+            difficulty: .foundation
         ),
         GarageRoutine(
             id: "net-tempo-balance",
             title: "Tempo & Balance",
             environment: .net,
             purpose: "Slow the motion down and own the finish.",
-            drillIDs: ["n5", "n6", "n4"]
+            drillIDs: ["n5", "n6", "n4"],
+            estimatedMinutes: 20,
+            difficulty: .foundation
         ),
         GarageRoutine(
             id: "net-rotation-check",
             title: "Rotation Check",
             environment: .net,
             purpose: "Keep the body turning so space stays open through impact.",
-            drillIDs: ["n3", "n4", "n7"]
+            drillIDs: ["n3", "n4", "n7"],
+            estimatedMinutes: 19,
+            difficulty: .focused
         ),
         GarageRoutine(
             id: "range-wedge-distance-ladder",
             title: "Wedge Distance Ladder",
             environment: .range,
             purpose: "Calibrate carry numbers with one repeatable rhythm.",
-            drillIDs: ["r13", "r14", "r12"]
+            drillIDs: ["r13", "r14", "r12"],
+            estimatedMinutes: 24,
+            difficulty: .focused
         ),
         GarageRoutine(
             id: "range-start-line-control",
             title: "Start-Line Control",
             environment: .range,
             purpose: "Own launch direction before chasing shape.",
-            drillIDs: ["r10", "r11", "r16"]
+            drillIDs: ["r10", "r11", "r16"],
+            estimatedMinutes: 22,
+            difficulty: .focused
         ),
         GarageRoutine(
             id: "range-driver-control",
             title: "Driver Control",
             environment: .range,
             purpose: "Launch driver on line and keep the finish athletic.",
-            drillIDs: ["r15", "r17", "r10"]
+            drillIDs: ["r15", "r17", "r10"],
+            estimatedMinutes: 24,
+            difficulty: .advanced
         ),
         GarageRoutine(
             id: "green-start-line-builder",
             title: "Start Line Builder",
             environment: .puttingGreen,
             purpose: "Train a cleaner face and more predictable roll.",
-            drillIDs: ["p1", "p3", "p5"]
+            drillIDs: ["p1", "p3", "p5"],
+            estimatedMinutes: 17,
+            difficulty: .foundation
         ),
         GarageRoutine(
             id: "green-pace-control",
             title: "Pace Control",
             environment: .puttingGreen,
             purpose: "Match stroke length to distance without racing putts.",
-            drillIDs: ["p2", "p4", "p6"]
+            drillIDs: ["p2", "p4", "p6"],
+            estimatedMinutes: 19,
+            difficulty: .focused
         )
     ]
 
