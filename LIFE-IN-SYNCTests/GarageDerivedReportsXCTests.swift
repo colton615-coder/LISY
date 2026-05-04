@@ -4,6 +4,78 @@ import XCTest
 
 @MainActor
 final class GarageDerivedReportsXCTests: XCTestCase {
+    func testGarageCoachingAuditSnapshotGeneratesActionableTrendInsights() {
+        let improvingSnapshot = GarageCoachingAuditSnapshot(
+            currentRecordID: UUID(),
+            previousRecordID: UUID(),
+            templateName: "Impact Ladder",
+            previousCue: "Own the finish.",
+            drillDeltas: [
+                GarageDrillDelta(name: "Start Line", previousRatio: 0.42, currentRatio: 0.50),
+                GarageDrillDelta(name: "Contact", previousRatio: 0.56, currentRatio: 0.62)
+            ],
+            isPersonalRecord: false
+        )
+        let droppingSnapshot = GarageCoachingAuditSnapshot(
+            currentRecordID: UUID(),
+            previousRecordID: UUID(),
+            templateName: "Impact Ladder",
+            previousCue: "Slow down the transition.",
+            drillDeltas: [
+                GarageDrillDelta(name: "Start Line", previousRatio: 0.62, currentRatio: 0.52),
+                GarageDrillDelta(name: "Contact", previousRatio: 0.58, currentRatio: 0.50)
+            ],
+            isPersonalRecord: false
+        )
+
+        XCTAssertEqual(improvingSnapshot.coachingTrend, .improving)
+        XCTAssertTrue(improvingSnapshot.actionableInsightText.contains("improving faster than your average"))
+        XCTAssertEqual(droppingSnapshot.coachingTrend, .dropping)
+        XCTAssertTrue(droppingSnapshot.actionableInsightText.contains("dropped over the last 3 sessions"))
+    }
+
+    func testGarageCoachingEfficacyTrendPointsFilterTemplateAndSortByDate() {
+        let baseDate = Date(timeIntervalSince1970: 1_775_000_000)
+        let records = [
+            PracticeSessionRecord(
+                date: baseDate.addingTimeInterval(86_400),
+                templateName: "Impact Ladder",
+                environment: PracticeEnvironment.range.rawValue,
+                completedDrills: 3,
+                totalDrills: 3,
+                coachingEfficacyScore: 0.08
+            ),
+            PracticeSessionRecord(
+                date: baseDate,
+                templateName: "Impact Ladder",
+                environment: PracticeEnvironment.range.rawValue,
+                completedDrills: 3,
+                totalDrills: 3,
+                coachingEfficacyScore: 0.04
+            ),
+            PracticeSessionRecord(
+                date: baseDate.addingTimeInterval(172_800),
+                templateName: "Putting Gate",
+                environment: PracticeEnvironment.puttingGreen.rawValue,
+                completedDrills: 2,
+                totalDrills: 2,
+                coachingEfficacyScore: 0.20
+            ),
+            PracticeSessionRecord(
+                date: baseDate.addingTimeInterval(259_200),
+                templateName: "Impact Ladder",
+                environment: PracticeEnvironment.range.rawValue,
+                completedDrills: 3,
+                totalDrills: 3
+            )
+        ]
+
+        let points = records.coachingEfficacyTrendPoints(for: "Impact Ladder")
+
+        XCTAssertEqual(points.map(\.score), [0.04, 0.08])
+        XCTAssertEqual(points.map(\.templateName), ["Impact Ladder", "Impact Ladder"])
+    }
+
     func testGarageReliabilityReportIsTrustedForApprovedCompleteSwing() {
         let anchors = makeFullAnchorSet()
         let record = makeWorkflowRecord(

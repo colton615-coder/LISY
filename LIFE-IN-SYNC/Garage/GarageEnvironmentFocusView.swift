@@ -28,7 +28,7 @@ struct GarageEnvironmentFocusView: View {
     }
 
     var body: some View {
-        GarageProScaffold(bottomPadding: 124) {
+        GarageProScaffold(bottomPadding: 56) {
             headerCard
             generateCard
             carryForwardCard
@@ -37,21 +37,6 @@ struct GarageEnvironmentFocusView: View {
         }
         .navigationTitle(environment.displayName)
         .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            HStack {
-                Spacer()
-
-                GarageProPrimaryButton(
-                    title: "Generate Practice Session",
-                    systemImage: "sparkles"
-                ) {
-                    generatePlan()
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
-            .background(.ultraThinMaterial)
-        }
     }
 
     private var headerCard: some View {

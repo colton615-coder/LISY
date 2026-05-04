@@ -25,9 +25,14 @@ struct GarageView: View {
         records.first
     }
 
+    private var latestCoachingTipSnapshot: GarageCoachingAuditSnapshot? {
+        records.latestCoachingAuditSnapshot()
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             garageHomeScaffold {
+                coachingTipSection
                 environmentSection
                 carryForwardSection
                 homeSecondaryActions
@@ -94,7 +99,7 @@ struct GarageView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
                 .padding(.top, 20)
-                .padding(.bottom, 96)
+                .padding(.bottom, 56)
             }
             .scrollIndicators(.hidden)
         }
@@ -185,6 +190,13 @@ struct GarageView: View {
                     message: "Finish a routine to build your carry forward."
                 )
             }
+        }
+    }
+
+    @ViewBuilder
+    private var coachingTipSection: some View {
+        if let latestCoachingTipSnapshot {
+            GarageCoachingTipOfDayCard(snapshot: latestCoachingTipSnapshot)
         }
     }
 
@@ -283,22 +295,6 @@ struct GarageView: View {
             }
         }
         .buttonStyle(.plain)
-    }
-
-    private func bottomActionBar(onChooseEnvironment: @escaping () -> Void) -> some View {
-        HStack {
-            Spacer()
-
-            GarageProPrimaryButton(
-                title: "Choose Environment",
-                systemImage: "flag.pattern.checkered"
-            ) {
-                onChooseEnvironment()
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
-        .background(.ultraThinMaterial)
     }
 
     @ViewBuilder

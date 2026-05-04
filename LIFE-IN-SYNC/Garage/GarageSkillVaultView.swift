@@ -118,6 +118,13 @@ struct GarageSkillVaultView: View {
                         .foregroundStyle(AppModule.garage.theme.textSecondary)
                 }
 
+                if let templateName = coachingImpact.featuredTemplateName {
+                    GarageCoachingDashboardView(
+                        records: records,
+                        templateName: templateName
+                    )
+                }
+
                 VStack(spacing: ModuleSpacing.medium) {
                     ForEach(coachingImpact.auditSnapshots) { snapshot in
                         GarageCoachingImpactRow(snapshot: snapshot)

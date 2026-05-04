@@ -282,12 +282,8 @@ private enum GarageActiveSessionPhase {
 }
 
 private enum GarageSessionDockLayout {
-    private static let standardDockHeight: CGFloat = 96
-    private static let reviewDockHeight: CGFloat = 156
-    private static let safeAreaScrollClearance: CGFloat = 224
-
-    static let contentBottomPadding = standardDockHeight + safeAreaScrollClearance
-    static let reviewBottomPadding = reviewDockHeight + safeAreaScrollClearance
+    static let contentBottomPadding: CGFloat = 56
+    static let reviewBottomPadding: CGFloat = 56
 }
 
 private enum GarageDrillDetailSection: String, CaseIterable, Identifiable {
@@ -374,11 +370,8 @@ private struct GarageSessionLobbyView: View {
             }
 
             GarageEquipmentCard(equipment: equipment)
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            HStack {
-                Spacer()
 
+            HStack {
                 GarageProPrimaryButton(
                     title: "Enter Focus Room",
                     systemImage: "figure.golf"
@@ -386,10 +379,6 @@ private struct GarageSessionLobbyView: View {
                     onEnter()
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 10)
-            .padding(.top, 4)
-            .background(.ultraThinMaterial)
         }
     }
 }
@@ -433,6 +422,15 @@ private struct GarageFocusSessionView: View {
                     currentDrillIndex: currentDrillIndex,
                     onSelectDrill: onSelectDrill
                 )
+
+                GarageFocusActionRow(
+                    currentDrillIndex: currentDrillIndex,
+                    totalDrillCount: session.totalDrillCount,
+                    completedDrillCount: session.completedDrillCount,
+                    onPrevious: onPrevious,
+                    onCompleteCurrent: onCompleteCurrent,
+                    onReview: onReview
+                )
             } else {
                 GarageProCard {
                     Text("No drills in this session")
@@ -445,33 +443,40 @@ private struct GarageFocusSessionView: View {
                 }
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            HStack(spacing: 12) {
-                GarageFocusSecondaryButton(
-                    title: "Back",
-                    systemImage: "chevron.left",
-                    isEnabled: currentDrillIndex > 0,
-                    action: onPrevious
-                )
+    }
+}
 
-                if session.completedDrillCount == session.totalDrillCount, session.totalDrillCount > 0 {
-                    GarageProPrimaryButton(
-                        title: "Review",
-                        systemImage: "checkmark.seal.fill",
-                        action: onReview
-                    )
-                } else {
-                    GarageProPrimaryButton(
-                        title: currentDrillIndex >= session.totalDrillCount - 1 ? "Complete & Review" : "Complete Drill",
-                        systemImage: "checkmark.circle.fill",
-                        action: onCompleteCurrent
-                    )
-                }
+@MainActor
+private struct GarageFocusActionRow: View {
+    let currentDrillIndex: Int
+    let totalDrillCount: Int
+    let completedDrillCount: Int
+    let onPrevious: () -> Void
+    let onCompleteCurrent: () -> Void
+    let onReview: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            GarageFocusSecondaryButton(
+                title: "Back",
+                systemImage: "chevron.left",
+                isEnabled: currentDrillIndex > 0,
+                action: onPrevious
+            )
+
+            if completedDrillCount == totalDrillCount, totalDrillCount > 0 {
+                GarageProPrimaryButton(
+                    title: "Review",
+                    systemImage: "checkmark.seal.fill",
+                    action: onReview
+                )
+            } else {
+                GarageProPrimaryButton(
+                    title: currentDrillIndex >= totalDrillCount - 1 ? "Complete & Review" : "Complete Drill",
+                    systemImage: "checkmark.circle.fill",
+                    action: onCompleteCurrent
+                )
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 10)
-            .padding(.top, 4)
-            .background(.ultraThinMaterial)
         }
     }
 }
@@ -840,37 +845,47 @@ private struct GarageSessionReviewView: View {
                     }
                 }
             }
+
+            GarageSessionReviewSaveActions(
+                draft: draft,
+                onBack: onBack,
+                onSave: onSave
+            )
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(alignment: .leading, spacing: 10) {
-                if draft.canSave == false {
-                    Text(draft.saveGateMessage)
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(GarageProTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+    }
+}
 
-                HStack(spacing: 12) {
-                    GarageFocusSecondaryButton(
-                        title: "Back",
-                        systemImage: "chevron.left",
-                        action: onBack
-                    )
+@MainActor
+private struct GarageSessionReviewSaveActions: View {
+    let draft: GarageSessionSummaryDraft
+    let onBack: () -> Void
+    let onSave: (GarageSessionSummaryDraft) -> Void
 
-                    GarageProPrimaryButton(
-                        title: "Save Session",
-                        systemImage: "checkmark.seal.fill",
-                        isEnabled: draft.canSave
-                    ) {
-                        onSave(draft)
-                    }
+    var body: some View {
+        GarageTelemetrySurface(isActive: draft.canSave) {
+            if draft.canSave == false {
+                Text(draft.saveGateMessage)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(GarageProTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            HStack(spacing: 12) {
+                GarageFocusSecondaryButton(
+                    title: "Back",
+                    systemImage: "chevron.left",
+                    action: onBack
+                )
+
+                GarageProPrimaryButton(
+                    title: "Save Session",
+                    systemImage: "checkmark.seal.fill",
+                    isEnabled: draft.canSave
+                ) {
+                    onSave(draft)
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 10)
-            .padding(.top, 4)
-            .background(.ultraThinMaterial)
         }
     }
 }

@@ -165,13 +165,8 @@ private struct GarageTemplateSetupStep: View {
                     .foregroundStyle(isSelected ? GarageProTheme.accent : GarageProTheme.textSecondary)
                 }
             }
-        }
-        .navigationTitle("New Template")
-        .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            HStack {
-                Spacer()
 
+            HStack {
                 GarageProPrimaryButton(
                     title: "Continue",
                     systemImage: "arrow.right",
@@ -180,10 +175,9 @@ private struct GarageTemplateSetupStep: View {
                     onNext()
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
-            .background(.ultraThinMaterial)
         }
+        .navigationTitle("New Template")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -282,13 +276,8 @@ private struct GarageTemplateDictionaryStep: View {
                     }
                 }
             }
-        }
-        .navigationTitle("Drill Dictionary")
-        .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            HStack {
-                Spacer()
 
+            HStack {
                 GarageProPrimaryButton(
                     title: "Review Template",
                     systemImage: "arrow.right",
@@ -297,10 +286,9 @@ private struct GarageTemplateDictionaryStep: View {
                     onReview()
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
-            .background(.ultraThinMaterial)
         }
+        .navigationTitle("Drill Dictionary")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -362,13 +350,8 @@ private struct GarageTemplateReviewStep: View {
                     GarageReviewDrillCard(index: offset + 1, drill: drill)
                 }
             }
-        }
-        .navigationTitle("Review")
-        .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            HStack {
-                Spacer()
 
+            HStack {
                 GarageProPrimaryButton(
                     title: "Save Template",
                     systemImage: "checkmark"
@@ -376,10 +359,9 @@ private struct GarageTemplateReviewStep: View {
                     onSave()
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
-            .background(.ultraThinMaterial)
         }
+        .navigationTitle("Review")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -452,7 +434,7 @@ private struct GarageDrillDefinitionEditorView: View {
 
     var body: some View {
         NavigationStack {
-            GarageProScaffold(bottomPadding: 120) {
+            GarageProScaffold(bottomPadding: 56) {
                 GarageProHeroCard(
                     eyebrow: "Dictionary",
                     title: "New Drill",
@@ -480,6 +462,16 @@ private struct GarageDrillDefinitionEditorView: View {
                     }
                     .tint(GarageProTheme.accent)
                 }
+
+                HStack {
+                    GarageProPrimaryButton(
+                        title: "Save",
+                        systemImage: "checkmark",
+                        isEnabled: trimmedTitle.isEmpty == false
+                    ) {
+                        saveDefinition()
+                    }
+                }
             }
             .navigationTitle("New Drill")
             .navigationBarTitleDisplayMode(.inline)
@@ -489,22 +481,6 @@ private struct GarageDrillDefinitionEditorView: View {
                         dismiss()
                     }
                 }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                HStack {
-                    Spacer()
-
-                    GarageProPrimaryButton(
-                        title: "Save",
-                        systemImage: "checkmark",
-                        isEnabled: trimmedTitle.isEmpty == false
-                    ) {
-                        saveDefinition()
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 14)
-                .background(.ultraThinMaterial)
             }
             .alert("Unable To Save Drill", isPresented: saveErrorAlertIsPresented) {
                 Button("OK", role: .cancel) {

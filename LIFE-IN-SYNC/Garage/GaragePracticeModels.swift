@@ -450,12 +450,20 @@ struct GarageDrillDelta: Identifiable, Hashable {
 }
 
 struct GarageCoachingAuditSnapshot: Identifiable, Hashable {
+    enum CoachingTrend: Hashable {
+        case improving
+        case dropping
+        case holding
+    }
+
     let currentRecordID: UUID
     let previousRecordID: UUID
     let templateName: String
     let previousCue: String
     let drillDeltas: [GarageDrillDelta]
     let isPersonalRecord: Bool
+
+    private static let significantAverageDeltaThreshold = 0.03
 
     var id: UUID { currentRecordID }
 
@@ -478,6 +486,29 @@ struct GarageCoachingAuditSnapshot: Identifiable, Hashable {
 
     var averageDeltaPercentagePoints: Int {
         Int((averageDelta * 100).rounded())
+    }
+
+    var coachingTrend: CoachingTrend {
+        if averageDelta >= Self.significantAverageDeltaThreshold {
+            return .improving
+        }
+
+        if averageDelta <= -Self.significantAverageDeltaThreshold {
+            return .dropping
+        }
+
+        return .holding
+    }
+
+    var actionableInsightText: String {
+        switch coachingTrend {
+        case .improving:
+            return "You are improving faster than your average on the \(templateName) routine. Keep doing what you're doing."
+        case .dropping:
+            return "Your efficacy on \(templateName) has dropped over the last 3 sessions. Consider slowing down your pace."
+        case .holding:
+            return "Your efficacy on \(templateName) is holding steady. Stay patient and make the next rep clean."
+        }
     }
 
     var deltaBadgeText: String {
@@ -517,6 +548,10 @@ struct GarageCoachingAuditSnapshot: Identifiable, Hashable {
 struct GarageCoachingImpactDashboard: Hashable {
     let auditSnapshots: [GarageCoachingAuditSnapshot]
 
+    var featuredTemplateName: String? {
+        auditSnapshots.first?.templateName
+    }
+
     var weightedSuccessRatio: Double {
         let totalWeight = auditSnapshots.reduce(0) { $0 + $1.weightedOutcomeWeight }
         guard totalWeight > 0 else {
@@ -535,6 +570,23 @@ struct GarageCoachingImpactDashboard: Hashable {
 
     var efficacyText: String {
         "\(efficacyPercentage)% of AI cues led to performance gains"
+    }
+}
+
+struct GarageCoachingTrendPoint: Identifiable, Hashable {
+    let id: UUID
+    let date: Date
+    let templateName: String
+    let score: Double
+
+    var scorePercentagePoints: Double {
+        score * 100
+    }
+
+    var scoreText: String {
+        let percentagePoints = Int(scorePercentagePoints.rounded())
+        let sign = percentagePoints > 0 ? "+" : ""
+        return "\(sign)\(percentagePoints)%"
     }
 }
 
@@ -676,5 +728,33 @@ extension Array where Element == PracticeSessionRecord {
             .map { $0 }
 
         return GarageCoachingImpactDashboard(auditSnapshots: snapshots)
+    }
+
+    func latestCoachingAuditSnapshot() -> GarageCoachingAuditSnapshot? {
+        sorted { $0.date > $1.date }
+            .compactMap { coachingAuditSnapshot(for: $0) }
+            .first
+    }
+
+    func coachingEfficacyTrendPoints(
+        for templateName: String,
+        limit: Int = 12
+    ) -> [GarageCoachingTrendPoint] {
+        sorted { $0.date > $1.date }
+            .filter { $0.templateName == templateName }
+            .compactMap { record -> GarageCoachingTrendPoint? in
+                guard let score = record.coachingEfficacyScore else {
+                    return nil
+                }
+
+                return GarageCoachingTrendPoint(
+                    id: record.id,
+                    date: record.date,
+                    templateName: record.templateName,
+                    score: score
+                )
+            }
+            .prefix(limit)
+            .sorted { $0.date < $1.date }
     }
 }

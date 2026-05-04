@@ -15,29 +15,14 @@ struct GarageCoachPlanReviewView: View {
     }
 
     var body: some View {
-        GarageProScaffold(bottomPadding: 124) {
+        GarageProScaffold(bottomPadding: 56) {
             heroCard
             objectiveCard
             drillListSection
+            startSessionAction
         }
         .navigationTitle("Coach Plan")
         .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            HStack {
-                Spacer()
-
-                GarageProPrimaryButton(
-                    title: "Start Session",
-                    systemImage: "play.fill",
-                    isEnabled: draftPlan.canStart
-                ) {
-                    onStartSession(draftPlan)
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
-            .background(.ultraThinMaterial)
-        }
     }
 
     private var heroCard: some View {
@@ -106,6 +91,18 @@ struct GarageCoachPlanReviewView: View {
                         }
                     )
                 }
+            }
+        }
+    }
+
+    private var startSessionAction: some View {
+        HStack {
+            GarageProPrimaryButton(
+                title: "Start Session",
+                systemImage: "play.fill",
+                isEnabled: draftPlan.canStart
+            ) {
+                onStartSession(draftPlan)
             }
         }
     }

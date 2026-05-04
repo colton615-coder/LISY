@@ -54,7 +54,7 @@ struct GarageDiagnosticView: View {
     }
 
     var body: some View {
-        GarageProScaffold(bottomPadding: prescribedDrill == nil ? 124 : 96) {
+        GarageProScaffold(bottomPadding: 56) {
             GarageProHeroCard(
                 eyebrow: "Vibe-Based Coach",
                 title: heroTitle,
@@ -120,38 +120,38 @@ struct GarageDiagnosticView: View {
                         }
                     }
                 }
+
+                if step > minimumStep {
+                    backStepAction
+                }
             }
         }
         .navigationTitle("Prescription")
         .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if prescribedDrill == nil && step > minimumStep {
-                HStack {
-                    Button {
-                        backOneStep()
-                    } label: {
-                        Label("Back One Step", systemImage: "chevron.left")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(GarageProTheme.textSecondary)
-                            .padding(.horizontal, 18)
-                            .frame(minHeight: 54)
-                            .background(
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                    .fill(GarageProTheme.insetSurface)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                    .stroke(GarageProTheme.border, lineWidth: 1)
-                            )
-                    }
-                    .buttonStyle(.plain)
+    }
 
-                    Spacer()
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 14)
-                .background(.ultraThinMaterial)
+    private var backStepAction: some View {
+        HStack {
+            Button {
+                backOneStep()
+            } label: {
+                Label("Back One Step", systemImage: "chevron.left")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(GarageProTheme.textSecondary)
+                    .padding(.horizontal, 18)
+                    .frame(minHeight: 54)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(GarageProTheme.insetSurface)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(GarageProTheme.border, lineWidth: 1)
+                    )
             }
+            .buttonStyle(.plain)
+
+            Spacer()
         }
     }
 

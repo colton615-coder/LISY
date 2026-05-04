@@ -1,4 +1,5 @@
 import SwiftData
+import Foundation
 
 @MainActor
 enum GarageAuditService {
@@ -6,9 +7,15 @@ enum GarageAuditService {
         for newRecord: PracticeSessionRecord,
         in modelContext: ModelContext
     ) throws -> GarageCoachingAuditSnapshot? {
-        let templateRecords = try modelContext
-            .fetch(FetchDescriptor<PracticeSessionRecord>())
-            .filter { $0.templateName == newRecord.templateName }
+        // Extract the name to a local variable so the #Predicate macro can use it safely
+        let targetTemplate = newRecord.templateName
+        
+        // Fetch only the records that match the template directly from the database
+        let descriptor = FetchDescriptor<PracticeSessionRecord>(
+            predicate: #Predicate { $0.templateName == targetTemplate }
+        )
+        
+        let templateRecords = try modelContext.fetch(descriptor)
 
         let auditSnapshot = templateRecords.coachingAuditSnapshot(for: newRecord)
         newRecord.coachingEfficacyScore = auditSnapshot?.averageDelta
