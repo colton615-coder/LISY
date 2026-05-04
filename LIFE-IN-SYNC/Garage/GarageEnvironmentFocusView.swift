@@ -30,9 +30,9 @@ struct GarageEnvironmentFocusView: View {
     var body: some View {
         GarageProScaffold(bottomPadding: 56) {
             headerCard
-            generateCard
             carryForwardCard
             routineAccessSection
+            generateCard
             diagnosticSection
         }
         .navigationTitle(environment.displayName)
@@ -62,11 +62,17 @@ struct GarageEnvironmentFocusView: View {
     private var generateCard: some View {
         GarageProCard(isActive: true, cornerRadius: 26, padding: 18) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Coach-Led Session")
+                Text("Secondary Path")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .textCase(.uppercase)
+                    .tracking(2)
+                    .foregroundStyle(GarageProTheme.accent)
+
+                Text("Generate Session Plan")
                     .font(.system(.title3, design: .rounded).weight(.black))
                     .foregroundStyle(GarageProTheme.textPrimary)
 
-                Text("Generate a local plan from the \(environment.displayName.lowercased()) drill catalog and your latest carry-forward note.")
+                Text("Use the local planner when you want Garage to assemble a coach-led prescription from the \(environment.displayName.lowercased()) library and your latest carry-forward note.")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(GarageProTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -79,7 +85,7 @@ struct GarageEnvironmentFocusView: View {
             )
 
             GarageProPrimaryButton(
-                title: "Generate Practice Session",
+                title: "Generate Session Plan",
                 systemImage: "sparkles"
             ) {
                 generatePlan()
@@ -136,40 +142,51 @@ struct GarageEnvironmentFocusView: View {
     private var routineAccessSection: some View {
         if builtInRoutines.isEmpty == false || savedTemplates.isEmpty == false {
             VStack(alignment: .leading, spacing: 12) {
-                GarageEnvironmentFocusHeader(
-                    eyebrow: "Secondary",
-                    title: "Existing Routines"
-                )
+                if builtInRoutines.isEmpty == false {
+                    GarageEnvironmentFocusHeader(
+                        eyebrow: "Primary Path",
+                        title: "Predefined Routines"
+                    )
 
-                VStack(spacing: 12) {
-                    ForEach(builtInRoutines) { routine in
-                        Button {
-                            garageTriggerSelection()
-                            onSelectTemplate(routine.makePracticeTemplate())
-                        } label: {
-                            GarageEnvironmentFocusRoutineRow(
-                                title: routine.title,
-                                subtitle: routine.purpose,
-                                detail: "\(routine.drillIDs.count) drills - built-in",
-                                systemImage: environment.systemImage
-                            )
+                    VStack(spacing: 12) {
+                        ForEach(builtInRoutines) { routine in
+                            Button {
+                                garageTriggerSelection()
+                                onSelectTemplate(routine.makePracticeTemplate())
+                            } label: {
+                                GarageEnvironmentFocusRoutineRow(
+                                    title: routine.title,
+                                    subtitle: routine.purpose,
+                                    detail: "\(routine.drillIDs.count) drills - built-in routine",
+                                    systemImage: environment.systemImage
+                                )
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
+                }
 
-                    ForEach(savedTemplates, id: \.id) { template in
-                        Button {
-                            garageTriggerSelection()
-                            onSelectTemplate(template)
-                        } label: {
-                            GarageEnvironmentFocusRoutineRow(
-                                title: template.title,
-                                subtitle: template.drills.first?.focusArea ?? "Saved routine",
-                                detail: "\(template.drills.count) drills - saved",
-                                systemImage: "bookmark.fill"
-                            )
+                if savedTemplates.isEmpty == false {
+                    GarageEnvironmentFocusHeader(
+                        eyebrow: "Saved",
+                        title: "Saved Routines"
+                    )
+
+                    VStack(spacing: 12) {
+                        ForEach(savedTemplates, id: \.id) { template in
+                            Button {
+                                garageTriggerSelection()
+                                onSelectTemplate(template)
+                            } label: {
+                                GarageEnvironmentFocusRoutineRow(
+                                    title: template.title,
+                                    subtitle: template.drills.first?.focusArea ?? "Saved routine",
+                                    detail: "\(template.drills.count) drills - saved routine",
+                                    systemImage: "bookmark.fill"
+                                )
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -194,7 +211,7 @@ struct GarageEnvironmentFocusView: View {
                             .font(.headline.weight(.bold))
                             .foregroundStyle(GarageProTheme.textPrimary)
 
-                        Text("Use the existing diagnostic path when the main plan needs a fault-specific starting point.")
+                        Text("Use the existing diagnostic path when a predefined or saved routine is too broad for the miss you are working on.")
                             .font(.footnote.weight(.medium))
                             .foregroundStyle(GarageProTheme.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)

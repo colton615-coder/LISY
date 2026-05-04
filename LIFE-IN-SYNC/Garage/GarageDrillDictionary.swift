@@ -54,12 +54,29 @@ enum FaultType: String, CaseIterable, Codable, Identifiable, Hashable {
     }
 }
 
+enum GarageDrillLibraryCategory: String, CaseIterable, Codable, Identifiable, Hashable {
+    case contact = "Contact"
+    case delivery = "Delivery"
+    case rotation = "Rotation"
+    case faceControl = "Face Control"
+    case tempo = "Tempo & Balance"
+    case distanceControl = "Distance Control"
+    case pressure = "Pressure & Accuracy"
+    case putting = "Putting Pace"
+
+    var id: String { rawValue }
+
+    var displayName: String { rawValue }
+}
+
 struct GarageDrill: Identifiable, Codable, Equatable, Hashable {
     let id: String
     let title: String
     let environment: PracticeEnvironment
     let faultType: FaultType
     let clubRange: ClubRange
+    let purpose: String
+    let libraryCategory: GarageDrillLibraryCategory
     let abstractFeelCue: String
     let executionSteps: [String]
     let remedialDrillID: String?
@@ -71,6 +88,8 @@ struct GarageDrill: Identifiable, Codable, Equatable, Hashable {
         environment: PracticeEnvironment,
         faultType: FaultType,
         clubRange: ClubRange,
+        purpose: String,
+        libraryCategory: GarageDrillLibraryCategory,
         abstractFeelCue: String,
         executionSteps: [String],
         remedialDrillID: String? = nil,
@@ -81,6 +100,8 @@ struct GarageDrill: Identifiable, Codable, Equatable, Hashable {
         self.environment = environment
         self.faultType = faultType
         self.clubRange = clubRange
+        self.purpose = purpose
+        self.libraryCategory = libraryCategory
         self.abstractFeelCue = abstractFeelCue
         self.executionSteps = executionSteps
         self.remedialDrillID = remedialDrillID
@@ -126,6 +147,11 @@ enum DrillVault {
         return catalogDrills.first(where: { $0.id == id })
     }
 
+    static func drills(in environment: PracticeEnvironment) -> [GarageDrill] {
+        _ = catalogValidationMarker
+        return catalogDrills.filter { $0.environment == environment }
+    }
+
     static func canonicalDrill(for templateDrill: PracticeTemplateDrill) -> GarageDrill? {
         _ = catalogValidationMarker
 
@@ -144,9 +170,19 @@ enum DrillVault {
         return catalogRoutines.first(where: { $0.id == id })
     }
 
+    static func routines(in environment: PracticeEnvironment) -> [GarageRoutine] {
+        _ = catalogValidationMarker
+        return catalogRoutines.filter { $0.environment == environment }
+    }
+
     static func drills(for routine: GarageRoutine) -> [GarageDrill] {
         _ = catalogValidationMarker
         return routine.drillIDs.compactMap { drill(for: $0) }
+    }
+
+    static func routines(containing drill: GarageDrill) -> [GarageRoutine] {
+        _ = catalogValidationMarker
+        return catalogRoutines.filter { $0.drillIDs.contains(drill.id) }
     }
 
     static func drillCount(in environment: PracticeEnvironment) -> Int {
@@ -177,6 +213,8 @@ enum DrillVault {
             environment: .net,
             faultType: .fatThin,
             clubRange: .scoringIrons,
+            purpose: "Train cleaner ball-first contact and low-point control before speed.",
+            libraryCategory: .contact,
             abstractFeelCue: "Sharpen strike without letting the club bottom out early.",
             executionSteps: [
                 "Place a towel two inches behind the ball.",
@@ -192,6 +230,8 @@ enum DrillVault {
             environment: .net,
             faultType: .casting,
             clubRange: .wedges,
+            purpose: "Reduce early throwaway and feel the handle lead through impact.",
+            libraryCategory: .delivery,
             abstractFeelCue: "Keep the handle leading while the clubhead stays patient.",
             executionSteps: [
                 "Separate your hands on the grip by three inches.",
@@ -206,6 +246,8 @@ enum DrillVault {
             environment: .net,
             faultType: .earlyExtension,
             clubRange: .driver,
+            purpose: "Rehearse turning without losing posture or standing up early.",
+            libraryCategory: .rotation,
             abstractFeelCue: "Keep your turn deep so the hips do not crowd the ball.",
             executionSteps: [
                 "Stand with your trail hip a few inches from a wall.",
@@ -220,6 +262,8 @@ enum DrillVault {
             environment: .net,
             faultType: .faceControl,
             clubRange: .scoringIrons,
+            purpose: "Train a centered face and predictable launch through a tight visual window.",
+            libraryCategory: .faceControl,
             abstractFeelCue: "Match the clubface to a tiny start window before adding speed.",
             executionSteps: [
                 "Set an alignment stick just outside the ball.",
@@ -235,6 +279,8 @@ enum DrillVault {
             environment: .net,
             faultType: .tempo,
             clubRange: .woods,
+            purpose: "Build rhythm and balance with a narrowed base and patient finish.",
+            libraryCategory: .tempo,
             abstractFeelCue: "Swing inside a phone booth and own the finish.",
             executionSteps: [
                 "Set your feet together to narrow the base.",
@@ -249,6 +295,8 @@ enum DrillVault {
             environment: .net,
             faultType: .tempo,
             clubRange: .wedges,
+            purpose: "Sequence the downswing from the ground up instead of rushing from the top.",
+            libraryCategory: .tempo,
             abstractFeelCue: "Pause at the top so the downswing starts from the ground up.",
             executionSteps: [
                 "Make a full backswing and pause for one beat.",
@@ -264,6 +312,8 @@ enum DrillVault {
             environment: .net,
             faultType: .casting,
             clubRange: .woods,
+            purpose: "Replace a thrown clubhead with a shallower exit and continued chest turn.",
+            libraryCategory: .delivery,
             abstractFeelCue: "Send the club through a low exit instead of throwing it at the ball.",
             executionSteps: [
                 "Place a headcover just outside the ball line after impact.",
@@ -279,6 +329,8 @@ enum DrillVault {
             environment: .net,
             faultType: .fatThin,
             clubRange: .scoringIrons,
+            purpose: "Stabilize brush point and strike location with one-hand contact rehearsal.",
+            libraryCategory: .contact,
             abstractFeelCue: "Brush the turf in the same spot every time with one hand.",
             executionSteps: [
                 "Hit half swings using only the trail hand.",
@@ -294,6 +346,8 @@ enum DrillVault {
             environment: .range,
             faultType: .faceControl,
             clubRange: .driver,
+            purpose: "Separate start-line control from curve so driver practice stays honest.",
+            libraryCategory: .pressure,
             abstractFeelCue: "Own the first few feet of flight before judging curve.",
             executionSteps: [
                 "Pick a narrow gate ten yards in front of you.",
@@ -309,6 +363,8 @@ enum DrillVault {
             environment: .range,
             faultType: .faceControl,
             clubRange: .longIrons,
+            purpose: "Start the ball through a small window before judging curve or height.",
+            libraryCategory: .pressure,
             abstractFeelCue: "Squeeze the ball under a low branch and through a tiny window.",
             executionSteps: [
                 "Pick a ten-by-ten target window.",
@@ -324,6 +380,8 @@ enum DrillVault {
             environment: .range,
             faultType: .fatThin,
             clubRange: .scoringIrons,
+            purpose: "Match strike quality to a repeating carry ladder instead of chasing one swing.",
+            libraryCategory: .contact,
             abstractFeelCue: "Match strike quality to a repeating carry window.",
             executionSteps: [
                 "Choose three targets with one club.",
@@ -339,6 +397,8 @@ enum DrillVault {
             environment: .range,
             faultType: .tempo,
             clubRange: .wedges,
+            purpose: "Calibrate wedge carry numbers with one repeatable rhythm.",
+            libraryCategory: .distanceControl,
             abstractFeelCue: "Dial the volume knob: four, six, eight.",
             executionSteps: [
                 "Pick carry numbers at fifty, sixty-five, and eighty yards.",
@@ -354,6 +414,8 @@ enum DrillVault {
             environment: .range,
             faultType: .tempo,
             clubRange: .wedges,
+            purpose: "Own low, stock, and high windows without changing effort or pace.",
+            libraryCategory: .distanceControl,
             abstractFeelCue: "Own low, stock, and high windows without changing effort.",
             executionSteps: [
                 "Pick one wedge distance.",
@@ -369,6 +431,8 @@ enum DrillVault {
             environment: .range,
             faultType: .faceControl,
             clubRange: .driver,
+            purpose: "Make driver practice measurable with a fairway-sized start gate and held finish.",
+            libraryCategory: .pressure,
             abstractFeelCue: "Launch driver through a fairway-sized start gate with balance.",
             executionSteps: [
                 "Pick a fairway-width landing picture.",
@@ -384,6 +448,8 @@ enum DrillVault {
             environment: .range,
             faultType: .casting,
             clubRange: .scoringIrons,
+            purpose: "Train a shorter, flighted motion that keeps the handle organized through impact.",
+            libraryCategory: .delivery,
             abstractFeelCue: "Keep the club heavy and flight the ball from a shorter swing.",
             executionSteps: [
                 "Make nine-to-three swings with a mid iron.",
@@ -399,6 +465,8 @@ enum DrillVault {
             environment: .range,
             faultType: .earlyExtension,
             clubRange: .woods,
+            purpose: "Add target pressure only when posture, turn, and balance still hold up.",
+            libraryCategory: .pressure,
             abstractFeelCue: "Add pressure only if the body keeps turning through the shot.",
             executionSteps: [
                 "Choose three fairway targets of increasing difficulty.",
@@ -414,6 +482,8 @@ enum DrillVault {
             environment: .puttingGreen,
             faultType: .fatThin,
             clubRange: .putter,
+            purpose: "Train cleaner end-over-end roll and face stability from short range.",
+            libraryCategory: .putting,
             abstractFeelCue: "Roll the ball end-over-end like a perfectly spun coin.",
             executionSteps: [
                 "Draw a line on the ball.",
@@ -428,6 +498,8 @@ enum DrillVault {
             environment: .puttingGreen,
             faultType: .tempo,
             clubRange: .putter,
+            purpose: "Build lag putting touch by making each next ball finish slightly farther.",
+            libraryCategory: .putting,
             abstractFeelCue: "Paint the green with increasingly longer strokes.",
             executionSteps: [
                 "Putt the first ball ten feet.",
@@ -443,6 +515,8 @@ enum DrillVault {
             environment: .puttingGreen,
             faultType: .faceControl,
             clubRange: .putter,
+            purpose: "Tighten putting start line by forcing the face and ball through a gate.",
+            libraryCategory: .putting,
             abstractFeelCue: "Roll the ball through a tiny gate before reading break.",
             executionSteps: [
                 "Set two tees just wider than the putter head.",
@@ -458,6 +532,8 @@ enum DrillVault {
             environment: .puttingGreen,
             faultType: .tempo,
             clubRange: .putter,
+            purpose: "Keep stroke tempo steady while the required distance changes around the hole.",
+            libraryCategory: .putting,
             abstractFeelCue: "Keep the same tempo while distance changes around the circle.",
             executionSteps: [
                 "Place tees at four distances around one hole.",
@@ -473,6 +549,8 @@ enum DrillVault {
             environment: .puttingGreen,
             faultType: .faceControl,
             clubRange: .putter,
+            purpose: "Let the lead hand organize the face so the stroke starts online without extra hit.",
+            libraryCategory: .putting,
             abstractFeelCue: "Let the lead hand control the face without extra hit.",
             executionSteps: [
                 "Hit short putts with the trail hand off the club.",
@@ -488,6 +566,8 @@ enum DrillVault {
             environment: .puttingGreen,
             faultType: .fatThin,
             clubRange: .putter,
+            purpose: "Improve pace discipline by landing multiple putts in the same stop zone.",
+            libraryCategory: .putting,
             abstractFeelCue: "Land pace in the same stop zone three times in a row.",
             executionSteps: [
                 "Pick a stop zone two feet past the hole.",
