@@ -47,21 +47,10 @@ struct GarageSkillVaultView: View {
             valueLabel: "Last 30 Days"
         ) {
             if dashboardMetrics.recordsInWindow > 0 {
-                Text(dashboardMetrics.momentumText)
-                    .font(.caption.weight(.black))
-                    .textCase(.uppercase)
-                    .tracking(1.1)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.82)
-                    .foregroundStyle(dashboardMetrics.momentumTint)
-                    .padding(.horizontal, 12)
-                    .frame(maxWidth: 156, minHeight: 52)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(dashboardMetrics.momentumTint.opacity(0.32), lineWidth: 1)
-                    )
+                GarageVaultWindowBadge(
+                    text: dashboardMetrics.momentumText,
+                    tint: dashboardMetrics.momentumTint
+                )
             }
         }
     }
@@ -157,31 +146,26 @@ private struct GarageSkillVaultSessionCard: View {
                             .font(.headline.weight(.semibold))
                             .foregroundStyle(AppModule.garage.theme.textPrimary)
                             .multilineTextAlignment(.leading)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
 
                         if record.isPersonalRecord {
                             GaragePersonalRecordBadge()
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                     Text(record.environmentDisplayName)
                         .font(.subheadline)
                         .foregroundStyle(AppModule.garage.theme.textSecondary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 8) {
-                    Text(record.aggregateEfficiencyText)
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(performanceState.tint)
-
-                    GarageEfficiencySparkline(values: trendValues)
-                        .frame(width: 72, height: 24)
-
-                    Text(record.date.formatted(date: .abbreviated, time: .omitted))
-                        .font(.footnote)
-                        .foregroundStyle(AppModule.garage.theme.textSecondary)
-                }
+                GarageSkillVaultSessionMeta(
+                    record: record,
+                    trendValues: trendValues,
+                    tint: performanceState.tint
+                )
             }
 
             GarageSessionEfficiencyBar(
@@ -202,6 +186,55 @@ private struct GarageSkillVaultSessionCard: View {
                     .foregroundStyle(AppModule.garage.theme.textSecondary)
             }
         }
+    }
+}
+
+@MainActor
+private struct GarageVaultWindowBadge: View {
+    let text: String
+    let tint: Color
+
+    var body: some View {
+        Text(text)
+            .font(.caption2.weight(.black))
+            .textCase(.uppercase)
+            .tracking(0.9)
+            .multilineTextAlignment(.center)
+            .lineLimit(2)
+            .minimumScaleFactor(0.78)
+            .foregroundStyle(tint.opacity(0.86))
+            .padding(.horizontal, 10)
+            .frame(maxWidth: 132, minHeight: 42)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(tint.opacity(0.22), lineWidth: 1)
+            )
+    }
+}
+
+@MainActor
+private struct GarageSkillVaultSessionMeta: View {
+    let record: PracticeSessionRecord
+    let trendValues: [Double]
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            Text(record.aggregateEfficiencyText)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(tint)
+
+            Text(record.date.formatted(date: .abbreviated, time: .omitted))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppModule.garage.theme.textSecondary)
+
+            if trendValues.count > 1 {
+                GarageEfficiencySparkline(values: trendValues)
+                    .frame(width: 72, height: 22)
+            }
+        }
+        .frame(width: 92, alignment: .trailing)
     }
 }
 

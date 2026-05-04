@@ -282,8 +282,12 @@ private enum GarageActiveSessionPhase {
 }
 
 private enum GarageSessionDockLayout {
-    static let contentBottomPadding: CGFloat = 230
-    static let reviewBottomPadding: CGFloat = 300
+    private static let standardDockHeight: CGFloat = 96
+    private static let reviewDockHeight: CGFloat = 156
+    private static let safeAreaScrollClearance: CGFloat = 224
+
+    static let contentBottomPadding = standardDockHeight + safeAreaScrollClearance
+    static let reviewBottomPadding = reviewDockHeight + safeAreaScrollClearance
 }
 
 private enum GarageDrillDetailSection: String, CaseIterable, Identifiable {
@@ -796,35 +800,44 @@ private struct GarageSessionReviewView: View {
                     )
 
                 if draft.sessionFeelNoteIsEmpty {
-                    Button {
-                        garageTriggerSelection()
-                        draft.allowsSavingWithoutCue = true
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: draft.allowsSavingWithoutCue ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 17, weight: .bold))
+                    VStack(alignment: .leading, spacing: 8) {
+                        Button {
+                            garageTriggerSelection()
+                            draft.allowsSavingWithoutCue = true
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: draft.allowsSavingWithoutCue ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 17, weight: .bold))
 
-                            Text("Save without cue")
-                                .font(.headline.weight(.bold))
+                                Text("Save without cue")
+                                    .font(.headline.weight(.bold))
 
-                            Spacer(minLength: 8)
+                                Spacer(minLength: 8)
+                            }
+                            .foregroundStyle(draft.allowsSavingWithoutCue ? GarageSessionSummaryPalette.activeSegment : AppModule.garage.theme.textSecondary)
+                            .padding(14)
+                            .background(
+                                RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous)
+                                    .fill(ModuleTheme.garageSurfaceInset.opacity(0.72))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous)
+                                            .stroke(
+                                                draft.allowsSavingWithoutCue ? GarageSessionSummaryPalette.activeSegment.opacity(0.42) : Color.white.opacity(0.06),
+                                                lineWidth: 1
+                                            )
+                                    )
+                            )
                         }
-                        .foregroundStyle(draft.allowsSavingWithoutCue ? GarageSessionSummaryPalette.activeSegment : AppModule.garage.theme.textSecondary)
-                        .padding(14)
-                        .background(
-                            RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous)
-                                .fill(ModuleTheme.garageSurfaceInset.opacity(0.72))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous)
-                                        .stroke(
-                                            draft.allowsSavingWithoutCue ? GarageSessionSummaryPalette.activeSegment.opacity(0.42) : Color.white.opacity(0.06),
-                                            lineWidth: 1
-                                        )
-                                )
-                        )
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Save without carry-forward cue")
+
+                        if draft.allowsSavingWithoutCue {
+                            Text("No carry-forward cue will be saved for this session.")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(GarageSessionSummaryPalette.activeSegment)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Save without carry-forward cue")
                 }
             }
         }
@@ -1315,6 +1328,20 @@ private struct GarageDrillResultCard: View {
     @Binding var result: GarageSessionDrillResultDraft
     let benchmarkSessionCount: Int
 
+    private var reviewedRepBinding: Binding<Int> {
+        Binding(
+            get: { result.successfulReps },
+            set: { updatedValue in
+                guard result.successfulReps != updatedValue else {
+                    return
+                }
+
+                result.successfulReps = updatedValue
+                result.isReviewed = false
+            }
+        )
+    }
+
     var body: some View {
         GarageTelemetrySurface(isActive: result.isReviewed) {
             HStack(alignment: .top, spacing: ModuleSpacing.medium) {
@@ -1340,7 +1367,7 @@ private struct GarageDrillResultCard: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 GarageSegmentedRepBar(
-                    successfulReps: $result.successfulReps,
+                    successfulReps: reviewedRepBinding,
                     totalReps: result.totalReps,
                     projectedSuccessfulReps: result.projectedSuccessfulReps
                 )

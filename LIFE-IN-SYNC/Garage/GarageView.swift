@@ -1353,7 +1353,7 @@ private extension PracticeSessionRecord {
             return GarageHomeTacticalCue(text: feelNote)
         }
 
-        return GarageHomeTacticalCue(text: "No cues recorded yet")
+        return GarageHomeTacticalCue(text: "No carry-forward cue saved")
     }
 
     var homeCarryForwardRelativeDateText: String {
