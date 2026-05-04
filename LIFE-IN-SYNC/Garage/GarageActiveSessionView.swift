@@ -283,7 +283,7 @@ private enum GarageActiveSessionPhase {
 
 private enum GarageSessionDockLayout {
     static let contentBottomPadding: CGFloat = 230
-    static let reviewBottomPadding: CGFloat = 244
+    static let reviewBottomPadding: CGFloat = 300
 }
 
 private enum GarageDrillDetailSection: String, CaseIterable, Identifiable {
@@ -764,6 +764,8 @@ private struct GarageSessionReviewView: View {
         GarageProScaffold(bottomPadding: GarageSessionDockLayout.reviewBottomPadding) {
             GarageSessionReviewLeadCard(draft: draft)
 
+            GarageSessionReviewAccuracyGateCard(draft: draft)
+
             GarageSessionReviewNotes(entries: entries)
 
             VStack(alignment: .leading, spacing: ModuleSpacing.medium) {
@@ -792,27 +794,110 @@ private struct GarageSessionReviewView: View {
                                     .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
                             )
                     )
+
+                if draft.sessionFeelNoteIsEmpty {
+                    Button {
+                        garageTriggerSelection()
+                        draft.allowsSavingWithoutCue = true
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: draft.allowsSavingWithoutCue ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 17, weight: .bold))
+
+                            Text("Save without cue")
+                                .font(.headline.weight(.bold))
+
+                            Spacer(minLength: 8)
+                        }
+                        .foregroundStyle(draft.allowsSavingWithoutCue ? GarageSessionSummaryPalette.activeSegment : AppModule.garage.theme.textSecondary)
+                        .padding(14)
+                        .background(
+                            RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous)
+                                .fill(ModuleTheme.garageSurfaceInset.opacity(0.72))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: ModuleCornerRadius.row, style: .continuous)
+                                        .stroke(
+                                            draft.allowsSavingWithoutCue ? GarageSessionSummaryPalette.activeSegment.opacity(0.42) : Color.white.opacity(0.06),
+                                            lineWidth: 1
+                                        )
+                                )
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Save without carry-forward cue")
+                }
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            HStack(spacing: 12) {
-                GarageFocusSecondaryButton(
-                    title: "Back",
-                    systemImage: "chevron.left",
-                    action: onBack
-                )
+            VStack(alignment: .leading, spacing: 10) {
+                if draft.canSave == false {
+                    Text(draft.saveGateMessage)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
 
-                GarageProPrimaryButton(
-                    title: "Save Session",
-                    systemImage: "checkmark.seal.fill"
-                ) {
-                    onSave(draft)
+                HStack(spacing: 12) {
+                    GarageFocusSecondaryButton(
+                        title: "Back",
+                        systemImage: "chevron.left",
+                        action: onBack
+                    )
+
+                    GarageProPrimaryButton(
+                        title: "Save Session",
+                        systemImage: "checkmark.seal.fill",
+                        isEnabled: draft.canSave
+                    ) {
+                        onSave(draft)
+                    }
                 }
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 10)
             .padding(.top, 4)
             .background(.ultraThinMaterial)
+        }
+    }
+}
+
+@MainActor
+private struct GarageSessionReviewAccuracyGateCard: View {
+    let draft: GarageSessionSummaryDraft
+
+    var body: some View {
+        GarageProCard(isActive: draft.allDrillResultsReviewed, cornerRadius: 22, padding: 16) {
+            HStack(alignment: .top, spacing: 14) {
+                Image(systemName: draft.allDrillResultsReviewed ? "checkmark.seal.fill" : "scope")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(draft.allDrillResultsReviewed ? GarageSessionSummaryPalette.activeSegment : GarageProTheme.accent)
+                    .frame(width: 48, height: 48)
+                    .background(GarageProTheme.insetSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(GarageProTheme.border, lineWidth: 1)
+                    )
+
+                VStack(alignment: .leading, spacing: 7) {
+                    GarageFocusLabel("Accuracy Gate")
+
+                    Text("Completion is not a rep score.")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+
+                    Text("A completed drill does not automatically mean every rep succeeded. Review each rep count before saving to the vault.")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(draft.reviewProgressText)
+                        .font(.caption.weight(.black))
+                        .textCase(.uppercase)
+                        .tracking(1.3)
+                        .foregroundStyle(draft.allDrillResultsReviewed ? GarageSessionSummaryPalette.activeSegment : GarageProTheme.accent)
+                }
+            }
         }
     }
 }
@@ -1231,31 +1316,41 @@ private struct GarageDrillResultCard: View {
     let benchmarkSessionCount: Int
 
     var body: some View {
-        GarageTelemetrySurface {
-            HStack(alignment: .firstTextBaseline) {
+        GarageTelemetrySurface(isActive: result.isReviewed) {
+            HStack(alignment: .top, spacing: ModuleSpacing.medium) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(result.name)
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(AppModule.garage.theme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    GarageReviewStatusBadge(isReviewed: result.isReviewed)
 
                     Text("\(result.successfulReps) / \(result.totalReps) successful reps")
                         .font(.subheadline)
                         .foregroundStyle(AppModule.garage.theme.textSecondary)
                 }
 
-                Spacer()
+                Spacer(minLength: 8)
 
                 Text(result.successPercentageText)
                     .font(.title3.weight(.bold))
                     .foregroundStyle(result.successfulReps > 0 ? GarageSessionSummaryPalette.activeSegment : AppModule.garage.theme.textSecondary)
             }
 
-            GarageSegmentedRepBar(
-                successfulReps: $result.successfulReps,
-                totalReps: result.totalReps,
-                projectedSuccessfulReps: result.projectedSuccessfulReps
-            )
-            .frame(height: 44)
+            VStack(alignment: .leading, spacing: 8) {
+                GarageSegmentedRepBar(
+                    successfulReps: $result.successfulReps,
+                    totalReps: result.totalReps,
+                    projectedSuccessfulReps: result.projectedSuccessfulReps
+                )
+                .frame(height: 44)
+
+                Text("Set the exact number of reps that met the standard, then mark this drill reviewed.")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppModule.garage.theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             if let benchmarkText = result.historicalBenchmarkText(sessionCount: benchmarkSessionCount) {
                 Text(benchmarkText)
@@ -1263,7 +1358,62 @@ private struct GarageDrillResultCard: View {
                     .foregroundStyle(result.isAheadOfProjection ? GarageSessionSummaryPalette.activeSegment : AppModule.garage.theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            Button {
+                garageTriggerSelection()
+                result.isReviewed = true
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: result.isReviewed ? "checkmark.circle.fill" : "checkmark.circle")
+                        .font(.system(size: 17, weight: .bold))
+
+                    Text(result.isReviewed ? "Reviewed" : "Mark Reviewed")
+                        .font(.headline.weight(.bold))
+
+                    Spacer(minLength: 8)
+                }
+                .foregroundStyle(result.isReviewed ? GarageSessionSummaryPalette.activeSegment : GarageProTheme.accent)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 50)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(GarageProTheme.insetSurface.opacity(result.isReviewed ? 0.92 : 0.72))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .stroke(result.isReviewed ? GarageSessionSummaryPalette.activeSegment.opacity(0.36) : GarageProTheme.border, lineWidth: 1)
+                        )
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(result.isReviewed ? "\(result.name) reviewed" : "Mark \(result.name) reviewed")
         }
+    }
+}
+
+private struct GarageReviewStatusBadge: View {
+    let isReviewed: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: isReviewed ? "checkmark.seal.fill" : "exclamationmark.circle")
+                .font(.caption.weight(.bold))
+
+            Text(isReviewed ? "Reviewed" : "Needs Review")
+                .font(.caption.weight(.black))
+                .textCase(.uppercase)
+                .tracking(1.1)
+        }
+        .foregroundStyle(isReviewed ? GarageSessionSummaryPalette.activeSegment : GarageProTheme.accent)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            Capsule(style: .continuous)
+                .fill(GarageProTheme.insetSurface.opacity(0.86))
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke((isReviewed ? GarageSessionSummaryPalette.activeSegment : GarageProTheme.accent).opacity(0.34), lineWidth: 1)
+                )
+        )
     }
 }
 
@@ -1425,6 +1575,7 @@ private struct GarageSessionSummaryDraft: Identifiable {
     let benchmarkSessionCount: Int
     var drillResults: [GarageSessionDrillResultDraft]
     var sessionFeelNote: String
+    var allowsSavingWithoutCue: Bool
 
     init(
         session: ActivePracticeSession,
@@ -1442,10 +1593,12 @@ private struct GarageSessionSummaryDraft: Identifiable {
                 projectedSuccessfulReps: benchmarkSnapshot?.projectedSuccessfulReps(
                     for: result.name,
                     totalReps: result.totalReps
-                )
+                ),
+                isReviewed: false
             )
         }
         sessionFeelNote = ""
+        allowsSavingWithoutCue = false
     }
 
     var totalSuccessfulReps: Int {
@@ -1504,6 +1657,54 @@ private struct GarageSessionSummaryDraft: Identifiable {
         let signedDelta = delta > 0 ? "+\(delta)" : "\(delta)"
         return "\(direction) your \(benchmarkSessionCount)-session pace by \(signedDelta)%."
     }
+
+    var reviewedDrillCount: Int {
+        drillResults.filter(\.isReviewed).count
+    }
+
+    var allDrillResultsReviewed: Bool {
+        drillResults.isEmpty == false && reviewedDrillCount == drillResults.count
+    }
+
+    var sessionFeelNoteIsEmpty: Bool {
+        sessionFeelNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var hasCarryForwardCueDecision: Bool {
+        sessionFeelNoteIsEmpty == false || allowsSavingWithoutCue
+    }
+
+    var canSave: Bool {
+        allDrillResultsReviewed && hasCarryForwardCueDecision
+    }
+
+    var reviewProgressText: String {
+        "\(reviewedDrillCount)/\(drillResults.count) drill results reviewed"
+    }
+
+    var saveGateMessage: String {
+        var missingItems: [String] = []
+        let missingReviewCount = drillResults.count - reviewedDrillCount
+
+        if drillResults.isEmpty {
+            missingItems.append("add at least one drill result")
+        }
+
+        if missingReviewCount > 0 {
+            let suffix = missingReviewCount == 1 ? "drill result" : "drill results"
+            missingItems.append("review \(missingReviewCount) \(suffix)")
+        }
+
+        if hasCarryForwardCueDecision == false {
+            missingItems.append("add a carry-forward cue or choose Save without cue")
+        }
+
+        guard missingItems.isEmpty == false else {
+            return "Ready to save reviewed rep counts."
+        }
+
+        return "Before saving: \(missingItems.joined(separator: " and "))."
+    }
 }
 
 private struct GarageSessionDrillResultDraft: Identifiable {
@@ -1512,6 +1713,7 @@ private struct GarageSessionDrillResultDraft: Identifiable {
     let totalReps: Int
     var successfulReps: Int
     let projectedSuccessfulReps: Int?
+    var isReviewed: Bool
 
     var successPercentageText: String {
         guard totalReps > 0 else {
