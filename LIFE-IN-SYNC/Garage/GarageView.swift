@@ -186,7 +186,7 @@ private struct GarageHomeTabView: View {
     }
 
     var body: some View {
-        GarageProScaffold(bottomPadding: 28) {
+        GarageProScaffold(bottomPadding: 136) {
             heroCard
             environmentSection
             carryForwardSection
@@ -196,22 +196,31 @@ private struct GarageHomeTabView: View {
     }
 
     private var heroCard: some View {
-        GarageProHeroCard(
-            eyebrow: "Garage",
-            title: "Choose a surface. Start training.",
-            subtitle: "Routine-first practice that stays calm, measurable, and easy to review.",
-            value: "\(displayedRoutineCount)",
-            valueLabel: "Routines Ready"
-        ) {
-            Image(systemName: "figure.golf")
-                .font(.system(size: 24, weight: .bold))
-                .foregroundStyle(GarageProTheme.accent)
-                .frame(width: 64, height: 64)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(GarageProTheme.accent.opacity(0.3), lineWidth: 1)
-                )
+        GarageProCard(isActive: true, cornerRadius: 24, padding: 16) {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: "figure.golf")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(GarageProTheme.accent)
+                    .frame(width: 46, height: 46)
+                    .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Garage")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .textCase(.uppercase)
+                        .tracking(2)
+                        .foregroundStyle(GarageProTheme.accent)
+
+                    Text("Choose a surface. Start a routine.")
+                        .font(.system(.headline, design: .rounded).weight(.black))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+
+                    Text("\(displayedRoutineCount) routines ready across Net, Range, and Putting Green.")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 
@@ -342,13 +351,13 @@ private struct GarageHomeEnvironmentCard: View {
     let onBrowseAll: () -> Void
 
     var body: some View {
-        GarageProCard(isActive: true, cornerRadius: 28, padding: 18) {
+        GarageProCard(isActive: true, cornerRadius: 26, padding: 16) {
             HStack(alignment: .top, spacing: 14) {
                 Image(systemName: environment.systemImage)
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(GarageProTheme.accent)
-                    .frame(width: 56, height: 56)
-                    .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .frame(width: 50, height: 50)
+                    .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(environment.displayName)
@@ -375,7 +384,7 @@ private struct GarageHomeEnvironmentCard: View {
                 .buttonStyle(.plain)
             }
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text("Preset Routines")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .textCase(.uppercase)
@@ -392,16 +401,16 @@ private struct GarageHomeEnvironmentCard: View {
                                 onSelectRoutine(routine)
                             } label: {
                                 Text(routine.title)
-                                    .font(.subheadline.weight(.bold))
+                                    .font(.footnote.weight(.bold))
                                     .foregroundStyle(isSelected ? ModuleTheme.garageSurfaceDark : GarageProTheme.textPrimary)
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 12)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 10)
                                     .background(
-                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
                                             .fill(isSelected ? GarageProTheme.accent : GarageProTheme.insetSurface)
                                     )
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
                                             .stroke(isSelected ? GarageProTheme.accent.opacity(0.34) : GarageProTheme.border, lineWidth: 1)
                                     )
                             }
@@ -413,7 +422,7 @@ private struct GarageHomeEnvironmentCard: View {
 
             GarageHomeRoutineDetailPanel(routine: selectedRoutine)
 
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 GarageHomeSecondaryButton(
                     title: "AI Generate New Routine",
                     systemImage: "sparkles",
@@ -442,7 +451,7 @@ private struct GarageHomeRoutineDetailPanel: View {
     }
 
     var body: some View {
-        GarageProCard(cornerRadius: 22, padding: 16) {
+        VStack(alignment: .leading, spacing: 10) {
             Text("Selected Routine")
                 .font(.system(size: 11, weight: .bold, design: .rounded))
                 .textCase(.uppercase)
@@ -464,13 +473,28 @@ private struct GarageHomeRoutineDetailPanel: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            HStack(spacing: 10) {
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 8),
+                    GridItem(.flexible(), spacing: 8)
+                ],
+                spacing: 8
+            ) {
                 GarageHomeRoutineMetric(title: "Time", value: "\(routine.estimatedMinutes) min")
                 GarageHomeRoutineMetric(title: "Difficulty", value: routine.difficulty.displayName)
                 GarageHomeRoutineMetric(title: "Stack", value: "\(drillCount) drills")
                 GarageHomeRoutineMetric(title: "Reps", value: "\(totalRepCount)")
             }
         }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(GarageProTheme.insetSurface.opacity(0.92))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(GarageProTheme.border, lineWidth: 1)
+                )
+        )
     }
 }
 
@@ -487,18 +511,19 @@ private struct GarageHomeRoutineMetric: View {
                 .foregroundStyle(GarageProTheme.textSecondary)
 
             Text(value)
-                .font(.subheadline.weight(.bold))
+                .font(.footnote.weight(.bold))
                 .foregroundStyle(GarageProTheme.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(GarageProTheme.insetSurface)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(GarageProTheme.surface.opacity(0.66))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .stroke(GarageProTheme.border, lineWidth: 1)
                 )
         )
@@ -516,10 +541,11 @@ private struct GarageHomeSecondaryButton: View {
             action()
         } label: {
             Label(title, systemImage: systemImage)
-                .font(.subheadline.weight(.bold))
+                .font(.footnote.weight(.bold))
                 .foregroundStyle(GarageProTheme.textPrimary)
-                .padding(.horizontal, 16)
-                .frame(maxWidth: .infinity, minHeight: 60)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity, minHeight: 56)
                 .background(
                     RoundedRectangle(cornerRadius: 22, style: .continuous)
                         .fill(GarageProTheme.insetSurface)
@@ -552,13 +578,13 @@ private struct GarageInternalTabBar: View {
                             .font(.system(size: 12, weight: .bold, design: .rounded))
                     }
                     .foregroundStyle(selectedTab == tab ? ModuleTheme.garageSurfaceDark : GarageProTheme.textSecondary)
-                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .frame(maxWidth: .infinity, minHeight: 52)
                     .background(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
                             .fill(selectedTab == tab ? GarageProTheme.accent : GarageProTheme.insetSurface.opacity(0.72))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
                             .stroke(selectedTab == tab ? GarageProTheme.accent.opacity(0.28) : GarageProTheme.border, lineWidth: 1)
                     )
                 }
@@ -566,14 +592,14 @@ private struct GarageInternalTabBar: View {
                 .accessibilityLabel(tab.navigationTitle)
             }
         }
-        .padding(10)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .padding(8)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .background(
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(GarageProTheme.surface)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(GarageProTheme.border, lineWidth: 1)
         )
         .shadow(color: GarageProTheme.darkShadow, radius: 16, x: 0, y: 10)
