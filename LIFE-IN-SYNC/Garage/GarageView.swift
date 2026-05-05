@@ -71,10 +71,6 @@ struct GarageView: View {
         case .home:
             GarageHomeTabView(
                 selectedTab: $selectedTab,
-                onOpenEnvironment: { environment in
-                    garageTriggerSelection()
-                    path.append(.environment(environment))
-                },
                 onStartRoutine: { routine in
                     garageTriggerSelection()
                     path.append(.activeSession(ActivePracticeSession(template: routine.makePracticeTemplate())))
@@ -173,7 +169,6 @@ private struct GarageHomeTabView: View {
     @State private var selectedRoutineIDs: [String: String] = [:]
     @Binding var selectedTab: GarageRootTab
 
-    let onOpenEnvironment: (PracticeEnvironment) -> Void
     let onStartRoutine: (GarageRoutine) -> Void
     let onGenerateRoutine: (PracticeEnvironment, [PracticeSessionRecord]) -> Void
     let onOpenLatestSession: (PracticeSessionRecord) -> Void
@@ -188,8 +183,7 @@ private struct GarageHomeTabView: View {
             carryForwardSection
             librarySection
         }
-        .navigationTitle("Garage")
-        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     private var environmentSection: some View {
@@ -214,9 +208,6 @@ private struct GarageHomeTabView: View {
                         },
                         onGenerateRoutine: {
                             onGenerateRoutine(environment, records)
-                        },
-                        onBrowseAll: {
-                            onOpenEnvironment(environment)
                         }
                     )
                 }
@@ -327,15 +318,13 @@ private struct GarageHomeEnvironmentCard: View {
     let onSelectRoutine: (GarageRoutine) -> Void
     let onStartRoutine: () -> Void
     let onGenerateRoutine: () -> Void
-    let onBrowseAll: () -> Void
 
     var body: some View {
         GarageCompactEnvironmentCardSurface {
             GarageEnvironmentCardHeader(
                 environment: environment,
                 sessionCount: sessionCount,
-                routineCount: routines.count,
-                onBrowseAll: onBrowseAll
+                routineCount: routines.count
             )
 
             GarageRoutineChipRow(
@@ -344,7 +333,7 @@ private struct GarageHomeEnvironmentCard: View {
                 onSelectRoutine: onSelectRoutine
             )
 
-            GarageRoutineDetailGrid(routine: selectedRoutine)
+            GarageRoutineDetailSummary(routine: selectedRoutine)
 
             GarageRoutineActionRow(
                 onGenerateRoutine: onGenerateRoutine,
@@ -381,7 +370,6 @@ private struct GarageEnvironmentCardHeader: View {
     let environment: PracticeEnvironment
     let sessionCount: Int
     let routineCount: Int
-    let onBrowseAll: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -408,25 +396,6 @@ private struct GarageEnvironmentCardHeader: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
             }
-
-            Spacer(minLength: 4)
-
-            Button(action: onBrowseAll) {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .black))
-                    .foregroundStyle(GarageProTheme.textSecondary)
-                    .frame(width: 26, height: 26)
-                    .background(
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .fill(GarageProTheme.insetSurface)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .stroke(GarageProTheme.border, lineWidth: 1)
-                    )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Open \(environment.displayName)")
         }
     }
 }
@@ -501,7 +470,7 @@ private struct GarageRoutineChip: View {
     }
 }
 
-private struct GarageRoutineDetailGrid: View {
+private struct GarageRoutineDetailSummary: View {
     let routine: GarageRoutine
 
     private var drillCount: Int {
@@ -513,137 +482,42 @@ private struct GarageRoutineDetailGrid: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            GarageRoutineSummaryPanel(routine: routine)
-            GarageRoutineMetricsPanel(
-                routine: routine,
-                drillCount: drillCount,
-                totalRepCount: totalRepCount
-            )
-        }
-    }
-}
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Selected Routine")
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(1.1)
+                .foregroundStyle(GarageProTheme.textSecondary)
 
-private struct GarageRoutineSummaryPanel: View {
-    let routine: GarageRoutine
+            Text(routine.title)
+                .font(.system(size: 13, weight: .black, design: .rounded))
+                .foregroundStyle(GarageProTheme.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
             Text("Aims to help with")
                 .font(.system(size: 9, weight: .bold, design: .rounded))
                 .textCase(.uppercase)
                 .tracking(1.1)
                 .foregroundStyle(GarageProTheme.textSecondary)
 
-            HStack(alignment: .top, spacing: 6) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(routine.title)
-                        .font(.system(size: 12, weight: .black, design: .rounded))
-                        .foregroundStyle(GarageProTheme.textPrimary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.82)
-
-                    Text(routine.purpose)
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundStyle(GarageProTheme.textSecondary)
-                        .lineLimit(2)
-                }
-
-                Spacer(minLength: 2)
-
-                Image(systemName: "chevron.up.right")
-                    .font(.system(size: 9, weight: .black))
-                    .foregroundStyle(GarageProTheme.textSecondary.opacity(0.8))
-            }
-        }
-        .frame(maxWidth: .infinity, minHeight: 86, alignment: .topLeading)
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(GarageProTheme.insetSurface.opacity(0.92))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(GarageProTheme.border, lineWidth: 1)
-                )
-        )
-    }
-}
-
-private struct GarageRoutineMetricsPanel: View {
-    let routine: GarageRoutine
-    let drillCount: Int
-    let totalRepCount: Int
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            GarageCompactMetricRow(title: "Est. Time", primaryValue: "\(routine.estimatedMinutes) min", secondaryValue: "\(drillCount) drills")
-            GarageCompactMetricRow(title: "Difficulty", primaryValue: routine.difficulty.displayName, secondaryValue: "\(totalRepCount) reps")
-            GarageDifficultyBars(difficulty: routine.difficulty)
-        }
-        .frame(width: 108, alignment: .topLeading)
-        .frame(minHeight: 86, alignment: .topLeading)
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(GarageProTheme.surface.opacity(0.66))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(GarageProTheme.border, lineWidth: 1)
-                )
-        )
-    }
-}
-
-private struct GarageCompactMetricRow: View {
-    let title: String
-    let primaryValue: String
-    let secondaryValue: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.system(size: 8, weight: .bold, design: .rounded))
-                .textCase(.uppercase)
-                .tracking(1)
+            Text(routine.purpose)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
                 .foregroundStyle(GarageProTheme.textSecondary)
+                .lineLimit(2)
 
-            Text(primaryValue)
-                .font(.system(size: 12, weight: .black, design: .rounded))
-                .foregroundStyle(GarageProTheme.textPrimary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-
-            Text(secondaryValue)
+            Text("\(routine.estimatedMinutes) min • \(drillCount) drills • \(routine.difficulty.displayName) • \(totalRepCount) reps")
                 .font(.system(size: 10, weight: .bold, design: .rounded))
-                .foregroundStyle(GarageProTheme.accent.opacity(0.82))
+                .foregroundStyle(GarageProTheme.accent.opacity(0.86))
                 .lineLimit(1)
-                .minimumScaleFactor(0.78)
+                .minimumScaleFactor(0.72)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct GarageDifficultyBars: View {
-    let difficulty: GarageRoutineDifficulty
-
-    private var barCount: Int {
-        switch difficulty {
-        case .foundation:
-            1
-        case .focused:
-            2
-        case .advanced:
-            3
-        }
-    }
-
-    var body: some View {
-        HStack(spacing: 3) {
-            ForEach(0..<3, id: \.self) { index in
-                Capsule()
-                    .fill(index < barCount ? GarageProTheme.accent : GarageProTheme.border.opacity(0.72))
-                    .frame(width: 18, height: 4)
-            }
+        .padding(.vertical, 4)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(GarageProTheme.border.opacity(0.7))
+                .frame(height: 1)
         }
     }
 }
