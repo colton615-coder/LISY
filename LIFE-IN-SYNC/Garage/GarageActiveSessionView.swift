@@ -8,9 +8,10 @@ struct GarageActiveSessionView: View {
     @State private var session: ActivePracticeSession
     @State private var phase: GarageActiveSessionPhase = .lobby
     @State private var currentDrillIndex = 0
-    @State private var expandedDetailSection: GarageDrillDetailSection = .purpose
+    @State private var isDrillDetailExpanded = false
     @State private var noteEditor: DrillNoteEditorState?
     @State private var summaryDraft: GarageSessionSummaryDraft?
+    @State private var reviewHandoffMessage: String?
     @State private var saveErrorMessage: String?
 
     let onEndSession: () -> Void
@@ -37,23 +38,31 @@ struct GarageActiveSessionView: View {
                     onEnter: enterFocusRoom
                 )
             case .focusRoom:
-                GarageFocusSessionView(
-                    session: session,
-                    currentDrillIndex: currentDrillIndex,
-                    currentEntry: currentEntry,
-                    detail: currentEntry.map { GarageDrillFocusDetails.detail(for: $0.drill) },
-                    overallProgressRatio: overallProgressRatio,
-                    expandedDetailSection: $expandedDetailSection,
-                    note: currentEntry.map { noteBinding(for: $0.drill.id) } ?? .constant(""),
-                    onSelectDrill: selectDrill(at:),
-                    onPrevious: moveToPreviousDrill,
-                    onCompleteCurrent: completeCurrentDrill,
-                    onEditNote: {
+                GarageFocusRoomView(
+                    sessionTitle: session.templateName,
+                    drillPositionText: drillPositionText,
+                    completedCount: session.completedDrillCount,
+                    totalCount: session.totalDrillCount,
+                    drill: currentDrillPresentation,
+                    railItems: focusRailItems,
+                    isDetailExpanded: isDrillDetailExpanded,
+                    noteTitle: focusNoteCtaTitle,
+                    primaryCtaTitle: focusPrimaryCtaTitle,
+                    backEnabled: focusBackIsEnabled,
+                    onToggleDetail: {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                            isDrillDetailExpanded.toggle()
+                        }
+                    },
+                    onSelectRailDrill: selectDrill(at:),
+                    onBack: focusBackAction,
+                    onNote: {
                         if let currentEntry {
                             presentNoteEditor(for: currentEntry)
                         }
                     },
-                    onReview: presentReview
+                    onPrimary: focusPrimaryAction,
+                    onExitEmptyRoutine: onEndSession
                 )
             case .review:
                 if summaryDraft != nil {
@@ -63,18 +72,21 @@ struct GarageActiveSessionView: View {
                             set: { summaryDraft = $0 }
                         ),
                         entries: session.orderedDrillEntries,
+                        handoffMessage: reviewHandoffMessage,
                         onBack: { phase = .focusRoom },
                         onSave: saveSummary
                     )
                 } else {
                     GarageProScaffold {
                         GarageProHeroCard(
-                            eyebrow: "Session Review",
+                            eyebrow: GarageFocusRoomCopy.reviewHandoffNavTitle,
                             title: session.templateName,
                             subtitle: "Preparing review details."
                         )
                     }
-                    .onAppear(perform: presentReview)
+                    .onAppear {
+                        presentReview()
+                    }
                 }
             }
         }
@@ -105,9 +117,9 @@ struct GarageActiveSessionView: View {
         case .lobby:
             "Session Lobby"
         case .focusRoom:
-            "Focus Room"
+            GarageFocusRoomCopy.focusRoomNavTitle
         case .review:
-            "Session Review"
+            GarageFocusRoomCopy.reviewHandoffNavTitle
         }
     }
 
@@ -153,12 +165,92 @@ struct GarageActiveSessionView: View {
         return entries[currentDrillIndex]
     }
 
-    private var overallProgressRatio: Double {
-        guard session.totalDrillCount > 0 else {
-            return 0
+    private var drillPositionText: String {
+        let currentValue = session.totalDrillCount == 0 ? 0 : min(currentDrillIndex + 1, session.totalDrillCount)
+        return GarageFocusRoomCopy.focusRoomHeaderDrillPositionFormat
+            .replacingOccurrences(of: "{current}", with: "\(currentValue)")
+            .replacingOccurrences(of: "{total}", with: "\(session.totalDrillCount)")
+    }
+
+    private var focusPrimaryCtaTitle: String {
+        unresolvedDrillIndex == nil ? GarageFocusRoomCopy.focusRoomEnterReviewCta : GarageFocusRoomCopy.focusRoomMarkCompleteCta
+    }
+
+    private var focusBackIsEnabled: Bool {
+        session.totalDrillCount == 0 || currentDrillIndex > 0
+    }
+
+    private var focusNoteCtaTitle: String {
+        guard let note = currentEntry?.progress.note.trimmingCharacters(in: .whitespacesAndNewlines),
+              note.isEmpty == false else {
+            return GarageFocusRoomCopy.focusRoomNoteAddCta
         }
 
-        return Double(session.completedDrillCount) / Double(session.totalDrillCount)
+        return GarageFocusRoomCopy.focusRoomNoteEditCta
+    }
+
+    private var unresolvedDrillIndex: Int? {
+        session.orderedDrillEntries.firstIndex(where: { $0.progress.isCompleted == false })
+    }
+
+    private var currentDrillPresentation: GarageFocusDrillPresentation? {
+        guard let currentEntry else {
+            return nil
+        }
+
+        let detail = GarageDrillFocusDetails.detail(for: currentEntry.drill)
+        let executionCommand = detail.execution
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first(where: { $0.isEmpty == false }) ?? "Missing drill execution data"
+        let passCheck = detail.successCriteria
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first(where: { $0.isEmpty == false }) ?? "Missing drill pass-check data"
+        let setup = detail.setup
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+        let commonMisses = detail.commonMisses
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+        let equipment = detail.equipment
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+        let resetCue = detail.resetCue.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return GarageFocusDrillPresentation(
+            title: currentEntry.drill.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Missing drill title data" : currentEntry.drill.title,
+            metadata: currentEntry.drill.metadataSummary,
+            objective: detail.purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Missing drill objective data" : detail.purpose,
+            executionCommand: executionCommand,
+            passCheck: passCheck,
+            repTarget: detail.repTargetText(for: currentEntry.drill),
+            setup: setup.isEmpty ? ["Missing drill setup data"] : setup,
+            commonMisses: commonMisses.isEmpty ? ["Missing drill common-miss data"] : commonMisses,
+            resetCue: resetCue.isEmpty ? "Missing drill reset-cue data" : resetCue,
+            equipment: equipment.isEmpty ? ["Missing drill equipment data"] : equipment,
+            isCompleted: currentEntry.progress.isCompleted
+        )
+    }
+
+    private var focusRailItems: [GarageFocusDrillRailItem] {
+        session.orderedDrillEntries.enumerated().map { index, entry in
+            let status: GarageFocusDrillRailStatus
+            if index == currentDrillIndex {
+                status = .current
+            } else if entry.progress.isCompleted {
+                status = .completed
+            } else {
+                status = .upcoming
+            }
+
+            return GarageFocusDrillRailItem(
+                id: entry.drill.id,
+                index: index,
+                title: entry.drill.title,
+                metadata: entry.drill.metadataSummary,
+                status: status,
+                isSelectable: entry.progress.isCompleted
+            )
+        }
     }
 
     private var saveErrorAlertIsPresented: Binding<Bool> {
@@ -182,18 +274,34 @@ struct GarageActiveSessionView: View {
 
     private func enterFocusRoom() {
         garageTriggerImpact(.heavy)
-        phase = .focusRoom
+        guard session.totalDrillCount > 0 else {
+            phase = .focusRoom
+            return
+        }
+
+        if let firstUnresolvedIndex = unresolvedDrillIndex {
+            currentDrillIndex = firstUnresolvedIndex
+            isDrillDetailExpanded = false
+            phase = .focusRoom
+        } else {
+            presentReview(autoRouted: true)
+        }
     }
 
     private func selectDrill(at index: Int) {
-        guard session.orderedDrillEntries.indices.contains(index) else {
+        let entries = session.orderedDrillEntries
+        guard entries.indices.contains(index) else {
+            return
+        }
+
+        guard entries[index].progress.isCompleted else {
             return
         }
 
         garageTriggerSelection()
         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
             currentDrillIndex = index
-            expandedDetailSection = .purpose
+            isDrillDetailExpanded = false
         }
     }
 
@@ -205,13 +313,13 @@ struct GarageActiveSessionView: View {
         garageTriggerSelection()
         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
             currentDrillIndex -= 1
-            expandedDetailSection = .purpose
+            isDrillDetailExpanded = false
         }
     }
 
     private func completeCurrentDrill() {
         guard let currentEntry else {
-            presentReview()
+            presentReview(autoRouted: false)
             return
         }
 
@@ -219,29 +327,51 @@ struct GarageActiveSessionView: View {
             session.toggleCompletion(for: currentEntry.drill.id)
         }
 
-        if currentDrillIndex < session.totalDrillCount - 1 {
+        if let nextIndex = nextUnresolvedDrillIndex(after: currentDrillIndex) {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                currentDrillIndex += 1
-                expandedDetailSection = .purpose
+                currentDrillIndex = nextIndex
+                isDrillDetailExpanded = false
             }
         } else {
-            presentReview()
+            presentReview(autoRouted: false)
         }
     }
 
-    private func presentReview() {
+    private func focusPrimaryAction() {
+        if unresolvedDrillIndex == nil {
+            presentReview(autoRouted: false)
+        } else {
+            completeCurrentDrill()
+        }
+    }
+
+    private func focusBackAction() {
+        if session.totalDrillCount == 0 {
+            onEndSession()
+            return
+        }
+
+        moveToPreviousDrill()
+    }
+
+    private func nextUnresolvedDrillIndex(after index: Int) -> Int? {
+        let entries = session.orderedDrillEntries
+        guard entries.isEmpty == false else {
+            return nil
+        }
+
+        let clampedIndex = max(0, min(index, entries.count - 1))
+        let wrappedIndices = Array(entries.indices.dropFirst(clampedIndex + 1)) + Array(entries.indices.prefix(clampedIndex + 1))
+        return wrappedIndices.first(where: { entries[$0].progress.isCompleted == false })
+    }
+
+    private func presentReview(autoRouted: Bool = false) {
         summaryDraft = GarageSessionSummaryDraft(
             session: session,
             benchmarkSnapshot: records.benchmarkSnapshot(for: session.templateName)
         )
+        reviewHandoffMessage = autoRouted ? GarageFocusRoomCopy.reviewHandoffAutoRouteMessage : nil
         phase = .review
-    }
-
-    private func noteBinding(for drillID: UUID) -> Binding<String> {
-        Binding(
-            get: { session.progress(for: drillID)?.note ?? "" },
-            set: { session.updateNote($0, for: drillID) }
-        )
     }
 
     private func saveSummary(_ draft: GarageSessionSummaryDraft) {
@@ -284,51 +414,6 @@ private enum GarageActiveSessionPhase {
 private enum GarageSessionDockLayout {
     static let contentBottomPadding: CGFloat = 56
     static let reviewBottomPadding: CGFloat = 56
-}
-
-private enum GarageDrillDetailSection: String, CaseIterable, Identifiable {
-    case purpose
-    case setup
-    case execution
-    case successStandard
-    case commonMiss
-    case equipment
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .purpose:
-            "Purpose"
-        case .setup:
-            "Setup"
-        case .execution:
-            "Execution"
-        case .successStandard:
-            "Success Standard"
-        case .commonMiss:
-            "Common Miss"
-        case .equipment:
-            "Equipment"
-        }
-    }
-
-    var collapsedSummary: String {
-        switch self {
-        case .purpose:
-            "Why this drill matters"
-        case .setup:
-            "Build the station before the rep"
-        case .execution:
-            "One clean rep sequence"
-        case .successStandard:
-            "Know what counts"
-        case .commonMiss:
-            "Watch the failure pattern"
-        case .equipment:
-            "What needs to be in the room"
-        }
-    }
 }
 
 @MainActor
@@ -384,394 +469,16 @@ private struct GarageSessionLobbyView: View {
 }
 
 @MainActor
-private struct GarageFocusSessionView: View {
-    let session: ActivePracticeSession
-    let currentDrillIndex: Int
-    let currentEntry: PracticeSessionDrillEntry?
-    let detail: GarageDrillFocusDetail?
-    let overallProgressRatio: Double
-    @Binding var expandedDetailSection: GarageDrillDetailSection
-    @Binding var note: String
-    let onSelectDrill: (Int) -> Void
-    let onPrevious: () -> Void
-    let onCompleteCurrent: () -> Void
-    let onEditNote: () -> Void
-    let onReview: () -> Void
-
-    var body: some View {
-        GarageProScaffold(bottomPadding: GarageSessionDockLayout.contentBottomPadding) {
-            GarageFocusHeaderCard(
-                session: session,
-                currentDrillIndex: currentDrillIndex,
-                overallProgressRatio: overallProgressRatio
-            )
-
-            if let currentEntry, let detail {
-                GarageFocusedDrillCard(
-                    entry: currentEntry,
-                    detail: detail,
-                    drillNumber: currentDrillIndex + 1,
-                    totalDrills: session.totalDrillCount,
-                    expandedDetailSection: $expandedDetailSection,
-                    note: $note,
-                    onEditNote: onEditNote
-                )
-
-                GarageRemainingDrillStack(
-                    entries: session.orderedDrillEntries,
-                    currentDrillIndex: currentDrillIndex,
-                    onSelectDrill: onSelectDrill
-                )
-
-                GarageFocusActionRow(
-                    currentDrillIndex: currentDrillIndex,
-                    totalDrillCount: session.totalDrillCount,
-                    completedDrillCount: session.completedDrillCount,
-                    onPrevious: onPrevious,
-                    onCompleteCurrent: onCompleteCurrent,
-                    onReview: onReview
-                )
-            } else {
-                GarageProCard {
-                    Text("No drills in this session")
-                        .font(.system(.title3, design: .rounded).weight(.black))
-                        .foregroundStyle(GarageProTheme.textPrimary)
-
-                    Text("Return to Garage and choose a routine with at least one drill.")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(GarageProTheme.textSecondary)
-                }
-            }
-        }
-    }
-}
-
-@MainActor
-private struct GarageFocusActionRow: View {
-    let currentDrillIndex: Int
-    let totalDrillCount: Int
-    let completedDrillCount: Int
-    let onPrevious: () -> Void
-    let onCompleteCurrent: () -> Void
-    let onReview: () -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            GarageFocusSecondaryButton(
-                title: "Back",
-                systemImage: "chevron.left",
-                isEnabled: currentDrillIndex > 0,
-                action: onPrevious
-            )
-
-            if completedDrillCount == totalDrillCount, totalDrillCount > 0 {
-                GarageProPrimaryButton(
-                    title: "Review",
-                    systemImage: "checkmark.seal.fill",
-                    action: onReview
-                )
-            } else {
-                GarageProPrimaryButton(
-                    title: currentDrillIndex >= totalDrillCount - 1 ? "Complete & Review" : "Complete Drill",
-                    systemImage: "checkmark.circle.fill",
-                    action: onCompleteCurrent
-                )
-            }
-        }
-    }
-}
-
-@MainActor
-private struct GarageFocusHeaderCard: View {
-    let session: ActivePracticeSession
-    let currentDrillIndex: Int
-    let overallProgressRatio: Double
-
-    var body: some View {
-        GarageProCard(isActive: true, cornerRadius: 24, padding: 16) {
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 6) {
-                    GarageFocusLabel("Focus Room")
-
-                    Text(session.templateName)
-                        .font(.system(size: 36, weight: .black, design: .rounded))
-                        .foregroundStyle(GarageProTheme.textPrimary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
-
-                    Text("\(session.environment.displayName) • Drill \(min(currentDrillIndex + 1, max(session.totalDrillCount, 1))) of \(session.totalDrillCount)")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(GarageProTheme.textSecondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.84)
-                }
-
-                Spacer(minLength: 8)
-
-                Text("\(Int((overallProgressRatio * 100).rounded()))%")
-                    .font(.system(size: 34, weight: .black, design: .monospaced))
-                    .foregroundStyle(GarageProTheme.accent)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-
-            GarageLinearProgressBar(ratio: overallProgressRatio)
-                .padding(.top, 2)
-        }
-    }
-}
-
-@MainActor
-private struct GarageFocusedDrillCard: View {
-    let entry: PracticeSessionDrillEntry
-    let detail: GarageDrillFocusDetail
-    let drillNumber: Int
-    let totalDrills: Int
-    @Binding var expandedDetailSection: GarageDrillDetailSection
-    @Binding var note: String
-    let onEditNote: () -> Void
-
-    var body: some View {
-        GarageProCard(isActive: true, cornerRadius: 26, padding: 16) {
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 6) {
-                    GarageFocusLabel("Current Drill")
-
-                    Text(entry.drill.title)
-                        .font(.system(size: 26, weight: .black, design: .rounded))
-                        .foregroundStyle(GarageProTheme.textPrimary)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.8)
-
-                    Text(entry.drill.metadataSummary)
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(GarageProTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 8)
-
-                GarageDrillOrdinalBadge(
-                    drillNumber: drillNumber,
-                    totalDrills: totalDrills,
-                    isCompleted: entry.progress.isCompleted
-                )
-            }
-
-            GarageDrillDetailPanel(
-                detail: detail,
-                repTarget: detail.repTargetText(for: entry.drill),
-                expandedSection: $expandedDetailSection
-            )
-            .padding(.top, 2)
-
-            GarageFocusNotesCard(note: $note, onEditNote: onEditNote)
-                .padding(.top, 2)
-        }
-    }
-}
-
-@MainActor
-private struct GarageDrillDetailPanel: View {
-    let detail: GarageDrillFocusDetail
-    let repTarget: String
-    @Binding var expandedSection: GarageDrillDetailSection
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 8) {
-                GarageDetailCompactBlock(title: "Reset Cue", value: detail.resetCue, isAccent: true)
-                GarageDetailCompactBlock(title: "Rep Target", value: repTarget, isAccent: false)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                GarageFocusLabel("Drill Detail")
-
-                ForEach(GarageDrillDetailSection.allCases) { section in
-                    GarageDrillAccordionSection(
-                        title: section.title,
-                        collapsedSummary: collapsedSummary(for: section),
-                        isExpanded: expandedSection == section,
-                        action: {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                                expandedSection = section
-                            }
-                        }
-                    ) {
-                        detailContent(for: section)
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func detailContent(for section: GarageDrillDetailSection) -> some View {
-        switch section {
-        case .purpose:
-            GarageDetailTextSection(title: section.title, text: detail.purpose)
-        case .setup:
-            GarageDetailListSection(title: section.title, items: detail.setup)
-        case .execution:
-            GarageDetailListSection(title: section.title, items: detail.execution)
-        case .successStandard:
-            GarageDetailListSection(title: section.title, items: detail.successCriteria)
-        case .commonMiss:
-            GarageDetailListSection(title: section.title, items: detail.commonMisses)
-        case .equipment:
-            GarageDetailListSection(title: section.title, items: detail.equipment)
-        }
-    }
-
-    private func collapsedSummary(for section: GarageDrillDetailSection) -> String {
-        switch section {
-        case .purpose:
-            return section.collapsedSummary
-        case .setup:
-            return itemCountSummary(count: detail.setup.count, noun: "step", fallback: section.collapsedSummary)
-        case .execution:
-            return itemCountSummary(count: detail.execution.count, noun: "move", fallback: section.collapsedSummary)
-        case .successStandard:
-            return itemCountSummary(count: detail.successCriteria.count, noun: "check", fallback: section.collapsedSummary)
-        case .commonMiss:
-            return itemCountSummary(count: detail.commonMisses.count, noun: "miss", fallback: section.collapsedSummary)
-        case .equipment:
-            return itemCountSummary(count: detail.equipment.count, noun: "item", fallback: section.collapsedSummary)
-        }
-    }
-
-    private func itemCountSummary(count: Int, noun: String, fallback: String) -> String {
-        guard count > 0 else {
-            return fallback
-        }
-
-        let suffix = count == 1 ? noun : "\(noun)s"
-        return "\(count) \(suffix)"
-    }
-}
-
-@MainActor
-private struct GarageFocusNotesCard: View {
-    @Binding var note: String
-    let onEditNote: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                GarageFocusLabel("Notes")
-
-                Spacer()
-
-                Button(action: onEditNote) {
-                    Image(systemName: note.isEmpty ? "square.and.pencil" : "note.text")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(GarageProTheme.accent)
-                        .frame(width: 42, height: 42)
-                        .background(GarageProTheme.insetSurface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                                .stroke(GarageProTheme.border, lineWidth: 1)
-                        )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(note.isEmpty ? "Add note" : "Edit note")
-            }
-
-            TextField("Capture the feel or miss from this drill", text: $note, axis: .vertical)
-                .lineLimit(2...5)
-                .padding(14)
-                .frame(minHeight: 92, alignment: .topLeading)
-                .foregroundStyle(GarageProTheme.textPrimary)
-                .background(GarageProTheme.insetSurface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(GarageProTheme.border, lineWidth: 1)
-                )
-        }
-    }
-}
-
-@MainActor
-private struct GarageRemainingDrillStack: View {
-    let entries: [PracticeSessionDrillEntry]
-    let currentDrillIndex: Int
-    let onSelectDrill: (Int) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            GarageFocusLabel("Drill Stack")
-
-            VStack(spacing: 10) {
-                ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
-                    Button {
-                        onSelectDrill(index)
-                    } label: {
-                        GarageDrillStackRow(
-                            entry: entry,
-                            index: index,
-                            isCurrent: index == currentDrillIndex
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-}
-
-@MainActor
-private struct GarageDrillStackRow: View {
-    let entry: PracticeSessionDrillEntry
-    let index: Int
-    let isCurrent: Bool
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: entry.progress.isCompleted ? "checkmark.circle.fill" : (isCurrent ? "scope" : "circle"))
-                .font(.system(size: 17, weight: .bold))
-                .foregroundStyle(entry.progress.isCompleted || isCurrent ? GarageProTheme.accent : GarageProTheme.textSecondary)
-                .frame(width: 42, height: 42)
-                .background(GarageProTheme.insetSurface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 15, style: .continuous)
-                        .stroke(isCurrent ? GarageProTheme.accent.opacity(0.34) : GarageProTheme.border, lineWidth: 1)
-                )
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("\(index + 1). \(entry.drill.title)")
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(GarageProTheme.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
-
-                Text(entry.drill.metadataSummary)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(GarageProTheme.textSecondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
-            }
-
-            Spacer(minLength: 8)
-        }
-        .padding(12)
-        .background(GarageProTheme.insetSurface.opacity(isCurrent ? 0.95 : 0.68), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(isCurrent ? GarageProTheme.accent.opacity(0.36) : GarageProTheme.border, lineWidth: 1)
-        )
-    }
-}
-
-@MainActor
 private struct GarageSessionReviewView: View {
     @Binding var draft: GarageSessionSummaryDraft
     let entries: [PracticeSessionDrillEntry]
+    let handoffMessage: String?
     let onBack: () -> Void
     let onSave: (GarageSessionSummaryDraft) -> Void
 
     var body: some View {
         GarageProScaffold(bottomPadding: GarageSessionDockLayout.reviewBottomPadding) {
-            GarageSessionReviewLeadCard(draft: draft)
+            GarageSessionReviewLeadCard(draft: draft, handoffMessage: handoffMessage)
 
             GarageSessionReviewAccuracyGateCard(draft: draft)
 
@@ -873,13 +580,13 @@ private struct GarageSessionReviewSaveActions: View {
 
             HStack(spacing: 12) {
                 GarageFocusSecondaryButton(
-                    title: "Back",
+                    title: GarageFocusRoomCopy.reviewHandoffBackToFocusCta,
                     systemImage: "chevron.left",
                     action: onBack
                 )
 
                 GarageProPrimaryButton(
-                    title: "Save Session",
+                    title: GarageFocusRoomCopy.reviewHandoffSaveCta,
                     systemImage: "checkmark.seal.fill",
                     isEnabled: draft.canSave
                 ) {
@@ -919,14 +626,22 @@ private struct GarageSessionReviewAccuracyGateCard: View {
                         .foregroundStyle(GarageProTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text(draft.reviewProgressText)
-                        .font(.caption.weight(.black))
-                        .textCase(.uppercase)
-                        .tracking(1.3)
+                    Text(readinessMessage)
+                        .font(.caption.weight(.bold))
                         .foregroundStyle(draft.allDrillResultsReviewed ? GarageSessionSummaryPalette.activeSegment : GarageProTheme.accent)
                 }
             }
         }
+    }
+
+    private var readinessMessage: String {
+        if draft.allDrillResultsReviewed {
+            return GarageFocusRoomCopy.reviewHandoffReadyMessage
+        }
+
+        let remaining = max(draft.drillResults.count - draft.reviewedDrillCount, 0)
+        return GarageFocusRoomCopy.reviewHandoffPendingFormat
+            .replacingOccurrences(of: "{remaining}", with: "\(remaining)")
     }
 }
 
@@ -967,123 +682,6 @@ private struct GarageSessionReviewNotes: View {
     }
 }
 
-private struct GarageDetailTextSection: View {
-    let title: String
-    let text: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            GarageFocusLabel(title)
-
-            Text(text)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(GarageProTheme.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(GarageProTheme.insetSurface.opacity(0.74), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
-}
-
-private struct GarageDetailListSection: View {
-    let title: String
-    let items: [String]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            GarageFocusLabel(title)
-
-            ForEach(items, id: \.self) { item in
-                HStack(alignment: .top, spacing: 8) {
-                    Circle()
-                        .fill(GarageProTheme.accent)
-                        .frame(width: 5, height: 5)
-                        .padding(.top, 7)
-
-                    Text(item)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(GarageProTheme.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(GarageProTheme.insetSurface.opacity(0.74), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
-}
-
-private struct GarageDetailCompactBlock: View {
-    let title: String
-    let value: String
-    let isAccent: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            GarageFocusLabel(title)
-
-            Text(value)
-                .font(.headline.weight(.bold))
-                .foregroundStyle(isAccent ? GarageProTheme.accent : GarageProTheme.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(GarageProTheme.insetSurface.opacity(0.74), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
-}
-
-private struct GarageDrillAccordionSection<Content: View>: View {
-    let title: String
-    let collapsedSummary: String
-    let isExpanded: Bool
-    let action: () -> Void
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button(action: action) {
-                HStack(alignment: .center, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(title)
-                            .font(.headline.weight(.bold))
-                            .foregroundStyle(GarageProTheme.textPrimary)
-
-                        if isExpanded == false {
-                            Text(collapsedSummary)
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(GarageProTheme.textSecondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-
-                    Spacer(minLength: 8)
-
-                    Image(systemName: isExpanded ? "chevron.up.circle.fill" : "chevron.down.circle")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(isExpanded ? GarageProTheme.accent : GarageProTheme.textSecondary)
-                }
-                .padding(14)
-                .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(GarageProTheme.insetSurface.opacity(isExpanded ? 0.92 : 0.72))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(isExpanded ? GarageProTheme.accent.opacity(0.34) : GarageProTheme.border, lineWidth: 1)
-                )
-            }
-            .buttonStyle(.plain)
-
-            if isExpanded {
-                content
-                    .padding(.top, 10)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-    }
-}
 
 private struct GarageSessionLobbyLeadCard: View {
     let session: ActivePracticeSession
@@ -1173,12 +771,13 @@ private struct GarageCompactMetricCard: View {
 
 private struct GarageSessionReviewLeadCard: View {
     let draft: GarageSessionSummaryDraft
+    let handoffMessage: String?
 
     var body: some View {
         GarageProCard(isActive: true, cornerRadius: 28, padding: 20) {
             HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 10) {
-                    GarageFocusLabel("Session Review")
+                    GarageFocusLabel(GarageFocusRoomCopy.reviewHandoffNavTitle)
 
                     Text(draft.templateName)
                         .font(.system(size: 28, weight: .black, design: .rounded))
@@ -1186,10 +785,18 @@ private struct GarageSessionReviewLeadCard: View {
                         .lineLimit(2)
                         .minimumScaleFactor(0.76)
 
-                    Text("Confirm successful reps, carry forward the useful feel, then write the session to the vault.")
+                    Text(GarageFocusRoomCopy.reviewHandoffSubtitle)
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(GarageProTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
+
+                    if let handoffMessage,
+                       handoffMessage.isEmpty == false {
+                        Text(handoffMessage)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(GarageProTheme.accent)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -1242,49 +849,6 @@ private struct GarageEquipmentCard: View {
                 }
             }
         }
-    }
-}
-
-private struct GarageDrillOrdinalBadge: View {
-    let drillNumber: Int
-    let totalDrills: Int
-    let isCompleted: Bool
-
-    var body: some View {
-        VStack(spacing: 5) {
-            Image(systemName: isCompleted ? "checkmark.seal.fill" : "scope")
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(GarageProTheme.accent)
-
-            Text("\(drillNumber)/\(totalDrills)")
-                .font(.caption.weight(.black))
-                .foregroundStyle(GarageProTheme.textPrimary)
-        }
-        .frame(width: 64, height: 64)
-        .background(GarageProTheme.insetSurface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(GarageProTheme.accent.opacity(isCompleted ? 0.38 : 0.22), lineWidth: 1)
-        )
-    }
-}
-
-private struct GarageLinearProgressBar: View {
-    let ratio: Double
-
-    var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(GarageProTheme.accent.opacity(0.18))
-
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(GarageProTheme.accent)
-                    .frame(width: proxy.size.width * min(max(ratio, 0), 1))
-                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: ratio)
-            }
-        }
-        .frame(height: 12)
     }
 }
 
