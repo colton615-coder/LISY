@@ -187,13 +187,13 @@ private struct GarageHomeTabView: View {
     }
 
     private var environmentSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             GarageProSectionHeader(
                 eyebrow: "Start Here",
                 title: "Choose Environment"
             )
 
-            VStack(spacing: 10) {
+            VStack(spacing: 8) {
                 ForEach(PracticeEnvironment.allCases) { environment in
                     GarageHomeEnvironmentCard(
                         environment: environment,
@@ -347,11 +347,11 @@ private struct GarageCompactEnvironmentCardSurface<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 7) {
             content
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(11)
+        .padding(10)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .background(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -372,16 +372,16 @@ private struct GarageEnvironmentCardHeader: View {
     let routineCount: Int
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: 9) {
             Image(systemName: environment.systemImage)
-                .font(.system(size: 15, weight: .bold))
+                .font(.system(size: 14, weight: .bold))
                 .foregroundStyle(GarageProTheme.accent)
-                .frame(width: 36, height: 36)
+                .frame(width: 34, height: 34)
                 .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(environment.displayName)
-                    .font(.system(size: 15, weight: .black, design: .rounded))
+                    .font(.system(size: 14, weight: .black, design: .rounded))
                     .foregroundStyle(GarageProTheme.textPrimary)
                     .lineLimit(1)
 
@@ -391,7 +391,7 @@ private struct GarageEnvironmentCardHeader: View {
                     .lineLimit(2)
 
                 Text("\(routineCount) preset routines • \(sessionCount) saved sessions")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
                     .foregroundStyle(GarageProTheme.accent.opacity(0.88))
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
@@ -406,7 +406,7 @@ private struct GarageRoutineChipRow: View {
     let onSelectRoutine: (GarageRoutine) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 4) {
             Text("Preset Routines")
                 .font(.system(size: 9, weight: .bold, design: .rounded))
                 .textCase(.uppercase)
@@ -414,7 +414,7 @@ private struct GarageRoutineChipRow: View {
                 .foregroundStyle(GarageProTheme.accent)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     ForEach(routines) { routine in
                         GarageRoutineChip(
                             routine: routine,
@@ -442,28 +442,28 @@ private struct GarageRoutineChip: View {
             garageTriggerSelection()
             action()
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 3) {
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 8, weight: .black))
+                        .font(.system(size: 7, weight: .black))
                 }
 
                 Text(routine.title)
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
             }
-            .font(.system(size: 11, weight: .bold, design: .rounded))
-            .foregroundStyle(isSelected ? ModuleTheme.garageSurfaceDark : GarageProTheme.textPrimary)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 6)
+            .font(.system(size: 10, weight: .bold, design: .rounded))
+            .foregroundStyle(isSelected ? ModuleTheme.garageSurfaceDark : GarageProTheme.textSecondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
             .fixedSize(horizontal: true, vertical: false)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isSelected ? GarageProTheme.accent : GarageProTheme.insetSurface)
+                    .fill(isSelected ? GarageProTheme.accent : ModuleTheme.garageTurfSurface.opacity(0.22))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(isSelected ? GarageProTheme.accent.opacity(0.34) : GarageProTheme.border, lineWidth: 1)
+                    .stroke(isSelected ? GarageProTheme.accent.opacity(0.34) : GarageProTheme.accent.opacity(0.22), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -482,8 +482,8 @@ private struct GarageRoutineDetailSummary: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Selected Routine")
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Aims to help with")
                 .font(.system(size: 9, weight: .bold, design: .rounded))
                 .textCase(.uppercase)
                 .tracking(1.1)
@@ -494,12 +494,6 @@ private struct GarageRoutineDetailSummary: View {
                 .foregroundStyle(GarageProTheme.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.82)
-
-            Text("Aims to help with")
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-                .textCase(.uppercase)
-                .tracking(1.1)
-                .foregroundStyle(GarageProTheme.textSecondary)
 
             Text(routine.purpose)
                 .font(.system(size: 11, weight: .medium, design: .rounded))
@@ -513,12 +507,8 @@ private struct GarageRoutineDetailSummary: View {
                 .minimumScaleFactor(0.72)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 4)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(GarageProTheme.border.opacity(0.7))
-                .frame(height: 1)
-        }
+        .padding(.top, 2)
+        .padding(.bottom, 1)
     }
 }
 
@@ -531,7 +521,6 @@ private struct GarageRoutineActionRow: View {
             GarageHomeSecondaryButton(
                 title: "AI Generate",
                 systemImage: "sparkles",
-                helperText: "Describe what to work on",
                 action: onGenerateRoutine
             )
 
@@ -547,7 +536,6 @@ private struct GarageRoutineActionRow: View {
 private struct GarageHomeSecondaryButton: View {
     let title: String
     let systemImage: String
-    let helperText: String
     let action: () -> Void
 
     var body: some View {
@@ -555,19 +543,11 @@ private struct GarageHomeSecondaryButton: View {
             garageTriggerSelection()
             action()
         } label: {
-            VStack(alignment: .leading, spacing: 2) {
-                Label(title, systemImage: systemImage)
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-
-                Text(helperText)
-                    .font(.system(size: 9, weight: .medium, design: .rounded))
-                    .foregroundStyle(GarageProTheme.textSecondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
-            }
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .multilineTextAlignment(.leading)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
             .foregroundStyle(GarageProTheme.textPrimary)
             .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
             .padding(.horizontal, 11)
