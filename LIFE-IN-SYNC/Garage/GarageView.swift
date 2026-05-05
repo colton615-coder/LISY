@@ -199,7 +199,7 @@ private struct GarageHomeTabView: View {
                 title: "Choose Environment"
             )
 
-            VStack(spacing: 14) {
+            VStack(spacing: 10) {
                 ForEach(PracticeEnvironment.allCases) { environment in
                     GarageHomeEnvironmentCard(
                         environment: environment,
@@ -330,7 +330,7 @@ private struct GarageHomeEnvironmentCard: View {
     let onBrowseAll: () -> Void
 
     var body: some View {
-        GarageProCard(isActive: true, cornerRadius: 26, padding: 16) {
+        GarageCompactEnvironmentCardSurface {
             GarageEnvironmentCardHeader(
                 environment: environment,
                 sessionCount: sessionCount,
@@ -354,6 +354,29 @@ private struct GarageHomeEnvironmentCard: View {
     }
 }
 
+private struct GarageCompactEnvironmentCardSurface<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            content
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(11)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(GarageProTheme.elevatedSurface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(GarageProTheme.accent.opacity(0.28), lineWidth: 1)
+        )
+        .shadow(color: GarageProTheme.darkShadow, radius: 12, x: 0, y: 8)
+        .shadow(color: GarageProTheme.glow.opacity(0.16), radius: 12, x: 0, y: 0)
+    }
+}
+
 private struct GarageEnvironmentCardHeader: View {
     let environment: PracticeEnvironment
     let sessionCount: Int
@@ -361,43 +384,44 @@ private struct GarageEnvironmentCardHeader: View {
     let onBrowseAll: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
+        HStack(alignment: .top, spacing: 10) {
             Image(systemName: environment.systemImage)
-                .font(.system(size: 18, weight: .bold))
+                .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(GarageProTheme.accent)
-                .frame(width: 48, height: 48)
-                .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .frame(width: 36, height: 36)
+                .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(environment.displayName)
-                    .font(.system(.title3, design: .rounded).weight(.black))
+                    .font(.system(size: 15, weight: .black, design: .rounded))
                     .foregroundStyle(GarageProTheme.textPrimary)
+                    .lineLimit(1)
 
                 Text(environment.description)
-                    .font(.subheadline.weight(.medium))
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
                     .foregroundStyle(GarageProTheme.textSecondary)
                     .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
 
                 Text("\(routineCount) preset routines • \(sessionCount) saved sessions")
-                    .font(.caption.weight(.bold))
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
                     .foregroundStyle(GarageProTheme.accent.opacity(0.88))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.82)
             }
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 4)
 
             Button(action: onBrowseAll) {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .black))
+                    .font(.system(size: 10, weight: .black))
                     .foregroundStyle(GarageProTheme.textSecondary)
-                    .frame(width: 34, height: 34)
+                    .frame(width: 26, height: 26)
                     .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
                             .fill(GarageProTheme.insetSurface)
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
                             .stroke(GarageProTheme.border, lineWidth: 1)
                     )
             }
@@ -413,15 +437,15 @@ private struct GarageRoutineChipRow: View {
     let onSelectRoutine: (GarageRoutine) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 5) {
             Text("Preset Routines")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .font(.system(size: 9, weight: .bold, design: .rounded))
                 .textCase(.uppercase)
-                .tracking(2)
+                .tracking(1.4)
                 .foregroundStyle(GarageProTheme.accent)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     ForEach(routines) { routine in
                         GarageRoutineChip(
                             routine: routine,
@@ -432,7 +456,7 @@ private struct GarageRoutineChipRow: View {
                         )
                     }
                 }
-                .padding(.vertical, 1)
+                .padding(.vertical, 0.5)
             }
         }
     }
@@ -449,25 +473,27 @@ private struct GarageRoutineChip: View {
             garageTriggerSelection()
             action()
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 10, weight: .black))
+                        .font(.system(size: 8, weight: .black))
                 }
 
                 Text(routine.title)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.82)
             }
-            .font(.footnote.weight(.bold))
+            .font(.system(size: 11, weight: .bold, design: .rounded))
             .foregroundStyle(isSelected ? ModuleTheme.garageSurfaceDark : GarageProTheme.textPrimary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .fixedSize(horizontal: true, vertical: false)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(isSelected ? GarageProTheme.accent : GarageProTheme.insetSurface)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .stroke(isSelected ? GarageProTheme.accent.opacity(0.34) : GarageProTheme.border, lineWidth: 1)
             )
         }
@@ -487,7 +513,7 @@ private struct GarageRoutineDetailGrid: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: 8) {
             GarageRoutineSummaryPanel(routine: routine)
             GarageRoutineMetricsPanel(
                 routine: routine,
@@ -502,41 +528,41 @@ private struct GarageRoutineSummaryPanel: View {
     let routine: GarageRoutine
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 5) {
             Text("Aims to help with")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .font(.system(size: 9, weight: .bold, design: .rounded))
                 .textCase(.uppercase)
-                .tracking(1.4)
+                .tracking(1.1)
                 .foregroundStyle(GarageProTheme.textSecondary)
 
-            HStack(alignment: .top, spacing: 8) {
-                VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 6) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(routine.title)
-                        .font(.headline.weight(.black))
+                        .font(.system(size: 12, weight: .black, design: .rounded))
                         .foregroundStyle(GarageProTheme.textPrimary)
-                        .lineLimit(2)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
 
                     Text(routine.purpose)
-                        .font(.subheadline.weight(.medium))
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(GarageProTheme.textSecondary)
-                        .lineLimit(4)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(2)
                 }
 
-                Spacer(minLength: 4)
+                Spacer(minLength: 2)
 
                 Image(systemName: "chevron.up.right")
-                    .font(.system(size: 11, weight: .black))
+                    .font(.system(size: 9, weight: .black))
                     .foregroundStyle(GarageProTheme.textSecondary.opacity(0.8))
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
-        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 86, alignment: .topLeading)
+        .padding(10)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(GarageProTheme.insetSurface.opacity(0.92))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .stroke(GarageProTheme.border, lineWidth: 1)
                 )
         )
@@ -549,110 +575,76 @@ private struct GarageRoutineMetricsPanel: View {
     let totalRepCount: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            GarageCompactMetricBlock(
-                title: "Est. Time",
-                primaryValue: "\(routine.estimatedMinutes) min",
-                secondaryValue: "\(drillCount) drills"
-            )
-
-            GarageDifficultyMetric(
-                title: "Difficulty",
-                difficulty: routine.difficulty,
-                totalRepCount: totalRepCount
-            )
+        VStack(alignment: .leading, spacing: 7) {
+            GarageCompactMetricRow(title: "Est. Time", primaryValue: "\(routine.estimatedMinutes) min", secondaryValue: "\(drillCount) drills")
+            GarageCompactMetricRow(title: "Difficulty", primaryValue: routine.difficulty.displayName, secondaryValue: "\(totalRepCount) reps")
+            GarageDifficultyBars(difficulty: routine.difficulty)
         }
-        .frame(width: 132, alignment: .topLeading)
+        .frame(width: 108, alignment: .topLeading)
+        .frame(minHeight: 86, alignment: .topLeading)
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(GarageProTheme.surface.opacity(0.66))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(GarageProTheme.border, lineWidth: 1)
+                )
+        )
     }
 }
 
-private struct GarageCompactMetricBlock: View {
+private struct GarageCompactMetricRow: View {
     let title: String
     let primaryValue: String
     let secondaryValue: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 2) {
             Text(title)
-                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .font(.system(size: 8, weight: .bold, design: .rounded))
                 .textCase(.uppercase)
-                .tracking(1.6)
+                .tracking(1)
                 .foregroundStyle(GarageProTheme.textSecondary)
 
             Text(primaryValue)
-                .font(.footnote.weight(.bold))
+                .font(.system(size: 12, weight: .black, design: .rounded))
                 .foregroundStyle(GarageProTheme.textPrimary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                .minimumScaleFactor(0.7)
 
             Text(secondaryValue)
-                .font(.caption.weight(.bold))
+                .font(.system(size: 10, weight: .bold, design: .rounded))
                 .foregroundStyle(GarageProTheme.accent.opacity(0.82))
                 .lineLimit(1)
+                .minimumScaleFactor(0.78)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(GarageProTheme.surface.opacity(0.66))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(GarageProTheme.border, lineWidth: 1)
-                )
-        )
     }
 }
 
-private struct GarageDifficultyMetric: View {
-    let title: String
+private struct GarageDifficultyBars: View {
     let difficulty: GarageRoutineDifficulty
-    let totalRepCount: Int
 
     private var barCount: Int {
         switch difficulty {
         case .foundation:
             1
-        case .build:
+        case .focused:
             2
-        case .pressure:
+        case .advanced:
             3
         }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .textCase(.uppercase)
-                .tracking(1.6)
-                .foregroundStyle(GarageProTheme.textSecondary)
-
-            Text(difficulty.displayName)
-                .font(.footnote.weight(.bold))
-                .foregroundStyle(GarageProTheme.textPrimary)
-
-            HStack(spacing: 4) {
-                ForEach(0..<3, id: \.self) { index in
-                    Capsule()
-                        .fill(index < barCount ? GarageProTheme.accent : GarageProTheme.border.opacity(0.7))
-                        .frame(width: 22, height: 6)
-                }
+        HStack(spacing: 3) {
+            ForEach(0..<3, id: \.self) { index in
+                Capsule()
+                    .fill(index < barCount ? GarageProTheme.accent : GarageProTheme.border.opacity(0.72))
+                    .frame(width: 18, height: 4)
             }
-
-            Text("\(totalRepCount) reps")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(GarageProTheme.accent.opacity(0.82))
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(GarageProTheme.surface.opacity(0.66))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(GarageProTheme.border, lineWidth: 1)
-                )
-        )
     }
 }
 
@@ -661,15 +653,15 @@ private struct GarageRoutineActionRow: View {
     let onStartRoutine: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .center, spacing: 8) {
             GarageHomeSecondaryButton(
-                title: "AI Generate New Routine",
+                title: "AI Generate",
                 systemImage: "sparkles",
-                helperText: "Describe what you want to work on...",
+                helperText: "Describe what to work on",
                 action: onGenerateRoutine
             )
 
-            GarageProPrimaryButton(
+            GarageHomeCompactPrimaryButton(
                 title: "Start Routine",
                 systemImage: "play.fill",
                 action: onStartRoutine
@@ -689,29 +681,70 @@ private struct GarageHomeSecondaryButton: View {
             garageTriggerSelection()
             action()
         } label: {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 2) {
                 Label(title, systemImage: systemImage)
-                    .font(.footnote.weight(.bold))
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
                     .multilineTextAlignment(.leading)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
 
                 Text(helperText)
-                    .font(.caption.weight(.medium))
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
                     .foregroundStyle(GarageProTheme.textSecondary)
-                    .lineLimit(2)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
             }
             .foregroundStyle(GarageProTheme.textPrimary)
-            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
+            .padding(.horizontal, 11)
                 .background(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .fill(GarageProTheme.insetSurface)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .stroke(GarageProTheme.accent.opacity(0.3), lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct GarageHomeCompactPrimaryButton: View {
+    let title: String
+    let systemImage: String
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            garageTriggerImpact(.heavy)
+            action()
+        } label: {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 13, weight: .black, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+                .foregroundStyle(ModuleTheme.garageSurfaceDark)
+                .frame(maxWidth: .infinity, minHeight: 46)
+                .padding(.horizontal, 10)
+                .background(
+                    LinearGradient(
+                        colors: [
+                            GarageProTheme.accent,
+                            GarageProTheme.accent.opacity(0.76)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .shadow(color: GarageProTheme.glow.opacity(0.28), radius: 10, x: 0, y: 6)
     }
 }
 
