@@ -32,7 +32,7 @@ struct GarageFocusDrillStackRail: View {
 
     var body: some View {
         GarageProCard(cornerRadius: 22, padding: 14) {
-            Text("Drill Stack")
+            Text("Routine")
                 .font(.system(size: 11, weight: .bold, design: .rounded))
                 .textCase(.uppercase)
                 .tracking(1.8)

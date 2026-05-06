@@ -1,29 +1,18 @@
 import SwiftUI
 
 struct GarageFocusDrillActionDock: View {
-    let backEnabled: Bool
     let noteTitle: String
     let primaryTitle: String
-    let onBack: () -> Void
     let onNote: () -> Void
     let onPrimary: () -> Void
 
     var body: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 12) {
-                GarageFocusDockSecondaryButton(
-                    title: GarageFocusRoomCopy.focusRoomBackCta,
-                    systemImage: "chevron.left",
-                    isEnabled: backEnabled,
-                    action: onBack
-                )
-
-                GarageFocusDockSecondaryButton(
-                    title: noteTitle,
-                    systemImage: noteTitle == GarageFocusRoomCopy.focusRoomNoteAddCta ? "square.and.pencil" : "note.text",
-                    action: onNote
-                )
-            }
+        HStack(spacing: 12) {
+            GarageFocusDockSecondaryButton(
+                title: noteTitle,
+                systemImage: noteTitle == GarageFocusRoomCopy.focusRoomNoteAddCta ? "square.and.pencil" : "note.text",
+                action: onNote
+            )
 
             GarageProPrimaryButton(
                 title: primaryTitle,
@@ -31,7 +20,7 @@ struct GarageFocusDrillActionDock: View {
                 action: onPrimary
             )
         }
-        .padding(12)
+        .padding(10)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .background(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -43,8 +32,8 @@ struct GarageFocusDrillActionDock: View {
         )
         .shadow(color: GarageProTheme.darkShadow.opacity(0.8), radius: 12, x: 0, y: 8)
         .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .padding(.bottom, 8)
+        .padding(.top, 6)
+        .padding(.bottom, 6)
     }
 }
 

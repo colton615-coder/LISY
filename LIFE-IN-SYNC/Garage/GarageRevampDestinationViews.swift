@@ -326,9 +326,9 @@ struct GarageRoutineReviewView: View {
     let onStartRoutine: (GarageRoutineReviewPlan) -> Void
 
     var body: some View {
-        GarageProScaffold(bottomPadding: 56) {
-            heroCard
-            purposeCard
+        GarageProScaffold(bottomPadding: 44) {
+            routineHeader
+            whySelectedBlock
             drillListSection
             actionSection
         }
@@ -343,55 +343,45 @@ struct GarageRoutineReviewView: View {
         }
     }
 
-    private var heroCard: some View {
-        GarageProHeroCard(
-            eyebrow: reviewPlan.source.eyebrow,
-            title: reviewPlan.title,
-            subtitle: reviewPlan.environment.displayName,
-            value: "\(reviewPlan.drillCount)",
-            valueLabel: reviewPlan.drillCount == 1 ? "Drill" : "Drills"
-        ) {
-            Image(systemName: reviewPlan.environment.systemImage)
-                .font(.system(size: 24, weight: .bold))
-                .foregroundStyle(GarageProTheme.accent)
-                .frame(width: 60, height: 60)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(GarageProTheme.accent.opacity(0.3), lineWidth: 1)
-                )
-        }
-    }
+    private var routineHeader: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(reviewPlan.source.eyebrow)
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .textCase(.uppercase)
+                        .tracking(1.8)
+                        .foregroundStyle(GarageProTheme.accent)
 
-    private var purposeCard: some View {
-        GarageProCard(isActive: true, cornerRadius: 24, padding: 18) {
-            Text("Routine Purpose")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .textCase(.uppercase)
-                .tracking(2)
-                .foregroundStyle(GarageProTheme.accent)
+                    Text(reviewPlan.title)
+                        .font(.system(size: 30, weight: .black, design: .rounded))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.74)
 
-            Text(reviewPlan.purpose)
-                .font(.system(.title3, design: .rounded).weight(.black))
-                .foregroundStyle(GarageProTheme.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
+                    Label(reviewPlan.environment.displayName, systemImage: reviewPlan.environment.systemImage)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                }
 
-            if let note = reviewPlan.note {
-                Text(note)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(GarageProTheme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 10)
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("\(reviewPlan.drillCount)")
+                        .font(.system(size: 28, weight: .black, design: .monospaced))
+                        .foregroundStyle(GarageProTheme.accent)
+
+                    Text(reviewPlan.drillCount == 1 ? "Drill" : "Drills")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .textCase(.uppercase)
+                        .tracking(1.6)
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                }
             }
 
             HStack(spacing: 10) {
                 GarageRoutineReviewMetric(
-                    title: "Environment",
-                    value: reviewPlan.environment.displayName,
-                    systemImage: reviewPlan.environment.systemImage
-                )
-
-                GarageRoutineReviewMetric(
-                    title: "Time",
+                    title: "Estimated",
                     value: "\(reviewPlan.estimatedDurationMinutes)m",
                     systemImage: "timer"
                 )
@@ -403,13 +393,44 @@ struct GarageRoutineReviewView: View {
                 )
             }
         }
+        .padding(18)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .background(GarageProTheme.surface, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .stroke(GarageProTheme.border, lineWidth: 1)
+        )
+    }
+
+    private var whySelectedBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Selected because")
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(1.8)
+                .foregroundStyle(GarageProTheme.accent)
+
+            Text(reviewPlan.purpose)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(GarageProTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let note = reviewPlan.note {
+                Text(note)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(GarageProTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 2)
     }
 
     private var drillListSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             GarageProSectionHeader(
-                eyebrow: "Review",
-                title: "Drill Order"
+                eyebrow: "Preview",
+                title: "Drill List"
             )
 
             if reviewPlan.drills.isEmpty {
@@ -424,8 +445,15 @@ struct GarageRoutineReviewView: View {
                 }
             } else {
                 VStack(spacing: 12) {
-                    ForEach(Array(reviewPlan.drills.enumerated()), id: \.element.id) { offset, drill in
+                    ForEach(Array(reviewPlan.drills.prefix(5).enumerated()), id: \.element.id) { offset, drill in
                         GarageRoutineReviewDrillRow(index: offset + 1, drill: drill)
+                    }
+
+                    if reviewPlan.drills.count > 5 {
+                        Text("+ \(reviewPlan.drills.count - 5) more drills")
+                            .font(.footnote.weight(.bold))
+                            .foregroundStyle(GarageProTheme.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
             }
@@ -433,7 +461,7 @@ struct GarageRoutineReviewView: View {
     }
 
     private var actionSection: some View {
-        GarageProCard(isActive: reviewPlan.canStart, cornerRadius: 24, padding: 16) {
+        VStack(spacing: 12) {
             if reviewPlan.canStart == false {
                 Text("This routine needs at least one drill before it can start.")
                     .font(.footnote.weight(.semibold))
@@ -441,21 +469,19 @@ struct GarageRoutineReviewView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            VStack(spacing: 12) {
-                GarageProPrimaryButton(
-                    title: "Start Routine",
-                    systemImage: "play.fill",
-                    isEnabled: reviewPlan.canStart
-                ) {
-                    onStartRoutine(reviewPlan)
-                }
+            GarageProPrimaryButton(
+                title: "Start Routine",
+                systemImage: "play.fill",
+                isEnabled: reviewPlan.canStart
+            ) {
+                onStartRoutine(reviewPlan)
+            }
 
-                if reviewPlan.source.canSave {
-                    GarageRoutineReviewSaveButton(
-                        didSave: didSaveRoutine,
-                        action: saveRoutine
-                    )
-                }
+            if reviewPlan.source.canSave {
+                GarageRoutineReviewSaveButton(
+                    didSave: didSaveRoutine,
+                    action: saveRoutine
+                )
             }
         }
     }

@@ -7,6 +7,7 @@ struct GarageFocusDrillPresentation {
     let executionCommand: String
     let passCheck: String
     let repTarget: String
+    let visualKind: GarageFocusDrillVisualKind
     let setup: [String]
     let commonMisses: [String]
     let resetCue: String
@@ -14,7 +15,37 @@ struct GarageFocusDrillPresentation {
     let isCompleted: Bool
 }
 
+enum GarageFocusDrillVisualKind: Hashable {
+    case towel
+    case putting
+    case range
+    case net
+
+    init(drill: PracticeTemplateDrill) {
+        let title = drill.title.localizedLowercase
+
+        if title.contains("towel") {
+            self = .towel
+            return
+        }
+
+        if DrillVault.canonicalDrill(for: drill)?.environment == .puttingGreen || title.contains("putt") || title.contains("gate") {
+            self = .putting
+            return
+        }
+
+        if DrillVault.canonicalDrill(for: drill)?.environment == .range {
+            self = .range
+            return
+        }
+
+        self = .net
+    }
+}
+
 struct GarageFocusRoomView: View {
+    @State private var isRoutineVisible = false
+
     let sessionTitle: String
     let drillPositionText: String
     let completedCount: Int
@@ -49,6 +80,7 @@ struct GarageFocusRoomView: View {
                     executionCommand: drill.executionCommand,
                     passCheck: drill.passCheck,
                     repTarget: drill.repTarget,
+                    visualKind: drill.visualKind,
                     setup: drill.setup,
                     commonMisses: drill.commonMisses,
                     resetCue: drill.resetCue,
@@ -58,17 +90,24 @@ struct GarageFocusRoomView: View {
                     onToggleDetail: onToggleDetail
                 )
 
-                GarageFocusDrillStackRail(
-                    items: railItems,
-                    onSelectDrill: onSelectRailDrill
-                )
+                GarageRoutineDisclosureButton(isExpanded: isRoutineVisible) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        isRoutineVisible.toggle()
+                    }
+                }
+
+                if isRoutineVisible {
+                    GarageFocusDrillStackRail(
+                        items: railItems,
+                        onSelectDrill: onSelectRailDrill
+                    )
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 GarageFocusDrillActionDock(
-                    backEnabled: backEnabled,
                     noteTitle: noteTitle,
                     primaryTitle: primaryCtaTitle,
-                    onBack: onBack,
                     onNote: onNote,
                     onPrimary: onPrimary
                 )
@@ -107,5 +146,42 @@ struct GarageFocusRoomView: View {
 }
 
 private enum GarageFocusRoomLayout {
-    static let contentBottomInset: CGFloat = 196
+    static let contentBottomInset: CGFloat = 128
+}
+
+private struct GarageRoutineDisclosureButton: View {
+    let isExpanded: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            garageTriggerSelection()
+            action()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "list.bullet.rectangle")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(GarageProTheme.accent)
+                    .frame(width: 42, height: 42)
+                    .background(GarageProTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                Text("View Routine")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(GarageProTheme.textPrimary)
+
+                Spacer(minLength: 8)
+
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundStyle(GarageProTheme.textSecondary)
+            }
+            .padding(14)
+            .background(GarageProTheme.insetSurface.opacity(0.72), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(GarageProTheme.border, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
 }

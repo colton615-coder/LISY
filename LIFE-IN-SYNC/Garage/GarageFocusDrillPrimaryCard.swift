@@ -7,6 +7,7 @@ struct GarageFocusDrillPrimaryCard: View {
     let executionCommand: String
     let passCheck: String
     let repTarget: String
+    let visualKind: GarageFocusDrillVisualKind
     let setup: [String]
     let commonMisses: [String]
     let resetCue: String
@@ -16,43 +17,13 @@ struct GarageFocusDrillPrimaryCard: View {
     let onToggleDetail: () -> Void
 
     var body: some View {
-        GarageProCard(isActive: true, cornerRadius: 26, padding: 16) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(drillTitle)
-                        .font(.system(size: 24, weight: .black, design: .rounded))
-                        .foregroundStyle(GarageProTheme.textPrimary)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.78)
+        VStack(alignment: .leading, spacing: 14) {
+            header
 
-                    if drillMetadata.isEmpty == false {
-                        Text(drillMetadata)
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(GarageProTheme.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-
-                Spacer(minLength: 8)
-
-                Text(isCompleted ? GarageFocusRoomCopy.focusRoomRailCompletedLabel : GarageFocusRoomCopy.focusRoomRailCurrentLabel)
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .textCase(.uppercase)
-                    .tracking(1.6)
-                    .foregroundStyle(isCompleted ? GarageProTheme.textSecondary : GarageProTheme.accent)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(GarageProTheme.insetSurface, in: Capsule(style: .continuous))
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .stroke(isCompleted ? GarageProTheme.border : GarageProTheme.accent.opacity(0.3), lineWidth: 1)
-                    )
-            }
-
-            GarageFocusDrillLabelValue(
-                label: GarageFocusRoomCopy.focusRoomObjectiveLabel,
-                value: objective,
-                emphasized: false
+            GarageDrillSetupVisualPanel(
+                kind: visualKind,
+                title: visualTitle,
+                caption: setup.first ?? "Set the drill before counting reps."
             )
 
             GarageFocusDrillLabelValue(
@@ -67,62 +38,254 @@ struct GarageFocusDrillPrimaryCard: View {
                 emphasized: false
             )
 
-            HStack(spacing: 8) {
-                Text(GarageFocusRoomCopy.focusRoomRepTargetLabel)
+            GarageFocusDrillFeedbackRow(
+                repTarget: repTarget,
+                objective: objective
+            )
+        }
+        .padding(16)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .background(GarageProTheme.surface, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .stroke(GarageProTheme.border, lineWidth: 1)
+        )
+        .shadow(color: GarageProTheme.darkShadow, radius: 18, x: 0, y: 12)
+    }
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(drillTitle)
+                    .font(.system(size: 26, weight: .black, design: .rounded))
+                    .foregroundStyle(GarageProTheme.textPrimary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.74)
+
+                if drillMetadata.isEmpty == false {
+                    Text(drillMetadata)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.82)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            Text(isCompleted ? GarageFocusRoomCopy.focusRoomRailCompletedLabel : GarageFocusRoomCopy.focusRoomRailCurrentLabel)
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(1.6)
+                .foregroundStyle(isCompleted ? GarageProTheme.textSecondary : GarageProTheme.accent)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(GarageProTheme.insetSurface, in: Capsule(style: .continuous))
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(isCompleted ? GarageProTheme.border : GarageProTheme.accent.opacity(0.3), lineWidth: 1)
+                )
+        }
+    }
+
+    private var visualTitle: String {
+        switch visualKind {
+        case .towel:
+            return "Ball, towel line, clean path"
+        case .putting:
+            return "Gate, start line, pace window"
+        case .range:
+            return "Target window and launch lane"
+        case .net:
+            return "Net lane and club path"
+        }
+    }
+}
+
+private struct GarageDrillSetupVisualPanel: View {
+    let kind: GarageFocusDrillVisualKind
+    let title: String
+    let caption: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Visual Setup")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .textCase(.uppercase)
                     .tracking(1.6)
                     .foregroundStyle(GarageProTheme.textSecondary)
 
-                Text(repTarget)
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(GarageProTheme.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
+                Spacer()
 
-                Spacer(minLength: 8)
+                Text(title)
+                    .font(.caption.weight(.bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .foregroundStyle(GarageProTheme.accent)
             }
-            .padding(12)
-            .background(GarageProTheme.insetSurface.opacity(0.72), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(GarageProTheme.insetSurface.opacity(0.86))
+
+                switch kind {
+                case .towel:
+                    GarageTowelSetupDiagram()
+                case .putting:
+                    GaragePuttingSetupDiagram()
+                case .range:
+                    GarageRangeSetupDiagram()
+                case .net:
+                    GarageNetSetupDiagram()
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 176)
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .stroke(GarageProTheme.border, lineWidth: 1)
             )
 
-            VStack(alignment: .leading, spacing: 10) {
-                Button(action: onToggleDetail) {
-                    HStack(spacing: 10) {
-                        Text(GarageFocusRoomCopy.focusRoomDetailRegionLabel)
-                            .font(.headline.weight(.bold))
-                            .foregroundStyle(GarageProTheme.textPrimary)
+            Text(caption)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(GarageProTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .background(GarageProTheme.insetSurface.opacity(0.48), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(GarageProTheme.border, lineWidth: 1)
+        )
+    }
+}
 
-                        Spacer(minLength: 8)
+private struct GarageTowelSetupDiagram: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let height = proxy.size.height
+            let centerY = height * 0.55
 
-                        Image(systemName: isDetailExpanded ? "chevron.up.circle.fill" : "chevron.down.circle")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(isDetailExpanded ? GarageProTheme.accent : GarageProTheme.textSecondary)
-                    }
-                    .padding(14)
-                    .background(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(GarageProTheme.insetSurface.opacity(isDetailExpanded ? 0.9 : 0.72))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(isDetailExpanded ? GarageProTheme.accent.opacity(0.34) : GarageProTheme.border, lineWidth: 1)
-                    )
+            ZStack {
+                Capsule(style: .continuous)
+                    .fill(GarageProTheme.accent.opacity(0.16))
+                    .frame(width: width * 0.5, height: 16)
+                    .position(x: width * 0.35, y: centerY + 34)
+
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(GarageProTheme.textSecondary.opacity(0.28))
+                    .frame(width: width * 0.38, height: 10)
+                    .position(x: width * 0.42, y: centerY)
+
+                Circle()
+                    .fill(GarageProTheme.textPrimary)
+                    .frame(width: 24, height: 24)
+                    .shadow(color: GarageProTheme.glow.opacity(0.24), radius: 8)
+                    .position(x: width * 0.65, y: centerY)
+
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 38, weight: .black))
+                    .foregroundStyle(GarageProTheme.accent)
+                    .position(x: width * 0.64, y: centerY + 42)
+            }
+        }
+    }
+}
+
+private struct GaragePuttingSetupDiagram: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let height = proxy.size.height
+            let centerY = height * 0.52
+
+            ZStack {
+                Rectangle()
+                    .fill(GarageProTheme.accent.opacity(0.32))
+                    .frame(width: width * 0.62, height: 3)
+                    .position(x: width * 0.52, y: centerY)
+
+                ForEach([0.42, 0.58], id: \.self) { xValue in
+                    Capsule(style: .continuous)
+                        .fill(GarageProTheme.textPrimary.opacity(0.78))
+                        .frame(width: 8, height: 44)
+                        .position(x: width * xValue, y: centerY - 28)
                 }
-                .buttonStyle(.plain)
 
-                if isDetailExpanded {
-                    VStack(alignment: .leading, spacing: 10) {
-                        GarageFocusDrillDetailBlock(label: GarageFocusRoomCopy.focusRoomDetailSetupLabel, values: setup)
-                        GarageFocusDrillDetailBlock(label: GarageFocusRoomCopy.focusRoomDetailCommonMissLabel, values: commonMisses)
-                        GarageFocusDrillDetailBlock(label: GarageFocusRoomCopy.focusRoomDetailResetCueLabel, values: [resetCue], isCue: true)
-                        GarageFocusDrillDetailBlock(label: GarageFocusRoomCopy.focusRoomDetailEquipmentLabel, values: equipment)
-                    }
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                Circle()
+                    .fill(GarageProTheme.textPrimary)
+                    .frame(width: 22, height: 22)
+                    .position(x: width * 0.24, y: centerY)
+
+                Image(systemName: "circle.dashed")
+                    .font(.system(size: 34, weight: .bold))
+                    .foregroundStyle(GarageProTheme.accent.opacity(0.7))
+                    .position(x: width * 0.78, y: centerY)
+            }
+        }
+    }
+}
+
+private struct GarageRangeSetupDiagram: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let height = proxy.size.height
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(GarageProTheme.accent.opacity(0.74), style: StrokeStyle(lineWidth: 3, dash: [8, 7]))
+                    .frame(width: width * 0.36, height: height * 0.34)
+                    .position(x: width * 0.72, y: height * 0.38)
+
+                Path { path in
+                    path.move(to: CGPoint(x: width * 0.18, y: height * 0.78))
+                    path.addLine(to: CGPoint(x: width * 0.72, y: height * 0.38))
                 }
+                .stroke(GarageProTheme.accent.opacity(0.5), style: StrokeStyle(lineWidth: 4, lineCap: .round, dash: [10, 8]))
+
+                Circle()
+                    .fill(GarageProTheme.textPrimary)
+                    .frame(width: 24, height: 24)
+                    .position(x: width * 0.18, y: height * 0.78)
+
+                Image(systemName: "flag.fill")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(GarageProTheme.accent)
+                    .position(x: width * 0.72, y: height * 0.38)
+            }
+        }
+    }
+}
+
+private struct GarageNetSetupDiagram: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let height = proxy.size.height
+            let laneY = height * 0.58
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(GarageProTheme.textSecondary.opacity(0.34), lineWidth: 3)
+                    .frame(width: width * 0.3, height: height * 0.48)
+                    .position(x: width * 0.76, y: height * 0.44)
+
+                Rectangle()
+                    .fill(GarageProTheme.accent.opacity(0.32))
+                    .frame(width: width * 0.48, height: 4)
+                    .position(x: width * 0.45, y: laneY)
+
+                Circle()
+                    .fill(GarageProTheme.textPrimary)
+                    .frame(width: 24, height: 24)
+                    .position(x: width * 0.26, y: laneY)
+
+                Image(systemName: "figure.golf")
+                    .font(.system(size: 38, weight: .bold))
+                    .foregroundStyle(GarageProTheme.accent)
+                    .position(x: width * 0.22, y: laneY + 42)
             }
         }
     }
@@ -134,7 +297,7 @@ private struct GarageFocusDrillLabelValue: View {
     let emphasized: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 7) {
             Text(label)
                 .font(.system(size: 11, weight: .bold, design: .rounded))
                 .textCase(.uppercase)
@@ -156,38 +319,36 @@ private struct GarageFocusDrillLabelValue: View {
     }
 }
 
-private struct GarageFocusDrillDetailBlock: View {
-    let label: String
-    let values: [String]
-    var isCue = false
+private struct GarageFocusDrillFeedbackRow: View {
+    let repTarget: String
+    let objective: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(label)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .textCase(.uppercase)
-                .tracking(1.6)
-                .foregroundStyle(GarageProTheme.textSecondary)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Label(repTarget, systemImage: "repeat")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(GarageProTheme.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
 
-            ForEach(Array(values.enumerated()), id: \.offset) { _, value in
-                HStack(alignment: .top, spacing: 8) {
-                    if values.count > 1 {
-                        Circle()
-                            .fill(GarageProTheme.accent)
-                            .frame(width: 5, height: 5)
-                            .padding(.top, 7)
-                    }
+                Spacer(minLength: 8)
 
-                    Text(value)
-                        .font(isCue ? .subheadline.weight(.bold) : .subheadline.weight(.medium))
-                        .foregroundStyle(isCue ? GarageProTheme.accent : GarageProTheme.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                Text("Feedback Signal")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .textCase(.uppercase)
+                    .tracking(1.4)
+                    .foregroundStyle(GarageProTheme.accent)
             }
+
+            Text(objective)
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(GarageProTheme.textSecondary)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(GarageProTheme.insetSurface.opacity(0.72), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(GarageProTheme.insetSurface.opacity(0.58), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(GarageProTheme.border, lineWidth: 1)
