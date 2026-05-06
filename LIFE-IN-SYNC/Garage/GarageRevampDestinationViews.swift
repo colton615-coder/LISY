@@ -140,9 +140,9 @@ struct GarageSavedRoutinesView: View {
                 .foregroundStyle(GarageProTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 10) {
+            VStack(spacing: 10) {
                 GarageSecondaryRouteButton(
-                    title: "Vault",
+                    title: "Practice History",
                     systemImage: "archivebox.fill",
                     action: onOpenVault
                 )
@@ -173,60 +173,94 @@ struct GarageGenerateRoutineView: View {
         GarageProScaffold(bottomPadding: 48) {
             GarageProHeroCard(
                 eyebrow: "Generate New Routine",
-                title: "\(environment.displayName) Plan",
-                subtitle: "A local, reviewable routine assembled from real Garage drills and recent practice history.",
-                value: "\(environmentRecords.count)",
-                valueLabel: "Sessions"
+                title: "Generate \(environment.displayName)",
+                subtitle: "Build a local routine from the selected environment and real Garage drills.",
+                value: "\(DrillVault.drillCount(in: environment))",
+                valueLabel: "Drills"
             )
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
-                GarageProMetricCard(
-                    title: "Surface",
-                    value: environment.displayName,
-                    systemImage: environment.systemImage,
-                    isActive: true
-                )
-
-                GarageProMetricCard(
-                    title: "Library",
-                    value: "\(DrillVault.drillCount(in: environment))",
-                    systemImage: "square.grid.2x2.fill"
-                )
-            }
-
             GarageProCard(isActive: true, cornerRadius: 26, padding: 18) {
-                Text("Routine Review")
+                Text("Local Routine Setup")
                     .font(.system(.title3, design: .rounded).weight(.black))
                     .foregroundStyle(GarageProTheme.textPrimary)
 
-                Text("Garage will generate the same practical plan-review screen already used by the current practice flow.")
+                Text("Garage will assemble a reviewable \(environment.displayName.lowercased()) routine. Nothing is saved until you choose to save or complete a session.")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(GarageProTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                HStack(spacing: 10) {
-                    GarageProPrimaryButton(
-                        title: "Generate Routine",
-                        systemImage: "sparkles"
-                    ) {
-                        onReviewPlan(
-                            GarageLocalCoachPlanner.generatePlan(
-                                for: environment,
-                                recentRecords: records
-                            )
-                        )
-                    }
+                GarageGenerateRoutineMetaRow(
+                    environment: environment,
+                    drillCount: DrillVault.drillCount(in: environment),
+                    sessionCount: environmentRecords.count
+                )
 
-                    GarageSecondaryRouteButton(
-                        title: "Saved",
-                        systemImage: "bookmark.fill",
-                        action: onOpenSavedRoutines
+                GarageProPrimaryButton(
+                    title: "Generate",
+                    systemImage: "sparkles"
+                ) {
+                    onReviewPlan(
+                        GarageLocalCoachPlanner.generatePlan(
+                            for: environment,
+                            recentRecords: records
+                        )
                     )
                 }
+
+                GarageSecondaryRouteButton(
+                    title: "View Saved",
+                    systemImage: "bookmark.fill",
+                    action: onOpenSavedRoutines
+                )
             }
         }
         .navigationTitle("Generate New Routine")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct GarageGenerateRoutineMetaRow: View {
+    let environment: PracticeEnvironment
+    let drillCount: Int
+    let sessionCount: Int
+
+    var body: some View {
+        HStack(spacing: 10) {
+            GarageGenerateRoutineMetaPill(
+                title: environment.displayName,
+                systemImage: environment.systemImage
+            )
+
+            GarageGenerateRoutineMetaPill(
+                title: "\(drillCount) drills",
+                systemImage: "square.grid.2x2.fill"
+            )
+
+            GarageGenerateRoutineMetaPill(
+                title: "\(sessionCount) sessions",
+                systemImage: "clock.arrow.circlepath"
+            )
+        }
+    }
+}
+
+private struct GarageGenerateRoutineMetaPill: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        Label(title, systemImage: systemImage)
+            .font(.system(size: 11, weight: .bold, design: .rounded))
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .foregroundStyle(GarageProTheme.textSecondary)
+            .frame(maxWidth: .infinity, minHeight: 38)
+            .padding(.horizontal, 8)
+            .background(GarageProTheme.insetSurface.opacity(0.82), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(GarageProTheme.border, lineWidth: 1)
+            )
     }
 }
 

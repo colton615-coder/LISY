@@ -93,8 +93,9 @@ struct GarageHomeTabView: View {
     }
 
     private func cardDeck(in proxy: GeometryProxy) -> some View {
-        let cardWidth = max(proxy.size.width - 54, 300)
-        let cardHeight = max(proxy.size.height - 168, 500)
+        let cardWidth = max(proxy.size.width - 62, 296)
+        let cardHeight = max(proxy.size.height - 174, 500)
+        let sideInset = max((proxy.size.width - cardWidth) / 2, 20)
 
         return ScrollView(.horizontal) {
             LazyHStack(spacing: 14) {
@@ -111,7 +112,7 @@ struct GarageHomeTabView: View {
                 }
             }
             .scrollTargetLayout()
-            .padding(.horizontal, 20)
+            .padding(.horizontal, sideInset)
         }
         .scrollIndicators(.hidden)
         .scrollTargetBehavior(.viewAligned)
@@ -188,13 +189,19 @@ private struct GarageHomeSwipeCard: View {
             case .drillPlans:
                 environmentActions
             case .tempoBuilder:
-                GarageRevampPrimaryActionButton(
-                    title: "Start",
-                    systemImage: "play.fill",
-                    action: onStartTempoBuilder
-                )
+                VStack(spacing: 16) {
+                    GarageTempoPreviewBlock()
+
+                    GarageRevampPrimaryActionButton(
+                        title: "Start",
+                        systemImage: "play.fill",
+                        action: onStartTempoBuilder
+                    )
+                }
             case .journal:
                 VStack(spacing: 12) {
+                    GarageJournalPreviewRow()
+
                     GarageRevampPrimaryActionButton(
                         title: "New Entry",
                         systemImage: "square.and.pencil",
@@ -311,10 +318,11 @@ private struct GarageRevampEnvironmentButton: View {
                         .font(.system(.headline, design: .rounded).weight(.black))
                         .foregroundStyle(GarageProTheme.textPrimary)
 
-                    Text(environment.description)
+                    Text(summary)
                         .font(.footnote.weight(.medium))
                         .foregroundStyle(GarageProTheme.textSecondary)
                         .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -331,6 +339,105 @@ private struct GarageRevampEnvironmentButton: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    private var summary: String {
+        switch environment {
+        case .net:
+            "Mechanics, contact, and tight feedback."
+        case .range:
+            "Ball flight, targets, and club-specific work."
+        case .puttingGreen:
+            "Start line, pace, and green-reading reps."
+        }
+    }
+}
+
+private struct GarageTempoPreviewBlock: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("72")
+                    .font(.system(size: 44, weight: .black, design: .monospaced))
+                    .foregroundStyle(GarageProTheme.textPrimary)
+
+                Text("BPM")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .textCase(.uppercase)
+                    .tracking(1.8)
+                    .foregroundStyle(GarageProTheme.accent)
+
+                Spacer()
+            }
+
+            HStack(spacing: 8) {
+                ForEach(0..<4, id: \.self) { index in
+                    Capsule()
+                        .fill(index == 0 ? GarageProTheme.accent : GarageProTheme.accent.opacity(0.22))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: index == 0 ? 12 : 8)
+                }
+            }
+
+            HStack(spacing: 8) {
+                GarageQuietChip(title: "Full Swing")
+                GarageQuietChip(title: "Short Game")
+                GarageQuietChip(title: "Putting")
+            }
+        }
+        .padding(16)
+        .background(GarageProTheme.insetSurface.opacity(0.72), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(GarageProTheme.border, lineWidth: 1)
+        )
+    }
+}
+
+private struct GarageJournalPreviewRow: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Quick Capture")
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(1.8)
+                .foregroundStyle(GarageProTheme.accent)
+
+            HStack(spacing: 8) {
+                GarageQuietChip(title: "Swing Feel")
+                GarageQuietChip(title: "Scorecard")
+                GarageQuietChip(title: "Course Note")
+            }
+
+            Text("Save the cue before it fades.")
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(GarageProTheme.textSecondary)
+        }
+        .padding(16)
+        .background(GarageProTheme.insetSurface.opacity(0.72), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(GarageProTheme.border, lineWidth: 1)
+        )
+    }
+}
+
+private struct GarageQuietChip: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: 11, weight: .bold, design: .rounded))
+            .lineLimit(1)
+            .minimumScaleFactor(0.78)
+            .foregroundStyle(GarageProTheme.textSecondary)
+            .frame(maxWidth: .infinity, minHeight: 32)
+            .padding(.horizontal, 8)
+            .background(ModuleTheme.garageTurfSurface.opacity(0.22), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(GarageProTheme.border, lineWidth: 1)
+            )
     }
 }
 
