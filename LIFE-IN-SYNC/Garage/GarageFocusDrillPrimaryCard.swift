@@ -3,6 +3,10 @@ import SwiftUI
 struct GarageFocusDrillPrimaryCard: View {
     let drillTitle: String
     let drillMetadata: String
+    let environment: PracticeEnvironment
+    let drillPositionText: String
+    let completedCount: Int
+    let totalCount: Int
     let objective: String
     let executionCommand: String
     let passCheck: String
@@ -54,37 +58,67 @@ struct GarageFocusDrillPrimaryCard: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(drillTitle)
-                    .font(.system(size: 26, weight: .black, design: .rounded))
-                    .foregroundStyle(GarageProTheme.textPrimary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.74)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label(environment.displayName, systemImage: environment.systemImage)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(GarageProTheme.accent)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
 
-                if drillMetadata.isEmpty == false {
-                    Text(drillMetadata)
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(GarageProTheme.textSecondary)
+                    Text(drillTitle)
+                        .font(.system(size: 28, weight: .black, design: .rounded))
+                        .foregroundStyle(GarageProTheme.textPrimary)
                         .lineLimit(2)
-                        .minimumScaleFactor(0.82)
+                        .minimumScaleFactor(0.72)
+                }
+
+                Spacer(minLength: 8)
+
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("\(completedCount)/\(totalCount)")
+                        .font(.system(size: 22, weight: .black, design: .monospaced))
+                        .foregroundStyle(GarageProTheme.accent)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.74)
+
+                    Text("Progress")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .textCase(.uppercase)
+                        .tracking(1.6)
+                        .foregroundStyle(GarageProTheme.textSecondary)
                 }
             }
 
-            Spacer(minLength: 8)
+            HStack(spacing: 10) {
+                Text(drillPositionText)
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(GarageProTheme.textSecondary)
 
-            Text(isCompleted ? GarageFocusRoomCopy.focusRoomRailCompletedLabel : GarageFocusRoomCopy.focusRoomRailCurrentLabel)
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .textCase(.uppercase)
-                .tracking(1.6)
-                .foregroundStyle(isCompleted ? GarageProTheme.textSecondary : GarageProTheme.accent)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(GarageProTheme.insetSurface, in: Capsule(style: .continuous))
-                .overlay(
-                    Capsule(style: .continuous)
-                        .stroke(isCompleted ? GarageProTheme.border : GarageProTheme.accent.opacity(0.3), lineWidth: 1)
-                )
+                Spacer(minLength: 8)
+
+                Text(repTarget)
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(GarageProTheme.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(GarageProTheme.insetSurface.opacity(0.66), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    .stroke(GarageProTheme.border, lineWidth: 1)
+            )
+
+            if drillMetadata.isEmpty == false {
+                Text(drillMetadata)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(GarageProTheme.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
         }
     }
 

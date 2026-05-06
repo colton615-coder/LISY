@@ -6,7 +6,7 @@ struct GarageActiveSessionView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \PracticeSessionRecord.date, order: .reverse) private var records: [PracticeSessionRecord]
     @State private var session: ActivePracticeSession
-    @State private var phase: GarageActiveSessionPhase = .lobby
+    @State private var phase: GarageActiveSessionPhase = .focusRoom
     @State private var currentDrillIndex = 0
     @State private var isDrillDetailExpanded = false
     @State private var noteEditor: DrillNoteEditorState?
@@ -21,25 +21,18 @@ struct GarageActiveSessionView: View {
         onEndSession: @escaping () -> Void
     ) {
         _session = State(initialValue: session)
+        let firstUnresolvedIndex = session.drillProgress.firstIndex { $0.isCompleted == false } ?? 0
+        _currentDrillIndex = State(initialValue: firstUnresolvedIndex)
         self.onEndSession = onEndSession
     }
 
     var body: some View {
         Group {
             switch phase {
-            case .lobby:
-                GarageSessionLobbyView(
-                    session: session,
-                    totalPlannedReps: totalPlannedReps,
-                    estimatedMinutes: totalEstimatedMinutes,
-                    primaryFocus: primaryFocusText,
-                    coachDirective: coachDirectiveText,
-                    equipment: equipmentSummary,
-                    onEnter: enterFocusRoom
-                )
             case .focusRoom:
                 GarageFocusRoomView(
                     sessionTitle: session.templateName,
+                    environment: session.environment,
                     drillPositionText: drillPositionText,
                     completedCount: session.completedDrillCount,
                     totalCount: session.totalDrillCount,
@@ -48,14 +41,12 @@ struct GarageActiveSessionView: View {
                     isDetailExpanded: isDrillDetailExpanded,
                     noteTitle: focusNoteCtaTitle,
                     primaryCtaTitle: focusPrimaryCtaTitle,
-                    backEnabled: focusBackIsEnabled,
                     onToggleDetail: {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                             isDrillDetailExpanded.toggle()
                         }
                     },
                     onSelectRailDrill: selectDrill(at:),
-                    onBack: focusBackAction,
                     onNote: {
                         if let currentEntry {
                             presentNoteEditor(for: currentEntry)
@@ -114,46 +105,11 @@ struct GarageActiveSessionView: View {
 
     private var navigationTitle: String {
         switch phase {
-        case .lobby:
-            "Session Lobby"
         case .focusRoom:
             GarageFocusRoomCopy.focusRoomNavTitle
         case .review:
             GarageFocusRoomCopy.reviewHandoffNavTitle
         }
-    }
-
-    private var totalPlannedReps: Int {
-        session.drills.reduce(0) { $0 + max($1.defaultRepCount, 0) }
-    }
-
-    private var totalEstimatedMinutes: Int {
-        session.drills.reduce(0) { $0 + GarageDrillFocusDetails.detail(for: $1).estimatedMinutes }
-    }
-
-    private var primaryFocusText: String {
-        let focusAreas = session.drills
-            .map(\.focusArea)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { $0.isEmpty == false }
-
-        let focusText = Array(NSOrderedSet(array: focusAreas).compactMap { $0 as? String })
-            .prefix(2)
-            .joined(separator: " + ")
-
-        return focusText.isEmpty ? "Focused practice reps" : focusText
-    }
-
-    private var coachDirectiveText: String {
-        currentEntry
-            .map { GarageDrillFocusDetails.detail(for: $0.drill).resetCue } ??
-            session.drills.first.map { GarageDrillFocusDetails.detail(for: $0).resetCue } ??
-            "Enter with one clear cue and make each rep count."
-    }
-
-    private var equipmentSummary: [String] {
-        let equipment = session.drills.flatMap { GarageDrillFocusDetails.detail(for: $0).equipment }
-        return Array(NSOrderedSet(array: equipment).compactMap { $0 as? String }).prefix(5).map { $0 }
     }
 
     private var currentEntry: PracticeSessionDrillEntry? {
@@ -174,10 +130,6 @@ struct GarageActiveSessionView: View {
 
     private var focusPrimaryCtaTitle: String {
         unresolvedDrillIndex == nil ? GarageFocusRoomCopy.focusRoomEnterReviewCta : GarageFocusRoomCopy.focusRoomMarkCompleteCta
-    }
-
-    private var focusBackIsEnabled: Bool {
-        session.totalDrillCount == 0 || currentDrillIndex > 0
     }
 
     private var focusNoteCtaTitle: String {
@@ -273,22 +225,6 @@ struct GarageActiveSessionView: View {
         )
     }
 
-    private func enterFocusRoom() {
-        garageTriggerImpact(.heavy)
-        guard session.totalDrillCount > 0 else {
-            phase = .focusRoom
-            return
-        }
-
-        if let firstUnresolvedIndex = unresolvedDrillIndex {
-            currentDrillIndex = firstUnresolvedIndex
-            isDrillDetailExpanded = false
-            phase = .focusRoom
-        } else {
-            presentReview(autoRouted: true)
-        }
-    }
-
     private func selectDrill(at index: Int) {
         let entries = session.orderedDrillEntries
         guard entries.indices.contains(index) else {
@@ -302,18 +238,6 @@ struct GarageActiveSessionView: View {
         garageTriggerSelection()
         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
             currentDrillIndex = index
-            isDrillDetailExpanded = false
-        }
-    }
-
-    private func moveToPreviousDrill() {
-        guard currentDrillIndex > 0 else {
-            return
-        }
-
-        garageTriggerSelection()
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-            currentDrillIndex -= 1
             isDrillDetailExpanded = false
         }
     }
@@ -344,15 +268,6 @@ struct GarageActiveSessionView: View {
         } else {
             completeCurrentDrill()
         }
-    }
-
-    private func focusBackAction() {
-        if session.totalDrillCount == 0 {
-            onEndSession()
-            return
-        }
-
-        moveToPreviousDrill()
     }
 
     private func nextUnresolvedDrillIndex(after index: Int) -> Int? {
@@ -407,7 +322,6 @@ struct GarageActiveSessionView: View {
 }
 
 private enum GarageActiveSessionPhase {
-    case lobby
     case focusRoom
     case review
 }

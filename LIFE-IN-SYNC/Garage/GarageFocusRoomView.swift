@@ -47,6 +47,7 @@ struct GarageFocusRoomView: View {
     @State private var isRoutineVisible = false
 
     let sessionTitle: String
+    let environment: PracticeEnvironment
     let drillPositionText: String
     let completedCount: Int
     let totalCount: Int
@@ -55,10 +56,8 @@ struct GarageFocusRoomView: View {
     let isDetailExpanded: Bool
     let noteTitle: String
     let primaryCtaTitle: String
-    let backEnabled: Bool
     let onToggleDetail: () -> Void
     let onSelectRailDrill: (Int) -> Void
-    let onBack: () -> Void
     let onNote: () -> Void
     let onPrimary: () -> Void
     let onExitEmptyRoutine: () -> Void
@@ -66,16 +65,13 @@ struct GarageFocusRoomView: View {
     var body: some View {
         if let drill {
             GarageProScaffold(bottomPadding: GarageFocusRoomLayout.contentBottomInset) {
-                GarageFocusRoomHeader(
-                    sessionTitle: sessionTitle,
-                    drillPositionText: drillPositionText,
-                    completedCount: completedCount,
-                    totalCount: totalCount
-                )
-
                 GarageFocusDrillPrimaryCard(
                     drillTitle: drill.title,
                     drillMetadata: drill.metadata,
+                    environment: environment,
+                    drillPositionText: drillPositionText,
+                    completedCount: completedCount,
+                    totalCount: totalCount,
                     objective: drill.objective,
                     executionCommand: drill.executionCommand,
                     passCheck: drill.passCheck,
@@ -112,14 +108,8 @@ struct GarageFocusRoomView: View {
                     onPrimary: onPrimary
                 )
                 .background(
-                    LinearGradient(
-                        colors: [
-                            ModuleTheme.garageBackground.opacity(0.0),
-                            ModuleTheme.garageBackground.opacity(0.92)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
+                    GarageProTheme.background
+                        .ignoresSafeArea(edges: .bottom)
                 )
             }
         } else {
@@ -146,7 +136,7 @@ struct GarageFocusRoomView: View {
 }
 
 private enum GarageFocusRoomLayout {
-    static let contentBottomInset: CGFloat = 128
+    static let contentBottomInset: CGFloat = 156
 }
 
 private struct GarageRoutineDisclosureButton: View {
