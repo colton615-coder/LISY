@@ -7,40 +7,12 @@ struct GarageFocusDrillPresentation {
     let executionCommand: String
     let passCheck: String
     let repTarget: String
-    let visualKind: GarageFocusDrillVisualKind
+    let diagram: GarageDrillDiagram
     let setup: [String]
     let commonMisses: [String]
     let resetCue: String
     let equipment: [String]
     let isCompleted: Bool
-}
-
-enum GarageFocusDrillVisualKind: Hashable {
-    case towel
-    case putting
-    case range
-    case net
-
-    init(drill: PracticeTemplateDrill) {
-        let title = drill.title.localizedLowercase
-
-        if title.contains("towel") {
-            self = .towel
-            return
-        }
-
-        if DrillVault.canonicalDrill(for: drill)?.environment == .puttingGreen || title.contains("putt") || title.contains("gate") {
-            self = .putting
-            return
-        }
-
-        if DrillVault.canonicalDrill(for: drill)?.environment == .range {
-            self = .range
-            return
-        }
-
-        self = .net
-    }
 }
 
 struct GarageFocusRoomView: View {
@@ -76,7 +48,7 @@ struct GarageFocusRoomView: View {
                     executionCommand: drill.executionCommand,
                     passCheck: drill.passCheck,
                     repTarget: drill.repTarget,
-                    visualKind: drill.visualKind,
+                    diagram: drill.diagram,
                     setup: drill.setup,
                     commonMisses: drill.commonMisses,
                     resetCue: drill.resetCue,

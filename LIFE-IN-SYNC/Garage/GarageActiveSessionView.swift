@@ -175,7 +175,10 @@ struct GarageActiveSessionView: View {
             executionCommand: executionCommand,
             passCheck: passCheck,
             repTarget: detail.repTargetText(for: currentEntry.drill),
-            visualKind: GarageFocusDrillVisualKind(drill: currentEntry.drill),
+            diagram: GarageDrillDiagramLibrary.diagram(
+                for: currentEntry.drill,
+                environment: session.environment
+            ),
             setup: setup.isEmpty ? ["Missing drill setup data"] : setup,
             commonMisses: commonMisses.isEmpty ? ["Missing drill common-miss data"] : commonMisses,
             resetCue: resetCue.isEmpty ? "Missing drill reset-cue data" : resetCue,
