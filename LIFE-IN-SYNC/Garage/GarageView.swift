@@ -47,17 +47,17 @@ struct GarageView: View {
                     case let .savedRoutines(environment):
                         GarageSavedRoutinesView(
                             environment: environment,
-                            onStartTemplate: { template in
+                            onReviewRoutine: { reviewPlan in
                                 garageTriggerSelection()
-                                path.append(.activeSession(ActivePracticeSession(template: template)))
+                                path.append(.routineReview(reviewPlan))
                             },
-                            onOpenVault: {
+                            onGenerateRoutine: {
                                 garageTriggerSelection()
-                                path.append(.vault)
+                                path.append(.generateRoutine(environment))
                             },
-                            onOpenDrillLibrary: {
+                            onBuildRoutine: {
                                 garageTriggerSelection()
-                                path.append(.drillLibrary)
+                                path.append(.buildRoutine(environment))
                             }
                         )
                     case let .generateRoutine(environment):
@@ -65,7 +65,7 @@ struct GarageView: View {
                             environment: environment,
                             onReviewPlan: { plan in
                                 garageTriggerSelection()
-                                path.append(.coachPlan(plan))
+                                path.append(.routineReview(GarageRoutineReviewPlan(generatedPlan: plan)))
                             },
                             onOpenSavedRoutines: {
                                 garageTriggerSelection()
@@ -86,6 +86,11 @@ struct GarageView: View {
                         GarageDrillLibraryView { template in
                             garageTriggerSelection()
                             path.append(.activeSession(ActivePracticeSession(template: template)))
+                        }
+                    case let .routineReview(reviewPlan):
+                        GarageRoutineReviewView(reviewPlan: reviewPlan) { reviewedPlan in
+                            garageTriggerSelection()
+                            path.append(.activeSession(ActivePracticeSession(template: reviewedPlan.makePracticeTemplate())))
                         }
                     case let .coachPlan(plan):
                         GarageCoachPlanReviewView(plan: plan) { reviewedPlan in
@@ -127,6 +132,7 @@ private enum GarageNavigationDestination: Hashable {
     case journalArchive
     case vault
     case drillLibrary
+    case routineReview(GarageRoutineReviewPlan)
     case coachPlan(GarageGeneratedPracticePlan)
     case diagnostic(PracticeEnvironment?)
     case activeSession(ActivePracticeSession)

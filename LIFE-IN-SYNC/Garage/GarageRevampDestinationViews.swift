@@ -1,5 +1,101 @@
+import Foundation
 import SwiftData
 import SwiftUI
+
+struct GarageRoutineReviewPlan: Identifiable, Hashable {
+    enum Source: Hashable {
+        case saved
+        case generated
+
+        var eyebrow: String {
+            switch self {
+            case .saved:
+                return "Saved Routine"
+            case .generated:
+                return "Generated Routine"
+            }
+        }
+
+        var canSave: Bool {
+            switch self {
+            case .saved:
+                return false
+            case .generated:
+                return true
+            }
+        }
+    }
+
+    let id: UUID
+    let title: String
+    let environment: PracticeEnvironment
+    let purpose: String
+    let note: String?
+    let drills: [PracticeTemplateDrill]
+    let source: Source
+    let createdAt: Date
+
+    init(template: PracticeTemplate, selectedEnvironment: PracticeEnvironment) {
+        let environment = PracticeEnvironment(rawValue: template.environment) ?? selectedEnvironment
+        let fallbackPurpose = template.drills.first?.focusArea.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        self.id = template.id
+        self.title = template.title
+        self.environment = environment
+        self.purpose = fallbackPurpose?.isEmpty == false ? fallbackPurpose ?? "Saved routine" : "Saved routine"
+        self.note = nil
+        self.drills = template.drills
+        self.source = .saved
+        self.createdAt = template.createdAt
+    }
+
+    init(generatedPlan: GarageGeneratedPracticePlan) {
+        let note = generatedPlan.coachNote.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        self.id = generatedPlan.id
+        self.title = generatedPlan.title
+        self.environment = generatedPlan.environment
+        self.purpose = generatedPlan.objective
+        self.note = note.isEmpty ? nil : note
+        self.drills = generatedPlan.drills
+        self.source = .generated
+        self.createdAt = .now
+    }
+
+    var drillCount: Int {
+        drills.count
+    }
+
+    var totalRepCount: Int {
+        drills.reduce(0) { $0 + $1.defaultRepCount }
+    }
+
+    var estimatedDurationMinutes: Int {
+        guard drills.isEmpty == false else {
+            return 0
+        }
+
+        let detailedMinutes = drills.reduce(0) { partialResult, drill in
+            partialResult + GarageDrillFocusDetails.detail(for: drill).estimatedMinutes
+        }
+
+        return max(12, detailedMinutes)
+    }
+
+    var canStart: Bool {
+        drills.isEmpty == false
+    }
+
+    func makePracticeTemplate() -> PracticeTemplate {
+        PracticeTemplate(
+            id: id,
+            title: title,
+            environment: environment.rawValue,
+            drills: drills,
+            createdAt: createdAt
+        )
+    }
+}
 
 @MainActor
 struct GarageEnvironmentDrillPlansView: View {
@@ -62,9 +158,9 @@ struct GarageSavedRoutinesView: View {
     @Query(sort: \PracticeSessionRecord.date, order: .reverse) private var records: [PracticeSessionRecord]
 
     let environment: PracticeEnvironment
-    let onStartTemplate: (PracticeTemplate) -> Void
-    let onOpenVault: () -> Void
-    let onOpenDrillLibrary: () -> Void
+    let onReviewRoutine: (GarageRoutineReviewPlan) -> Void
+    let onGenerateRoutine: () -> Void
+    let onBuildRoutine: () -> Void
 
     private var savedTemplates: [PracticeTemplate] {
         allTemplates.filter { $0.environment == environment.rawValue }
@@ -107,6 +203,20 @@ struct GarageSavedRoutinesView: View {
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(GarageProTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            VStack(spacing: 10) {
+                GarageSecondaryRouteButton(
+                    title: "Generate Routine",
+                    systemImage: "sparkles",
+                    action: onGenerateRoutine
+                )
+
+                GarageSecondaryRouteButton(
+                    title: "Build My Own",
+                    systemImage: "slider.horizontal.3",
+                    action: onBuildRoutine
+                )
+            }
         }
     }
 
@@ -120,7 +230,7 @@ struct GarageSavedRoutinesView: View {
             ForEach(savedTemplates, id: \.id) { template in
                 Button {
                     garageTriggerImpact(.heavy)
-                    onStartTemplate(template)
+                    onReviewRoutine(GarageRoutineReviewPlan(template: template, selectedEnvironment: environment))
                 } label: {
                     GarageSavedRoutineCard(template: template)
                 }
@@ -139,20 +249,6 @@ struct GarageSavedRoutinesView: View {
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(GarageProTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-
-            VStack(spacing: 10) {
-                GarageSecondaryRouteButton(
-                    title: "Practice History",
-                    systemImage: "archivebox.fill",
-                    action: onOpenVault
-                )
-
-                GarageSecondaryRouteButton(
-                    title: "Drill Library",
-                    systemImage: "book.closed.fill",
-                    action: onOpenDrillLibrary
-                )
-            }
         }
     }
 }
@@ -219,6 +315,181 @@ struct GarageGenerateRoutineView: View {
     }
 }
 
+@MainActor
+struct GarageRoutineReviewView: View {
+    @Environment(\.modelContext) private var modelContext
+
+    @State private var didSaveRoutine = false
+    @State private var saveErrorMessage: String?
+
+    let reviewPlan: GarageRoutineReviewPlan
+    let onStartRoutine: (GarageRoutineReviewPlan) -> Void
+
+    var body: some View {
+        GarageProScaffold(bottomPadding: 56) {
+            heroCard
+            purposeCard
+            drillListSection
+            actionSection
+        }
+        .navigationTitle("Review Routine")
+        .navigationBarTitleDisplayMode(.inline)
+        .alert("Unable To Save Routine", isPresented: saveErrorAlertIsPresented) {
+            Button("OK", role: .cancel) {
+                saveErrorMessage = nil
+            }
+        } message: {
+            Text(saveErrorMessage ?? "An unexpected error occurred.")
+        }
+    }
+
+    private var heroCard: some View {
+        GarageProHeroCard(
+            eyebrow: reviewPlan.source.eyebrow,
+            title: reviewPlan.title,
+            subtitle: reviewPlan.environment.displayName,
+            value: "\(reviewPlan.drillCount)",
+            valueLabel: reviewPlan.drillCount == 1 ? "Drill" : "Drills"
+        ) {
+            Image(systemName: reviewPlan.environment.systemImage)
+                .font(.system(size: 24, weight: .bold))
+                .foregroundStyle(GarageProTheme.accent)
+                .frame(width: 60, height: 60)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(GarageProTheme.accent.opacity(0.3), lineWidth: 1)
+                )
+        }
+    }
+
+    private var purposeCard: some View {
+        GarageProCard(isActive: true, cornerRadius: 24, padding: 18) {
+            Text("Routine Purpose")
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(2)
+                .foregroundStyle(GarageProTheme.accent)
+
+            Text(reviewPlan.purpose)
+                .font(.system(.title3, design: .rounded).weight(.black))
+                .foregroundStyle(GarageProTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let note = reviewPlan.note {
+                Text(note)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(GarageProTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 10) {
+                GarageRoutineReviewMetric(
+                    title: "Environment",
+                    value: reviewPlan.environment.displayName,
+                    systemImage: reviewPlan.environment.systemImage
+                )
+
+                GarageRoutineReviewMetric(
+                    title: "Time",
+                    value: "\(reviewPlan.estimatedDurationMinutes)m",
+                    systemImage: "timer"
+                )
+
+                GarageRoutineReviewMetric(
+                    title: "Reps",
+                    value: "\(reviewPlan.totalRepCount)",
+                    systemImage: "repeat"
+                )
+            }
+        }
+    }
+
+    private var drillListSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            GarageProSectionHeader(
+                eyebrow: "Review",
+                title: "Drill Order"
+            )
+
+            if reviewPlan.drills.isEmpty {
+                GarageProCard(cornerRadius: 22, padding: 16) {
+                    Text("No drills in this routine.")
+                        .font(.system(.headline, design: .rounded).weight(.black))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+
+                    Text("Add drills before starting a Focus Room session.")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                }
+            } else {
+                VStack(spacing: 12) {
+                    ForEach(Array(reviewPlan.drills.enumerated()), id: \.element.id) { offset, drill in
+                        GarageRoutineReviewDrillRow(index: offset + 1, drill: drill)
+                    }
+                }
+            }
+        }
+    }
+
+    private var actionSection: some View {
+        GarageProCard(isActive: reviewPlan.canStart, cornerRadius: 24, padding: 16) {
+            if reviewPlan.canStart == false {
+                Text("This routine needs at least one drill before it can start.")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(GarageProTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(spacing: 12) {
+                GarageProPrimaryButton(
+                    title: "Start Routine",
+                    systemImage: "play.fill",
+                    isEnabled: reviewPlan.canStart
+                ) {
+                    onStartRoutine(reviewPlan)
+                }
+
+                if reviewPlan.source.canSave {
+                    GarageRoutineReviewSaveButton(
+                        didSave: didSaveRoutine,
+                        action: saveRoutine
+                    )
+                }
+            }
+        }
+    }
+
+    private var saveErrorAlertIsPresented: Binding<Bool> {
+        Binding(
+            get: { saveErrorMessage != nil },
+            set: { isPresented in
+                if isPresented == false {
+                    saveErrorMessage = nil
+                }
+            }
+        )
+    }
+
+    private func saveRoutine() {
+        guard reviewPlan.source.canSave, didSaveRoutine == false else {
+            return
+        }
+
+        let template = reviewPlan.makePracticeTemplate()
+        modelContext.insert(template)
+
+        do {
+            try modelContext.save()
+            didSaveRoutine = true
+            garageTriggerImpact(.medium)
+        } catch {
+            modelContext.delete(template)
+            saveErrorMessage = error.localizedDescription
+        }
+    }
+}
+
 private struct GarageGenerateRoutineMetaRow: View {
     let environment: PracticeEnvironment
     let drillCount: Int
@@ -261,6 +532,105 @@ private struct GarageGenerateRoutineMetaPill: View {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(GarageProTheme.border, lineWidth: 1)
             )
+    }
+}
+
+private struct GarageRoutineReviewMetric: View {
+    let title: String
+    let value: String
+    let systemImage: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(GarageProTheme.accent)
+
+            Text(value)
+                .font(.system(size: 17, weight: .black, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .foregroundStyle(GarageProTheme.textPrimary)
+
+            Text(title)
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(1.4)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .foregroundStyle(GarageProTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
+        .padding(12)
+        .background(GarageProTheme.insetSurface.opacity(0.82), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(GarageProTheme.border, lineWidth: 1)
+        )
+    }
+}
+
+private struct GarageRoutineReviewDrillRow: View {
+    let index: Int
+    let drill: PracticeTemplateDrill
+
+    var body: some View {
+        GarageProCard(isActive: true, cornerRadius: 22, padding: 16) {
+            HStack(alignment: .top, spacing: 14) {
+                Text("\(index)")
+                    .font(.system(size: 17, weight: .black, design: .monospaced))
+                    .foregroundStyle(GarageProTheme.accent)
+                    .frame(width: 42, height: 42)
+                    .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 15, style: .continuous)
+                            .stroke(GarageProTheme.accent.opacity(0.24), lineWidth: 1)
+                    )
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(drill.title)
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(drill.metadataSummary)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+}
+
+private struct GarageRoutineReviewSaveButton: View {
+    let didSave: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            guard didSave == false else {
+                return
+            }
+
+            garageTriggerSelection()
+            action()
+        } label: {
+            Label(didSave ? "Routine Saved" : "Save Routine", systemImage: didSave ? "checkmark.seal.fill" : "bookmark.fill")
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+                .foregroundStyle(didSave ? GarageProTheme.accent : GarageProTheme.textPrimary)
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .background(GarageProTheme.insetSurface.opacity(0.86), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 17, style: .continuous)
+                        .stroke(didSave ? GarageProTheme.accent.opacity(0.34) : GarageProTheme.border, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(didSave)
     }
 }
 
