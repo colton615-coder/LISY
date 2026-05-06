@@ -11,6 +11,10 @@ struct GarageTemplateBuilderWizard: View {
     @State private var isPresentingNewDrillSheet = false
     @State private var saveErrorMessage: String?
 
+    init(initialEnvironment: PracticeEnvironment = .net) {
+        _draft = State(initialValue: GarageTemplateDraft(environment: initialEnvironment))
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             GarageTemplateSetupStep(
@@ -39,7 +43,7 @@ struct GarageTemplateBuilderWizard: View {
                 draft.toggle(definition)
             }
         }
-        .alert("Unable To Save Template", isPresented: saveErrorAlertIsPresented) {
+        .alert("Unable To Save Routine", isPresented: saveErrorAlertIsPresented) {
             Button("OK", role: .cancel) {
                 saveErrorMessage = nil
             }
@@ -124,17 +128,17 @@ private struct GarageTemplateSetupStep: View {
     var body: some View {
         GarageProScaffold {
             GarageProHeroCard(
-                eyebrow: "Template Builder",
+                eyebrow: "Routine Builder",
                 title: "New Routine",
                 subtitle: "Name the routine and choose the practice surface before adding drills."
             )
 
             GarageProCard {
-                Text("Template Title")
+                Text("Routine Name")
                     .font(.system(.headline, design: .rounded).weight(.black))
                     .foregroundStyle(GarageProTheme.textPrimary)
 
-                TextField("Template Title", text: $draft.title)
+                TextField("Routine Name", text: $draft.title)
                     .padding(16)
                     .frame(minHeight: 60)
                     .foregroundStyle(GarageProTheme.textPrimary)
@@ -176,7 +180,7 @@ private struct GarageTemplateSetupStep: View {
                 }
             }
         }
-        .navigationTitle("New Template")
+        .navigationTitle("New Routine")
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -266,7 +270,7 @@ private struct GarageTemplateDictionaryStep: View {
                             .font(.system(.headline, design: .rounded).weight(.black))
                             .foregroundStyle(GarageProTheme.textPrimary)
 
-                        Text("Pick drills from the dictionary to build this template.")
+                        Text("Pick drills from the dictionary to build this routine.")
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(GarageProTheme.textSecondary)
                     }
@@ -279,7 +283,7 @@ private struct GarageTemplateDictionaryStep: View {
 
             HStack {
                 GarageProPrimaryButton(
-                    title: "Review Template",
+                    title: "Review Routine",
                     systemImage: "arrow.right",
                     isEnabled: draft.canReview
                 ) {
@@ -353,7 +357,7 @@ private struct GarageTemplateReviewStep: View {
 
             HStack {
                 GarageProPrimaryButton(
-                    title: "Save Template",
+                    title: "Save Routine",
                     systemImage: "checkmark"
                 ) {
                     onSave()

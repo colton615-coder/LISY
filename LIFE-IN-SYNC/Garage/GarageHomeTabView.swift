@@ -23,425 +23,318 @@ struct GarageProSectionHeader: View {
 
 @MainActor
 struct GarageHomeTabView: View {
-    @Query(sort: \PracticeSessionRecord.date, order: .reverse) private var records: [PracticeSessionRecord]
-    @State private var selectedRoutineIDs: [String: String] = [:]
-    @Binding var selectedTab: GarageRootTab
+    @State private var activeCard: GarageHomeCardKind? = .drillPlans
 
-    let onStartRoutine: (GarageRoutine) -> Void
-    let onGenerateRoutine: (PracticeEnvironment, [PracticeSessionRecord]) -> Void
-    let onOpenLatestSession: (PracticeSessionRecord) -> Void
+    let onOpenEnvironment: (PracticeEnvironment) -> Void
+    let onStartTempoBuilder: () -> Void
+    let onNewJournalEntry: () -> Void
+    let onOpenJournalArchive: () -> Void
 
-    private var latestRecord: PracticeSessionRecord? {
-        records.first
-    }
+    private let cards = GarageHomeCardKind.allCases
 
     var body: some View {
-        GarageProScaffold(bottomPadding: 40) {
-            environmentSection
-            carryForwardSection
-            librarySection
+        GeometryReader { proxy in
+            ZStack {
+                GarageProTheme.background
+                    .ignoresSafeArea()
+
+                LinearGradient(
+                    colors: [
+                        ModuleTheme.garageBackgroundLift.opacity(0.96),
+                        ModuleTheme.garageBackground.opacity(0.99),
+                        ModuleTheme.garageSurfaceDark.opacity(0.94)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+
+                VStack(alignment: .leading, spacing: 18) {
+                    header
+                        .padding(.horizontal, 20)
+                        .padding(.top, 18)
+
+                    cardDeck(in: proxy)
+
+                    GarageHomePageIndicator(cards: cards, activeCard: activeCard ?? .drillPlans)
+                        .frame(maxWidth: .infinity)
+                        .padding(.bottom, 18)
+                }
+            }
         }
         .toolbar(.hidden, for: .navigationBar)
+        .tint(GarageProTheme.accent)
     }
 
-    private var environmentSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            GarageProSectionHeader(
-                eyebrow: "Start Here",
-                title: "Choose Environment"
-            )
+    private var header: some View {
+        HStack(alignment: .lastTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Garage")
+                    .font(.system(size: 34, weight: .black, design: .rounded))
+                    .foregroundStyle(GarageProTheme.textPrimary)
 
-            VStack(spacing: 8) {
-                ForEach(PracticeEnvironment.allCases) { environment in
-                    GarageHomeEnvironmentCard(
-                        environment: environment,
-                        sessionCount: records.filter { $0.environment == environment.rawValue }.count,
-                        selectedRoutine: selectedRoutine(for: environment),
-                        routines: DrillVault.routines(in: environment),
-                        onSelectRoutine: { routine in
-                            selectedRoutineIDs[environment.rawValue] = routine.id
-                        },
-                        onStartRoutine: {
-                            onStartRoutine(selectedRoutine(for: environment))
-                        },
-                        onGenerateRoutine: {
-                            onGenerateRoutine(environment, records)
-                        }
+                Text("Choose the work. Keep the session focused.")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(GarageProTheme.textSecondary)
+            }
+
+            Spacer(minLength: 12)
+
+            Image(systemName: "figure.golf")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(GarageProTheme.accent)
+                .frame(width: 46, height: 46)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(GarageProTheme.border, lineWidth: 1)
+                )
+        }
+    }
+
+    private func cardDeck(in proxy: GeometryProxy) -> some View {
+        let cardWidth = max(proxy.size.width - 54, 300)
+        let cardHeight = max(proxy.size.height - 168, 500)
+
+        return ScrollView(.horizontal) {
+            LazyHStack(spacing: 14) {
+                ForEach(cards) { card in
+                    GarageHomeSwipeCard(
+                        card: card,
+                        onOpenEnvironment: onOpenEnvironment,
+                        onStartTempoBuilder: onStartTempoBuilder,
+                        onNewJournalEntry: onNewJournalEntry,
+                        onOpenJournalArchive: onOpenJournalArchive
+                    )
+                    .frame(width: cardWidth, height: cardHeight)
+                    .id(card)
+                }
+            }
+            .scrollTargetLayout()
+            .padding(.horizontal, 20)
+        }
+        .scrollIndicators(.hidden)
+        .scrollTargetBehavior(.viewAligned)
+        .scrollPosition(id: $activeCard)
+    }
+}
+
+private enum GarageHomeCardKind: String, CaseIterable, Identifiable, Hashable {
+    case drillPlans
+    case tempoBuilder
+    case journal
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .drillPlans:
+            "Drill Plans"
+        case .tempoBuilder:
+            "Tempo Builder"
+        case .journal:
+            "Journal"
+        }
+    }
+
+    var eyebrow: String {
+        switch self {
+        case .drillPlans:
+            "Practice"
+        case .tempoBuilder:
+            "Rhythm"
+        case .journal:
+            "Memory"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .drillPlans:
+            "Choose the surface first, then select or create a repeatable routine."
+        case .tempoBuilder:
+            "Train swing rhythm and timing with a focused, standalone practice tool."
+        case .journal:
+            "Capture the cues, feels, and course lessons worth carrying forward."
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .drillPlans:
+            "square.grid.2x2.fill"
+        case .tempoBuilder:
+            "metronome.fill"
+        case .journal:
+            "book.closed.fill"
+        }
+    }
+}
+
+private struct GarageHomeSwipeCard: View {
+    let card: GarageHomeCardKind
+    let onOpenEnvironment: (PracticeEnvironment) -> Void
+    let onStartTempoBuilder: () -> Void
+    let onNewJournalEntry: () -> Void
+    let onOpenJournalArchive: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            cardHeader
+
+            Spacer(minLength: 12)
+
+            switch card {
+            case .drillPlans:
+                environmentActions
+            case .tempoBuilder:
+                GarageRevampPrimaryActionButton(
+                    title: "Start",
+                    systemImage: "play.fill",
+                    action: onStartTempoBuilder
+                )
+            case .journal:
+                VStack(spacing: 12) {
+                    GarageRevampPrimaryActionButton(
+                        title: "New Entry",
+                        systemImage: "square.and.pencil",
+                        action: onNewJournalEntry
+                    )
+
+                    GarageRevampSecondaryActionButton(
+                        title: "Archive",
+                        systemImage: "archivebox.fill",
+                        action: onOpenJournalArchive
                     )
                 }
             }
         }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: 30, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            ModuleTheme.garageTurfSurface.opacity(0.86),
+                            GarageProTheme.elevatedSurface.opacity(0.94),
+                            GarageProTheme.insetSurface.opacity(0.9)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 30, style: .continuous)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+        )
+        .shadow(color: GarageProTheme.darkShadow.opacity(0.95), radius: 24, x: 0, y: 18)
+        .shadow(color: GarageProTheme.glow.opacity(0.18), radius: 22, x: 0, y: 0)
     }
 
-    private var librarySection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            GarageProSectionHeader(
-                eyebrow: "More Garage",
-                title: "Vault + Drills"
-            )
+    private var cardHeader: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 14) {
+                Image(systemName: card.systemImage)
+                    .font(.system(size: 22, weight: .black))
+                    .foregroundStyle(GarageProTheme.accent)
+                    .frame(width: 62, height: 62)
+                    .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .stroke(GarageProTheme.accent.opacity(0.28), lineWidth: 1)
+                    )
 
-            GarageInlineTabSwitcher(selectedTab: $selectedTab)
+                Spacer(minLength: 12)
+
+                Text(card.eyebrow)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .textCase(.uppercase)
+                    .tracking(2.1)
+                    .foregroundStyle(GarageProTheme.accent.opacity(0.86))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(GarageProTheme.insetSurface.opacity(0.78), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(GarageProTheme.border, lineWidth: 1)
+                    )
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text(card.title)
+                    .font(.system(size: 42, weight: .black, design: .rounded))
+                    .foregroundStyle(GarageProTheme.textPrimary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.68)
+
+                Text(card.subtitle)
+                    .font(.system(.body, design: .rounded).weight(.medium))
+                    .foregroundStyle(GarageProTheme.textSecondary)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
-    private var carryForwardSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            GarageProSectionHeader(
-                eyebrow: "Carry Forward",
-                title: "What did I learn last time?"
-            )
-
-            if let latestRecord {
-                Button {
-                    onOpenLatestSession(latestRecord)
-                } label: {
-                    GarageProCard(isActive: true, cornerRadius: 24, padding: 18) {
-                        Text(relativeSessionText(for: latestRecord.date))
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .textCase(.uppercase)
-                            .tracking(2)
-                            .foregroundStyle(GarageProTheme.accent)
-
-                        Text(latestRecord.templateName)
-                            .font(.system(.headline, design: .rounded).weight(.black))
-                            .foregroundStyle(GarageProTheme.textPrimary)
-
-                        Text(carryForwardNote(for: latestRecord))
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(GarageProTheme.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        Text("\(latestRecord.aggregateEfficiencyText) efficiency • \(latestRecord.totalSuccessfulReps)/\(latestRecord.totalAttemptedReps) successful reps")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(GarageProTheme.accent.opacity(0.88))
-                    }
+    private var environmentActions: some View {
+        VStack(spacing: 12) {
+            ForEach(PracticeEnvironment.allCases) { environment in
+                GarageRevampEnvironmentButton(environment: environment) {
+                    onOpenEnvironment(environment)
                 }
-                .buttonStyle(.plain)
-            } else {
-                GarageProCard(cornerRadius: 24, padding: 18) {
-                    Text("No completed sessions yet")
+            }
+        }
+    }
+}
+
+private struct GarageRevampEnvironmentButton: View {
+    let environment: PracticeEnvironment
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            garageTriggerSelection()
+            action()
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: environment.systemImage)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(GarageProTheme.accent)
+                    .frame(width: 48, height: 48)
+                    .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(environment.displayName)
                         .font(.system(.headline, design: .rounded).weight(.black))
                         .foregroundStyle(GarageProTheme.textPrimary)
 
-                    Text("Finish a routine and Garage will bring the most useful cue back here.")
-                        .font(.subheadline.weight(.medium))
+                    Text(environment.description)
+                        .font(.footnote.weight(.medium))
                         .foregroundStyle(GarageProTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(2)
                 }
-            }
-        }
-    }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-    private func selectedRoutine(for environment: PracticeEnvironment) -> GarageRoutine {
-        let routines = DrillVault.routines(in: environment)
-        let storedID = selectedRoutineIDs[environment.rawValue]
-
-        if let storedID,
-           let matched = routines.first(where: { $0.id == storedID }) {
-            return matched
-        }
-
-        return routines.first ?? DrillVault.predefinedRoutines.first(where: { $0.environment == environment }) ?? DrillVault.predefinedRoutines[0]
-    }
-
-    private func carryForwardNote(for record: PracticeSessionRecord) -> String {
-        if let cue = GarageCoachingInsight.decode(from: record.aiCoachingInsight)?
-            .primaryCue?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           cue.isEmpty == false {
-            return cue
-        }
-
-        let feel = record.sessionFeelNote.trimmingCharacters(in: .whitespacesAndNewlines)
-        if feel.isEmpty == false {
-            return feel
-        }
-
-        let notes = record.aggregatedNotes.trimmingCharacters(in: .whitespacesAndNewlines)
-        return notes.isEmpty ? "No cue recorded yet. Open the session to review the full readback." : notes
-    }
-
-    private func relativeSessionText(for date: Date) -> String {
-        let calendar = Calendar.current
-        if calendar.isDateInToday(date) {
-            return "Last Session • Today"
-        }
-
-        if calendar.isDateInYesterday(date) {
-            return "Last Session • Yesterday"
-        }
-
-        let dayDelta = calendar.dateComponents(
-            [.day],
-            from: calendar.startOfDay(for: date),
-            to: calendar.startOfDay(for: .now)
-        ).day ?? 0
-
-        if dayDelta >= 2 {
-            return "Last Session • \(dayDelta) days ago"
-        }
-
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        return "Last Session • \(formatter.localizedString(for: date, relativeTo: .now).lowercased())"
-    }
-}
-
-private struct GarageHomeEnvironmentCard: View {
-    let environment: PracticeEnvironment
-    let sessionCount: Int
-    let selectedRoutine: GarageRoutine
-    let routines: [GarageRoutine]
-    let onSelectRoutine: (GarageRoutine) -> Void
-    let onStartRoutine: () -> Void
-    let onGenerateRoutine: () -> Void
-
-    var body: some View {
-        GarageCompactEnvironmentCardSurface {
-            GarageEnvironmentCardHeader(
-                environment: environment,
-                sessionCount: sessionCount,
-                routineCount: routines.count
-            )
-
-            GarageRoutineChipRow(
-                routines: routines,
-                selectedRoutineID: selectedRoutine.id,
-                onSelectRoutine: onSelectRoutine
-            )
-
-            GarageRoutineDetailSummary(routine: selectedRoutine)
-
-            GarageRoutineActionRow(
-                onGenerateRoutine: onGenerateRoutine,
-                onStartRoutine: onStartRoutine
-            )
-        }
-    }
-}
-
-private struct GarageCompactEnvironmentCardSurface<Content: View>: View {
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            content
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(GarageProTheme.elevatedSurface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(GarageProTheme.accent.opacity(0.28), lineWidth: 1)
-        )
-        .shadow(color: GarageProTheme.darkShadow, radius: 12, x: 0, y: 8)
-        .shadow(color: GarageProTheme.glow.opacity(0.16), radius: 12, x: 0, y: 0)
-    }
-}
-
-private struct GarageEnvironmentCardHeader: View {
-    let environment: PracticeEnvironment
-    let sessionCount: Int
-    let routineCount: Int
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 9) {
-            Image(systemName: environment.systemImage)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(GarageProTheme.accent)
-                .frame(width: 34, height: 34)
-                .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(environment.displayName)
-                    .font(.system(size: 14, weight: .black, design: .rounded))
-                    .foregroundStyle(GarageProTheme.textPrimary)
-                    .lineLimit(1)
-
-                Text(environment.description)
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.black))
                     .foregroundStyle(GarageProTheme.textSecondary)
-                    .lineLimit(2)
-
-                Text("\(routineCount) preset routines • \(sessionCount) saved sessions")
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .foregroundStyle(GarageProTheme.accent.opacity(0.88))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
             }
-        }
-    }
-}
-
-private struct GarageRoutineChipRow: View {
-    let routines: [GarageRoutine]
-    let selectedRoutineID: String
-    let onSelectRoutine: (GarageRoutine) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Preset Routines")
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-                .textCase(.uppercase)
-                .tracking(1.4)
-                .foregroundStyle(GarageProTheme.accent)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 5) {
-                    ForEach(routines) { routine in
-                        GarageRoutineChip(
-                            routine: routine,
-                            isSelected: routine.id == selectedRoutineID,
-                            action: {
-                                onSelectRoutine(routine)
-                            }
-                        )
-                    }
-                }
-                .padding(.vertical, 0.5)
-            }
-        }
-    }
-}
-
-private struct GarageRoutineChip: View {
-    let routine: GarageRoutine
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button {
-            guard isSelected == false else { return }
-            garageTriggerSelection()
-            action()
-        } label: {
-            HStack(spacing: 3) {
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 7, weight: .black))
-                }
-
-                Text(routine.title)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-            }
-            .font(.system(size: 10, weight: .bold, design: .rounded))
-            .foregroundStyle(isSelected ? ModuleTheme.garageSurfaceDark : GarageProTheme.textSecondary)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .fixedSize(horizontal: true, vertical: false)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isSelected ? GarageProTheme.accent : ModuleTheme.garageTurfSurface.opacity(0.22))
-            )
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
+            .background(GarageProTheme.insetSurface.opacity(0.86), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(isSelected ? GarageProTheme.accent.opacity(0.34) : GarageProTheme.accent.opacity(0.22), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(GarageProTheme.border, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
     }
 }
 
-private struct GarageRoutineDetailSummary: View {
-    let routine: GarageRoutine
-
-    private var drillCount: Int {
-        routine.drillIDs.count
-    }
-
-    private var totalRepCount: Int {
-        DrillVault.drills(for: routine).reduce(0) { $0 + $1.defaultRepCount }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Aims to help with")
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-                .textCase(.uppercase)
-                .tracking(1.1)
-                .foregroundStyle(GarageProTheme.textSecondary)
-
-            Text(routine.title)
-                .font(.system(size: 13, weight: .black, design: .rounded))
-                .foregroundStyle(GarageProTheme.textPrimary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.82)
-
-            Text(routine.purpose)
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(GarageProTheme.textSecondary)
-                .lineLimit(2)
-
-            Text("\(routine.estimatedMinutes) min • \(drillCount) drills • \(routine.difficulty.displayName) • \(totalRepCount) reps")
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .foregroundStyle(GarageProTheme.accent.opacity(0.86))
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 2)
-        .padding(.bottom, 1)
-    }
-}
-
-private struct GarageRoutineActionRow: View {
-    let onGenerateRoutine: () -> Void
-    let onStartRoutine: () -> Void
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 8) {
-            GarageHomeSecondaryButton(
-                title: "AI Generate",
-                systemImage: "sparkles",
-                action: onGenerateRoutine
-            )
-
-            GarageHomeCompactPrimaryButton(
-                title: "Start Routine",
-                systemImage: "play.fill",
-                action: onStartRoutine
-            )
-        }
-    }
-}
-
-private struct GarageHomeSecondaryButton: View {
-    let title: String
-    let systemImage: String
-    let action: () -> Void
-
-    var body: some View {
-        Button {
-            garageTriggerSelection()
-            action()
-        } label: {
-            Label(title, systemImage: systemImage)
-                .font(.system(size: 12, weight: .bold, design: .rounded))
-                .multilineTextAlignment(.leading)
-                .lineLimit(1)
-                .minimumScaleFactor(0.82)
-                .foregroundStyle(GarageProTheme.textPrimary)
-                .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
-                .padding(.horizontal, 11)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(GarageProTheme.insetSurface)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(GarageProTheme.accent.opacity(0.3), lineWidth: 1)
-                )
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-private struct GarageHomeCompactPrimaryButton: View {
+private struct GarageRevampPrimaryActionButton: View {
     let title: String
     let systemImage: String
     let action: () -> Void
@@ -452,12 +345,11 @@ private struct GarageHomeCompactPrimaryButton: View {
             action()
         } label: {
             Label(title, systemImage: systemImage)
-                .font(.system(size: 13, weight: .black, design: .rounded))
+                .font(.system(.headline, design: .rounded).weight(.black))
                 .lineLimit(1)
                 .minimumScaleFactor(0.78)
                 .foregroundStyle(ModuleTheme.garageSurfaceDark)
-                .frame(maxWidth: .infinity, minHeight: 46)
-                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity, minHeight: 66)
                 .background(
                     LinearGradient(
                         colors: [
@@ -467,99 +359,69 @@ private struct GarageHomeCompactPrimaryButton: View {
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
-                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    in: RoundedRectangle(cornerRadius: 22, style: .continuous)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
                         .stroke(Color.white.opacity(0.18), lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
-        .shadow(color: GarageProTheme.glow.opacity(0.28), radius: 10, x: 0, y: 6)
+        .shadow(color: GarageProTheme.glow.opacity(0.32), radius: 16, x: 0, y: 10)
     }
 }
 
-private struct GarageInlineTabSwitcher: View {
-    @Binding var selectedTab: GarageRootTab
+private struct GarageRevampSecondaryActionButton: View {
+    let title: String
+    let systemImage: String
+    let action: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            ForEach(GarageRootTab.allCases.filter { $0 != .home }) { tab in
-                Button {
-                    garageTriggerSelection()
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                        selectedTab = tab
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: tab.systemImage)
-                            .font(.system(size: 14, weight: .bold))
-
-                        Text(tab.title)
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                    }
-                    .foregroundStyle(GarageProTheme.textPrimary)
-                    .frame(maxWidth: .infinity, minHeight: 50)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(GarageProTheme.insetSurface.opacity(0.84))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(GarageProTheme.border, lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(tab.navigationTitle)
-            }
+        Button {
+            garageTriggerSelection()
+            action()
+        } label: {
+            Label(title, systemImage: systemImage)
+                .font(.system(.headline, design: .rounded).weight(.bold))
+                .foregroundStyle(GarageProTheme.textPrimary)
+                .frame(maxWidth: .infinity, minHeight: 62)
+                .background(GarageProTheme.insetSurface.opacity(0.86), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(GarageProTheme.border, lineWidth: 1)
+                )
         }
+        .buttonStyle(.plain)
     }
 }
 
-struct GarageInternalTabBar: View {
-    @Binding var selectedTab: GarageRootTab
+private struct GarageHomePageIndicator: View {
+    let cards: [GarageHomeCardKind]
+    let activeCard: GarageHomeCardKind
 
     var body: some View {
-        HStack(spacing: 10) {
-            ForEach(GarageRootTab.allCases) { tab in
-                Button {
-                    garageTriggerSelection()
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                        selectedTab = tab
-                    }
-                } label: {
-                    VStack(spacing: 6) {
-                        Image(systemName: tab.systemImage)
-                            .font(.system(size: 16, weight: .bold))
-                        Text(tab.title)
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                    }
-                    .foregroundStyle(selectedTab == tab ? ModuleTheme.garageSurfaceDark : GarageProTheme.textSecondary)
-                    .frame(maxWidth: .infinity, minHeight: 52)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(selectedTab == tab ? GarageProTheme.accent : GarageProTheme.insetSurface.opacity(0.72))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(selectedTab == tab ? GarageProTheme.accent.opacity(0.28) : GarageProTheme.border, lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(tab.navigationTitle)
+        HStack(spacing: 8) {
+            ForEach(cards) { card in
+                Capsule()
+                    .fill(card == activeCard ? GarageProTheme.accent : GarageProTheme.textSecondary.opacity(0.24))
+                    .frame(width: card == activeCard ? 24 : 8, height: 8)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.82), value: activeCard)
             }
         }
-        .padding(8)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(GarageProTheme.surface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(GarageProTheme.border, lineWidth: 1)
-        )
-        .shadow(color: GarageProTheme.darkShadow, radius: 16, x: 0, y: 10)
-        .shadow(color: GarageProTheme.glow.opacity(0.18), radius: 18, x: 0, y: 0)
+        .accessibilityLabel("\(activeIndex + 1) of \(cards.count)")
     }
+
+    private var activeIndex: Int {
+        cards.firstIndex(of: activeCard) ?? 0
+    }
+}
+
+#Preview("Garage Revamp Home") {
+    GarageHomeTabView(
+        onOpenEnvironment: { _ in },
+        onStartTempoBuilder: {},
+        onNewJournalEntry: {},
+        onOpenJournalArchive: {}
+    )
+    .modelContainer(PreviewCatalog.populatedApp)
 }
