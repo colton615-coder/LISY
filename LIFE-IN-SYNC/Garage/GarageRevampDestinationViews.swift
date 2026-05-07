@@ -99,56 +99,151 @@ struct GarageRoutineReviewPlan: Identifiable, Hashable {
 
 @MainActor
 struct GarageEnvironmentDrillPlansView: View {
+    @Query(sort: \PracticeSessionRecord.date, order: .reverse) private var records: [PracticeSessionRecord]
+
+    @State private var prompt = ""
+    @State private var selectedDrillIDs: Set<String> = []
+
     let environment: PracticeEnvironment
     let onOpenSavedRoutines: () -> Void
     let onGenerateRoutine: () -> Void
     let onBuildRoutine: () -> Void
+    let onReviewManualSelection: (GarageRoutineReviewPlan) -> Void
+
+    private var manualDrills: [GarageManualPlanDrill] {
+        GarageManualPlanDrill.featuredDrills(for: environment)
+    }
+
+    private var selectedDrills: [GarageManualPlanDrill] {
+        manualDrills.filter { selectedDrillIDs.contains($0.id) }
+    }
 
     var body: some View {
-        GarageProScaffold(bottomPadding: 48) {
-            GarageProHeroCard(
-                eyebrow: "Drill Plans",
-                title: environment.displayName,
-                subtitle: "Choose how this \(environment.displayName.lowercased()) routine should start.",
-                value: "\(DrillVault.drillCount(in: environment))",
-                valueLabel: "Drills"
-            ) {
-                Image(systemName: environment.systemImage)
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(GarageProTheme.accent)
-                    .frame(width: 60, height: 60)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .stroke(GarageProTheme.accent.opacity(0.3), lineWidth: 1)
-                    )
-            }
+        ZStack {
+            ModuleTheme.garageBackground
+                .ignoresSafeArea()
 
-            VStack(spacing: 14) {
-                GarageDrillPlanChoiceButton(
-                    title: "Saved Routines",
-                    subtitle: "Open repeatable routines already saved for \(environment.displayName.lowercased()).",
-                    systemImage: "bookmark.fill",
-                    action: onOpenSavedRoutines
-                )
+            LinearGradient(
+                colors: [
+                    ModuleTheme.garageTurfBackground.opacity(0.98),
+                    ModuleTheme.garageTurfSurface.opacity(0.96),
+                    ModuleTheme.garageSurfaceDark.opacity(0.94)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
 
-                GarageDrillPlanChoiceButton(
-                    title: "Generate New Routine",
-                    subtitle: "Create a focused local plan from the \(environment.displayName.lowercased()) drill library.",
-                    systemImage: "sparkles",
-                    action: onGenerateRoutine
-                )
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    Text("AI Plan Generator")
+                        .font(.system(size: 34, weight: .black, design: .rounded))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.74)
 
-                GarageDrillPlanChoiceButton(
-                    title: "Build My Own",
-                    subtitle: "Manually assemble a routine from reusable Garage drills.",
-                    systemImage: "slider.horizontal.3",
-                    action: onBuildRoutine
-                )
+                    GaragePlanPromptField(text: $prompt)
+
+                    GaragePlanGenerateButton(action: generatePlan)
+
+                    GarageManualDivider()
+
+                    VStack(spacing: 14) {
+                        ForEach(manualDrills) { drill in
+                            GarageManualPlanDrillRow(
+                                drill: drill,
+                                isSelected: selectedDrillIDs.contains(drill.id)
+                            ) {
+                                toggleManualDrill(drill)
+                            }
+                        }
+                    }
+
+                    Button {
+                        reviewManualSelection()
+                    } label: {
+                        Text("Review Selection (\(selectedDrills.count))")
+                            .font(.system(size: 21, weight: .black, design: .rounded))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.68)
+                            .foregroundStyle(GarageProTheme.textPrimary)
+                            .frame(maxWidth: .infinity, minHeight: 72)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                            .background(ModuleTheme.garageTurfSurface.opacity(0.84), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                            )
+                            .shadow(color: AppModule.garage.theme.shadowDark.opacity(0.5), radius: 16, x: 0, y: 12)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(selectedDrills.isEmpty)
+                    .opacity(selectedDrills.isEmpty ? 0.48 : 1)
+                    .padding(.top, 130)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 28)
+                .padding(.top, 56)
+                .padding(.bottom, 34)
             }
         }
-        .navigationTitle("\(environment.displayName) Drill Plans")
-        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
+        .tint(GarageProTheme.accent)
+        .onAppear {
+            if selectedDrillIDs.isEmpty,
+               let defaultSelectionID = GarageManualPlanDrill.defaultSelectionID(for: environment) {
+                selectedDrillIDs = [defaultSelectionID]
+            }
+        }
+    }
+
+    private func toggleManualDrill(_ drill: GarageManualPlanDrill) {
+        garageTriggerSelection()
+
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            if selectedDrillIDs.contains(drill.id) {
+                selectedDrillIDs.remove(drill.id)
+            } else {
+                selectedDrillIDs.insert(drill.id)
+            }
+        }
+    }
+
+    private func reviewManualSelection() {
+        let selected = selectedDrills
+
+        guard selected.isEmpty == false else {
+            return
+        }
+
+        garageTriggerImpact(.heavy)
+
+        let plan = GarageGeneratedPracticePlan(
+            title: "\(environment.displayName) Manual Routine",
+            environment: environment,
+            objective: "Manual \(environment.displayName.lowercased()) routine built from selected Garage drills.",
+            coachNote: "Review the selected drills, then start the session when the sequence matches the work you want.",
+            drills: selected.map { $0.practiceDrill }
+        )
+
+        onReviewManualSelection(GarageRoutineReviewPlan(generatedPlan: plan))
+    }
+
+    private func generatePlan() {
+        garageTriggerImpact(.heavy)
+
+        var plan = GarageLocalCoachPlanner.generatePlan(
+            for: environment,
+            recentRecords: records
+        )
+        let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if trimmedPrompt.isEmpty == false {
+            plan.objective = trimmedPrompt
+            plan.coachNote = "Generated from your prompt. Review the plan before starting so nothing is saved without confirmation."
+        }
+
+        onReviewManualSelection(GarageRoutineReviewPlan(generatedPlan: plan))
     }
 }
 
@@ -561,6 +656,237 @@ private struct GarageGenerateRoutineMetaPill: View {
     }
 }
 
+private struct GarageManualPlanDrill: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let focus: String
+    let systemImage: String
+    let practiceDrill: PracticeTemplateDrill
+
+    static func defaultSelectionID(for environment: PracticeEnvironment) -> String? {
+        switch environment {
+        case .net:
+            return "net-pause-top"
+        case .range:
+            return featuredDrills(for: .range).first?.id
+        case .puttingGreen:
+            return featuredDrills(for: .puttingGreen).first?.id
+        }
+    }
+
+    static func featuredDrills(for environment: PracticeEnvironment) -> [GarageManualPlanDrill] {
+        switch environment {
+        case .net:
+            return [
+                GarageManualPlanDrill(
+                    id: "net-towel-under-arm",
+                    title: "Towel Under Arm",
+                    focus: "Connection & Sync",
+                    systemImage: "paperplane",
+                    practiceDrill: PracticeTemplateDrill(
+                        id: UUID(uuidString: "B79A828D-F6D7-5874-9C66-A9EBA3F5375E") ?? UUID(),
+                        title: "Towel Under Arm",
+                        focusArea: "Connection & Sync",
+                        targetClub: "Scoring Irons",
+                        defaultRepCount: 10
+                    )
+                ),
+                GarageManualPlanDrill(
+                    id: "net-pause-top",
+                    title: "Pause at Top",
+                    focus: "Transition Control",
+                    systemImage: "clock",
+                    practiceDrill: PracticeTemplateDrill(
+                        id: UUID(uuidString: "A0AE1D06-F512-5406-A475-E3F1C8B4606A") ?? UUID(),
+                        title: "Pause at Top",
+                        focusArea: "Transition Control",
+                        targetClub: "Wedges",
+                        defaultRepCount: 8
+                    )
+                ),
+                GarageManualPlanDrill(
+                    id: "net-alignment-stick-path",
+                    title: "Alignment Stick Path",
+                    focus: "Swing Plane",
+                    systemImage: "arrow.up.and.down",
+                    practiceDrill: PracticeTemplateDrill(
+                        id: UUID(uuidString: "F3974D90-B1BB-5B4C-9BB3-A030E36680E4") ?? UUID(),
+                        title: "Alignment Stick Path",
+                        focusArea: "Swing Plane",
+                        targetClub: "Scoring Irons",
+                        defaultRepCount: 8
+                    )
+                )
+            ]
+        case .range:
+            return rangeFeaturedDrills
+        case .puttingGreen:
+            return puttingGreenFeaturedDrills
+        }
+    }
+
+    private static var rangeFeaturedDrills: [GarageManualPlanDrill] {
+        DrillVault.drills(in: .range).prefix(3).enumerated().map { offset, drill in
+            GarageManualPlanDrill(
+                id: "range-\(drill.id)",
+                title: drill.title,
+                focus: drill.faultType.sensoryDescription,
+                systemImage: offset == 0 ? "scope" : offset == 1 ? "flag" : "arrow.left.and.right",
+                practiceDrill: drill.makeGeneratedPracticeTemplateDrill(seedKey: "manual-range-\(offset)-\(drill.id)")
+            )
+        }
+    }
+
+    private static var puttingGreenFeaturedDrills: [GarageManualPlanDrill] {
+        DrillVault.drills(in: .puttingGreen).prefix(3).enumerated().map { offset, drill in
+            GarageManualPlanDrill(
+                id: "green-\(drill.id)",
+                title: drill.title,
+                focus: drill.faultType.sensoryDescription,
+                systemImage: offset == 0 ? "circle.grid.cross" : offset == 1 ? "speedometer" : "target",
+                practiceDrill: drill.makeGeneratedPracticeTemplateDrill(seedKey: "manual-green-\(offset)-\(drill.id)")
+            )
+        }
+    }
+}
+
+private struct GaragePlanPromptField: View {
+    @Binding var text: String
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 30, style: .continuous)
+                .fill(ModuleTheme.garageSurfaceDark.opacity(0.72))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 30, style: .continuous)
+                        .stroke(Color.white.opacity(0.04), lineWidth: 1)
+                )
+                .shadow(color: AppModule.garage.theme.shadowDark.opacity(0.34), radius: 12, x: 0, y: 8)
+
+            if text.isEmpty {
+                Text("E.g., Give me a 30-minute session focusing\non shallowing the club and driver\nconsistency...")
+                    .font(.system(size: 23, weight: .bold, design: .rounded))
+                    .lineSpacing(10)
+                    .foregroundStyle(GarageProTheme.textSecondary.opacity(0.58))
+                    .padding(.horizontal, 28)
+                    .padding(.top, 30)
+                    .allowsHitTesting(false)
+            }
+
+            TextEditor(text: $text)
+                .font(.system(size: 21, weight: .bold, design: .rounded))
+                .foregroundStyle(GarageProTheme.textPrimary)
+                .scrollContentBackground(.hidden)
+                .padding(.horizontal, 22)
+                .padding(.vertical, 22)
+                .background(Color.clear)
+                .frame(minHeight: 154)
+        }
+        .frame(minHeight: 154)
+    }
+}
+
+private struct GaragePlanGenerateButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            garageTriggerImpact(.heavy)
+            action()
+        } label: {
+            Label("Generate with AI", systemImage: "sparkles")
+                .font(.system(size: 24, weight: .black, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .foregroundStyle(ModuleTheme.garageSurfaceDark)
+                .frame(maxWidth: .infinity, minHeight: 76)
+                .background(ModuleTheme.garageAccent, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                )
+                .shadow(color: AppModule.garage.theme.shadowDark.opacity(0.34), radius: 14, x: 0, y: 10)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct GarageManualDivider: View {
+    var body: some View {
+        HStack(spacing: 18) {
+            Rectangle()
+                .fill(ModuleTheme.garageDivider.opacity(0.5))
+                .frame(height: 1)
+
+            Text("OR BUILD MANUALLY")
+                .font(.system(size: 15, weight: .black, design: .rounded))
+                .tracking(3.2)
+                .foregroundStyle(GarageProTheme.textSecondary.opacity(0.78))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+
+            Rectangle()
+                .fill(ModuleTheme.garageDivider.opacity(0.5))
+                .frame(height: 1)
+        }
+    }
+}
+
+private struct GarageManualPlanDrillRow: View {
+    let drill: GarageManualPlanDrill
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 16) {
+                Image(systemName: drill.systemImage)
+                    .font(.system(size: 23, weight: .black))
+                    .foregroundStyle(isSelected ? ModuleTheme.garageAccent : GarageProTheme.textSecondary.opacity(0.7))
+                    .frame(width: 64, height: 64)
+                    .background(ModuleTheme.garageSurfaceDark.opacity(0.7), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(drill.title)
+                        .font(.system(size: 24, weight: .black, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.66)
+                        .foregroundStyle(isSelected ? GarageProTheme.textPrimary : GarageProTheme.textPrimary.opacity(0.66))
+
+                    Text(drill.focus)
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .foregroundStyle(GarageProTheme.textSecondary.opacity(isSelected ? 0.9 : 0.58))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                RoundedRectangle(cornerRadius: isSelected ? 13 : 12, style: .continuous)
+                    .fill(isSelected ? ModuleTheme.garageAccent : Color.clear)
+                    .frame(width: 34, height: 34)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: isSelected ? 13 : 12, style: .continuous)
+                            .stroke(isSelected ? ModuleTheme.garageAccent : GarageProTheme.textSecondary.opacity(0.34), lineWidth: isSelected ? 0 : 2.5)
+                    )
+            }
+            .padding(.horizontal, 24)
+            .frame(maxWidth: .infinity, minHeight: 126, alignment: .leading)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .background(
+                ModuleTheme.garageTurfSurface.opacity(isSelected ? 0.78 : 0.58),
+                in: RoundedRectangle(cornerRadius: 28, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(isSelected ? ModuleTheme.garageAccent : Color.white.opacity(0.04), lineWidth: isSelected ? 1.6 : 1)
+            )
+            .shadow(color: AppModule.garage.theme.shadowDark.opacity(isSelected ? 0.42 : 0.24), radius: 14, x: 0, y: 10)
+        }
+        .buttonStyle(.plain)
+        .opacity(isSelected ? 1 : 0.56)
+    }
+}
+
 private struct GarageRoutineReviewMetric: View {
     let title: String
     let value: String
@@ -914,7 +1240,8 @@ private struct GarageJournalTypeRow: View {
             environment: .net,
             onOpenSavedRoutines: {},
             onGenerateRoutine: {},
-            onBuildRoutine: {}
+            onBuildRoutine: {},
+            onReviewManualSelection: { _ in }
         )
     }
     .modelContainer(PreviewCatalog.populatedApp)

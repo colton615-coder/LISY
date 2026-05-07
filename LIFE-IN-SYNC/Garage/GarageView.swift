@@ -42,6 +42,10 @@ struct GarageView: View {
                             onBuildRoutine: {
                                 garageTriggerSelection()
                                 path.append(.buildRoutine(environment))
+                            },
+                            onReviewManualSelection: { reviewPlan in
+                                garageTriggerSelection()
+                                path.append(.routineReview(reviewPlan))
                             }
                         )
                     case let .savedRoutines(environment):
