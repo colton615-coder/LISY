@@ -8,7 +8,7 @@ Read `docs/canonical/CANONICAL_PRODUCT_SPEC.md` first before proposing features,
 ## Mandatory Rules
 - Do not invent new top-level modules.
 - Do not rename canonical modules unless the canonical spec is updated.
-- Do not treat `docs/archive/legacy/PRD_WEB_ERA_COMMAND_CENTER.md` as the source of truth when it conflicts with the canonical spec.
+- Do not treat stale legacy product briefs as the source of truth when they conflict with the canonical spec.
 - Do not treat `life-in-sync-source.txt` as a migration requirement.
 - Do not add login, cloud sync, or collaboration to v1 unless explicitly requested and the canonical spec is updated.
 - Do not make AI autonomous.
@@ -30,7 +30,7 @@ Use this decision order:
 1. Follow `docs/canonical/CANONICAL_PRODUCT_SPEC.md`
 2. Follow `docs/architecture/ARCHITECTURE.md`
 3. Follow the supporting docs in `docs/`
-4. Ignore conflicting material from `docs/archive/legacy/PRD_WEB_ERA_COMMAND_CENTER.md` or `life-in-sync-source.txt`
+4. Ignore conflicting material from stale legacy briefs or `life-in-sync-source.txt`
 
 If ambiguity remains, ask for clarification instead of inventing behavior.
 

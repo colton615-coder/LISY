@@ -11,7 +11,6 @@
 2. `docs/architecture/ARCHITECTURE.md`
 3. `docs/canonical/IMPLEMENTATION_CONTRACT.md`
 4. `docs/canonical/AGENT_GUARDRAILS.md`
-5. `docs/plans/active/PHASE_2_ROADMAP.md`
 
 ## Fast Rules
 - Canonical docs define product truth.
@@ -29,7 +28,7 @@ Authoritative product and implementation rules.
 Durable system guidance that supports the canonical docs.
 
 ### `docs/plans/active/`
-Exactly one current roadmap or execution plan when possible.
+Current execution plans only. Leave empty when there is no approved active plan.
 
 ### `docs/operations/`
 Runbooks and environment workflows used as needed.
