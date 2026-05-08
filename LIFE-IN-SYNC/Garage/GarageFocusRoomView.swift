@@ -141,7 +141,7 @@ struct GarageFocusRoomView: View {
 
 
 private enum GarageFocusRoomLayout {
-    static let contentBottomInset: CGFloat = 184
+    static let contentBottomInset: CGFloat = 246
 }
 
 private enum FocusRoomPalette {
@@ -311,12 +311,13 @@ private struct FocusRoomDrillHero: View {
 
             GarageDrillDiagramView(diagram: diagram)
                 .frame(maxWidth: .infinity)
-                .frame(height: 218)
+                .frame(height: 210)
                 .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 24, style: .continuous)
                         .stroke(FocusRoomPalette.border, lineWidth: 1)
                 )
+                .shadow(color: Color.black.opacity(0.28), radius: 16, x: 0, y: 12)
         }
     }
 }
@@ -822,8 +823,18 @@ private struct FocusRoomBottomActions: View {
         }
         .padding(.horizontal, 18)
         .padding(.top, 10)
-        .padding(.bottom, 8)
-        .background(FocusRoomPalette.background.opacity(0.94))
+        .padding(.bottom, 12)
+        .background(
+            LinearGradient(
+                colors: [
+                    FocusRoomPalette.background.opacity(0),
+                    FocusRoomPalette.background.opacity(0.96),
+                    FocusRoomPalette.background
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
     }
 }
 

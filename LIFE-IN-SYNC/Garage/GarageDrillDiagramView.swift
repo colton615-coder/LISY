@@ -150,18 +150,18 @@ enum GarageDrillDiagramLibrary {
     private static let rangeStartLineWindow = GarageDrillDiagram(
         type: .rangeStartWindow,
         setupObjects: [
-            .golfer(at: .init(x: 0.19, y: 0.76)),
-            .ball(at: .init(x: 0.28, y: 0.68)),
-            .targetLine(from: .init(x: 0.32, y: 0.66), size: .init(width: 0.54, height: 0.018), angleDegrees: -24),
-            .startLineWindow(at: .init(x: 0.58, y: 0.42), size: .init(width: 0.18, height: 0.24)),
-            .landingZone(at: .init(x: 0.82, y: 0.28), size: .init(width: 0.22, height: 0.16), label: "Target")
+            .golfer(at: .init(x: 0.18, y: 0.74)),
+            .ball(at: .init(x: 0.29, y: 0.66)),
+            .targetLine(from: .init(x: 0.56, y: 0.52), size: .init(width: 0.58, height: 0.012), angleDegrees: -13),
+            .startLineWindow(at: .init(x: 0.58, y: 0.43), size: .init(width: 0.16, height: 0.22)),
+            .landingZone(at: .init(x: 0.82, y: 0.32), size: .init(width: 0.18, height: 0.13), label: nil)
         ],
         motionArrows: [
-            .clubPath(from: .init(x: 0.24, y: 0.78), to: .init(x: 0.36, y: 0.62), label: "Launch")
+            .clubPath(from: .init(x: 0.27, y: 0.71), to: .init(x: 0.47, y: 0.56), label: nil)
         ],
         zones: [
-            .pass(at: .init(x: 0.58, y: 0.42), size: .init(width: 0.2, height: 0.27), label: "Start window"),
-            .landing(at: .init(x: 0.82, y: 0.28), size: .init(width: 0.24, height: 0.18), label: "Landing picture")
+            .pass(at: .init(x: 0.58, y: 0.43), size: .init(width: 0.18, height: 0.25), label: "Start window"),
+            .landing(at: .init(x: 0.82, y: 0.32), size: .init(width: 0.22, height: 0.16), label: "Landing zone")
         ],
         caption: "Set up like this: choose one start window and judge the first part of flight before reacting to curve."
     )
@@ -253,6 +253,10 @@ struct GarageDrillDiagramView: View {
                         .position(point(diagram.zones[index].position, in: size))
                 }
 
+                ForEach(diagram.motionArrows.indices, id: \.self) { index in
+                    GarageClubPathArrowPrimitive(arrow: diagram.motionArrows[index], canvasSize: size)
+                }
+
                 ForEach(diagram.setupObjects.indices, id: \.self) { index in
                     GarageDiagramObjectPrimitive(object: diagram.setupObjects[index])
                         .frame(
@@ -261,10 +265,6 @@ struct GarageDrillDiagramView: View {
                         )
                         .rotationEffect(.degrees(diagram.setupObjects[index].angleDegrees))
                         .position(point(diagram.setupObjects[index].position, in: size))
-                }
-
-                ForEach(diagram.motionArrows.indices, id: \.self) { index in
-                    GarageClubPathArrowPrimitive(arrow: diagram.motionArrows[index], canvasSize: size)
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -296,17 +296,14 @@ private struct GarageDiagramBackground: View {
                 endPoint: .bottomTrailing
             )
 
-            Circle()
-                .fill(Color(red: 0.18, green: 0.9, blue: 0.42).opacity(0.16))
-                .frame(width: 260, height: 260)
-                .blur(radius: 64)
-                .offset(x: -120, y: -70)
-
             if type == .puttingGate || type == .puttingPaceControl {
                 GaragePuttingGrainLines()
             } else {
                 GarageRangeDepthLines()
             }
+
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
         }
     }
 }
@@ -374,24 +371,41 @@ private struct GarageDiagramObjectPrimitive: View {
 
 private struct GarageGolferStanceMarker: View {
     var body: some View {
-        ZStack {
-            Capsule(style: .continuous)
-                .fill(Color(red: 0.24, green: 0.96, blue: 0.5).opacity(0.72))
-                .frame(width: 12, height: 46)
-                .offset(x: -13, y: 15)
-                .rotationEffect(.degrees(-8))
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let height = proxy.size.height
 
-            Capsule(style: .continuous)
-                .fill(Color(red: 0.24, green: 0.96, blue: 0.5).opacity(0.72))
-                .frame(width: 12, height: 46)
-                .offset(x: 13, y: 15)
-                .rotationEffect(.degrees(8))
+            ZStack {
+                Capsule(style: .continuous)
+                    .fill(GarageProTheme.textPrimary.opacity(0.18))
+                    .frame(width: width * 0.72, height: max(height * 0.035, 2))
+                    .rotationEffect(.degrees(-25))
+                    .position(x: width * 0.58, y: height * 0.42)
 
-            Image(systemName: "figure.golf")
-                .font(.system(size: 42, weight: .bold))
-                .foregroundStyle(Color(red: 0.24, green: 0.96, blue: 0.5))
-                .shadow(color: Color(red: 0.24, green: 0.96, blue: 0.5).opacity(0.36), radius: 10)
-                .offset(y: -16)
+                Capsule(style: .continuous)
+                    .fill(GarageProTheme.accent.opacity(0.92))
+                    .frame(width: max(width * 0.13, 8), height: height * 0.38)
+                    .rotationEffect(.degrees(-8))
+                    .position(x: width * 0.38, y: height * 0.7)
+
+                Capsule(style: .continuous)
+                    .fill(GarageProTheme.accent.opacity(0.92))
+                    .frame(width: max(width * 0.13, 8), height: height * 0.38)
+                    .rotationEffect(.degrees(8))
+                    .position(x: width * 0.58, y: height * 0.7)
+
+                Circle()
+                    .fill(GarageProTheme.accent)
+                    .frame(width: height * 0.16, height: height * 0.16)
+                    .position(x: width * 0.48, y: height * 0.25)
+
+                Capsule(style: .continuous)
+                    .fill(GarageProTheme.accent.opacity(0.88))
+                    .frame(width: max(width * 0.13, 8), height: height * 0.36)
+                    .rotationEffect(.degrees(-6))
+                    .position(x: width * 0.48, y: height * 0.46)
+            }
+            .shadow(color: GarageProTheme.glow.opacity(0.18), radius: 8)
         }
     }
 }
@@ -438,12 +452,12 @@ private struct GarageTowelPrimitive: View {
 private struct GarageTargetLinePrimitive: View {
     var body: some View {
         Capsule(style: .continuous)
-            .fill(GarageProTheme.accent.opacity(0.46))
+            .fill(GarageProTheme.textPrimary.opacity(0.2))
             .overlay(
                 Capsule(style: .continuous)
-                    .stroke(GarageProTheme.textPrimary.opacity(0.24), lineWidth: 1)
+                    .stroke(GarageProTheme.accent.opacity(0.38), lineWidth: 1)
             )
-            .shadow(color: GarageProTheme.glow.opacity(0.2), radius: 8)
+            .shadow(color: GarageProTheme.glow.opacity(0.12), radius: 6)
     }
 }
 
@@ -503,7 +517,7 @@ private struct GarageLandingZonePrimitive: View {
 
             if let label {
                 GarageDiagramLabel(label)
-                    .offset(y: 28)
+                    .offset(y: 24)
             }
         }
     }
@@ -564,8 +578,8 @@ private struct GarageClubPathArrowPrimitive: View {
                 path.move(to: start)
                 path.addLine(to: end)
             }
-            .stroke(Color(red: 1.0, green: 0.78, blue: 0.22), style: StrokeStyle(lineWidth: 5, lineCap: .round, dash: [12, 8]))
-            .shadow(color: Color(red: 1.0, green: 0.78, blue: 0.22).opacity(0.32), radius: 10)
+            .stroke(Color(red: 1.0, green: 0.78, blue: 0.22), style: StrokeStyle(lineWidth: 3.5, lineCap: .round, dash: [10, 7]))
+            .shadow(color: Color(red: 1.0, green: 0.78, blue: 0.22).opacity(0.22), radius: 8)
 
             Image(systemName: "arrowtriangle.right.fill")
                 .font(.system(size: 20, weight: .black))
@@ -594,16 +608,17 @@ private struct GarageDiagramLabel: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 10, weight: .black, design: .rounded))
+            .font(.system(size: 8.5, weight: .black, design: .rounded))
             .lineLimit(1)
-            .minimumScaleFactor(0.58)
+            .minimumScaleFactor(0.62)
             .foregroundStyle(GarageProTheme.textPrimary)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            .background(.thinMaterial, in: Capsule(style: .continuous))
+            .frame(maxWidth: 96)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(Color.black.opacity(0.36), in: Capsule(style: .continuous))
             .overlay(
                 Capsule(style: .continuous)
-                    .stroke(GarageProTheme.border, lineWidth: 1)
+                    .stroke(GarageProTheme.border.opacity(0.75), lineWidth: 1)
             )
     }
 }

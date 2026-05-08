@@ -146,10 +146,12 @@ private struct GarageDrillSetupVisualPanel: View {
 
             GarageDrillDiagramView(diagram: diagram)
                 .frame(maxWidth: .infinity, minHeight: 270)
-            .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(GarageProTheme.border, lineWidth: 1)
-            )
+                .frame(maxHeight: 270)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(GarageProTheme.border, lineWidth: 1)
+                )
+                .shadow(color: GarageProTheme.darkShadow.opacity(0.32), radius: 14, x: 0, y: 10)
 
             Text(diagram.caption)
                 .font(.footnote.weight(.semibold))
