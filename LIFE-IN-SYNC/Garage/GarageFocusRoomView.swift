@@ -5,7 +5,6 @@ import SwiftUI
 struct GarageFocusDrillPresentation {
     let id: UUID
     let content: GarageDrillFocusContent
-    let diagram: GarageDrillDiagram
     let isCompleted: Bool
 }
 
@@ -53,7 +52,10 @@ struct GarageFocusRoomView: View {
                                 drillPositionText: drillPositionText,
                                 completedCount: completedCount,
                                 totalCount: totalCount,
-                                diagram: drill.diagram
+                                goal: drill.content.goal,
+                                elapsedSeconds: elapsedSeconds,
+                                trackerValue: trackerValue,
+                                isCompleted: drill.isCompleted || isGoalMet(drill.content.goal)
                             )
 
                             FocusRoomTaskCard(task: drill.content.task)
@@ -290,10 +292,13 @@ private struct FocusRoomDrillHero: View {
     let drillPositionText: String
     let completedCount: Int
     let totalCount: Int
-    let diagram: GarageDrillDiagram
+    let goal: GarageDrillGoal
+    let elapsedSeconds: Int
+    let trackerValue: Int
+    let isCompleted: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 5) {
                 Text(drillTitle)
                     .font(.system(size: 20, weight: .black, design: .rounded))
@@ -309,17 +314,202 @@ private struct FocusRoomDrillHero: View {
                 .foregroundStyle(FocusRoomPalette.secondaryText)
             }
 
-            GarageDrillDiagramView(diagram: diagram)
-                .frame(maxWidth: .infinity)
-                .frame(height: 210)
-                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .stroke(FocusRoomPalette.border, lineWidth: 1)
-                )
-                .shadow(color: Color.black.opacity(0.28), radius: 16, x: 0, y: 12)
+            FocusRoomTimerHeroPanel(
+                elapsedSeconds: elapsedSeconds,
+                progress: progress,
+                isCompleted: isCompleted,
+                statusText: statusText
+            )
         }
     }
+
+    private var progress: Double {
+        guard isCompleted == false else {
+            return 1
+        }
+
+        switch goal {
+        case .timed(let durationSeconds):
+            return clampedProgress(Double(elapsedSeconds) / Double(max(durationSeconds, 1)))
+        case .repTarget(let count, _), .streak(let count, _):
+            return clampedProgress(Double(trackerValue) / Double(max(count, 1)))
+        case .timeTrial(let targetCount, _):
+            return clampedProgress(Double(trackerValue) / Double(max(targetCount, 1)))
+        case .ladder(let steps):
+            return clampedProgress(Double(trackerValue) / Double(max(steps.count, 1)))
+        case .checklist(let items):
+            return clampedProgress(Double(trackerValue) / Double(max(items.count, 1)))
+        case .manual:
+            return trackerValue > 0 ? 1 : 0
+        }
+    }
+
+    private var statusText: String {
+        if isCompleted {
+            return "Complete"
+        }
+
+        switch goal {
+        case .timed:
+            return "Timer running"
+        case .repTarget, .streak, .timeTrial:
+            return "\(trackerValue) reps logged"
+        case .ladder(let steps):
+            return "\(min(trackerValue, steps.count))/\(steps.count) steps"
+        case .checklist(let items):
+            return "\(min(trackerValue, items.count))/\(items.count) checked"
+        case .manual:
+            return "Awaiting mark"
+        }
+    }
+
+    private func clampedProgress(_ value: Double) -> Double {
+        min(max(value, 0), 1)
+    }
+}
+
+private struct FocusRoomTimerHeroPanel: View {
+    let elapsedSeconds: Int
+    let progress: Double
+    let isCompleted: Bool
+    let statusText: String
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(FocusRoomPalette.panel.opacity(0.42))
+
+            LinearGradient(
+                colors: [
+                    FocusRoomPalette.green.opacity(0.14),
+                    Color.black.opacity(0.08),
+                    Color.black.opacity(0.24)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            VStack(spacing: 14) {
+                FocusRoomCircularTimer(
+                    elapsedSeconds: elapsedSeconds,
+                    progress: progress,
+                    isCompleted: isCompleted
+                )
+                .frame(width: 188, height: 188)
+
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(isCompleted ? FocusRoomPalette.green : FocusRoomPalette.yellow)
+                        .frame(width: 7, height: 7)
+                        .shadow(color: (isCompleted ? FocusRoomPalette.green : FocusRoomPalette.yellow).opacity(0.4), radius: 8)
+
+                    Text(statusText)
+                        .font(.system(size: 12, weight: .black, design: .rounded))
+                        .textCase(.uppercase)
+                        .tracking(1.2)
+                        .foregroundStyle(FocusRoomPalette.secondaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.74)
+                }
+            }
+            .padding(.vertical, 18)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(minHeight: 250)
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(FocusRoomPalette.border, lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.32), radius: 20, x: 0, y: 14)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Elapsed time \(formattedTime(elapsedSeconds)). \(statusText).")
+    }
+}
+
+private struct FocusRoomCircularTimer: View {
+    let elapsedSeconds: Int
+    let progress: Double
+    let isCompleted: Bool
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            FocusRoomPalette.green.opacity(0.12),
+                            FocusRoomPalette.panel.opacity(0.7),
+                            Color.black.opacity(0.4)
+                        ],
+                        center: .center,
+                        startRadius: 8,
+                        endRadius: 102
+                    )
+                )
+                .overlay(
+                    Circle()
+                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                )
+                .shadow(color: Color.black.opacity(0.4), radius: 18, x: 0, y: 12)
+
+            Circle()
+                .stroke(FocusRoomPalette.green.opacity(0.13), lineWidth: 13)
+
+            Circle()
+                .trim(from: 0, to: max(progress, 0.035))
+                .stroke(
+                    timerStroke,
+                    style: StrokeStyle(lineWidth: 13, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+                .shadow(color: FocusRoomPalette.green.opacity(isCompleted ? 0.38 : 0.22), radius: 12)
+                .animation(.spring(response: 0.35, dampingFraction: 0.82), value: progress)
+
+            Circle()
+                .stroke(Color.black.opacity(0.35), lineWidth: 1)
+                .padding(18)
+
+            VStack(spacing: 7) {
+                Text("Elapsed")
+                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .textCase(.uppercase)
+                    .tracking(1.6)
+                    .foregroundStyle(FocusRoomPalette.secondaryText)
+
+                Text(formattedTime(elapsedSeconds))
+                    .font(.system(size: 42, weight: .black, design: .monospaced))
+                    .foregroundStyle(FocusRoomPalette.primaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.68)
+
+                Text(isCompleted ? "Done" : "In session")
+                    .font(.system(size: 12, weight: .black, design: .rounded))
+                    .foregroundStyle(isCompleted ? FocusRoomPalette.green : FocusRoomPalette.yellow)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 18)
+        }
+    }
+
+    private var timerStroke: AngularGradient {
+        AngularGradient(
+            colors: [
+                FocusRoomPalette.green,
+                FocusRoomPalette.greenSoft,
+                isCompleted ? FocusRoomPalette.green : FocusRoomPalette.yellow,
+                FocusRoomPalette.green
+            ],
+            center: .center
+        )
+    }
+}
+
+private func formattedTime(_ value: Int) -> String {
+    let clampedValue = max(value, 0)
+    let minutes = clampedValue / 60
+    let seconds = clampedValue % 60
+    return "\(minutes):\(String(format: "%02d", seconds))"
 }
 
 private struct FocusRoomTaskCard: View {

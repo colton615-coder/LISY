@@ -159,10 +159,6 @@ struct GarageActiveSessionView: View {
         return GarageFocusDrillPresentation(
             id: currentEntry.drill.id,
             content: content,
-            diagram: GarageDrillDiagramLibrary.diagram(
-                for: currentEntry.drill,
-                environment: session.environment
-            ),
             isCompleted: currentEntry.progress.isCompleted
         )
     }
