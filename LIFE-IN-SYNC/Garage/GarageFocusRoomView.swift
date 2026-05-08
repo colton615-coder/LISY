@@ -138,7 +138,7 @@ struct GarageFocusRoomView: View {
         }
     }
 }
-}
+
 
 private enum GarageFocusRoomLayout {
     static let contentBottomInset: CGFloat = 184
