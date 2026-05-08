@@ -304,7 +304,32 @@ enum DrillVault {
 
         return catalogDrills.first {
             $0.title.caseInsensitiveCompare(templateDrill.title) == .orderedSame
+        } ?? canonicalDrillMatchingAlias(for: templateDrill.title)
+    }
+
+    private static func canonicalDrillMatchingAlias(for title: String) -> GarageDrill? {
+        let normalizedTitle = title
+            .lowercased()
+            .replacingOccurrences(of: "-", with: " ")
+            .replacingOccurrences(of: "_", with: " ")
+            .split(separator: " ")
+            .joined(separator: " ")
+
+        let aliasID: String?
+        switch normalizedTitle {
+        case "carry ladder", "wedge carry ladder", "wedge distance ladder":
+            aliasID = "r13"
+        case "tempo rehearsal", "pause tempo rehearsal":
+            aliasID = "n6"
+        default:
+            aliasID = nil
         }
+
+        guard let aliasID else {
+            return nil
+        }
+
+        return catalogDrills.first { $0.id == aliasID }
     }
 
     static func routine(for id: String) -> GarageRoutine? {

@@ -285,14 +285,14 @@ enum GarageDrillFocusDetails {
         return GarageDrillFocusDetail(
             purpose: focus.isEmpty ? "Focus on the stated session cue and record only reps that meet the drill standard." : "Work the stated focus area: \(focus).",
             setup: [
-                targetClub.isEmpty ? "Use the club or tool assigned to this custom drill." : "Use \(targetClub).",
-                "Prepare the practice environment safely.",
-                "Keep the goal narrow and measurable."
+                targetClub.isEmpty ? "Choose the exact club or tool before the timer starts." : "Commit to \(targetClub) for the entire set.",
+                focus.isEmpty ? "Define one pass-or-fail rep standard before the first swing." : "Tie every rep to \(focus.lowercased()), not general swing thoughts.",
+                "Reset the station after any rep you would not honestly count."
             ],
             execution: [
-                "Complete the planned rep count.",
-                "Record only reps that match the intended standard.",
-                "Add a note describing the main feel or miss."
+                "Run the planned reps without changing the drill mid-set.",
+                "Count only reps that meet the stated standard.",
+                "Log the dominant feel or miss before moving on."
             ],
             successCriteria: [
                 "Rep matches the stated focus.",
