@@ -148,7 +148,7 @@ struct GarageEnvironmentDrillPlansView: View {
 
                     GarageManualDivider()
 
-                    VStack(spacing: 14) {
+                    VStack(spacing: 10) {
                         ForEach(manualDrills) { drill in
                             GarageManualPlanDrillRow(
                                 drill: drill,
@@ -403,8 +403,8 @@ struct GarageRoutineReviewView: View {
 
     var body: some View {
         GarageProScaffold(bottomPadding: 44) {
+            pageHeader
             routineHeader
-            whySelectedBlock
             drillListSection
             actionSection
         }
@@ -419,87 +419,52 @@ struct GarageRoutineReviewView: View {
         }
     }
 
+    private var pageHeader: some View {
+        GarageCompactPageHeader(
+            eyebrow: reviewPlan.source.eyebrow,
+            title: "Review Routine",
+            subtitle: "Confirm the drill stack before you start."
+        ) {
+            GarageCompactStatBadge(
+                value: "\(reviewPlan.drillCount)",
+                label: reviewPlan.drillCount == 1 ? "Drill" : "Drills"
+            )
+        }
+    }
+
     private var routineHeader: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 14) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(reviewPlan.source.eyebrow)
+                    Text("Routine Summary")
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .textCase(.uppercase)
                         .tracking(1.8)
                         .foregroundStyle(GarageProTheme.accent)
 
                     Text(reviewPlan.title)
-                        .font(.system(size: 30, weight: .black, design: .rounded))
+                        .font(.system(size: 22, weight: .black, design: .rounded))
                         .foregroundStyle(GarageProTheme.textPrimary)
                         .lineLimit(2)
                         .minimumScaleFactor(0.74)
 
-                    Label(reviewPlan.environment.displayName, systemImage: reviewPlan.environment.systemImage)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(GarageProTheme.textSecondary)
+                    HStack(spacing: 8) {
+                        GarageCompactMetaPill(title: reviewPlan.environment.displayName, systemImage: reviewPlan.environment.systemImage)
+                        GarageCompactMetaPill(title: "\(reviewPlan.drillCount) drills", systemImage: "list.number")
+                    }
                 }
 
                 Spacer(minLength: 10)
-
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(reviewPlan.drillCount)")
-                        .font(.system(size: 28, weight: .black, design: .monospaced))
-                        .foregroundStyle(GarageProTheme.accent)
-
-                    Text(reviewPlan.drillCount == 1 ? "Drill" : "Drills")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .textCase(.uppercase)
-                        .tracking(1.6)
-                        .foregroundStyle(GarageProTheme.textSecondary)
-                }
             }
 
-            HStack(spacing: 10) {
-                GarageRoutineReviewMetric(
-                    title: "Estimated",
-                    value: "\(reviewPlan.estimatedDurationMinutes)m",
-                    systemImage: "timer"
-                )
-
-                GarageRoutineReviewMetric(
-                    title: "Reps",
-                    value: "\(reviewPlan.totalRepCount)",
-                    systemImage: "repeat"
-                )
-            }
         }
-        .padding(18)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .background(GarageProTheme.surface, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .padding(14)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(GarageProTheme.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(GarageProTheme.border, lineWidth: 1)
         )
-    }
-
-    private var whySelectedBlock: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Selected because")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .textCase(.uppercase)
-                .tracking(1.8)
-                .foregroundStyle(GarageProTheme.accent)
-
-            Text(reviewPlan.purpose)
-                .font(.headline.weight(.bold))
-                .foregroundStyle(GarageProTheme.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if let note = reviewPlan.note {
-                Text(note)
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(GarageProTheme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 2)
     }
 
     private var drillListSection: some View {
@@ -537,7 +502,7 @@ struct GarageRoutineReviewView: View {
     }
 
     private var actionSection: some View {
-        VStack(spacing: 12) {
+        GarageProCard(isActive: true, cornerRadius: 22, padding: 12) {
             if reviewPlan.canStart == false {
                 Text("This routine needs at least one drill before it can start.")
                     .font(.footnote.weight(.semibold))
@@ -545,19 +510,23 @@ struct GarageRoutineReviewView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            GarageProPrimaryButton(
-                title: "Start Routine",
-                systemImage: "play.fill",
-                isEnabled: reviewPlan.canStart
-            ) {
-                onStartRoutine(reviewPlan)
-            }
+            HStack(spacing: 10) {
+                GarageProPrimaryButton(
+                    title: "Start Routine",
+                    systemImage: "play.fill",
+                    isEnabled: reviewPlan.canStart
+                ) {
+                    onStartRoutine(reviewPlan)
+                }
+                .frame(maxWidth: .infinity)
 
-            if reviewPlan.source.canSave {
-                GarageRoutineReviewSaveButton(
-                    didSave: didSaveRoutine,
-                    action: saveRoutine
-                )
+                if reviewPlan.source.canSave {
+                    GarageRoutineReviewSaveButton(
+                        didSave: didSaveRoutine,
+                        action: saveRoutine
+                    )
+                    .frame(maxWidth: .infinity)
+                }
             }
         }
     }
@@ -838,26 +807,26 @@ private struct GarageManualPlanDrillRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 14) {
+            HStack(spacing: 12) {
                 Image(systemName: drill.systemImage)
-                    .font(.system(size: 19, weight: .bold))
+                    .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(isSelected ? ModuleTheme.garageAccent : GarageProTheme.textSecondary.opacity(0.92))
-                    .frame(width: 54, height: 54)
-                    .background(ModuleTheme.garageSurfaceDark.opacity(isSelected ? 0.78 : 0.62), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+                    .frame(width: 44, height: 44)
+                    .background(ModuleTheme.garageSurfaceDark.opacity(isSelected ? 0.78 : 0.62), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 17, style: .continuous)
+                        RoundedRectangle(cornerRadius: 15, style: .continuous)
                             .stroke(isSelected ? ModuleTheme.garageAccent.opacity(0.22) : Color.white.opacity(0.06), lineWidth: 1)
                     )
 
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(drill.title)
-                        .font(.system(size: 20, weight: .heavy, design: .rounded))
+                        .font(.system(size: 18, weight: .heavy, design: .rounded))
                         .lineLimit(1)
                         .minimumScaleFactor(0.66)
                         .foregroundStyle(isSelected ? GarageProTheme.textPrimary : GarageProTheme.textPrimary.opacity(0.9))
 
                     Text(drill.focus)
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                         .foregroundStyle(GarageProTheme.textSecondary.opacity(isSelected ? 0.9 : 0.78))
@@ -865,19 +834,19 @@ private struct GarageManualPlanDrillRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 26, weight: .bold))
+                    .font(.system(size: 23, weight: .bold))
                     .foregroundStyle(isSelected ? ModuleTheme.garageAccent : GarageProTheme.textSecondary.opacity(0.56))
-                    .frame(width: 32, height: 32)
+                    .frame(width: 30, height: 30)
             }
-            .padding(.horizontal, 18)
-            .frame(maxWidth: .infinity, minHeight: 104, alignment: .leading)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, minHeight: 78, alignment: .leading)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             .background(
                 ModuleTheme.garageTurfSurface.opacity(isSelected ? 0.78 : 0.66),
-                in: RoundedRectangle(cornerRadius: 28, style: .continuous)
+                in: RoundedRectangle(cornerRadius: 22, style: .continuous)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .stroke(isSelected ? ModuleTheme.garageAccent : Color.white.opacity(0.08), lineWidth: isSelected ? 1.4 : 1)
             )
             .shadow(color: AppModule.garage.theme.shadowDark.opacity(isSelected ? 0.42 : 0.3), radius: 12, x: 0, y: 8)
@@ -986,19 +955,19 @@ private struct GarageRoutineReviewDrillRow: View {
     let drill: PracticeTemplateDrill
 
     var body: some View {
-        GarageProCard(isActive: true, cornerRadius: 22, padding: 16) {
-            HStack(alignment: .top, spacing: 14) {
+        GarageProCard(isActive: true, cornerRadius: 20, padding: 12) {
+            HStack(alignment: .top, spacing: 12) {
                 Text("\(index)")
-                    .font(.system(size: 17, weight: .black, design: .monospaced))
+                    .font(.system(size: 14, weight: .black, design: .monospaced))
                     .foregroundStyle(GarageProTheme.accent)
-                    .frame(width: 42, height: 42)
-                    .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                    .frame(width: 34, height: 34)
+                    .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .stroke(GarageProTheme.accent.opacity(0.24), lineWidth: 1)
                     )
 
-                VStack(alignment: .leading, spacing: 7) {
+                VStack(alignment: .leading, spacing: 5) {
                     Text(drill.title)
                         .font(.headline.weight(.bold))
                         .foregroundStyle(GarageProTheme.textPrimary)

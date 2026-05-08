@@ -16,7 +16,8 @@ struct GarageCoachPlanReviewView: View {
 
     var body: some View {
         GarageProScaffold(bottomPadding: 56) {
-            heroCard
+            pageHeader
+            summaryCard
             objectiveCard
             drillListSection
             startSessionAction
@@ -25,28 +26,47 @@ struct GarageCoachPlanReviewView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private var heroCard: some View {
-        GarageProHeroCard(
+    private var pageHeader: some View {
+        GarageCompactPageHeader(
             eyebrow: "Local Coach Plan",
-            title: draftPlan.title,
-            subtitle: draftPlan.environment.displayName,
-            value: "\(draftPlan.drills.count)",
-            valueLabel: draftPlan.drills.count == 1 ? "Drill" : "Drills"
+            title: "Coach Plan",
+            subtitle: "Review the sequence before entering Focus Room."
         ) {
-            Image(systemName: draftPlan.environment.systemImage)
-                .font(.system(size: 24, weight: .bold))
-                .foregroundStyle(GarageProTheme.accent)
-                .frame(width: 60, height: 60)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(GarageProTheme.accent.opacity(0.3), lineWidth: 1)
-                )
+            GarageCompactStatBadge(
+                value: "\(draftPlan.drills.count)",
+                label: draftPlan.drills.count == 1 ? "Drill" : "Drills"
+            )
+        }
+    }
+
+    private var summaryCard: some View {
+        GarageProCard(isActive: true, cornerRadius: 22, padding: 14) {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: draftPlan.environment.systemImage)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(GarageProTheme.accent)
+                    .frame(width: 42, height: 42)
+                    .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(draftPlan.title)
+                        .font(.system(size: 20, weight: .black, design: .rounded))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.78)
+
+                    HStack(spacing: 8) {
+                        GarageCompactMetaPill(title: draftPlan.environment.displayName, systemImage: draftPlan.environment.systemImage)
+                        GarageCompactMetaPill(title: "\(draftPlan.drills.count) drills", systemImage: "list.number")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
     }
 
     private var objectiveCard: some View {
-        GarageProCard(isActive: true, cornerRadius: 24, padding: 18) {
+        GarageProCard(cornerRadius: 22, padding: 14) {
             Text("Objective")
                 .font(.system(size: 11, weight: .bold, design: .rounded))
                 .textCase(.uppercase)
@@ -54,19 +74,14 @@ struct GarageCoachPlanReviewView: View {
                 .foregroundStyle(GarageProTheme.accent)
 
             Text(draftPlan.objective)
-                .font(.system(.title3, design: .rounded).weight(.black))
+                .font(.headline.weight(.black))
                 .foregroundStyle(GarageProTheme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Text(draftPlan.coachNote)
-                .font(.subheadline.weight(.medium))
+                .font(.footnote.weight(.semibold))
                 .foregroundStyle(GarageProTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-
-            HStack(spacing: 10) {
-                GaragePlanReviewMetric(title: "Work", value: "\(draftPlan.totalRepCount) reps")
-                GaragePlanReviewMetric(title: "Time", value: "\(draftPlan.estimatedDurationMinutes) min")
-            }
         }
     }
 
@@ -166,19 +181,19 @@ private struct GaragePlanReviewDrillRow: View {
     let onRemove: () -> Void
 
     var body: some View {
-        GarageProCard(isActive: true, cornerRadius: 22, padding: 16) {
-            HStack(alignment: .top, spacing: 14) {
+        GarageProCard(isActive: true, cornerRadius: 20, padding: 12) {
+            HStack(alignment: .top, spacing: 12) {
                 Text("\(index)")
-                    .font(.system(size: 17, weight: .black, design: .monospaced))
+                    .font(.system(size: 14, weight: .black, design: .monospaced))
                     .foregroundStyle(GarageProTheme.accent)
-                    .frame(width: 42, height: 42)
-                    .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                    .frame(width: 34, height: 34)
+                    .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .stroke(GarageProTheme.accent.opacity(0.24), lineWidth: 1)
                     )
 
-                VStack(alignment: .leading, spacing: 7) {
+                VStack(alignment: .leading, spacing: 5) {
                     Text(drill.title)
                         .font(.headline.weight(.bold))
                         .foregroundStyle(GarageProTheme.textPrimary)
@@ -195,12 +210,12 @@ private struct GaragePlanReviewDrillRow: View {
                 if canRemove {
                     Button(action: onRemove) {
                         Image(systemName: "minus.circle.fill")
-                            .font(.system(size: 22, weight: .bold))
+                            .font(.system(size: 20, weight: .bold))
                             .foregroundStyle(GarageProTheme.textSecondary)
-                            .frame(width: 44, height: 44)
-                            .background(GarageProTheme.insetSurface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                            .frame(width: 40, height: 40)
+                            .background(GarageProTheme.insetSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
                                     .stroke(GarageProTheme.border, lineWidth: 1)
                             )
                     }

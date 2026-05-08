@@ -29,6 +29,7 @@ struct GarageEnvironmentFocusView: View {
 
     var body: some View {
         GarageProScaffold(bottomPadding: 56) {
+            pageHeader
             headerCard
             carryForwardCard
             routineAccessSection
@@ -39,29 +40,47 @@ struct GarageEnvironmentFocusView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private var headerCard: some View {
-        GarageProHeroCard(
+    private var pageHeader: some View {
+        GarageCompactPageHeader(
             eyebrow: "Practice Environment",
             title: environment.displayName,
-            subtitle: environment.description,
-            value: "\(DrillVault.drillCount(in: environment))",
-            valueLabel: "Drills Available"
+            subtitle: "Choose the path for this practice space."
         ) {
-            Image(systemName: environment.systemImage)
-                .font(.system(size: 24, weight: .bold))
-                .foregroundStyle(GarageProTheme.accent)
-                .frame(width: 60, height: 60)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(GarageProTheme.accent.opacity(0.3), lineWidth: 1)
-                )
+            GarageCompactStatBadge(
+                value: "\(DrillVault.drillCount(in: environment))",
+                label: "Drills"
+            )
+        }
+    }
+
+    private var headerCard: some View {
+        GarageProCard(isActive: true, cornerRadius: 22, padding: 14) {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: environment.systemImage)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(GarageProTheme.accent)
+                    .frame(width: 42, height: 42)
+                    .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(environment.description)
+                        .font(.headline.weight(.black))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 8) {
+                        GarageCompactMetaPill(title: "\(DrillVault.drillCount(in: environment)) drills", systemImage: "square.grid.2x2.fill")
+                        GarageCompactMetaPill(title: "\(builtInRoutines.count + savedTemplates.count) routines", systemImage: "play.rectangle.fill")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
     }
 
     private var generateCard: some View {
-        GarageProCard(isActive: true, cornerRadius: 26, padding: 18) {
-            VStack(alignment: .leading, spacing: 8) {
+        GarageProCard(isActive: true, cornerRadius: 22, padding: 14) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("Secondary Path")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .textCase(.uppercase)
@@ -69,20 +88,14 @@ struct GarageEnvironmentFocusView: View {
                     .foregroundStyle(GarageProTheme.accent)
 
                 Text("Generate Session Plan")
-                    .font(.system(.title3, design: .rounded).weight(.black))
+                    .font(.headline.weight(.black))
                     .foregroundStyle(GarageProTheme.textPrimary)
 
                 Text("Use the local planner when you want Garage to assemble a coach-led prescription from the \(environment.displayName.lowercased()) library and your latest carry-forward note.")
-                    .font(.subheadline.weight(.medium))
+                    .font(.footnote.weight(.semibold))
                     .foregroundStyle(GarageProTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-
-            GarageEnvironmentFocusMetricStrip(
-                sessionCount: environmentRecords.count,
-                routineCount: builtInRoutines.count + savedTemplates.count,
-                latestEfficiency: latestRecord?.aggregateEfficiencyText ?? "--"
-            )
 
             GarageProPrimaryButton(
                 title: "Generate Session Plan",
@@ -96,7 +109,7 @@ struct GarageEnvironmentFocusView: View {
     @ViewBuilder
     private var carryForwardCard: some View {
         if let latestRecord {
-            GarageProCard(isActive: true, cornerRadius: 24, padding: 18) {
+            GarageProCard(cornerRadius: 22, padding: 14) {
                 Text("Carry Forward")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .textCase(.uppercase)
@@ -104,17 +117,17 @@ struct GarageEnvironmentFocusView: View {
                     .foregroundStyle(GarageProTheme.accent)
 
                 Text(latestRecord.templateName)
-                    .font(.system(.headline, design: .rounded).weight(.black))
+                    .font(.headline.weight(.black))
                     .foregroundStyle(GarageProTheme.textPrimary)
 
                 if let note = latestRecord.primaryEnvironmentFocusNote {
                     Text(note)
-                        .font(.subheadline.weight(.medium))
+                        .font(.footnote.weight(.semibold))
                         .foregroundStyle(GarageProTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     Text("Last session saved without a cue. The generated plan will start from the environment baseline.")
-                        .font(.subheadline.weight(.medium))
+                        .font(.footnote.weight(.semibold))
                         .foregroundStyle(GarageProTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -125,13 +138,13 @@ struct GarageEnvironmentFocusView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         } else {
-            GarageProCard(cornerRadius: 24, padding: 18) {
+            GarageProCard(cornerRadius: 22, padding: 14) {
                 Text("No Carry Forward Yet")
                     .font(.system(.headline, design: .rounded).weight(.black))
                     .foregroundStyle(GarageProTheme.textPrimary)
 
                 Text("The first generated plan will create a baseline for \(environment.displayName.lowercased()) practice.")
-                    .font(.subheadline.weight(.medium))
+                    .font(.footnote.weight(.semibold))
                     .foregroundStyle(GarageProTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -311,15 +324,15 @@ private struct GarageEnvironmentFocusRoutineRow: View {
     let systemImage: String
 
     var body: some View {
-        GarageProCard(cornerRadius: 22, padding: 16) {
-            HStack(alignment: .center, spacing: 14) {
+        GarageProCard(cornerRadius: 20, padding: 12) {
+            HStack(alignment: .center, spacing: 12) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(GarageProTheme.accent)
-                    .frame(width: 54, height: 54)
-                    .background(GarageProTheme.accent.opacity(0.13), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .frame(width: 42, height: 42)
+                    .background(GarageProTheme.accent.opacity(0.13), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                         .font(.headline.weight(.bold))
                         .foregroundStyle(GarageProTheme.textPrimary)

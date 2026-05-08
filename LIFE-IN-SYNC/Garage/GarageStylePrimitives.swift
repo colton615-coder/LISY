@@ -381,6 +381,106 @@ struct GarageProSegmentedSelector<Option: Identifiable & Hashable, Label: View>:
     }
 }
 
+struct GarageCompactPageHeader<Trailing: View>: View {
+    let eyebrow: String
+    let title: String
+    let subtitle: String?
+    @ViewBuilder let trailing: Trailing
+
+    init(
+        eyebrow: String,
+        title: String,
+        subtitle: String? = nil,
+        @ViewBuilder trailing: () -> Trailing = { EmptyView() }
+    ) {
+        self.eyebrow = eyebrow
+        self.title = title
+        self.subtitle = subtitle
+        self.trailing = trailing()
+    }
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 14) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(eyebrow)
+                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .textCase(.uppercase)
+                    .tracking(1.8)
+                    .foregroundStyle(GarageProTheme.accent)
+
+                Text(title)
+                    .font(.system(size: 34, weight: .black, design: .rounded))
+                    .foregroundStyle(GarageProTheme.textPrimary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.74)
+
+                if let subtitle, subtitle.isEmpty == false {
+                    Text(subtitle)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            trailing
+                .fixedSize(horizontal: true, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 6)
+    }
+}
+
+struct GarageCompactStatBadge: View {
+    let value: String
+    let label: String
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            Text(value)
+                .font(.system(size: 25, weight: .black, design: .monospaced))
+                .foregroundStyle(GarageProTheme.accent)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+
+            Text(label)
+                .font(.system(size: 9, weight: .black, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(1.3)
+                .foregroundStyle(GarageProTheme.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(GarageProTheme.insetSurface.opacity(0.72), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(GarageProTheme.border, lineWidth: 1)
+        )
+    }
+}
+
+struct GarageCompactMetaPill: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        Label(title, systemImage: systemImage)
+            .font(.system(size: 11, weight: .black, design: .rounded))
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .foregroundStyle(GarageProTheme.textSecondary)
+            .padding(.horizontal, 10)
+            .frame(minHeight: 34)
+            .background(GarageProTheme.insetSurface.opacity(0.72), in: Capsule())
+            .overlay(
+                Capsule()
+                    .stroke(GarageProTheme.border, lineWidth: 1)
+            )
+    }
+}
+
 func garageFormattedPlaybackTime(_ time: Double) -> String {
     let totalSeconds = Int(max(time.rounded(), 0))
     let seconds = totalSeconds % 60

@@ -73,10 +73,7 @@ struct GarageFocusRoomView: View {
 
                             FocusRoomPassCondition(
                                 primaryText: primaryPassText(for: drill),
-                                secondaryText: secondaryPassText(for: drill)
-                            )
-
-                            FocusRoomTimerCard(
+                                secondaryText: secondaryPassText(for: drill),
                                 elapsedSeconds: elapsedSeconds,
                                 goodHits: goodHits,
                                 targetCount: drill.targetCount,
@@ -143,7 +140,7 @@ struct GarageFocusRoomView: View {
 }
 
 private enum GarageFocusRoomLayout {
-    static let contentBottomInset: CGFloat = 128
+    static let contentBottomInset: CGFloat = 156
 }
 
 private enum FocusRoomPalette {
@@ -324,10 +321,10 @@ private struct FocusRoomDrillHero: View {
 
             GarageDrillDiagramView(diagram: diagram)
                 .frame(maxWidth: .infinity)
-                .frame(height: 260)
-                .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                .frame(height: 218)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
                         .stroke(FocusRoomPalette.border, lineWidth: 1)
                 )
         }
@@ -377,6 +374,10 @@ private struct FocusRoomSetupSteps: View {
 private struct FocusRoomPassCondition: View {
     let primaryText: String
     let secondaryText: String
+    let elapsedSeconds: Int
+    let goodHits: Int
+    let targetCount: Int
+    let onGoodHit: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -403,62 +404,60 @@ private struct FocusRoomPassCondition: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+
+            FocusRoomTimerStrip(
+                elapsedSeconds: elapsedSeconds,
+                goodHits: goodHits,
+                targetCount: targetCount,
+                onGoodHit: onGoodHit
+            )
         }
     }
 }
 
-private struct FocusRoomTimerCard: View {
+private struct FocusRoomTimerStrip: View {
     let elapsedSeconds: Int
     let goodHits: Int
     let targetCount: Int
     let onGoodHit: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            FocusRoomSectionLabel(title: "Drill Timer")
+        HStack(alignment: .center, spacing: 12) {
+            FocusRoomTimerMetric(value: formattedTime, label: "Elapsed")
 
-            HStack(alignment: .center, spacing: 14) {
-                FocusRoomTimerMetric(value: formattedTime, label: "Elapsed")
+            Button {
+                onGoodHit()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 18, weight: .black))
 
-                Button {
-                    onGoodHit()
-                } label: {
-                    VStack(spacing: 6) {
-                        ZStack {
-                            Circle()
-                                .stroke(FocusRoomPalette.yellow.opacity(0.38), lineWidth: 4)
-                                .frame(width: 70, height: 70)
+                    Text("\(goodHits)")
+                        .font(.system(size: 24, weight: .black, design: .monospaced))
 
-                            Circle()
-                                .stroke(FocusRoomPalette.yellow, lineWidth: 2)
-                                .frame(width: 58, height: 58)
-
-                            Text("\(goodHits)")
-                                .font(.system(size: 26, weight: .black, design: .monospaced))
-                                .foregroundStyle(FocusRoomPalette.yellow)
-                        }
-
-                        Text("Tap after good hit")
-                            .font(.system(size: 8, weight: .black, design: .rounded))
-                            .textCase(.uppercase)
-                            .tracking(0.7)
-                            .foregroundStyle(FocusRoomPalette.secondaryText)
-                            .multilineTextAlignment(.center)
-                            .lineLimit(2)
-                    }
-                    .frame(maxWidth: .infinity)
+                    Text("Good")
+                        .font(.system(size: 10, weight: .black, design: .rounded))
+                        .textCase(.uppercase)
+                        .tracking(0.9)
                 }
-                .buttonStyle(.plain)
-
-                FocusRoomTimerMetric(value: "\(targetCount)", label: "Good Hits")
+                .foregroundStyle(FocusRoomPalette.background)
+                .frame(maxWidth: .infinity, minHeight: 50)
+                .background(FocusRoomPalette.yellow, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                )
             }
-            .padding(16)
-            .background(FocusRoomPalette.panel.opacity(0.74), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(FocusRoomPalette.border, lineWidth: 1)
-            )
+            .buttonStyle(.plain)
+
+            FocusRoomTimerMetric(value: "\(targetCount)", label: "Target")
         }
+        .padding(12)
+        .background(FocusRoomPalette.panel.opacity(0.78), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(FocusRoomPalette.border, lineWidth: 1)
+        )
     }
 
     private var formattedTime: String {

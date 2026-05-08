@@ -12,6 +12,7 @@ struct GarageDrillLibraryView: View {
 
     var body: some View {
         GarageProScaffold(bottomPadding: 28) {
+            pageHeader
             heroCard
             routinesSection
 
@@ -34,23 +35,40 @@ struct GarageDrillLibraryView: View {
         }
     }
 
-    private var heroCard: some View {
-        GarageProHeroCard(
-            eyebrow: "Drills",
-            title: "Routines first. Reference second.",
-            subtitle: "Start a predefined routine, review saved routines, or open any drill for the full instruction stack.",
-            value: "\(DrillVault.masterPlaybook.count)",
-            valueLabel: "Library Drills"
+    private var pageHeader: some View {
+        GarageCompactPageHeader(
+            eyebrow: "Drill Library",
+            title: "Drill Library",
+            subtitle: "Predefined routines first, reference drills second."
         ) {
-            Image(systemName: "book.closed.fill")
-                .font(.system(size: 24, weight: .bold))
-                .foregroundStyle(GarageProTheme.accent)
-                .frame(width: 64, height: 64)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(GarageProTheme.accent.opacity(0.3), lineWidth: 1)
-                )
+            GarageCompactStatBadge(
+                value: "\(DrillVault.masterPlaybook.count)",
+                label: "Drills"
+            )
+        }
+    }
+
+    private var heroCard: some View {
+        GarageProCard(isActive: true, cornerRadius: 22, padding: 14) {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: "book.closed.fill")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(GarageProTheme.accent)
+                    .frame(width: 42, height: 42)
+                    .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("Routines by environment")
+                        .font(.system(size: 20, weight: .black, design: .rounded))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+
+                    Text("Start predefined work, review saved routines, or open a drill for instruction.")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
     }
 
@@ -154,19 +172,19 @@ private struct GarageRoutinePreviewCard: View {
     let systemImage: String
 
     var body: some View {
-        GarageProCard(cornerRadius: 24, padding: 16) {
-            HStack(alignment: .top, spacing: 14) {
+        GarageProCard(cornerRadius: 20, padding: 12) {
+            HStack(alignment: .top, spacing: 12) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(GarageProTheme.accent)
-                    .frame(width: 52, height: 52)
-                    .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+                    .frame(width: 42, height: 42)
+                    .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 5) {
                     Text(badgeText)
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
                         .textCase(.uppercase)
-                        .tracking(1.7)
+                        .tracking(1.4)
                         .foregroundStyle(GarageProTheme.accent.opacity(0.9))
 
                     Text(title)
@@ -175,7 +193,7 @@ private struct GarageRoutinePreviewCard: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     Text(subtitle)
-                        .font(.subheadline.weight(.medium))
+                        .font(.footnote.weight(.medium))
                         .foregroundStyle(GarageProTheme.textSecondary)
                         .lineLimit(2)
 
@@ -198,22 +216,22 @@ private struct GarageDrillRowCard: View {
     let drill: GarageDrill
 
     var body: some View {
-        GarageProCard(cornerRadius: 22, padding: 16) {
-            HStack(alignment: .top, spacing: 14) {
+        GarageProCard(cornerRadius: 20, padding: 12) {
+            HStack(alignment: .top, spacing: 12) {
                 Image(systemName: drill.environment.systemImage)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(GarageProTheme.accent)
-                    .frame(width: 48, height: 48)
-                    .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .frame(width: 42, height: 42)
+                    .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 5) {
                     Text(drill.title)
                         .font(.headline.weight(.bold))
                         .foregroundStyle(GarageProTheme.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
 
                     Text(drill.purpose)
-                        .font(.subheadline.weight(.medium))
+                        .font(.footnote.weight(.medium))
                         .foregroundStyle(GarageProTheme.textSecondary)
                         .lineLimit(2)
 
