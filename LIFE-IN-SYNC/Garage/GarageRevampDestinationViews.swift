@@ -232,16 +232,12 @@ struct GarageEnvironmentDrillPlansView: View {
     private func generatePlan() {
         garageTriggerImpact(.heavy)
 
-        var plan = GarageLocalCoachPlanner.generatePlan(
-            for: environment,
-            recentRecords: records
-        )
         let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if trimmedPrompt.isEmpty == false {
-            plan.objective = trimmedPrompt
-            plan.coachNote = "Generated from your prompt. Review the plan before starting so nothing is saved without confirmation."
-        }
+        let plan = GarageLocalCoachPlanner.generatePlan(
+            for: environment,
+            recentRecords: records,
+            promptText: trimmedPrompt
+        )
 
         onReviewManualSelection(GarageRoutineReviewPlan(generatedPlan: plan))
     }

@@ -8,6 +8,7 @@ struct GarageGeneratedPracticePlan: Identifiable, Hashable {
     var coachNote: String
     var carryForwardNote: String?
     var drills: [PracticeTemplateDrill]
+    var plannedDurationMinutes: Int?
 
     init(
         id: UUID = UUID(),
@@ -16,7 +17,8 @@ struct GarageGeneratedPracticePlan: Identifiable, Hashable {
         objective: String,
         coachNote: String,
         carryForwardNote: String? = nil,
-        drills: [PracticeTemplateDrill]
+        drills: [PracticeTemplateDrill],
+        plannedDurationMinutes: Int? = nil
     ) {
         self.id = id
         self.title = title
@@ -25,6 +27,7 @@ struct GarageGeneratedPracticePlan: Identifiable, Hashable {
         self.coachNote = coachNote
         self.carryForwardNote = carryForwardNote
         self.drills = drills
+        self.plannedDurationMinutes = plannedDurationMinutes
     }
 
     var totalRepCount: Int {
@@ -32,7 +35,7 @@ struct GarageGeneratedPracticePlan: Identifiable, Hashable {
     }
 
     var estimatedDurationMinutes: Int {
-        max(12, drills.count * 6)
+        plannedDurationMinutes ?? max(12, drills.count * 6)
     }
 
     var workSummary: String {
@@ -64,103 +67,55 @@ struct GarageGeneratedPracticePlan: Identifiable, Hashable {
 enum GarageLocalCoachPlanner {
     static func generatePlan(
         for environment: PracticeEnvironment,
-        recentRecords: [PracticeSessionRecord]
+        recentRecords: [PracticeSessionRecord],
+        promptText: String = "",
+        availableEquipment: Set<GarageEquipmentRequirement>? = nil,
+        blockedSafetyConstraints: Set<GarageSafetyConstraint> = [],
+        desiredDurationMinutes: Int? = nil,
+        desiredDrillCount: Int? = nil
     ) -> GarageGeneratedPracticePlan {
         let environmentRecords = recentRecords
             .filter { $0.environment == environment.rawValue }
             .sorted { $0.date > $1.date }
         let carryForwardCue = environmentRecords.first?.garagePlannerCarryForwardCue
-        let selectedDrills = selectedDrills(
-            for: environment,
-            environmentRecords: environmentRecords
+        let selection = GaragePracticePlanSelector.selectPlan(
+            for: GaragePracticePlanInput(
+                environment: environment,
+                promptText: promptText,
+                availableEquipment: availableEquipment,
+                blockedSafetyConstraints: blockedSafetyConstraints,
+                desiredDurationMinutes: desiredDurationMinutes,
+                desiredDrillCount: desiredDrillCount,
+                recentRecords: recentRecords
+            )
         )
-        let templateDrills = selectedDrills.enumerated().map { offset, drill in
-            drill.makeGeneratedPracticeTemplateDrill(seedKey: "local-plan:\(environment.rawValue):\(offset):\(drill.id)")
+        let templateDrills = selection.selectedDrills.enumerated().map { offset, selectedDrill in
+            selectedDrill.drill.makeGeneratedPracticeTemplateDrill(
+                seedKey: "local-plan:\(environment.rawValue):\(offset):\(selectedDrill.drill.id)",
+                prescribedRepCount: selectedDrill.prescribedRepCount
+            )
         }
+        let trimmedPrompt = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
 
         return GarageGeneratedPracticePlan(
             title: title(for: environment, hasHistory: environmentRecords.isEmpty == false),
             environment: environment,
-            objective: objective(for: environment, carryForwardCue: carryForwardCue),
-            coachNote: coachNote(for: environment, records: environmentRecords, carryForwardCue: carryForwardCue),
+            objective: objective(
+                for: environment,
+                promptText: trimmedPrompt,
+                carryForwardCue: carryForwardCue
+            ),
+            coachNote: coachNote(
+                for: environment,
+                records: environmentRecords,
+                promptText: trimmedPrompt,
+                promptMatched: selection.promptMatched,
+                carryForwardCue: carryForwardCue
+            ),
             carryForwardNote: carryForwardCue,
-            drills: templateDrills
+            drills: templateDrills,
+            plannedDurationMinutes: selection.estimatedDurationMinutes
         )
-    }
-
-    private static func selectedDrills(
-        for environment: PracticeEnvironment,
-        environmentRecords: [PracticeSessionRecord]
-    ) -> [GarageDrill] {
-        let environmentDrills = DrillVault.masterPlaybook.filter { $0.environment == environment }
-        guard environmentDrills.isEmpty == false else {
-            return Array(DrillVault.masterPlaybook.prefix(3))
-        }
-
-        var selected: [GarageDrill] = []
-
-        if let weakDrill = weakestRecentDrill(
-            for: environment,
-            environmentRecords: environmentRecords,
-            environmentDrills: environmentDrills
-        ) {
-            if let remedialDrillID = weakDrill.remedialDrillID,
-               let remedialDrill = DrillVault.drill(for: remedialDrillID),
-               remedialDrill.environment == environment {
-                append(remedialDrill, to: &selected)
-            }
-
-            append(weakDrill, to: &selected)
-        }
-
-        let defaultRoutineDrills = DrillVault.predefinedRoutines
-            .first { $0.environment == environment }
-            .map { DrillVault.drills(for: $0) } ?? []
-
-        for drill in defaultRoutineDrills {
-            append(drill, to: &selected)
-        }
-
-        for drill in environmentDrills {
-            append(drill, to: &selected)
-        }
-
-        return Array(selected.prefix(3))
-    }
-
-    private static func weakestRecentDrill(
-        for environment: PracticeEnvironment,
-        environmentRecords: [PracticeSessionRecord],
-        environmentDrills: [GarageDrill]
-    ) -> GarageDrill? {
-        let recentResults = environmentRecords
-            .prefix(3)
-            .flatMap(\.drillResults)
-            .filter { $0.totalReps > 0 }
-
-        guard let weakestResult = recentResults.sorted(by: weakestResultSort).first else {
-            return nil
-        }
-
-        return environmentDrills.first {
-            $0.title.caseInsensitiveCompare(weakestResult.name) == .orderedSame
-        }
-    }
-
-    nonisolated private static func weakestResultSort(_ lhs: DrillResult, _ rhs: DrillResult) -> Bool {
-        if lhs.successRatio == rhs.successRatio {
-            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
-        }
-
-        return lhs.successRatio < rhs.successRatio
-    }
-
-    private static func append(_ drill: GarageDrill, to selected: inout [GarageDrill]) {
-        guard selected.contains(where: { $0.id == drill.id }) == false else {
-            return
-        }
-
-        selected.append(drill)
     }
 
     private static func title(for environment: PracticeEnvironment, hasHistory: Bool) -> String {
@@ -173,8 +128,13 @@ enum GarageLocalCoachPlanner {
 
     private static func objective(
         for environment: PracticeEnvironment,
+        promptText: String,
         carryForwardCue: String?
     ) -> String {
+        if promptText.isEmpty == false {
+            return promptText
+        }
+
         if carryForwardCue != nil {
             return "Turn the last useful cue into measured, repeatable reps."
         }
@@ -192,8 +152,18 @@ enum GarageLocalCoachPlanner {
     private static func coachNote(
         for environment: PracticeEnvironment,
         records: [PracticeSessionRecord],
+        promptText: String,
+        promptMatched: Bool,
         carryForwardCue: String?
     ) -> String {
+        if promptText.isEmpty == false {
+            if promptMatched {
+                return "Generated from your prompt after environment, metadata, and safety gates. Review the plan before starting."
+            }
+
+            return "No direct prompt match was found, so Garage used the closest safe \(environment.displayName.lowercased()) categories. Review before starting."
+        }
+
         if let carryForwardCue {
             return "Carry this forward: \(carryForwardCue)"
         }

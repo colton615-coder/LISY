@@ -79,6 +79,132 @@ enum GarageRoutineDifficulty: String, CaseIterable, Codable, Identifiable, Hasha
     var displayName: String { rawValue }
 }
 
+enum GarageEquipmentRequirement: String, CaseIterable, Codable, Identifiable, Hashable {
+    case towel
+    case alignmentStick
+    case wall
+    case ballBox
+    case tee
+    case puttingGate
+    case puttingMat
+    case mirror
+    case launchMonitor
+    case rangeBucket
+    case headcover
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .towel:
+            return "Towel"
+        case .alignmentStick:
+            return "Alignment Stick"
+        case .wall:
+            return "Wall"
+        case .ballBox:
+            return "Ball Box"
+        case .tee:
+            return "Tee"
+        case .puttingGate:
+            return "Putting Gate"
+        case .puttingMat:
+            return "Putting Mat"
+        case .mirror:
+            return "Mirror"
+        case .launchMonitor:
+            return "Launch Monitor"
+        case .rangeBucket:
+            return "Range Bucket"
+        case .headcover:
+            return "Headcover"
+        }
+    }
+}
+
+enum GarageSafetyConstraint: String, CaseIterable, Codable, Identifiable, Hashable {
+    case controlledSwingsOnly
+    case halfSwingsOnly
+    case noFullSpeedSwingsNearWall
+    case safeStickPositionRequired
+    case stableFootingRequired
+    case adequateSpaceRequired
+    case lightweightGateObjectsOnly
+    case rehearsalPreferred
+
+    var id: String { rawValue }
+}
+
+enum GarageRecommendationTrigger: String, Codable, Hashable {
+    case lowScore
+    case highScore
+}
+
+struct GarageRecommendationRule: Codable, Hashable {
+    let trigger: GarageRecommendationTrigger
+    let threshold: Int
+    let action: String
+    let relatedDrillIDs: [String]
+
+    init(
+        trigger: GarageRecommendationTrigger,
+        threshold: Int,
+        action: String,
+        relatedDrillIDs: [String] = []
+    ) {
+        self.trigger = trigger
+        self.threshold = threshold
+        self.action = action
+        self.relatedDrillIDs = relatedDrillIDs
+    }
+}
+
+struct GarageDrillMetadata: Codable, Hashable {
+    let drillID: String
+    let promptTags: Set<String>
+    let faultTags: Set<String>
+    let equipmentRules: Set<GarageEquipmentRequirement>
+    let requiredAnyEquipmentGroups: [Set<GarageEquipmentRequirement>]
+    let optionalEquipment: Set<GarageEquipmentRequirement>
+    let safetyConstraints: Set<GarageSafetyConstraint>
+    let primaryCategory: GarageDrillLibraryCategory
+    let minReps: Int
+    let maxReps: Int
+    let progressionIDs: [String]
+    let regressionIDs: [String]
+    let recommendationRules: [GarageRecommendationRule]
+
+    init(
+        drillID: String,
+        promptTags: Set<String>,
+        faultTags: Set<String>,
+        equipmentRules: Set<GarageEquipmentRequirement> = [],
+        requiredAnyEquipmentGroups: [Set<GarageEquipmentRequirement>] = [],
+        optionalEquipment: Set<GarageEquipmentRequirement> = [],
+        safetyConstraints: Set<GarageSafetyConstraint> = [],
+        primaryCategory: GarageDrillLibraryCategory,
+        minReps: Int,
+        maxReps: Int,
+        progressionIDs: [String] = [],
+        regressionIDs: [String] = [],
+        recommendationRules: [GarageRecommendationRule] = []
+    ) {
+        self.drillID = drillID
+        self.promptTags = promptTags
+        self.faultTags = faultTags
+        self.equipmentRules = equipmentRules
+        self.requiredAnyEquipmentGroups = requiredAnyEquipmentGroups
+        self.optionalEquipment = optionalEquipment
+        self.safetyConstraints = safetyConstraints
+        self.primaryCategory = primaryCategory
+        self.minReps = minReps
+        self.maxReps = maxReps
+        self.progressionIDs = progressionIDs
+        self.regressionIDs = regressionIDs
+        self.recommendationRules = recommendationRules
+    }
+}
+
 struct GarageDrill: Identifiable, Codable, Equatable, Hashable {
     let id: String
     let title: String
@@ -211,13 +337,41 @@ enum DrillVault {
         return catalogRoutines.filter { $0.environment == environment }.count
     }
 
+    static func metadata(for drillID: String) -> GarageDrillMetadata? {
+        _ = catalogValidationMarker
+        return catalogMetadata[drillID]
+    }
+
+    static func metadata(for drill: GarageDrill) -> GarageDrillMetadata {
+        _ = catalogValidationMarker
+        return catalogMetadata[drill.id] ?? fallbackMetadata(for: drill)
+    }
+
+    static func metadata(for templateDrill: PracticeTemplateDrill) -> GarageDrillMetadata? {
+        guard let canonicalDrill = canonicalDrill(for: templateDrill) else {
+            return nil
+        }
+
+        return metadata(for: canonicalDrill)
+    }
+
+    static func metadata(forDrillNamed drillName: String) -> GarageDrillMetadata? {
+        _ = catalogValidationMarker
+        guard let drill = catalogDrills.first(where: { $0.title.caseInsensitiveCompare(drillName) == .orderedSame }) else {
+            return nil
+        }
+
+        return metadata(for: drill)
+    }
+
     static func validationErrors() -> [String] {
         validateCatalog(drills: catalogDrills, routines: catalogRoutines)
+            + validateMetadata(drills: catalogDrills, metadataByDrillID: catalogMetadata)
     }
 
     private static let catalogValidationMarker: Void = {
         #if DEBUG
-        let errors = validateCatalog(drills: catalogDrills, routines: catalogRoutines)
+        let errors = validationErrors()
         assert(errors.isEmpty, errors.joined(separator: "\n"))
         #endif
     }()
@@ -670,6 +824,303 @@ enum DrillVault {
         )
     ]
 
+    private static let catalogMetadata: [String: GarageDrillMetadata] = Dictionary(
+        uniqueKeysWithValues: [
+            metadata(
+                drillID: "n1",
+                promptTags: ["contact", "fat_shots", "low_point", "heavy_contact", "ball_first"],
+                faultTags: ["fat_shots", "thin_shots", "poor_low_point_control"],
+                equipmentRules: [.towel],
+                primaryCategory: .contact,
+                minReps: 8,
+                maxReps: 30,
+                progressionIDs: ["n8"],
+                regressionIDs: ["n2"]
+            ),
+            metadata(
+                drillID: "n2",
+                promptTags: ["casting", "handle_forward", "compression", "delivery", "scoop"],
+                faultTags: ["casting", "flipping", "scooping", "weak_contact"],
+                primaryCategory: .delivery,
+                minReps: 6,
+                maxReps: 24,
+                progressionIDs: ["n7", "r16"],
+                regressionIDs: []
+            ),
+            metadata(
+                drillID: "n3",
+                promptTags: ["rotation", "early_extension", "posture", "hip_depth", "standing_up"],
+                faultTags: ["early_extension", "loss_of_posture", "crowded_impact"],
+                requiredAnyEquipmentGroups: [[.wall, .alignmentStick]],
+                safetyConstraints: [.noFullSpeedSwingsNearWall, .rehearsalPreferred],
+                primaryCategory: .rotation,
+                minReps: 6,
+                maxReps: 22,
+                progressionIDs: ["r17"],
+                regressionIDs: []
+            ),
+            metadata(
+                drillID: "n4",
+                promptTags: ["face", "start_line", "alignment", "slice", "hook", "curving"],
+                faultTags: ["face_control", "open_face", "closed_face", "start_line_miss"],
+                equipmentRules: [.alignmentStick],
+                safetyConstraints: [.safeStickPositionRequired],
+                primaryCategory: .faceControl,
+                minReps: 6,
+                maxReps: 24,
+                progressionIDs: ["r10", "r11"],
+                regressionIDs: ["n2"]
+            ),
+            metadata(
+                drillID: "n5",
+                promptTags: ["tempo", "balance", "sway", "rhythm", "centered"],
+                faultTags: ["poor_balance", "sway", "rushed_tempo"],
+                safetyConstraints: [.controlledSwingsOnly],
+                primaryCategory: .tempo,
+                minReps: 8,
+                maxReps: 30,
+                progressionIDs: ["n6"],
+                regressionIDs: []
+            ),
+            metadata(
+                drillID: "n6",
+                promptTags: ["tempo", "transition", "rushing", "sequencing", "pressure_shift"],
+                faultTags: ["quick_transition", "arms_first_downswing", "poor_sequence"],
+                safetyConstraints: [.controlledSwingsOnly],
+                primaryCategory: .tempo,
+                minReps: 6,
+                maxReps: 24,
+                progressionIDs: ["n8", "r16"],
+                regressionIDs: ["n5"]
+            ),
+            metadata(
+                drillID: "n7",
+                promptTags: ["shallow", "exit", "casting", "delivery", "chest_turn"],
+                faultTags: ["casting", "over_the_top", "stalled_rotation"],
+                optionalEquipment: [.headcover],
+                safetyConstraints: [.controlledSwingsOnly],
+                primaryCategory: .delivery,
+                minReps: 6,
+                maxReps: 24,
+                progressionIDs: ["r16"],
+                regressionIDs: ["n2"]
+            ),
+            metadata(
+                drillID: "n8",
+                promptTags: ["contact", "brush", "strike_location", "fat_shots", "thin_shots"],
+                faultTags: ["fat_shots", "thin_shots", "inconsistent_contact"],
+                safetyConstraints: [.halfSwingsOnly],
+                primaryCategory: .contact,
+                minReps: 6,
+                maxReps: 24,
+                progressionIDs: ["n1", "r12"],
+                regressionIDs: ["n5"]
+            ),
+            metadata(
+                drillID: "r10",
+                promptTags: ["driver", "start_line", "face", "fairway", "slice"],
+                faultTags: ["face_control", "start_line_miss", "driver_dispersion"],
+                primaryCategory: .pressure,
+                minReps: 4,
+                maxReps: 18,
+                progressionIDs: ["r15"],
+                regressionIDs: ["n4"]
+            ),
+            metadata(
+                drillID: "r11",
+                promptTags: ["long_iron", "start_line", "face", "window", "trajectory"],
+                faultTags: ["face_control", "start_line_miss", "long_iron_dispersion"],
+                primaryCategory: .pressure,
+                minReps: 4,
+                maxReps: 18,
+                progressionIDs: ["r10"],
+                regressionIDs: ["n4"]
+            ),
+            metadata(
+                drillID: "r12",
+                promptTags: ["contact", "carry", "strike", "distance", "fat_shots", "thin_shots"],
+                faultTags: ["fat_shots", "thin_shots", "carry_inconsistency"],
+                primaryCategory: .contact,
+                minReps: 6,
+                maxReps: 27,
+                progressionIDs: ["r13"],
+                regressionIDs: ["n8"]
+            ),
+            metadata(
+                drillID: "r13",
+                promptTags: ["wedge", "distance", "carry", "ladder", "tempo"],
+                faultTags: ["distance_control", "wedge_carry_miss", "deceleration"],
+                primaryCategory: .distanceControl,
+                minReps: 6,
+                maxReps: 27,
+                progressionIDs: ["r14"],
+                regressionIDs: ["n2"]
+            ),
+            metadata(
+                drillID: "r14",
+                promptTags: ["wedge", "flight", "trajectory", "distance", "window"],
+                faultTags: ["distance_control", "trajectory_control", "wedge_carry_miss"],
+                primaryCategory: .distanceControl,
+                minReps: 6,
+                maxReps: 27,
+                progressionIDs: ["r13"],
+                regressionIDs: ["r13"]
+            ),
+            metadata(
+                drillID: "r15",
+                promptTags: ["driver", "fairway", "start_line", "balance", "pressure"],
+                faultTags: ["driver_dispersion", "overswinging", "poor_balance"],
+                primaryCategory: .pressure,
+                minReps: 4,
+                maxReps: 18,
+                progressionIDs: ["r17"],
+                regressionIDs: ["r10"]
+            ),
+            metadata(
+                drillID: "r16",
+                promptTags: ["flighted", "handle", "compression", "casting", "contact"],
+                faultTags: ["casting", "flipping", "weak_contact"],
+                primaryCategory: .delivery,
+                minReps: 6,
+                maxReps: 24,
+                progressionIDs: ["r12"],
+                regressionIDs: ["n7", "n2"]
+            ),
+            metadata(
+                drillID: "r17",
+                promptTags: ["pressure", "fairway", "rotation", "posture", "woods"],
+                faultTags: ["early_extension", "loss_of_posture", "pressure_miss"],
+                primaryCategory: .pressure,
+                minReps: 4,
+                maxReps: 18,
+                progressionIDs: ["r15"],
+                regressionIDs: ["n3"]
+            ),
+            metadata(
+                drillID: "p1",
+                promptTags: ["putting", "roll", "face", "start_line", "short_putts"],
+                faultTags: ["wobbly_roll", "face_control", "poor_start_line"],
+                optionalEquipment: [.puttingMat],
+                primaryCategory: .putting,
+                minReps: 6,
+                maxReps: 30,
+                progressionIDs: ["p3", "p5"],
+                regressionIDs: []
+            ),
+            metadata(
+                drillID: "p2",
+                promptTags: ["putting", "speed", "lag", "pace", "distance"],
+                faultTags: ["poor_pace", "lag_putting", "distance_control"],
+                primaryCategory: .putting,
+                minReps: 4,
+                maxReps: 18,
+                progressionIDs: ["p4", "p6"],
+                regressionIDs: ["p1"]
+            ),
+            metadata(
+                drillID: "p3",
+                promptTags: ["putting", "gate", "start_line", "face", "short_putts"],
+                faultTags: ["poor_start_line", "face_control", "pushed_putts", "pulled_putts"],
+                equipmentRules: [.tee],
+                optionalEquipment: [.puttingGate],
+                safetyConstraints: [.lightweightGateObjectsOnly],
+                primaryCategory: .putting,
+                minReps: 6,
+                maxReps: 30,
+                progressionIDs: ["p5"],
+                regressionIDs: ["p1"]
+            ),
+            metadata(
+                drillID: "p4",
+                promptTags: ["putting", "tempo", "pace", "around_the_world", "speed"],
+                faultTags: ["poor_pace", "rushed_tempo", "jabby_stroke"],
+                equipmentRules: [.tee],
+                primaryCategory: .putting,
+                minReps: 6,
+                maxReps: 24,
+                progressionIDs: ["p6"],
+                regressionIDs: ["p2"]
+            ),
+            metadata(
+                drillID: "p5",
+                promptTags: ["putting", "lead_hand", "face", "start_line", "release"],
+                faultTags: ["face_control", "poor_start_line", "trail_hand_hit"],
+                primaryCategory: .putting,
+                minReps: 6,
+                maxReps: 24,
+                progressionIDs: ["p3"],
+                regressionIDs: ["p1"]
+            ),
+            metadata(
+                drillID: "p6",
+                promptTags: ["putting", "speed", "pace", "stop_zone", "lag"],
+                faultTags: ["poor_pace", "distance_control", "lag_putting"],
+                optionalEquipment: [.tee],
+                primaryCategory: .putting,
+                minReps: 4,
+                maxReps: 18,
+                progressionIDs: ["p4"],
+                regressionIDs: ["p2"]
+            )
+        ].map { ($0.drillID, $0) }
+    )
+
+    private static func metadata(
+        drillID: String,
+        promptTags: Set<String>,
+        faultTags: Set<String>,
+        equipmentRules: Set<GarageEquipmentRequirement> = [],
+        requiredAnyEquipmentGroups: [Set<GarageEquipmentRequirement>] = [],
+        optionalEquipment: Set<GarageEquipmentRequirement> = [],
+        safetyConstraints: Set<GarageSafetyConstraint> = [],
+        primaryCategory: GarageDrillLibraryCategory,
+        minReps: Int,
+        maxReps: Int,
+        progressionIDs: [String] = [],
+        regressionIDs: [String] = []
+    ) -> GarageDrillMetadata {
+        GarageDrillMetadata(
+            drillID: drillID,
+            promptTags: promptTags,
+            faultTags: faultTags,
+            equipmentRules: equipmentRules,
+            requiredAnyEquipmentGroups: requiredAnyEquipmentGroups,
+            optionalEquipment: optionalEquipment,
+            safetyConstraints: safetyConstraints,
+            primaryCategory: primaryCategory,
+            minReps: minReps,
+            maxReps: maxReps,
+            progressionIDs: progressionIDs,
+            regressionIDs: regressionIDs,
+            recommendationRules: [
+                GarageRecommendationRule(
+                    trigger: .lowScore,
+                    threshold: 60,
+                    action: "Repeat this category soon or use the listed regression.",
+                    relatedDrillIDs: regressionIDs
+                ),
+                GarageRecommendationRule(
+                    trigger: .highScore,
+                    threshold: 80,
+                    action: "Allow progression or shift toward an adjacent category.",
+                    relatedDrillIDs: progressionIDs
+                )
+            ]
+        )
+    }
+
+    private static func fallbackMetadata(for drill: GarageDrill) -> GarageDrillMetadata {
+        GarageDrillMetadata(
+            drillID: drill.id,
+            promptTags: Set([drill.libraryCategory.rawValue, drill.faultType.rawValue, drill.title].map(normalizedMetadataToken)),
+            faultTags: Set([drill.faultType.rawValue].map(normalizedMetadataToken)),
+            primaryCategory: drill.libraryCategory,
+            minReps: max(1, drill.defaultRepCount / 2),
+            maxReps: max(drill.defaultRepCount, drill.defaultRepCount * 3),
+            regressionIDs: drill.remedialDrillID.map { [$0] } ?? []
+        )
+    }
+
     private static func validateCatalog(
         drills: [GarageDrill],
         routines: [GarageRoutine]
@@ -742,6 +1193,58 @@ enum DrillVault {
         return errors
     }
 
+    private static func validateMetadata(
+        drills: [GarageDrill],
+        metadataByDrillID: [String: GarageDrillMetadata]
+    ) -> [String] {
+        var errors: [String] = []
+        let drillIDs = Set(drills.map(\.id))
+        let metadataIDs = Set(metadataByDrillID.keys)
+
+        let missingMetadata = drillIDs.subtracting(metadataIDs).sorted()
+        if missingMetadata.isEmpty == false {
+            errors.append("Missing metadata for drills: \(missingMetadata.joined(separator: ", ")).")
+        }
+
+        let orphanedMetadata = metadataIDs.subtracting(drillIDs).sorted()
+        if orphanedMetadata.isEmpty == false {
+            errors.append("Metadata references unknown drills: \(orphanedMetadata.joined(separator: ", ")).")
+        }
+
+        for metadata in metadataByDrillID.values.sorted(by: { $0.drillID < $1.drillID }) {
+            if metadata.minReps > metadata.maxReps {
+                errors.append("Metadata \(metadata.drillID) has minReps greater than maxReps.")
+            }
+
+            let relatedIDs = metadata.progressionIDs + metadata.regressionIDs + metadata.recommendationRules.flatMap(\.relatedDrillIDs)
+            let missingRelatedIDs = relatedIDs.filter { drillIDs.contains($0) == false }
+            if missingRelatedIDs.isEmpty == false {
+                errors.append("Metadata \(metadata.drillID) references missing related drills: \(missingRelatedIDs.joined(separator: ", ")).")
+            }
+        }
+
+        for environment in PracticeEnvironment.allCases {
+            let environmentHasMetadata = drills.contains { drill in
+                drill.environment == environment && metadataByDrillID[drill.id] != nil
+            }
+
+            if environmentHasMetadata == false {
+                errors.append("No metadata-backed drills available for \(environment.displayName).")
+            }
+        }
+
+        return errors
+    }
+
+    private nonisolated static func normalizedMetadataToken(_ value: String) -> String {
+        value
+            .lowercased()
+            .replacingOccurrences(of: "&", with: " ")
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.isEmpty == false }
+            .joined(separator: "_")
+    }
+
     private static func duplicateIDs(in values: [String]) -> [String] {
         var seen = Set<String>()
         var duplicates = Set<String>()
@@ -798,6 +1301,20 @@ extension GarageDrill {
 
     func makeGeneratedPracticeTemplateDrill(seedKey: String) -> PracticeTemplateDrill {
         makePracticeTemplateDrill(seedKey: seedKey)
+    }
+
+    func makeGeneratedPracticeTemplateDrill(seedKey: String, prescribedRepCount: Int) -> PracticeTemplateDrill {
+        let metadata = DrillVault.metadata(for: self)
+        let clampedRepCount = min(max(prescribedRepCount, metadata.minReps), metadata.maxReps)
+
+        return PracticeTemplateDrill(
+            id: GarageCatalogBridge.uuid(for: "routine-drill:\(seedKey)"),
+            definitionID: GarageCatalogBridge.uuid(for: "catalog-drill:\(id)"),
+            title: title,
+            focusArea: faultType.sensoryDescription,
+            targetClub: clubRange.displayName,
+            defaultRepCount: clampedRepCount
+        )
     }
 
     fileprivate func makePracticeTemplateDrill(seedKey: String) -> PracticeTemplateDrill {

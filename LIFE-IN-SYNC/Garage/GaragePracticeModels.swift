@@ -161,12 +161,40 @@ struct DrillResult: Hashable, Codable, Identifiable, Sendable {
 
     var id: String { name }
 
-    var successRatio: Double {
+    nonisolated var successRatio: Double {
         guard totalReps > 0 else {
             return 0
         }
 
         return Double(successfulReps) / Double(totalReps)
+    }
+
+    nonisolated var feelSuccessPercentage: Int {
+        Int((successRatio * 100).rounded())
+    }
+}
+
+struct GarageDrillResultMetadataSnapshot: Hashable {
+    let drillID: String
+    let primaryCategory: GarageDrillLibraryCategory
+    let promptTags: Set<String>
+    let faultTags: Set<String>
+    let feelSuccessPercentage: Int
+}
+
+extension DrillResult {
+    var garageMetadataSnapshot: GarageDrillResultMetadataSnapshot? {
+        guard let metadata = DrillVault.metadata(forDrillNamed: name) else {
+            return nil
+        }
+
+        return GarageDrillResultMetadataSnapshot(
+            drillID: metadata.drillID,
+            primaryCategory: metadata.primaryCategory,
+            promptTags: metadata.promptTags,
+            faultTags: metadata.faultTags,
+            feelSuccessPercentage: feelSuccessPercentage
+        )
     }
 }
 
