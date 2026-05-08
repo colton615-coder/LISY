@@ -151,48 +151,18 @@ struct GarageActiveSessionView: View {
         }
 
         let detail = GarageDrillFocusDetails.detail(for: currentEntry.drill)
-        let executionCommand = detail.execution
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .first(where: { $0.isEmpty == false }) ?? "Missing drill execution data"
-        let executionSteps = detail.execution
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { $0.isEmpty == false }
-        let passCheck = detail.successCriteria
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .first(where: { $0.isEmpty == false }) ?? "Missing drill pass-check data"
-        let passCriteria = detail.successCriteria
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { $0.isEmpty == false }
-        let setup = detail.setup
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { $0.isEmpty == false }
-        let commonMisses = detail.commonMisses
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { $0.isEmpty == false }
-        let equipment = detail.equipment
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { $0.isEmpty == false }
-        let resetCue = detail.resetCue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let content = GarageDrillFocusContentAdapter.content(
+            for: currentEntry.drill,
+            detail: detail
+        )
 
         return GarageFocusDrillPresentation(
             id: currentEntry.drill.id,
-            title: currentEntry.drill.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Missing drill title data" : currentEntry.drill.title,
-            metadata: currentEntry.drill.metadataSummary,
-            objective: detail.purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Missing drill objective data" : detail.purpose,
-            executionCommand: executionCommand,
-            executionSteps: executionSteps.isEmpty ? ["Missing drill execution data"] : executionSteps,
-            passCheck: passCheck,
-            passCriteria: passCriteria.isEmpty ? [passCheck] : passCriteria,
-            repTarget: detail.repTargetText(for: currentEntry.drill),
-            targetCount: currentEntry.drill.defaultRepCount > 0 ? currentEntry.drill.defaultRepCount : 10,
+            content: content,
             diagram: GarageDrillDiagramLibrary.diagram(
                 for: currentEntry.drill,
                 environment: session.environment
             ),
-            setup: setup.isEmpty ? ["Missing drill setup data"] : setup,
-            commonMisses: commonMisses.isEmpty ? ["Missing drill common-miss data"] : commonMisses,
-            resetCue: resetCue.isEmpty ? "Missing drill reset-cue data" : resetCue,
-            equipment: equipment.isEmpty ? ["Missing drill equipment data"] : equipment,
             isCompleted: currentEntry.progress.isCompleted
         )
     }
@@ -212,7 +182,13 @@ struct GarageActiveSessionView: View {
                 id: entry.drill.id,
                 index: index,
                 title: entry.drill.title,
-                metadata: entry.drill.metadataSummary,
+                metadata: GarageDrillFocusContentAdapter
+                    .content(
+                        for: entry.drill,
+                        detail: GarageDrillFocusDetails.detail(for: entry.drill)
+                    )
+                    .goal
+                    .railSummary,
                 status: status,
                 isSelectable: entry.progress.isCompleted
             )
