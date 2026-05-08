@@ -107,6 +107,16 @@ struct GarageSkillProfile: Hashable {
     var isEmpty: Bool {
         drillScores.isEmpty && categoryScores.isEmpty && faultTagScores.isEmpty
     }
+
+    var isNeutral: Bool {
+        isEmpty
+            && environmentScores.isEmpty
+            && undertrainedCategories.isEmpty
+            && overtrainedCategories.isEmpty
+            && recurringWeaknesses.isEmpty
+            && improvingSignals.isEmpty
+            && recommendedFocusTags.isEmpty
+    }
 }
 
 enum GaragePracticeHistoryAnalyzer {
@@ -174,13 +184,19 @@ enum GaragePracticeHistoryAnalyzer {
         let categoryScores = categoryBuckets.mapValues(\.score)
         let faultTagScores = faultTagBuckets.mapValues(\.score)
         let environmentScores = environmentBuckets.mapValues(\.score)
-        let practicedCategories = Set(categoryScores.keys)
+
+        guard drillScores.isEmpty == false
+            || categoryScores.isEmpty == false
+            || faultTagScores.isEmpty == false else {
+            return neutralProfile(environment: environment, referenceDate: referenceDate)
+        }
+
         let eligibleCategories = eligibleCategories(for: environment)
         let totalRecentAttempts = recentCategoryAttempts.values.reduce(0, +)
 
         let undertrainedCategories = eligibleCategories.filter { category in
             guard totalRecentAttempts > 0 else {
-                return practicedCategories.contains(category) == false
+                return false
             }
 
             let share = Double(recentCategoryAttempts[category, default: 0]) / Double(totalRecentAttempts)
@@ -241,12 +257,57 @@ enum GaragePracticeHistoryAnalyzer {
     }
 
     static func validationErrors() -> [String] {
+        var errors: [String] = []
         let emptyProfile = skillProfile(from: [])
-        guard emptyProfile.isEmpty else {
-            return ["Analyzer empty-history profile should not contain scored history."]
+        if emptyProfile.isNeutral == false {
+            errors.append("Analyzer empty-history profile should not contain scored history or coaching signals.")
         }
 
-        return []
+        let unknownMetadataProfile = skillProfile(
+            from: [
+                PracticeSessionRecord(
+                    date: Date(timeIntervalSince1970: 0),
+                    templateName: "Unknown Metadata Sample",
+                    environment: PracticeEnvironment.net.rawValue,
+                    completedDrills: 1,
+                    totalDrills: 1,
+                    drillResults: [
+                        DrillResult(
+                            name: "Deleted Drill Name",
+                            successfulReps: 1,
+                            totalReps: 10
+                        )
+                    ]
+                )
+            ],
+            environment: .net,
+            referenceDate: Date(timeIntervalSince1970: 86_400)
+        )
+
+        if unknownMetadataProfile.isNeutral == false {
+            errors.append("Analyzer unknown-metadata profile should stay neutral instead of inferring from catalog availability.")
+        }
+
+        return errors
+    }
+
+    private static func neutralProfile(
+        environment: PracticeEnvironment?,
+        referenceDate: Date
+    ) -> GarageSkillProfile {
+        GarageSkillProfile(
+            environment: environment,
+            generatedAt: referenceDate,
+            drillScores: [:],
+            categoryScores: [:],
+            faultTagScores: [:],
+            environmentScores: [:],
+            undertrainedCategories: [],
+            overtrainedCategories: [],
+            recurringWeaknesses: [],
+            improvingSignals: [],
+            recommendedFocusTags: []
+        )
     }
 
     private static func eligibleCategories(for environment: PracticeEnvironment?) -> [GarageDrillLibraryCategory] {

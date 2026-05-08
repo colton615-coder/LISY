@@ -184,6 +184,7 @@ struct GarageDrillResultMetadataSnapshot: Hashable {
 
 extension DrillResult {
     var garageMetadataSnapshot: GarageDrillResultMetadataSnapshot? {
+        // Current history predates persisted catalog drill IDs, so metadata resolves by title only.
         guard let metadata = DrillVault.metadata(forDrillNamed: name) else {
             return nil
         }

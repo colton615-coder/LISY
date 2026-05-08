@@ -180,10 +180,10 @@ enum GarageLocalCoachPlanner {
 
         if promptText.isEmpty == false {
             if promptMatched {
-                return "\(adaptivePrefix) Generated from your prompt after environment, metadata, and safety gates. Review before starting."
+                return "\(adaptivePrefix) Prompt matched after environment, metadata, and safety gates."
             }
 
-            return "\(adaptivePrefix) No direct prompt match was found, so Garage used the closest safe \(environment.displayName.lowercased()) categories. Review before starting."
+            return "\(adaptivePrefix) No direct prompt match; using the closest safe \(environment.displayName.lowercased()) categories."
         }
 
         if let carryForwardCue {

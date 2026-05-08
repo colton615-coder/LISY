@@ -268,13 +268,18 @@ enum GarageAdaptiveRecommendationEngine {
     }
 
     static func validationErrors() -> [String] {
+        var errors: [String] = []
         let profile = GaragePracticeHistoryAnalyzer.skillProfile(from: [])
-        let recommendations = recommendations(for: profile)
-        if recommendations.isEmpty == false {
-            return ["Recommendation engine should return an empty recommendation set for empty history."]
+        if profile.isNeutral == false {
+            errors.append("Recommendation engine received a non-neutral profile for empty history.")
         }
 
-        return []
+        let recommendations = recommendations(for: profile)
+        if recommendations.isEmpty == false {
+            errors.append("Recommendation engine should return an empty recommendation set for empty history.")
+        }
+
+        return errors
     }
 }
 

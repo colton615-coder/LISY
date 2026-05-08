@@ -107,6 +107,8 @@ enum GaragePracticePlanSelector {
             }
         }
 
+        errors += validateRepeatedWeaknessGate()
+
         return errors
     }
 
@@ -257,30 +259,114 @@ enum GaragePracticePlanSelector {
         let environmentDrills = DrillVault.drills(in: environment)
         var weights: [String: Double] = [:]
 
-        for result in recentRecords
+        let recentEnvironmentRecords = recentRecords
             .filter({ $0.environment == environment.rawValue })
             .sorted(by: { $0.date > $1.date })
             .prefix(3)
-            .flatMap(\.drillResults)
-            where result.totalReps > 0 {
-            guard let drill = environmentDrills.first(where: { $0.title.caseInsensitiveCompare(result.name) == .orderedSame }) else {
-                continue
+        var weakSessionCounts: [String: Int] = [:]
+
+        for record in recentEnvironmentRecords {
+            var weakDrillsInSession = Set<String>()
+
+            for result in record.drillResults where result.totalReps > 0 {
+                guard let drill = environmentDrills.first(where: { $0.title.caseInsensitiveCompare(result.name) == .orderedSame }) else {
+                    continue
+                }
+
+                if result.successRatio < 0.6 {
+                    weights[drill.id, default: 0] += 12
+                    weakDrillsInSession.insert(drill.id)
+                } else if result.successRatio < 0.8 {
+                    weights[drill.id, default: 0] += 5
+                }
             }
 
-            if result.successRatio < 0.6 {
-                weights[drill.id, default: 0] += 12
+            for drillID in weakDrillsInSession {
+                weakSessionCounts[drillID, default: 0] += 1
+            }
+        }
 
-                if let remedialDrillID = drill.remedialDrillID,
-                   let remedialDrill = DrillVault.drill(for: remedialDrillID),
-                   remedialDrill.environment == environment {
-                    weights[remedialDrillID, default: 0] += 6
-                }
-            } else if result.successRatio < 0.8 {
-                weights[drill.id, default: 0] += 5
+        for (drillID, weakSessionCount) in weakSessionCounts where weakSessionCount >= 2 {
+            if let drill = DrillVault.drill(for: drillID),
+               let remedialDrillID = drill.remedialDrillID,
+               let remedialDrill = DrillVault.drill(for: remedialDrillID),
+               remedialDrill.environment == environment {
+                weights[remedialDrillID, default: 0] += 6
             }
         }
 
         return weights
+    }
+
+    private static func validateRepeatedWeaknessGate() -> [String] {
+        var errors: [String] = []
+
+        for environment in PracticeEnvironment.allCases {
+            guard let drill = DrillVault.drills(in: environment).first(where: { drill in
+                guard let remedialDrillID = drill.remedialDrillID,
+                      let remedial = DrillVault.drill(for: remedialDrillID) else {
+                    return false
+                }
+
+                return remedial.environment == environment
+            }),
+            let remedialDrillID = drill.remedialDrillID else {
+                continue
+            }
+
+            let firstRecord = weakHistoryRecord(
+                drill: drill,
+                environment: environment,
+                date: Date(timeIntervalSince1970: 0)
+            )
+            let secondRecord = weakHistoryRecord(
+                drill: drill,
+                environment: environment,
+                date: Date(timeIntervalSince1970: 86_400)
+            )
+            let singleWeakWeights = weakDrillWeights(
+                for: environment,
+                recentRecords: [firstRecord]
+            )
+            if singleWeakWeights[drill.id, default: 0] <= 0 {
+                errors.append("Selector did not preserve low-confidence weak-session awareness for \(drill.title).")
+            }
+
+            if singleWeakWeights[remedialDrillID] != nil {
+                errors.append("Selector applied remedial weighting for a single weak \(environment.displayName) session.")
+            }
+
+            let repeatedWeakWeights = weakDrillWeights(
+                for: environment,
+                recentRecords: [secondRecord, firstRecord]
+            )
+            if repeatedWeakWeights[remedialDrillID, default: 0] <= 0 {
+                errors.append("Selector did not apply remedial weighting after repeated weak \(environment.displayName) sessions.")
+            }
+        }
+
+        return errors
+    }
+
+    private static func weakHistoryRecord(
+        drill: GarageDrill,
+        environment: PracticeEnvironment,
+        date: Date
+    ) -> PracticeSessionRecord {
+        PracticeSessionRecord(
+            date: date,
+            templateName: "Weakness Gate Sample",
+            environment: environment.rawValue,
+            completedDrills: 1,
+            totalDrills: 1,
+            drillResults: [
+                DrillResult(
+                    name: drill.title,
+                    successfulReps: 2,
+                    totalReps: 10
+                )
+            ]
+        )
     }
 
     private static func defaultRoutineWeights(for environment: PracticeEnvironment) -> [String: Double] {
