@@ -42,7 +42,7 @@ struct GarageGeneratedPracticePlan: Identifiable, Hashable {
     }
 
     var workSummary: String {
-        "\(drills.count) drills - \(totalRepCount) reps - \(estimatedDurationMinutes) min"
+        "\(drills.count) drills - \(estimatedDurationMinutes) min"
     }
 
     var canStart: Bool {

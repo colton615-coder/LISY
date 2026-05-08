@@ -269,7 +269,9 @@ enum GaragePracticePlanSelector {
             var weakDrillsInSession = Set<String>()
 
             for result in record.drillResults where result.totalReps > 0 {
-                guard let drill = environmentDrills.first(where: { $0.title.caseInsensitiveCompare(result.name) == .orderedSame }) else {
+                guard let drill = DrillVault.canonicalDrill(for: result.name),
+                      drill.environment == environment,
+                      environmentDrills.contains(where: { $0.id == drill.id }) else {
                     continue
                 }
 

@@ -616,7 +616,7 @@ private struct GarageManualPlanDrill: Identifiable, Hashable {
     static func defaultSelectionID(for environment: PracticeEnvironment) -> String? {
         switch environment {
         case .net:
-            return "net-pause-top"
+            return featuredDrills(for: .net).first?.id
         case .range:
             return featuredDrills(for: .range).first?.id
         case .puttingGreen:
@@ -627,51 +627,23 @@ private struct GarageManualPlanDrill: Identifiable, Hashable {
     static func featuredDrills(for environment: PracticeEnvironment) -> [GarageManualPlanDrill] {
         switch environment {
         case .net:
-            return [
-                GarageManualPlanDrill(
-                    id: "net-towel-under-arm",
-                    title: "Towel Under Arm",
-                    focus: "Connection & Sync",
-                    systemImage: "paperplane",
-                    practiceDrill: PracticeTemplateDrill(
-                        id: UUID(uuidString: "B79A828D-F6D7-5874-9C66-A9EBA3F5375E") ?? UUID(),
-                        title: "Towel Under Arm",
-                        focusArea: "Connection & Sync",
-                        targetClub: "Scoring Irons",
-                        defaultRepCount: 10
-                    )
-                ),
-                GarageManualPlanDrill(
-                    id: "net-pause-top",
-                    title: "Pause at Top",
-                    focus: "Transition Control",
-                    systemImage: "clock",
-                    practiceDrill: PracticeTemplateDrill(
-                        id: UUID(uuidString: "A0AE1D06-F512-5406-A475-E3F1C8B4606A") ?? UUID(),
-                        title: "Pause at Top",
-                        focusArea: "Transition Control",
-                        targetClub: "Wedges",
-                        defaultRepCount: 8
-                    )
-                ),
-                GarageManualPlanDrill(
-                    id: "net-alignment-stick-path",
-                    title: "Alignment Stick Path",
-                    focus: "Swing Plane",
-                    systemImage: "arrow.up.and.down",
-                    practiceDrill: PracticeTemplateDrill(
-                        id: UUID(uuidString: "F3974D90-B1BB-5B4C-9BB3-A030E36680E4") ?? UUID(),
-                        title: "Alignment Stick Path",
-                        focusArea: "Swing Plane",
-                        targetClub: "Scoring Irons",
-                        defaultRepCount: 8
-                    )
-                )
-            ]
+            return netFeaturedDrills
         case .range:
             return rangeFeaturedDrills
         case .puttingGreen:
             return puttingGreenFeaturedDrills
+        }
+    }
+
+    private static var netFeaturedDrills: [GarageManualPlanDrill] {
+        DrillVault.drills(in: .net).prefix(3).enumerated().map { offset, drill in
+            GarageManualPlanDrill(
+                id: "net-\(drill.id)",
+                title: drill.title,
+                focus: drill.faultType.sensoryDescription,
+                systemImage: offset == 0 ? "scope" : offset == 1 ? "bolt.horizontal" : "figure.golf",
+                practiceDrill: drill.makeGeneratedPracticeTemplateDrill(seedKey: "manual-net-\(offset)-\(drill.id)")
+            )
         }
     }
 

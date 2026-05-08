@@ -1,5 +1,54 @@
 import Foundation
 
+enum GarageDrillFocusMode: String, Hashable {
+    case reps
+    case time
+    case goal
+    case challenge
+    case checklist
+
+    var controlLabel: String {
+        switch self {
+        case .reps:
+            return "Reps"
+        case .time:
+            return "Timer"
+        case .goal:
+            return "Target"
+        case .challenge:
+            return "Challenge"
+        case .checklist:
+            return "Checklist"
+        }
+    }
+
+    var trackerLabel: String {
+        switch self {
+        case .reps:
+            return "Rep Counter"
+        case .time:
+            return "Time Block"
+        case .goal:
+            return "Goal Progress"
+        case .challenge:
+            return "Challenge Tracker"
+        case .checklist:
+            return "Checklist"
+        }
+    }
+}
+
+struct GarageDrillFocusMetadata: Hashable {
+    let mode: GarageDrillFocusMode
+    let commandCopy: String
+    let setupLine: String
+    let executionCue: String
+    let teachingDetail: String?
+    let reviewSummary: String?
+    let targetMetric: String
+    let diagramKey: String?
+}
+
 struct GarageDrillFocusDetail: Hashable {
     let purpose: String
     let setup: [String]
@@ -18,10 +67,193 @@ struct GarageDrillFocusDetail: Hashable {
 enum GarageDrillFocusDetails {
     static func detail(for drill: PracticeTemplateDrill) -> GarageDrillFocusDetail {
         guard let canonicalDrill = DrillVault.canonicalDrill(for: drill) else {
+            #if DEBUG
+            DrillVault.auditUnresolvedTemplateDrill(drill, context: "focus-detail")
+            #endif
             return customDetail(for: drill)
         }
 
         return detail(for: canonicalDrill)
+    }
+
+    static func metadata(
+        for drill: PracticeTemplateDrill,
+        detail: GarageDrillFocusDetail
+    ) -> GarageDrillFocusMetadata {
+        guard let canonicalDrill = DrillVault.canonicalDrill(for: drill) else {
+            #if DEBUG
+            DrillVault.auditUnresolvedTemplateDrill(drill, context: "focus-metadata")
+            #endif
+            return customMetadata(for: drill, detail: detail)
+        }
+
+        return metadata(for: canonicalDrill, detail: detail)
+    }
+
+    static func metadata(
+        for drill: GarageDrill,
+        detail: GarageDrillFocusDetail
+    ) -> GarageDrillFocusMetadata {
+        let firstSetup = cleanLine(detail.setup.first) ?? "Set a safe station before the first rep."
+        let firstExecution = cleanLine(detail.execution.first) ?? drill.abstractFeelCue
+        let firstSuccess = cleanLine(detail.successCriteria.first) ?? drill.purpose
+
+        switch drill.id {
+        case "n1":
+            return GarageDrillFocusMetadata(
+                mode: .challenge,
+                commandCopy: "Strike the ball without touching the towel behind it.",
+                setupLine: "Place a towel about 2 inches behind the ball.",
+                executionCue: "Count only ball-first strikes where the towel stays still.",
+                teachingDetail: detail.purpose,
+                reviewSummary: "Clean strikes should feel ball-first with no towel contact.",
+                targetMetric: "5 clean strikes in a row",
+                diagramKey: "towel-strike"
+            )
+        case "n3":
+            return GarageDrillFocusMetadata(
+                mode: .time,
+                commandCopy: "Rehearse hip depth without lunging toward the ball.",
+                setupLine: firstSetup,
+                executionCue: "Move slowly enough that posture stays intact.",
+                teachingDetail: detail.purpose,
+                reviewSummary: "You should finish with hip depth and athletic posture still present.",
+                targetMetric: "\(detail.estimatedMinutes)-minute rehearsal block",
+                diagramKey: "wall-turn"
+            )
+        case "n7":
+            return GarageDrillFocusMetadata(
+                mode: .challenge,
+                commandCopy: "Exit low without clipping the headcover.",
+                setupLine: firstSetup,
+                executionCue: "Keep the chest turning through the low window.",
+                teachingDetail: detail.purpose,
+                reviewSummary: "Clean reps avoid the headcover and keep the exit shallow.",
+                targetMetric: "6 clean exits",
+                diagramKey: "low-exit-window"
+            )
+        case "r10":
+            return GarageDrillFocusMetadata(
+                mode: .goal,
+                commandCopy: "Start the ball through the same launch gate.",
+                setupLine: firstSetup,
+                executionCue: "Judge the first 10 yards before judging curve.",
+                teachingDetail: detail.purpose,
+                reviewSummary: "Success is a predictable start line, not a perfect final curve.",
+                targetMetric: "5 start-line reads",
+                diagramKey: "start-line-gate"
+            )
+        case "r12":
+            return GarageDrillFocusMetadata(
+                mode: .goal,
+                commandCopy: "Move through three carry targets while contact stays clean.",
+                setupLine: firstSetup,
+                executionCue: "Restart the ladder if strike gets heavy or thin.",
+                teachingDetail: detail.purpose,
+                reviewSummary: "The carry ladder only counts when strike quality holds.",
+                targetMetric: "3 carry windows",
+                diagramKey: "carry-ladder"
+            )
+        case "r13":
+            return GarageDrillFocusMetadata(
+                mode: .goal,
+                commandCopy: "Carry the ball to each wedge number without changing rhythm.",
+                setupLine: "Pick three carry numbers such as 50, 65, and 80 yards.",
+                executionCue: "Adjust swing length, not tempo.",
+                teachingDetail: detail.purpose,
+                reviewSummary: "You should know which swing length produced each carry.",
+                targetMetric: "3 wedge carry numbers",
+                diagramKey: "distance-ladder"
+            )
+        case "r14":
+            return GarageDrillFocusMetadata(
+                mode: .checklist,
+                commandCopy: "Hit low, stock, and high windows with the same effort.",
+                setupLine: firstSetup,
+                executionCue: "Change finish height and face feel, not effort.",
+                teachingDetail: detail.purpose,
+                reviewSummary: "All three windows should look distinct without a tempo spike.",
+                targetMetric: "low, stock, high",
+                diagramKey: "flight-matrix"
+            )
+        case "r15":
+            return GarageDrillFocusMetadata(
+                mode: .challenge,
+                commandCopy: "Launch driver through a fairway-sized start gate.",
+                setupLine: firstSetup,
+                executionCue: "Hold the finish for two counts before judging the shot.",
+                teachingDetail: detail.purpose,
+                reviewSummary: "Fairway discipline comes before extra speed.",
+                targetMetric: "5 fairway starts",
+                diagramKey: "fairway-gate"
+            )
+        case "r17":
+            return GarageDrillFocusMetadata(
+                mode: .challenge,
+                commandCopy: "Advance through the fairway ladder without losing posture.",
+                setupLine: firstSetup,
+                executionCue: "Restart if the body stalls or crowds the ball.",
+                teachingDetail: detail.purpose,
+                reviewSummary: "Pressure only counts when posture and turn hold up.",
+                targetMetric: "3 pressure windows",
+                diagramKey: "pressure-fairway-ladder"
+            )
+        case "p2":
+            return GarageDrillFocusMetadata(
+                mode: .goal,
+                commandCopy: "Roll each next ball slightly farther than the last.",
+                setupLine: firstSetup,
+                executionCue: "Control the gap with stroke length, not a jab.",
+                teachingDetail: detail.purpose,
+                reviewSummary: "Good pace creates small, predictable distance gaps.",
+                targetMetric: "leapfrog distance ladder",
+                diagramKey: "leapfrog-lag"
+            )
+        case "p3":
+            return GarageDrillFocusMetadata(
+                mode: .challenge,
+                commandCopy: "Roll the ball through the tee gate on your start line.",
+                setupLine: "Set two tees just wider than the putter head.",
+                executionCue: "Count only starts that miss both tees cleanly.",
+                teachingDetail: detail.purpose,
+                reviewSummary: "Clean starts should pass through the gate without steering.",
+                targetMetric: "6 clean starts",
+                diagramKey: "putting-gate"
+            )
+        case "p4":
+            return GarageDrillFocusMetadata(
+                mode: .checklist,
+                commandCopy: "Putt from each station while tempo stays the same.",
+                setupLine: firstSetup,
+                executionCue: "Change stroke length as distance changes.",
+                teachingDetail: detail.purpose,
+                reviewSummary: "Pace should finish near the hole without rhythm changing.",
+                targetMetric: "4 stations",
+                diagramKey: "around-the-world"
+            )
+        case "p6":
+            return GarageDrillFocusMetadata(
+                mode: .challenge,
+                commandCopy: "Stop three balls inside the same pace zone.",
+                setupLine: firstSetup,
+                executionCue: "Restart if one races long or dies short.",
+                teachingDetail: detail.purpose,
+                reviewSummary: "The stop zone should tighten across all three balls.",
+                targetMetric: "3 balls in the zone",
+                diagramKey: "brake-test"
+            )
+        default:
+            return GarageDrillFocusMetadata(
+                mode: .reps,
+                commandCopy: firstExecution,
+                setupLine: firstSetup,
+                executionCue: cleanLine(detail.resetCue) ?? firstSuccess,
+                teachingDetail: detail.purpose,
+                reviewSummary: firstSuccess,
+                targetMetric: "\(drill.defaultRepCount) clean reps",
+                diagramKey: drill.id
+            )
+        }
     }
 
     static func detail(for drill: GarageDrill) -> GarageDrillFocusDetail {
@@ -283,33 +515,66 @@ enum GarageDrillFocusDetails {
         let targetClub = drill.targetClub.trimmingCharacters(in: .whitespacesAndNewlines)
 
         return GarageDrillFocusDetail(
-            purpose: focus.isEmpty ? "Focus on the stated session cue and record only reps that meet the drill standard." : "Work the stated focus area: \(focus).",
+            purpose: focus.isEmpty ? "Run the assigned practice task with one clear success standard." : "Work the stated focus area: \(focus).",
             setup: [
-                targetClub.isEmpty ? "Choose the exact club or tool before the timer starts." : "Commit to \(targetClub) for the entire set.",
-                focus.isEmpty ? "Define one pass-or-fail rep standard before the first swing." : "Tie every rep to \(focus.lowercased()), not general swing thoughts.",
-                "Reset the station after any rep you would not honestly count."
+                targetClub.isEmpty ? "Choose the exact club or tool before starting." : "Commit to \(targetClub) for the full set.",
+                focus.isEmpty ? "Define the success standard before the first attempt." : "Tie each attempt to \(focus.lowercased()).",
+                "Reset after any attempt you would not honestly count."
             ],
             execution: [
-                "Run the planned reps without changing the drill mid-set.",
-                "Count only reps that meet the stated standard.",
+                "Run the task without changing the goal mid-set.",
+                "Count only attempts that meet the standard.",
                 "Log the dominant feel or miss before moving on."
             ],
             successCriteria: [
-                "Rep matches the stated focus.",
+                "Attempt matches the stated focus.",
                 "Contact, start line, or pace is honest enough to count.",
                 "You can describe what improved or failed."
             ],
             commonMisses: [
-                "Rushing reps just to finish.",
-                "Counting unclear reps as successful.",
+                "Rushing just to finish.",
+                "Counting unclear attempts as successful.",
                 "Changing the goal halfway through the set."
             ],
-            resetCue: "Slow down. Make the rep count mean something.",
+            resetCue: "Slow down. Make the count mean something.",
             equipment: [
                 targetClub.isEmpty ? "Assigned club or tool" : targetClub,
                 "Environment-appropriate practice setup"
             ],
             estimatedMinutes: max(5, min(12, Int(ceil(Double(max(drill.defaultRepCount, 1)) * 0.75))))
         )
+    }
+
+    private static func customMetadata(
+        for drill: PracticeTemplateDrill,
+        detail: GarageDrillFocusDetail
+    ) -> GarageDrillFocusMetadata {
+        let defaultCount = max(drill.defaultRepCount, 0)
+        let mode: GarageDrillFocusMode = defaultCount > 0 ? .reps : .time
+        let setupLine = cleanLine(detail.setup.first) ?? "Set a safe station before starting."
+        let executionCue = cleanLine(detail.execution.first) ?? "Run the task without changing the goal mid-set."
+        let targetMetric = defaultCount > 0 ? "\(defaultCount) honest attempts" : "\(detail.estimatedMinutes)-minute block"
+
+        return GarageDrillFocusMetadata(
+            mode: mode,
+            commandCopy: cleanLine(detail.purpose) ?? "Complete the assigned practice task.",
+            setupLine: setupLine,
+            executionCue: executionCue,
+            teachingDetail: nil,
+            reviewSummary: nil,
+            targetMetric: targetMetric,
+            diagramKey: nil
+        )
+    }
+
+    private static func cleanLine(_ value: String?) -> String? {
+        guard let value else {
+            return nil
+        }
+
+        let cleaned = value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        return cleaned.isEmpty ? nil : cleaned
     }
 }

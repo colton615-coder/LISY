@@ -3,10 +3,22 @@ import Foundation
 struct GarageDrillFocusContent: Hashable {
     let title: String
     let task: String
-    let setupSteps: [String]
+    let setupLine: String
+    let executionCue: String
     let goal: GarageDrillGoal
+    let mode: GarageDrillFocusMode
+    let targetMetric: String
     let watchFor: String?
     let finishRule: String
+    let teachingDetail: String?
+    let reviewSummary: String?
+    let diagramKey: String?
+}
+
+extension GarageDrillFocusContent {
+    var hasTeachingDetails: Bool {
+        teachingDetail?.isEmpty == false || reviewSummary?.isEmpty == false
+    }
 }
 
 enum GarageDrillGoal: Hashable {
@@ -25,141 +37,122 @@ enum GarageDrillFocusContentAdapter {
         detail: GarageDrillFocusDetail
     ) -> GarageDrillFocusContent {
         let canonicalDrill = DrillVault.canonicalDrill(for: drill)
+        let metadata = GarageDrillFocusDetails.metadata(for: drill, detail: detail)
 
-        switch canonicalDrill?.id {
-        case "n1":
-            return heavyTowelStrikeContent(title: drill.title)
-        case "r13":
-            return distanceLadderContent(title: drill.title)
-        case "p3":
-            return gateStartBuilderContent(title: drill.title)
-        default:
-            return fallbackContent(
-                for: drill,
-                detail: detail,
-                canonicalDrill: canonicalDrill
-            )
-        }
-    }
-
-    private static func heavyTowelStrikeContent(title: String) -> GarageDrillFocusContent {
-        GarageDrillFocusContent(
-            title: cleanTitle(title, fallback: "Heavy Towel Strike"),
-            task: "Strike the ball without touching the towel behind it.",
-            setupSteps: [
-                "Place a towel 2 inches behind the ball.",
-                "Use a wedge or short iron.",
-                "Start with controlled swings."
-            ],
-            goal: .streak(count: 5, unit: "clean strikes"),
-            watchFor: "Towel contact before ball contact.",
-            finishRule: "Finish when you flush 5 clean strikes in a row."
+        return content(
+            for: drill,
+            detail: detail,
+            canonicalDrill: canonicalDrill,
+            metadata: metadata
         )
     }
 
-    private static func distanceLadderContent(title: String) -> GarageDrillFocusContent {
-        GarageDrillFocusContent(
-            title: cleanTitle(title, fallback: "Distance Ladder"),
-            task: "Carry the ball to each wedge number without changing rhythm.",
-            setupSteps: [
-                "Pick carry numbers at 50, 65, and 80 yards.",
-                "Use the same wedge routine before every ball.",
-                "Track carry distance, not rollout."
-            ],
-            goal: .ladder(steps: [
-                "Land one ball at 50 yards.",
-                "Land one ball at 65 yards.",
-                "Land one ball at 80 yards.",
-                "Repeat the ladder once with the same rhythm."
-            ]),
-            watchFor: "Swinging harder instead of changing swing length.",
-            finishRule: "Finish after the ladder is complete without tempo spikes."
-        )
-    }
-
-    private static func gateStartBuilderContent(title: String) -> GarageDrillFocusContent {
-        GarageDrillFocusContent(
-            title: cleanTitle(title, fallback: "Gate Start Builder"),
-            task: "Roll the ball through the tee gate on your start line.",
-            setupSteps: [
-                "Set two tees just wider than the putter head.",
-                "Start from 4 feet on a clear start line.",
-                "Use the same stroke rhythm each attempt."
-            ],
-            goal: .timeTrial(targetCount: 6, unit: "clean starts"),
-            watchFor: "Clipping a tee or steering the face late.",
-            finishRule: "Finish when 6 clean starts are recorded."
-        )
-    }
-
-    private static func fallbackContent(
+    private static func content(
         for drill: PracticeTemplateDrill,
         detail: GarageDrillFocusDetail,
-        canonicalDrill: GarageDrill?
+        canonicalDrill: GarageDrill?,
+        metadata: GarageDrillFocusMetadata
     ) -> GarageDrillFocusContent {
-        let title = cleanTitle(drill.title, fallback: canonicalDrill?.title ?? "Practice Drill")
-        let task = firstCleanLine(
-            detail.execution,
-            canonicalDrill?.executionSteps ?? []
-        ) ?? firstCleanOptional([
-            canonicalDrill?.abstractFeelCue,
-            canonicalDrill?.purpose,
-            drill.focusArea
-        ]) ?? "Complete the assigned task with honest feedback."
-        let setupSteps = cleanSetupSteps(for: drill, detail: detail, canonicalDrill: canonicalDrill)
-        let goal = fallbackGoal(for: drill, detail: detail, canonicalDrill: canonicalDrill)
-        let watchFor = firstCleanLine(detail.commonMisses) ?? "Rushing the task or counting unclear reps."
+        let title = cleanTitle(canonicalDrill?.title ?? drill.title, fallback: "Practice Drill")
+        let goal = goal(for: drill, detail: detail, canonicalDrill: canonicalDrill, metadata: metadata)
+        let watchFor = firstCleanLine(detail.commonMisses)
 
         return GarageDrillFocusContent(
             title: title,
-            task: task,
-            setupSteps: setupSteps,
+            task: metadata.commandCopy,
+            setupLine: metadata.setupLine,
+            executionCue: metadata.executionCue,
             goal: goal,
+            mode: metadata.mode,
+            targetMetric: metadata.targetMetric,
             watchFor: watchFor,
-            finishRule: finishRule(for: goal)
+            finishRule: finishRule(for: goal),
+            teachingDetail: metadata.teachingDetail,
+            reviewSummary: metadata.reviewSummary,
+            diagramKey: metadata.diagramKey
         )
     }
 
-    private static func fallbackGoal(
+    private static func goal(
         for drill: PracticeTemplateDrill,
         detail: GarageDrillFocusDetail,
-        canonicalDrill: GarageDrill?
+        canonicalDrill: GarageDrill?,
+        metadata: GarageDrillFocusMetadata
     ) -> GarageDrillGoal {
-        let title = (canonicalDrill?.title ?? drill.title).lowercased()
-        let executionSteps = cleanLines(canonicalDrill?.executionSteps ?? detail.execution)
+        let executionSteps = cleanLines(detail.execution)
+        let defaultCount = drill.defaultRepCount > 0 ? drill.defaultRepCount : (canonicalDrill?.defaultRepCount ?? 1)
 
-        if title.contains("ladder"), executionSteps.isEmpty == false {
-            return .ladder(steps: executionSteps)
+        switch metadata.mode {
+        case .reps:
+            return .repTarget(count: max(defaultCount, 1), unit: "clean reps")
+        case .time:
+            return .timed(durationSeconds: max(detail.estimatedMinutes, 1) * 60)
+        case .goal:
+            if canonicalDrill?.id == "r13" {
+                return .ladder(steps: [
+                    "Land one ball at the short carry number.",
+                    "Land one ball at the middle carry number.",
+                    "Land one ball at the long carry number.",
+                    "Repeat the ladder with the same rhythm."
+                ])
+            }
+
+            if canonicalDrill?.id == "p2" {
+                return .ladder(steps: [
+                    "Roll the first ball to the starting distance.",
+                    "Roll the next ball slightly past it.",
+                    "Keep each next ball one foot farther.",
+                    "Stop before one races outside the corridor."
+                ])
+            }
+
+            if executionSteps.count > 1 {
+                return .ladder(steps: Array(executionSteps.prefix(4)))
+            }
+
+            return .manual(label: metadata.targetMetric)
+        case .challenge:
+            switch canonicalDrill?.id {
+            case "n1":
+                return .streak(count: 5, unit: "clean strikes")
+            case "n7":
+                return .repTarget(count: 6, unit: "clean exits")
+            case "p3":
+                return .timeTrial(targetCount: 6, unit: "clean starts")
+            case "r15":
+                return .streak(count: 5, unit: "fairway starts")
+            case "r17":
+                return .ladder(steps: [
+                    "Hit the easiest fairway window.",
+                    "Hit the middle fairway window.",
+                    "Hit the hardest fairway window."
+                ])
+            case "p6":
+                return .streak(count: 3, unit: "balls in the zone")
+            default:
+                return .repTarget(count: max(defaultCount, 1), unit: "clean attempts")
+            }
+        case .checklist:
+            if canonicalDrill?.id == "r14" {
+                return .checklist(items: [
+                    "Hit the low window.",
+                    "Hit the stock window.",
+                    "Hit the high window."
+                ])
+            }
+
+            if canonicalDrill?.id == "p4" {
+                return .checklist(items: [
+                    "Complete station one.",
+                    "Complete station two.",
+                    "Complete station three.",
+                    "Complete station four."
+                ])
+            }
+
+            let items = executionSteps.isEmpty ? [metadata.executionCue] : executionSteps
+            return .checklist(items: Array(items.prefix(5)))
         }
-
-        if drill.defaultRepCount <= 0 {
-            return .timed(durationSeconds: max(detail.estimatedMinutes, 5) * 60)
-        }
-
-        return .repTarget(count: max(drill.defaultRepCount, 1), unit: "clean reps")
-    }
-
-    private static func cleanSetupSteps(
-        for drill: PracticeTemplateDrill,
-        detail: GarageDrillFocusDetail,
-        canonicalDrill: GarageDrill?
-    ) -> [String] {
-        let setup = cleanLines(detail.setup)
-        if setup.isEmpty == false {
-            return Array(setup.prefix(3))
-        }
-
-        let execution = cleanLines(canonicalDrill?.executionSteps ?? detail.execution)
-        if execution.isEmpty == false {
-            return Array(execution.prefix(3))
-        }
-
-        let targetClub = drill.targetClub.garageFocusContentTrimmed
-        return [
-            targetClub.isEmpty ? "Use the assigned club or tool." : "Use \(targetClub).",
-            "Prepare the station safely.",
-            "Keep the task narrow and measurable."
-        ]
     }
 
     private static func finishRule(for goal: GarageDrillGoal) -> String {
@@ -200,12 +193,6 @@ enum GarageDrillFocusContentAdapter {
         }
 
         return nil
-    }
-
-    private static func firstCleanOptional(_ values: [String?]) -> String? {
-        values
-            .compactMap { $0?.garageFocusContentTrimmed }
-            .first { $0.isEmpty == false }
     }
 
     private static func formattedDuration(_ seconds: Int) -> String {

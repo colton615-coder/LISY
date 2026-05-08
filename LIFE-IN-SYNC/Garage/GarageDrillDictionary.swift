@@ -289,6 +289,34 @@ enum DrillVault {
         return catalogDrills.first(where: { $0.id == id })
     }
 
+    static func canonicalDrill(for identifierOrName: String) -> GarageDrill? {
+        _ = catalogValidationMarker
+        let lookupKey = canonicalLookupKey(for: identifierOrName)
+        guard lookupKey.isEmpty == false else {
+            return nil
+        }
+
+        if let idMatch = catalogDrills.first(where: { canonicalLookupKey(for: $0.id) == lookupKey }) {
+            return idMatch
+        }
+
+        if let titleMatch = catalogDrills.first(where: { canonicalLookupKey(for: $0.title) == lookupKey }) {
+            return titleMatch
+        }
+
+        if let prefixedTitleMatch = catalogDrills.first(where: {
+            canonicalLookupKey(for: "\($0.id) \($0.title)") == lookupKey
+        }) {
+            return prefixedTitleMatch
+        }
+
+        guard let aliasID = canonicalDrillAliasIDsByLookupKey[lookupKey] else {
+            return nil
+        }
+
+        return catalogDrills.first { $0.id == aliasID }
+    }
+
     static func drills(in environment: PracticeEnvironment) -> [GarageDrill] {
         _ = catalogValidationMarker
         return catalogDrills.filter { $0.environment == environment }
@@ -302,35 +330,15 @@ enum DrillVault {
             return matchedDrill
         }
 
-        return catalogDrills.first {
-            $0.title.caseInsensitiveCompare(templateDrill.title) == .orderedSame
-        } ?? canonicalDrillMatchingAlias(for: templateDrill.title)
+        return canonicalDrill(for: templateDrill.title)
     }
 
-    private static func canonicalDrillMatchingAlias(for title: String) -> GarageDrill? {
-        let normalizedTitle = title
-            .lowercased()
-            .replacingOccurrences(of: "-", with: " ")
-            .replacingOccurrences(of: "_", with: " ")
-            .split(separator: " ")
-            .joined(separator: " ")
-
-        let aliasID: String?
-        switch normalizedTitle {
-        case "carry ladder", "wedge carry ladder", "wedge distance ladder":
-            aliasID = "r13"
-        case "tempo rehearsal", "pause tempo rehearsal":
-            aliasID = "n6"
-        default:
-            aliasID = nil
-        }
-
-        guard let aliasID else {
-            return nil
-        }
-
-        return catalogDrills.first { $0.id == aliasID }
+    #if DEBUG
+    static func auditUnresolvedTemplateDrill(_ drill: PracticeTemplateDrill, context: String) {
+        let definitionDescription = drill.definitionID?.uuidString ?? "nil"
+        print("[GarageDrillResolution] Unresolved \(context): title=\"\(drill.title)\", definitionID=\(definitionDescription), focus=\"\(drill.focusArea)\", target=\"\(drill.targetClub)\"")
     }
+    #endif
 
     static func routine(for id: String) -> GarageRoutine? {
         _ = catalogValidationMarker
@@ -382,7 +390,7 @@ enum DrillVault {
 
     static func metadata(forDrillNamed drillName: String) -> GarageDrillMetadata? {
         _ = catalogValidationMarker
-        guard let drill = catalogDrills.first(where: { $0.title.caseInsensitiveCompare(drillName) == .orderedSame }) else {
+        guard let drill = canonicalDrill(for: drillName) else {
             return nil
         }
 
@@ -1269,6 +1277,86 @@ enum DrillVault {
             .filter { $0.isEmpty == false }
             .joined(separator: "_")
     }
+
+    private nonisolated static func canonicalLookupKey(for value: String) -> String {
+        value
+            .lowercased()
+            .replacingOccurrences(of: "&", with: " and ")
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.isEmpty == false }
+            .joined(separator: " ")
+    }
+
+    private static let canonicalDrillAliasIDsByLookupKey: [String: String] = {
+        let aliasesByID: [String: [String]] = [
+            "n1": [
+                "Heavy Towel",
+                "Towel Strike",
+                "Towel Behind Ball"
+            ],
+            "n4": [
+                "Start Line Mirror",
+                "Start-Line Gate",
+                "Face Window"
+            ],
+            "n6": [
+                "Pause at Top",
+                "Pause at the Top",
+                "Pause Tempo Rehearsal",
+                "Tempo Rehearsal",
+                "Transition Pause"
+            ],
+            "r13": [
+                "Carry Ladder",
+                "Wedge Carry Ladder",
+                "Wedge Distance Ladder",
+                "Wedge Ladder",
+                "Distance Control Ladder"
+            ],
+            "r14": [
+                "Wedge Matrix",
+                "Three Flight Matrix",
+                "Flight Window Matrix"
+            ],
+            "r15": [
+                "Driver Fairway Gate",
+                "Fairway Driver Gate"
+            ],
+            "r16": [
+                "Nine to Three",
+                "9 to 3 Flight",
+                "Flighted Nine to Three"
+            ],
+            "r17": [
+                "Fairway Ladder",
+                "Pressure Ladder"
+            ],
+            "p1": [
+                "Coin Roll",
+                "Ball Line Roll"
+            ],
+            "p2": [
+                "Leapfrog",
+                "Lag Leapfrog"
+            ],
+            "p3": [
+                "Putting Gate",
+                "Start Gate Builder",
+                "Gate Start",
+                "Tee Gate"
+            ],
+            "p6": [
+                "Brake Test",
+                "Three Ball Brake"
+            ]
+        ]
+
+        return aliasesByID.reduce(into: [:]) { partialResult, entry in
+            for alias in entry.value {
+                partialResult[canonicalLookupKey(for: alias)] = entry.key
+            }
+        }
+    }()
 
     private static func duplicateIDs(in values: [String]) -> [String] {
         var seen = Set<String>()
