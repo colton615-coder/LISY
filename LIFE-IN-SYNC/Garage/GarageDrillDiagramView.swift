@@ -284,17 +284,23 @@ private struct GarageDiagramBackground: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(GarageProTheme.insetSurface.opacity(0.9))
+                .fill(Color(red: 0.012, green: 0.04, blue: 0.028))
 
             LinearGradient(
                 colors: [
-                    GarageProTheme.accent.opacity(0.18),
-                    GarageProTheme.surface.opacity(0.3),
-                    GarageProTheme.insetSurface.opacity(0.78)
+                    Color(red: 0.08, green: 0.25, blue: 0.15).opacity(0.72),
+                    Color(red: 0.012, green: 0.04, blue: 0.028).opacity(0.98),
+                    Color.black.opacity(0.42)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
+
+            Circle()
+                .fill(Color(red: 0.18, green: 0.9, blue: 0.42).opacity(0.16))
+                .frame(width: 260, height: 260)
+                .blur(radius: 64)
+                .offset(x: -120, y: -70)
 
             if type == .puttingGate || type == .puttingPaceControl {
                 GaragePuttingGrainLines()
@@ -370,21 +376,21 @@ private struct GarageGolferStanceMarker: View {
     var body: some View {
         ZStack {
             Capsule(style: .continuous)
-                .fill(GarageProTheme.textPrimary.opacity(0.76))
+                .fill(Color(red: 0.24, green: 0.96, blue: 0.5).opacity(0.72))
                 .frame(width: 12, height: 46)
                 .offset(x: -13, y: 15)
                 .rotationEffect(.degrees(-8))
 
             Capsule(style: .continuous)
-                .fill(GarageProTheme.textPrimary.opacity(0.76))
+                .fill(Color(red: 0.24, green: 0.96, blue: 0.5).opacity(0.72))
                 .frame(width: 12, height: 46)
                 .offset(x: 13, y: 15)
                 .rotationEffect(.degrees(8))
 
             Image(systemName: "figure.golf")
                 .font(.system(size: 42, weight: .bold))
-                .foregroundStyle(GarageProTheme.accent)
-                .shadow(color: GarageProTheme.glow.opacity(0.36), radius: 10)
+                .foregroundStyle(Color(red: 0.24, green: 0.96, blue: 0.5))
+                .shadow(color: Color(red: 0.24, green: 0.96, blue: 0.5).opacity(0.36), radius: 10)
                 .offset(y: -16)
         }
     }
@@ -408,11 +414,12 @@ private struct GarageTowelPrimitive: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .fill(GarageProTheme.textSecondary.opacity(0.34))
+                .fill(Color.white.opacity(0.84))
                 .overlay(
                     RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .stroke(GarageProTheme.textPrimary.opacity(0.25), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+                        .stroke(Color.white.opacity(0.55), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
                 )
+                .shadow(color: Color.white.opacity(0.18), radius: 10)
 
             if let label {
                 Text(label)
@@ -557,12 +564,12 @@ private struct GarageClubPathArrowPrimitive: View {
                 path.move(to: start)
                 path.addLine(to: end)
             }
-            .stroke(GarageProTheme.accent, style: StrokeStyle(lineWidth: 5, lineCap: .round, dash: [12, 8]))
-            .shadow(color: GarageProTheme.glow.opacity(0.32), radius: 10)
+            .stroke(Color(red: 1.0, green: 0.78, blue: 0.22), style: StrokeStyle(lineWidth: 5, lineCap: .round, dash: [12, 8]))
+            .shadow(color: Color(red: 1.0, green: 0.78, blue: 0.22).opacity(0.32), radius: 10)
 
             Image(systemName: "arrowtriangle.right.fill")
                 .font(.system(size: 20, weight: .black))
-                .foregroundStyle(GarageProTheme.accent)
+                .foregroundStyle(Color(red: 1.0, green: 0.78, blue: 0.22))
                 .rotationEffect(angle)
                 .position(end)
 
