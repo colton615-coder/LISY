@@ -8,6 +8,7 @@ struct GaragePracticePlanInput {
     let desiredDurationMinutes: Int?
     let desiredDrillCount: Int?
     let recentRecords: [PracticeSessionRecord]
+    let adaptiveRecommendations: [GarageAdaptiveRecommendation]
 
     init(
         environment: PracticeEnvironment,
@@ -16,7 +17,8 @@ struct GaragePracticePlanInput {
         blockedSafetyConstraints: Set<GarageSafetyConstraint> = [],
         desiredDurationMinutes: Int? = nil,
         desiredDrillCount: Int? = nil,
-        recentRecords: [PracticeSessionRecord] = []
+        recentRecords: [PracticeSessionRecord] = [],
+        adaptiveRecommendations: [GarageAdaptiveRecommendation] = []
     ) {
         self.environment = environment
         self.promptText = promptText
@@ -25,6 +27,7 @@ struct GaragePracticePlanInput {
         self.desiredDurationMinutes = desiredDurationMinutes
         self.desiredDrillCount = desiredDrillCount
         self.recentRecords = recentRecords
+        self.adaptiveRecommendations = adaptiveRecommendations
     }
 }
 
@@ -94,6 +97,8 @@ enum GaragePracticePlanSelector {
 
     static func validationErrors() -> [String] {
         var errors = DrillVault.validationErrors()
+            + GaragePracticeHistoryAnalyzer.validationErrors()
+            + GarageAdaptiveRecommendationEngine.validationErrors()
 
         for environment in PracticeEnvironment.allCases {
             let selection = selectPlan(for: GaragePracticePlanInput(environment: environment))
@@ -129,7 +134,12 @@ enum GaragePracticePlanSelector {
             let promptScore = promptScore(for: drill, metadata: metadata, prompt: prompt)
             let historyScore = weakDrillWeights[drill.id] ?? 0
             let defaultScore = defaultRoutineWeights[drill.id] ?? 0
-            let score = promptScore + historyScore + defaultScore + Double(drill.defaultRepCount) * 0.05
+            let adaptiveScore = adaptiveScore(
+                for: drill,
+                metadata: metadata,
+                recommendations: input.adaptiveRecommendations
+            )
+            let score = promptScore + historyScore + adaptiveScore + defaultScore + Double(drill.defaultRepCount) * 0.05
 
             return GarageScoredPracticeDrill(
                 drill: drill,
@@ -192,6 +202,52 @@ enum GaragePracticePlanSelector {
         }
 
         return score
+    }
+
+    private static func adaptiveScore(
+        for drill: GarageDrill,
+        metadata: GarageDrillMetadata,
+        recommendations: [GarageAdaptiveRecommendation]
+    ) -> Double {
+        recommendations.reduce(0) { partialResult, recommendation in
+            var adjustment = 0.0
+
+            if recommendation.drillID == drill.id {
+                adjustment += recommendation.scoreImpact
+            }
+
+            if recommendation.relatedDrillIDs.contains(drill.id) {
+                adjustment += recommendation.scoreImpact * 0.45
+            }
+
+            if let category = recommendation.category,
+               category == metadata.primaryCategory {
+                adjustment += recommendation.scoreImpact * 0.72
+            }
+
+            if let faultTag = recommendation.faultTag,
+               metadata.faultTags.contains(faultTag) || metadata.promptTags.contains(faultTag) {
+                adjustment += recommendation.scoreImpact * 0.64
+            }
+
+            if metadata.promptTags.isDisjoint(with: recommendation.focusTags) == false
+                || metadata.faultTags.isDisjoint(with: recommendation.focusTags) == false {
+                adjustment += recommendation.scoreImpact * 0.5
+            }
+
+            switch recommendation.kind {
+            case .remedialDrill:
+                adjustment += recommendation.drillID == drill.id ? 4 : 0
+            case .progressionDrill:
+                adjustment += recommendation.drillID == drill.id ? 2 : 0
+            case .balancedDietCorrection where recommendation.scoreImpact < 0:
+                adjustment += recommendation.category == metadata.primaryCategory ? recommendation.scoreImpact : 0
+            case .repeatDrill, .categoryMaintenance, .categoryRecovery, .balancedDietCorrection, .focusTagRecommendation:
+                break
+            }
+
+            return partialResult + adjustment
+        }
     }
 
     private static func weakDrillWeights(

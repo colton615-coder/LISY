@@ -9,6 +9,7 @@ struct GarageGeneratedPracticePlan: Identifiable, Hashable {
     var carryForwardNote: String?
     var drills: [PracticeTemplateDrill]
     var plannedDurationMinutes: Int?
+    var coachRead: GarageCoachRead?
 
     init(
         id: UUID = UUID(),
@@ -18,7 +19,8 @@ struct GarageGeneratedPracticePlan: Identifiable, Hashable {
         coachNote: String,
         carryForwardNote: String? = nil,
         drills: [PracticeTemplateDrill],
-        plannedDurationMinutes: Int? = nil
+        plannedDurationMinutes: Int? = nil,
+        coachRead: GarageCoachRead? = nil
     ) {
         self.id = id
         self.title = title
@@ -28,6 +30,7 @@ struct GarageGeneratedPracticePlan: Identifiable, Hashable {
         self.carryForwardNote = carryForwardNote
         self.drills = drills
         self.plannedDurationMinutes = plannedDurationMinutes
+        self.coachRead = coachRead
     }
 
     var totalRepCount: Int {
@@ -78,6 +81,19 @@ enum GarageLocalCoachPlanner {
             .filter { $0.environment == environment.rawValue }
             .sorted { $0.date > $1.date }
         let carryForwardCue = environmentRecords.first?.garagePlannerCarryForwardCue
+        let skillProfile = GaragePracticeHistoryAnalyzer.skillProfile(
+            from: recentRecords,
+            environment: environment
+        )
+        let adaptiveRecommendations = GarageAdaptiveRecommendationEngine.recommendations(
+            for: skillProfile,
+            environment: environment
+        )
+        let coachRead = GarageAdaptiveRecommendationEngine.coachRead(
+            for: skillProfile,
+            recommendations: adaptiveRecommendations,
+            environment: environment
+        )
         let selection = GaragePracticePlanSelector.selectPlan(
             for: GaragePracticePlanInput(
                 environment: environment,
@@ -86,7 +102,8 @@ enum GarageLocalCoachPlanner {
                 blockedSafetyConstraints: blockedSafetyConstraints,
                 desiredDurationMinutes: desiredDurationMinutes,
                 desiredDrillCount: desiredDrillCount,
-                recentRecords: recentRecords
+                recentRecords: recentRecords,
+                adaptiveRecommendations: adaptiveRecommendations
             )
         )
         let templateDrills = selection.selectedDrills.enumerated().map { offset, selectedDrill in
@@ -110,11 +127,13 @@ enum GarageLocalCoachPlanner {
                 records: environmentRecords,
                 promptText: trimmedPrompt,
                 promptMatched: selection.promptMatched,
-                carryForwardCue: carryForwardCue
+                carryForwardCue: carryForwardCue,
+                coachRead: coachRead
             ),
             carryForwardNote: carryForwardCue,
             drills: templateDrills,
-            plannedDurationMinutes: selection.estimatedDurationMinutes
+            plannedDurationMinutes: selection.estimatedDurationMinutes,
+            coachRead: coachRead
         )
     }
 
@@ -154,25 +173,28 @@ enum GarageLocalCoachPlanner {
         records: [PracticeSessionRecord],
         promptText: String,
         promptMatched: Bool,
-        carryForwardCue: String?
+        carryForwardCue: String?,
+        coachRead: GarageCoachRead
     ) -> String {
+        let adaptivePrefix = "Coach read: \(coachRead.summary) \(coachRead.recommendation)"
+
         if promptText.isEmpty == false {
             if promptMatched {
-                return "Generated from your prompt after environment, metadata, and safety gates. Review the plan before starting."
+                return "\(adaptivePrefix) Generated from your prompt after environment, metadata, and safety gates. Review before starting."
             }
 
-            return "No direct prompt match was found, so Garage used the closest safe \(environment.displayName.lowercased()) categories. Review before starting."
+            return "\(adaptivePrefix) No direct prompt match was found, so Garage used the closest safe \(environment.displayName.lowercased()) categories. Review before starting."
         }
 
         if let carryForwardCue {
-            return "Carry this forward: \(carryForwardCue)"
+            return "\(adaptivePrefix) Carry this forward: \(carryForwardCue)"
         }
 
         if records.isEmpty {
-            return "No history yet. Start with a balanced \(environment.displayName.lowercased()) baseline and log the rep quality honestly."
+            return "\(adaptivePrefix)"
         }
 
-        return "No clear carry-forward cue was saved. Use this session to create one reliable note for the next practice."
+        return "\(adaptivePrefix) No clear carry-forward cue was saved. Use this session to create one reliable note for the next practice."
     }
 }
 
