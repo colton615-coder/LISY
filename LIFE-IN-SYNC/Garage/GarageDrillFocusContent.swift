@@ -12,6 +12,7 @@ struct GarageDrillFocusContent: Hashable {
     let finishRule: String
     let teachingDetail: String?
     let reviewSummary: String?
+    let quickTags: [String]
     let diagramKey: String?
 }
 
@@ -69,6 +70,7 @@ enum GarageDrillFocusContentAdapter {
             finishRule: finishRule(for: goal),
             teachingDetail: metadata.teachingDetail,
             reviewSummary: metadata.reviewSummary,
+            quickTags: metadata.quickTags,
             diagramKey: metadata.diagramKey
         )
     }

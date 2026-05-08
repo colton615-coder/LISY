@@ -46,7 +46,30 @@ struct GarageDrillFocusMetadata: Hashable {
     let teachingDetail: String?
     let reviewSummary: String?
     let targetMetric: String
+    let quickTags: [String]
     let diagramKey: String?
+
+    init(
+        mode: GarageDrillFocusMode,
+        commandCopy: String,
+        setupLine: String,
+        executionCue: String,
+        teachingDetail: String? = nil,
+        reviewSummary: String? = nil,
+        targetMetric: String,
+        quickTags: [String] = [],
+        diagramKey: String? = nil
+    ) {
+        self.mode = mode
+        self.commandCopy = commandCopy
+        self.setupLine = setupLine
+        self.executionCue = executionCue
+        self.teachingDetail = teachingDetail
+        self.reviewSummary = reviewSummary
+        self.targetMetric = targetMetric
+        self.quickTags = quickTags
+        self.diagramKey = diagramKey
+    }
 }
 
 struct GarageDrillFocusDetail: Hashable {
@@ -97,6 +120,7 @@ enum GarageDrillFocusDetails {
         let firstSetup = cleanLine(detail.setup.first) ?? "Set a safe station before the first rep."
         let firstExecution = cleanLine(detail.execution.first) ?? drill.abstractFeelCue
         let firstSuccess = cleanLine(detail.successCriteria.first) ?? drill.purpose
+        let quickTags = quickTags(for: drill)
 
         switch drill.id {
         case "n1":
@@ -108,6 +132,7 @@ enum GarageDrillFocusDetails {
                 teachingDetail: detail.purpose,
                 reviewSummary: "Clean strikes should feel ball-first with no towel contact.",
                 targetMetric: "5 clean strikes in a row",
+                quickTags: quickTags,
                 diagramKey: "towel-strike"
             )
         case "n3":
@@ -119,6 +144,7 @@ enum GarageDrillFocusDetails {
                 teachingDetail: detail.purpose,
                 reviewSummary: "You should finish with hip depth and athletic posture still present.",
                 targetMetric: "\(detail.estimatedMinutes)-minute rehearsal block",
+                quickTags: quickTags,
                 diagramKey: "wall-turn"
             )
         case "n7":
@@ -130,6 +156,7 @@ enum GarageDrillFocusDetails {
                 teachingDetail: detail.purpose,
                 reviewSummary: "Clean reps avoid the headcover and keep the exit shallow.",
                 targetMetric: "6 clean exits",
+                quickTags: quickTags,
                 diagramKey: "low-exit-window"
             )
         case "r10":
@@ -141,6 +168,7 @@ enum GarageDrillFocusDetails {
                 teachingDetail: detail.purpose,
                 reviewSummary: "Success is a predictable start line, not a perfect final curve.",
                 targetMetric: "5 start-line reads",
+                quickTags: quickTags,
                 diagramKey: "start-line-gate"
             )
         case "r12":
@@ -152,6 +180,7 @@ enum GarageDrillFocusDetails {
                 teachingDetail: detail.purpose,
                 reviewSummary: "The carry ladder only counts when strike quality holds.",
                 targetMetric: "3 carry windows",
+                quickTags: quickTags,
                 diagramKey: "carry-ladder"
             )
         case "r13":
@@ -163,6 +192,7 @@ enum GarageDrillFocusDetails {
                 teachingDetail: detail.purpose,
                 reviewSummary: "You should know which swing length produced each carry.",
                 targetMetric: "3 wedge carry numbers",
+                quickTags: quickTags,
                 diagramKey: "distance-ladder"
             )
         case "r14":
@@ -174,6 +204,7 @@ enum GarageDrillFocusDetails {
                 teachingDetail: detail.purpose,
                 reviewSummary: "All three windows should look distinct without a tempo spike.",
                 targetMetric: "low, stock, high",
+                quickTags: quickTags,
                 diagramKey: "flight-matrix"
             )
         case "r15":
@@ -185,6 +216,7 @@ enum GarageDrillFocusDetails {
                 teachingDetail: detail.purpose,
                 reviewSummary: "Fairway discipline comes before extra speed.",
                 targetMetric: "5 fairway starts",
+                quickTags: quickTags,
                 diagramKey: "fairway-gate"
             )
         case "r17":
@@ -196,6 +228,7 @@ enum GarageDrillFocusDetails {
                 teachingDetail: detail.purpose,
                 reviewSummary: "Pressure only counts when posture and turn hold up.",
                 targetMetric: "3 pressure windows",
+                quickTags: quickTags,
                 diagramKey: "pressure-fairway-ladder"
             )
         case "p2":
@@ -207,6 +240,7 @@ enum GarageDrillFocusDetails {
                 teachingDetail: detail.purpose,
                 reviewSummary: "Good pace creates small, predictable distance gaps.",
                 targetMetric: "leapfrog distance ladder",
+                quickTags: quickTags,
                 diagramKey: "leapfrog-lag"
             )
         case "p3":
@@ -218,6 +252,7 @@ enum GarageDrillFocusDetails {
                 teachingDetail: detail.purpose,
                 reviewSummary: "Clean starts should pass through the gate without steering.",
                 targetMetric: "6 clean starts",
+                quickTags: quickTags,
                 diagramKey: "putting-gate"
             )
         case "p4":
@@ -229,6 +264,7 @@ enum GarageDrillFocusDetails {
                 teachingDetail: detail.purpose,
                 reviewSummary: "Pace should finish near the hole without rhythm changing.",
                 targetMetric: "4 stations",
+                quickTags: quickTags,
                 diagramKey: "around-the-world"
             )
         case "p6":
@@ -240,6 +276,7 @@ enum GarageDrillFocusDetails {
                 teachingDetail: detail.purpose,
                 reviewSummary: "The stop zone should tighten across all three balls.",
                 targetMetric: "3 balls in the zone",
+                quickTags: quickTags,
                 diagramKey: "brake-test"
             )
         default:
@@ -251,6 +288,7 @@ enum GarageDrillFocusDetails {
                 teachingDetail: detail.purpose,
                 reviewSummary: firstSuccess,
                 targetMetric: "\(drill.defaultRepCount) clean reps",
+                quickTags: quickTags,
                 diagramKey: drill.id
             )
         }
@@ -563,8 +601,30 @@ enum GarageDrillFocusDetails {
             teachingDetail: nil,
             reviewSummary: nil,
             targetMetric: targetMetric,
+            quickTags: ["Clean", "Rushed", "Heavy"],
             diagramKey: nil
         )
+    }
+
+    private static func quickTags(for drill: GarageDrill) -> [String] {
+        switch drill.libraryCategory {
+        case .contact:
+            return ["Thin", "Fat", "Clean", "Heavy", "Rushed"]
+        case .tempo:
+            return ["Fast", "Smooth", "Late", "Balanced"]
+        case .putting:
+            return ["Pulled", "Pushed", "Good speed", "Short", "Long"]
+        case .distanceControl:
+            return ["Short", "Long", "Pin high", "Rushed", "Smooth"]
+        case .pressure:
+            return ["Inside", "Outside", "Balanced", "Tense"]
+        case .faceControl:
+            return ["Pulled", "Pushed", "Square", "Steered"]
+        case .delivery:
+            return ["Flipped", "Compressed", "Heavy", "Late"]
+        case .rotation:
+            return ["Crowded", "Deep turn", "Balanced", "Early lift"]
+        }
     }
 
     private static func cleanLine(_ value: String?) -> String? {

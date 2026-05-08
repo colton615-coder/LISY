@@ -14,6 +14,7 @@ struct GarageFocusRoomView: View {
     @State private var activeDrillID: UUID?
     @State private var elapsedSeconds = 0
     @State private var trackerValue = 0
+    @State private var selectedQuickTags: Set<String> = []
 
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -40,6 +41,10 @@ struct GarageFocusRoomView: View {
 
                 VStack(spacing: 0) {
                     FocusRoomHeader(
+                        drillTitle: drill.content.title,
+                        drillPositionText: drillPositionText,
+                        completedCount: completedCount,
+                        totalCount: totalCount,
                         isRoutineVisible: isRoutineVisible,
                         onBack: { dismiss() },
                         onToggleRoutine: toggleRoutineVisibility
@@ -47,49 +52,28 @@ struct GarageFocusRoomView: View {
 
                     ScrollView {
                         VStack(alignment: .leading, spacing: 22) {
-                            FocusRoomDrillHero(
-                                drillTitle: drill.content.title,
-                                drillPositionText: drillPositionText,
-                                completedCount: completedCount,
-                                totalCount: totalCount,
-                                goal: drill.content.goal,
-                                mode: drill.content.mode,
+                            GarageFocusHeroContainer(
+                                content: drill.content,
                                 elapsedSeconds: elapsedSeconds,
                                 trackerValue: trackerValue,
-                                isCompleted: drill.isCompleted || isGoalMet(drill.content.goal)
-                            )
-
-                            FocusRoomTaskCard(task: drill.content.task)
-
-                            FocusRoomCommandCard(
-                                setupLine: drill.content.setupLine,
-                                executionCue: drill.content.executionCue
-                            )
-
-                            FocusRoomGoalCard(
-                                goal: drill.content.goal,
-                                mode: drill.content.mode,
-                                goalText: drill.content.goal.goalText,
-                                finishRule: drill.content.finishRule,
-                                targetMetric: drill.content.targetMetric,
-                                elapsedSeconds: elapsedSeconds,
-                                trackerValue: trackerValue,
+                                completionState: completionState(for: drill),
+                                selectedQuickTags: selectedQuickTags,
                                 onAdvance: recordGoalProgress,
-                                onReset: resetGoalProgress
+                                onSubtract: subtractGoalProgress,
+                                onReset: resetGoalProgress,
+                                onToggleQuickTag: toggleQuickTag
                             )
 
-                            if drill.content.hasTeachingDetails {
+                            if drill.content.hasTeachingDetails || drill.content.watchFor?.isEmpty == false {
                                 FocusRoomTeachingDetailsCard(
                                     isExpanded: isDetailExpanded,
+                                    setupLine: drill.content.setupLine,
+                                    executionCue: drill.content.executionCue,
                                     teachingDetail: drill.content.teachingDetail,
                                     reviewSummary: drill.content.reviewSummary,
+                                    watchFor: drill.content.watchFor,
                                     onToggle: onToggleDetail
                                 )
-                            }
-
-                            if let watchFor = drill.content.watchFor,
-                               watchFor.isEmpty == false {
-                                FocusRoomWatchForBand(text: watchFor)
                             }
 
                             if isRoutineVisible {
@@ -110,11 +94,12 @@ struct GarageFocusRoomView: View {
             .toolbar(.hidden, for: .navigationBar)
             .tint(FocusRoomPalette.green)
             .safeAreaInset(edge: .bottom, spacing: 0) {
+                let state = completionState(for: drill)
                 FocusRoomBottomActions(
                     noteTitle: noteTitle,
-                    primaryTitle: primaryCtaTitle,
-                    finishRule: drill.content.finishRule,
-                    isNextEnabled: drill.isCompleted || isGoalMet(drill.content.goal),
+                    primaryTitle: state.primaryTitle(fallback: primaryCtaTitle),
+                    statusText: state.bottomStatusText,
+                    isNextEnabled: state.canConfirm,
                     onNote: onNote,
                     onNext: onPrimary
                 )
@@ -182,6 +167,7 @@ private extension GarageFocusRoomView {
         activeDrillID = drillID
         elapsedSeconds = 0
         trackerValue = 0
+        selectedQuickTags = []
         isRoutineVisible = false
     }
 
@@ -199,11 +185,43 @@ private extension GarageFocusRoomView {
         }
     }
 
+    func subtractGoalProgress() {
+        garageTriggerSelection()
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
+            trackerValue = max(trackerValue - 1, 0)
+        }
+    }
+
     func resetGoalProgress() {
         garageTriggerSelection()
         withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
             trackerValue = 0
         }
+    }
+
+    func toggleQuickTag(_ tag: String) {
+        garageTriggerSelection()
+        if selectedQuickTags.contains(tag) {
+            selectedQuickTags.remove(tag)
+        } else {
+            selectedQuickTags.insert(tag)
+        }
+    }
+
+    func completionState(for drill: GarageFocusDrillPresentation) -> GarageFocusCompletionState {
+        if drill.isCompleted {
+            return .completed
+        }
+
+        if isGoalMet(drill.content.goal) {
+            return .ready
+        }
+
+        if elapsedSeconds > 0 || trackerValue > 0 || selectedQuickTags.isEmpty == false {
+            return .inProgress
+        }
+
+        return .notStarted
     }
 
     func isGoalMet(_ goal: GarageDrillGoal) -> Bool {
@@ -220,6 +238,59 @@ private extension GarageFocusRoomView {
             return trackerValue >= max(items.count, 1)
         case .manual:
             return trackerValue > 0
+        }
+    }
+}
+
+private enum GarageFocusCompletionState: Hashable {
+    case notStarted
+    case inProgress
+    case ready
+    case completed
+
+    var label: String {
+        switch self {
+        case .notStarted:
+            return "Not started"
+        case .inProgress:
+            return "In progress"
+        case .ready:
+            return "Ready to complete"
+        case .completed:
+            return "Completed"
+        }
+    }
+
+    var canConfirm: Bool {
+        switch self {
+        case .ready, .completed:
+            return true
+        case .notStarted, .inProgress:
+            return false
+        }
+    }
+
+    var bottomStatusText: String {
+        switch self {
+        case .notStarted:
+            return "Work the hero controls first"
+        case .inProgress:
+            return "Keep going"
+        case .ready:
+            return "User confirmation required"
+        case .completed:
+            return "Confirmed"
+        }
+    }
+
+    func primaryTitle(fallback: String) -> String {
+        switch self {
+        case .ready:
+            return "Ready to Complete"
+        case .completed:
+            return fallback
+        case .notStarted, .inProgress:
+            return fallback
         }
     }
 }
@@ -257,6 +328,10 @@ private struct FocusRoomBackground: View {
 }
 
 private struct FocusRoomHeader: View {
+    let drillTitle: String
+    let drillPositionText: String
+    let completedCount: Int
+    let totalCount: Int
     let isRoutineVisible: Bool
     let onBack: () -> Void
     let onToggleRoutine: () -> Void
@@ -290,11 +365,21 @@ private struct FocusRoomHeader: View {
                 .buttonStyle(.plain)
             }
 
-            Text("Focus Room")
-                .font(.system(size: 32, weight: .black, design: .rounded))
-                .foregroundStyle(FocusRoomPalette.primaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
+            VStack(spacing: 3) {
+                Text(drillTitle)
+                    .font(.system(size: 20, weight: .black, design: .rounded))
+                    .foregroundStyle(FocusRoomPalette.primaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+
+                HStack(spacing: 8) {
+                    Text(drillPositionText)
+                    Text("\(completedCount)/\(totalCount) complete")
+                }
+                .font(.caption.weight(.bold))
+                .foregroundStyle(FocusRoomPalette.secondaryText)
+            }
+            .padding(.horizontal, 58)
         }
         .padding(.horizontal, 18)
         .padding(.top, 8)
@@ -302,86 +387,483 @@ private struct FocusRoomHeader: View {
     }
 }
 
-private struct FocusRoomDrillHero: View {
-    let drillTitle: String
-    let drillPositionText: String
-    let completedCount: Int
-    let totalCount: Int
-    let goal: GarageDrillGoal
-    let mode: GarageDrillFocusMode
+private struct GarageFocusHeroContainer: View {
+    let content: GarageDrillFocusContent
     let elapsedSeconds: Int
     let trackerValue: Int
-    let isCompleted: Bool
+    let completionState: GarageFocusCompletionState
+    let selectedQuickTags: Set<String>
+    let onAdvance: () -> Void
+    let onSubtract: () -> Void
+    let onReset: () -> Void
+    let onToggleQuickTag: (String) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(drillTitle)
-                    .font(.system(size: 20, weight: .black, design: .rounded))
-                    .foregroundStyle(FocusRoomPalette.primaryText)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.74)
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    FocusRoomModeBadge(mode: content.mode, state: completionState)
 
-                HStack(spacing: 8) {
-                    Text(drillPositionText)
-                    Text("\(completedCount)/\(totalCount) complete")
-                    Text(mode.controlLabel)
+                    Text(content.task.garageFocusRoomSentenceTrimmed)
+                        .font(.system(size: 21, weight: .black, design: .rounded))
+                        .foregroundStyle(FocusRoomPalette.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(content.targetMetric.garageFocusRoomSentenceTrimmed)
+                        .font(.system(size: 12, weight: .black, design: .rounded))
+                        .textCase(.uppercase)
+                        .tracking(1.2)
+                        .foregroundStyle(FocusRoomPalette.green)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .font(.caption.weight(.bold))
-                .foregroundStyle(FocusRoomPalette.secondaryText)
+
+                Spacer(minLength: 10)
+
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(completionState.label)
+                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .textCase(.uppercase)
+                        .tracking(1)
+                        .foregroundStyle(completionState == .ready || completionState == .completed ? FocusRoomPalette.green : FocusRoomPalette.yellow)
+                        .multilineTextAlignment(.trailing)
+
+                    Text(progressText)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(FocusRoomPalette.secondaryText)
+                        .multilineTextAlignment(.trailing)
+                }
             }
 
-            FocusRoomTimerHeroPanel(
+            FocusRoomCommandSummary(
+                setupLine: content.setupLine,
+                executionCue: content.executionCue
+            )
+
+            modeBody
+
+            if content.quickTags.isEmpty == false {
+                FocusRoomQuickTagStrip(
+                    tags: content.quickTags,
+                    selectedTags: selectedQuickTags,
+                    onToggle: onToggleQuickTag
+                )
+            }
+        }
+        .padding(16)
+        .background(FocusRoomPalette.panel.opacity(0.52), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(FocusRoomPalette.border, lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.32), radius: 20, x: 0, y: 14)
+    }
+
+    @ViewBuilder
+    private var modeBody: some View {
+        switch content.mode {
+        case .reps:
+            RepDrillHero(
+                goal: content.goal,
+                trackerValue: trackerValue,
+                onAdvance: onAdvance,
+                onSubtract: onSubtract
+            )
+        case .time:
+            TimeDrillHero(
+                goal: content.goal,
                 elapsedSeconds: elapsedSeconds,
-                progress: progress,
-                isCompleted: isCompleted,
-                statusText: statusText
+                isReady: completionState == .ready || completionState == .completed
+            )
+        case .goal:
+            GoalDrillHero(
+                goal: content.goal,
+                trackerValue: trackerValue,
+                onAdvance: onAdvance,
+                onReset: onReset
+            )
+        case .challenge:
+            ChallengeDrillHero(
+                goal: content.goal,
+                elapsedSeconds: elapsedSeconds,
+                trackerValue: trackerValue,
+                onAdvance: onAdvance,
+                onReset: onReset
+            )
+        case .checklist:
+            ChecklistDrillHero(
+                goal: content.goal,
+                trackerValue: trackerValue,
+                onAdvance: onAdvance,
+                onReset: onReset
             )
         }
     }
 
-    private var progress: Double {
-        guard isCompleted == false else {
+    private var progressText: String {
+        switch content.goal {
+        case .timed(let durationSeconds):
+            return "\(formattedTime(elapsedSeconds)) / \(formattedTime(durationSeconds))"
+        case .repTarget(let count, _), .streak(let count, _):
+            return "\(min(trackerValue, count)) / \(count)"
+        case .timeTrial(let targetCount, _):
+            return "\(min(trackerValue, targetCount)) / \(targetCount)"
+        case .ladder(let steps):
+            return "\(min(trackerValue, steps.count)) / \(steps.count)"
+        case .checklist(let items):
+            return "\(min(trackerValue, items.count)) / \(items.count)"
+        case .manual(let label):
+            return trackerValue > 0 ? "Ready" : label
+        }
+    }
+}
+
+private struct FocusRoomModeBadge: View {
+    let mode: GarageDrillFocusMode
+    let state: GarageFocusCompletionState
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Circle()
+                .fill(state == .ready || state == .completed ? FocusRoomPalette.green : FocusRoomPalette.yellow)
+                .frame(width: 7, height: 7)
+
+            Text(mode.controlLabel)
+                .font(.system(size: 11, weight: .black, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(1.4)
+                .foregroundStyle(FocusRoomPalette.primaryText)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.black.opacity(0.2), in: Capsule())
+        .overlay(
+            Capsule()
+                .stroke(FocusRoomPalette.border, lineWidth: 1)
+        )
+    }
+}
+
+private struct FocusRoomCommandSummary: View {
+    let setupLine: String
+    let executionCue: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            FocusRoomInlineCommand(label: "Setup", text: setupLine, systemImage: "mappin.and.ellipse")
+            FocusRoomInlineCommand(label: "Cue", text: executionCue, systemImage: "bolt.fill")
+        }
+        .padding(12)
+        .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
+
+private struct FocusRoomInlineCommand: View {
+    let label: String
+    let text: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .black))
+                .foregroundStyle(FocusRoomPalette.green)
+                .frame(width: 22, height: 22)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .textCase(.uppercase)
+                    .tracking(1.2)
+                    .foregroundStyle(FocusRoomPalette.secondaryText)
+
+                Text(text.garageFocusRoomSentenceTrimmed)
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundStyle(FocusRoomPalette.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+private struct RepDrillHero: View {
+    let goal: GarageDrillGoal
+    let trackerValue: Int
+    let onAdvance: () -> Void
+    let onSubtract: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            FocusRoomHeroMetricRow(
+                leadingValue: "\(min(trackerValue, targetCount))",
+                leadingLabel: "Clean reps",
+                trailingValue: "\(targetCount)",
+                trailingLabel: "Target"
+            )
+
+            HStack(spacing: 10) {
+                FocusRoomActionButton(title: "Subtract", systemImage: "minus.circle.fill", isProminent: false, action: onSubtract)
+                    .disabled(trackerValue <= 0)
+                    .opacity(trackerValue <= 0 ? 0.48 : 1)
+
+                FocusRoomActionButton(title: "Add Clean Rep", systemImage: "plus.circle.fill", isProminent: true, action: onAdvance)
+            }
+        }
+    }
+
+    private var targetCount: Int {
+        switch goal {
+        case .repTarget(let count, _):
+            return max(count, 1)
+        default:
             return 1
         }
+    }
+}
 
+private struct TimeDrillHero: View {
+    let goal: GarageDrillGoal
+    let elapsedSeconds: Int
+    let isReady: Bool
+
+    var body: some View {
+        FocusRoomTimerHeroPanel(
+            elapsedSeconds: elapsedSeconds,
+            progress: progress,
+            isCompleted: isReady,
+            statusText: isReady ? "Time target reached" : "Timer running"
+        )
+    }
+
+    private var durationSeconds: Int {
         switch goal {
         case .timed(let durationSeconds):
-            return clampedProgress(Double(elapsedSeconds) / Double(max(durationSeconds, 1)))
-        case .repTarget(let count, _), .streak(let count, _):
-            return clampedProgress(Double(trackerValue) / Double(max(count, 1)))
-        case .timeTrial(let targetCount, _):
-            return clampedProgress(Double(trackerValue) / Double(max(targetCount, 1)))
-        case .ladder(let steps):
-            return clampedProgress(Double(trackerValue) / Double(max(steps.count, 1)))
-        case .checklist(let items):
-            return clampedProgress(Double(trackerValue) / Double(max(items.count, 1)))
-        case .manual:
-            return trackerValue > 0 ? 1 : 0
+            return max(durationSeconds, 1)
+        default:
+            return 1
         }
     }
 
-    private var statusText: String {
-        if isCompleted {
-            return "Complete"
-        }
+    private var progress: Double {
+        min(max(Double(elapsedSeconds) / Double(durationSeconds), 0), 1)
+    }
+}
 
-        switch goal {
-        case .timed:
-            return "Timer running"
-        case .repTarget, .streak, .timeTrial:
-            return mode == .challenge ? "\(trackerValue) scored" : "\(trackerValue) logged"
-        case .ladder(let steps):
-            return "\(min(trackerValue, steps.count))/\(steps.count) steps"
-        case .checklist(let items):
-            return "\(min(trackerValue, items.count))/\(items.count) checked"
-        case .manual:
-            return "Awaiting mark"
+private struct GoalDrillHero: View {
+    let goal: GarageDrillGoal
+    let trackerValue: Int
+    let onAdvance: () -> Void
+    let onReset: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            switch goal {
+            case .ladder(let steps):
+                FocusRoomStepTracker(
+                    currentIndex: trackerValue,
+                    steps: steps,
+                    completedLabel: "Goal complete",
+                    buttonTitle: "Step Done",
+                    onAdvance: onAdvance
+                )
+            case .manual(let label):
+                FocusRoomManualTracker(
+                    isComplete: trackerValue > 0,
+                    label: label,
+                    onAdvance: onAdvance
+                )
+            default:
+                FocusRoomTrackerStrip(
+                    goal: goal,
+                    mode: .goal,
+                    elapsedSeconds: 0,
+                    trackerValue: trackerValue,
+                    onAdvance: onAdvance,
+                    onReset: onReset
+                )
+            }
+
+            FocusRoomActionButton(title: "Reset Goal", systemImage: "arrow.counterclockwise", isProminent: false, action: onReset)
+                .opacity(trackerValue > 0 ? 1 : 0.52)
         }
     }
+}
 
-    private func clampedProgress(_ value: Double) -> Double {
-        min(max(value, 0), 1)
+private struct ChallengeDrillHero: View {
+    let goal: GarageDrillGoal
+    let elapsedSeconds: Int
+    let trackerValue: Int
+    let onAdvance: () -> Void
+    let onReset: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            switch goal {
+            case .streak(let count, let unit):
+                FocusRoomStreakTracker(
+                    count: trackerValue,
+                    target: count,
+                    unit: unit,
+                    onAdvance: onAdvance,
+                    onReset: onReset
+                )
+            case .timeTrial(let targetCount, let unit):
+                HStack(alignment: .center, spacing: 12) {
+                    FocusRoomTimerMetric(value: formattedTime(elapsedSeconds), label: "Elapsed")
+                    FocusRoomCountingButton(count: trackerValue, title: unit, onAdvance: onAdvance)
+                    FocusRoomTimerMetric(value: "\(targetCount)", label: "Target")
+                }
+
+                FocusRoomActionButton(title: "Reset Attempt", systemImage: "arrow.counterclockwise", isProminent: false, action: onReset)
+            case .ladder(let steps):
+                FocusRoomStepTracker(
+                    currentIndex: trackerValue,
+                    steps: steps,
+                    completedLabel: "Challenge complete",
+                    buttonTitle: "Advance",
+                    onAdvance: onAdvance
+                )
+
+                FocusRoomActionButton(title: "Miss / Restart", systemImage: "arrow.counterclockwise", isProminent: false, action: onReset)
+            default:
+                FocusRoomTrackerStrip(
+                    goal: goal,
+                    mode: .challenge,
+                    elapsedSeconds: elapsedSeconds,
+                    trackerValue: trackerValue,
+                    onAdvance: onAdvance,
+                    onReset: onReset
+                )
+            }
+        }
+    }
+}
+
+private struct ChecklistDrillHero: View {
+    let goal: GarageDrillGoal
+    let trackerValue: Int
+    let onAdvance: () -> Void
+    let onReset: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if case .checklist(let items) = goal {
+                VStack(alignment: .leading, spacing: 9) {
+                    ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                        FocusRoomChecklistRow(
+                            index: index,
+                            text: item,
+                            isChecked: index < trackerValue,
+                            isNext: index == trackerValue,
+                            onTap: {
+                                guard index == trackerValue else {
+                                    return
+                                }
+
+                                onAdvance()
+                            }
+                        )
+                    }
+                }
+            } else {
+                FocusRoomManualTracker(
+                    isComplete: trackerValue > 0,
+                    label: "Complete the required checklist.",
+                    onAdvance: onAdvance
+                )
+            }
+
+            FocusRoomActionButton(title: "Reset Checklist", systemImage: "arrow.counterclockwise", isProminent: false, action: onReset)
+                .opacity(trackerValue > 0 ? 1 : 0.52)
+        }
+    }
+}
+
+private struct FocusRoomChecklistRow: View {
+    let index: Int
+    let text: String
+    let isChecked: Bool
+    let isNext: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(alignment: .top, spacing: 11) {
+                Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(isChecked ? FocusRoomPalette.green : isNext ? FocusRoomPalette.yellow : FocusRoomPalette.secondaryText)
+                    .frame(width: 24, height: 24)
+
+                Text(text.garageFocusRoomSentenceTrimmed)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(isChecked || isNext ? FocusRoomPalette.primaryText : FocusRoomPalette.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Spacer(minLength: 0)
+            }
+            .padding(12)
+            .background(isNext ? FocusRoomPalette.green.opacity(0.1) : Color.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(isNext ? FocusRoomPalette.green.opacity(0.24) : FocusRoomPalette.border, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(isNext == false)
+    }
+}
+
+private struct FocusRoomHeroMetricRow: View {
+    let leadingValue: String
+    let leadingLabel: String
+    let trailingValue: String
+    let trailingLabel: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            FocusRoomTimerMetric(value: leadingValue, label: leadingLabel)
+            FocusRoomTimerMetric(value: trailingValue, label: trailingLabel)
+        }
+        .padding(12)
+        .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
+
+private struct FocusRoomQuickTagStrip: View {
+    let tags: [String]
+    let selectedTags: Set<String>
+    let onToggle: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text("Quick Tags")
+                .font(.system(size: 10, weight: .black, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(1.4)
+                .foregroundStyle(FocusRoomPalette.secondaryText)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(tags, id: \.self) { tag in
+                        Button {
+                            onToggle(tag)
+                        } label: {
+                            Text(tag)
+                                .font(.system(size: 12, weight: .black, design: .rounded))
+                                .foregroundStyle(selectedTags.contains(tag) ? FocusRoomPalette.background : FocusRoomPalette.primaryText)
+                                .lineLimit(1)
+                                .padding(.horizontal, 11)
+                                .padding(.vertical, 8)
+                                .background(selectedTags.contains(tag) ? FocusRoomPalette.green : Color.black.opacity(0.2), in: Capsule())
+                                .overlay(
+                                    Capsule()
+                                        .stroke(selectedTags.contains(tag) ? Color.white.opacity(0.18) : FocusRoomPalette.border, lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -529,36 +1011,6 @@ private func formattedTime(_ value: Int) -> String {
     return "\(minutes):\(String(format: "%02d", seconds))"
 }
 
-private struct FocusRoomTaskCard: View {
-    let task: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            FocusRoomSectionLabel(title: "Task")
-
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "scope")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(FocusRoomPalette.green)
-                    .frame(width: 34, height: 34)
-                    .background(FocusRoomPalette.green.opacity(0.12), in: Circle())
-
-                Text(task.garageFocusRoomSentenceTrimmed)
-                    .font(.system(size: 18, weight: .black, design: .rounded))
-                    .foregroundStyle(FocusRoomPalette.primaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(14)
-            .background(FocusRoomPalette.panel.opacity(0.58), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(FocusRoomPalette.border, lineWidth: 1)
-            )
-        }
-    }
-}
-
 private struct FocusRoomSectionLabel: View {
     let title: String
 
@@ -568,123 +1020,6 @@ private struct FocusRoomSectionLabel: View {
             .textCase(.uppercase)
             .tracking(1.7)
             .foregroundStyle(FocusRoomPalette.green)
-    }
-}
-
-private struct FocusRoomCommandCard: View {
-    let setupLine: String
-    let executionCue: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            FocusRoomSectionLabel(title: "Command")
-
-            VStack(alignment: .leading, spacing: 12) {
-                FocusRoomCommandLine(
-                    title: "Setup",
-                    systemImage: "mappin.and.ellipse",
-                    text: setupLine
-                )
-
-                FocusRoomCommandLine(
-                    title: "Cue",
-                    systemImage: "bolt.fill",
-                    text: executionCue
-                )
-            }
-            .padding(14)
-            .background(FocusRoomPalette.panel.opacity(0.52), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(FocusRoomPalette.border, lineWidth: 1)
-            )
-        }
-    }
-}
-
-private struct FocusRoomCommandLine: View {
-    let title: String
-    let systemImage: String
-    let text: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: systemImage)
-                .font(.system(size: 15, weight: .black))
-                .foregroundStyle(FocusRoomPalette.green)
-                .frame(width: 26, height: 26)
-                .background(FocusRoomPalette.green.opacity(0.12), in: Circle())
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.system(size: 10, weight: .black, design: .rounded))
-                    .textCase(.uppercase)
-                    .tracking(1.3)
-                    .foregroundStyle(FocusRoomPalette.secondaryText)
-
-                Text(text.garageFocusRoomSentenceTrimmed)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(FocusRoomPalette.primaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-    }
-}
-
-private struct FocusRoomGoalCard: View {
-    let goal: GarageDrillGoal
-    let mode: GarageDrillFocusMode
-    let goalText: String
-    let finishRule: String
-    let targetMetric: String
-    let elapsedSeconds: Int
-    let trackerValue: Int
-    let onAdvance: () -> Void
-    let onReset: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Rectangle()
-                .fill(FocusRoomPalette.green.opacity(0.32))
-                .frame(height: 1)
-
-            FocusRoomSectionLabel(title: mode.controlLabel)
-
-            HStack(alignment: .top, spacing: 13) {
-                Image(systemName: "target")
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(FocusRoomPalette.green)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(targetMetric.garageFocusRoomSentenceTrimmed)
-                        .font(.system(size: 11, weight: .black, design: .rounded))
-                        .textCase(.uppercase)
-                        .tracking(1.1)
-                        .foregroundStyle(FocusRoomPalette.green)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text(goalText.garageFocusRoomSentenceTrimmed)
-                        .font(.system(size: 19, weight: .black, design: .rounded))
-                        .foregroundStyle(FocusRoomPalette.primaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text(finishRule.garageFocusRoomSentenceTrimmed)
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(FocusRoomPalette.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            FocusRoomTrackerStrip(
-                goal: goal,
-                mode: mode,
-                elapsedSeconds: elapsedSeconds,
-                trackerValue: trackerValue,
-                onAdvance: onAdvance,
-                onReset: onReset
-            )
-        }
     }
 }
 
@@ -975,8 +1310,11 @@ private struct FocusRoomTimerMetric: View {
 
 private struct FocusRoomTeachingDetailsCard: View {
     let isExpanded: Bool
+    let setupLine: String
+    let executionCue: String
     let teachingDetail: String?
     let reviewSummary: String?
+    let watchFor: String?
     let onToggle: () -> Void
 
     var body: some View {
@@ -1004,20 +1342,22 @@ private struct FocusRoomTeachingDetailsCard: View {
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 10) {
+                    FocusRoomTeachingLine(title: "Setup Detail", text: setupLine)
+                    FocusRoomTeachingLine(title: "Cue", text: executionCue)
+
                     if let teachingDetail,
                        teachingDetail.isEmpty == false {
-                        Text(teachingDetail.garageFocusRoomSentenceTrimmed)
-                            .font(.system(size: 15, weight: .semibold, design: .rounded))
-                            .foregroundStyle(FocusRoomPalette.secondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
+                        FocusRoomTeachingLine(title: "Why It Matters", text: teachingDetail)
+                    }
+
+                    if let watchFor,
+                       watchFor.isEmpty == false {
+                        FocusRoomTeachingLine(title: "Watch For", text: watchFor)
                     }
 
                     if let reviewSummary,
                        reviewSummary.isEmpty == false {
-                        Text(reviewSummary.garageFocusRoomSentenceTrimmed)
-                            .font(.system(size: 14, weight: .bold, design: .rounded))
-                            .foregroundStyle(FocusRoomPalette.greenSoft)
-                            .fixedSize(horizontal: false, vertical: true)
+                        FocusRoomTeachingLine(title: "Review Cue", text: reviewSummary, isEmphasized: true)
                     }
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -1032,44 +1372,32 @@ private struct FocusRoomTeachingDetailsCard: View {
     }
 }
 
-private struct FocusRoomWatchForBand: View {
+private struct FocusRoomTeachingLine: View {
+    let title: String
     let text: String
+    var isEmphasized = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(FocusRoomPalette.yellow)
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.system(size: 9, weight: .black, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(1.2)
+                .foregroundStyle(isEmphasized ? FocusRoomPalette.green : FocusRoomPalette.secondaryText)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Watch For")
-                    .font(.system(size: 10, weight: .black, design: .rounded))
-                    .textCase(.uppercase)
-                    .tracking(1.5)
-                    .foregroundStyle(FocusRoomPalette.yellow)
-
-                Text(text.garageFocusRoomSentenceTrimmed)
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundStyle(FocusRoomPalette.primaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: 0)
+            Text(text.garageFocusRoomSentenceTrimmed)
+                .font(.system(size: isEmphasized ? 14 : 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(isEmphasized ? FocusRoomPalette.greenSoft : FocusRoomPalette.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .background(Color.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(FocusRoomPalette.yellow.opacity(0.16), lineWidth: 1)
-        )
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
 private struct FocusRoomBottomActions: View {
     let noteTitle: String
     let primaryTitle: String
-    let finishRule: String
+    let statusText: String
     let isNextEnabled: Bool
     let onNote: () -> Void
     let onNext: () -> Void
@@ -1101,7 +1429,7 @@ private struct FocusRoomBottomActions: View {
                         .foregroundStyle(FocusRoomPalette.primaryText)
                         .lineLimit(1)
 
-                    Text(finishRule.garageFocusRoomSentenceTrimmed)
+                    Text(statusText.garageFocusRoomSentenceTrimmed)
                         .font(.system(size: 10, weight: .bold, design: .rounded))
                         .foregroundStyle(FocusRoomPalette.secondaryText)
                         .lineLimit(1)
