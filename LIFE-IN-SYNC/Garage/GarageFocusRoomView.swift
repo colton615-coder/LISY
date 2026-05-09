@@ -804,6 +804,7 @@ private struct GoalDrillHero: View {
                     steps: steps,
                     completedLabel: "Goal complete",
                     buttonTitle: "Step Done",
+                    showsCompletedProgress: true,
                     onAdvance: onAdvance
                 )
             case .manual(let label):
@@ -1323,12 +1324,29 @@ private struct FocusRoomStepTracker: View {
     let steps: [String]
     let completedLabel: String
     let buttonTitle: String
+    let showsCompletedProgress: Bool
     let onAdvance: () -> Void
+
+    init(
+        currentIndex: Int,
+        steps: [String],
+        completedLabel: String,
+        buttonTitle: String,
+        showsCompletedProgress: Bool = false,
+        onAdvance: @escaping () -> Void
+    ) {
+        self.currentIndex = currentIndex
+        self.steps = steps
+        self.completedLabel = completedLabel
+        self.buttonTitle = buttonTitle
+        self.showsCompletedProgress = showsCompletedProgress
+        self.onAdvance = onAdvance
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 12) {
-                FocusRoomTimerMetric(value: "\(min(currentIndex + 1, max(steps.count, 1)))", label: "Current")
+                FocusRoomTimerMetric(value: "\(primaryMetricValue)", label: primaryMetricLabel)
                 FocusRoomTimerMetric(value: "\(steps.count)", label: "Total")
             }
 
@@ -1358,6 +1376,18 @@ private struct FocusRoomStepTracker: View {
 
     private var isComplete: Bool {
         currentIndex >= max(steps.count, 1)
+    }
+
+    private var primaryMetricValue: Int {
+        if showsCompletedProgress {
+            return min(max(currentIndex, 0), steps.count)
+        }
+
+        return min(max(currentIndex + 1, 0), max(steps.count, 1))
+    }
+
+    private var primaryMetricLabel: String {
+        showsCompletedProgress ? "Completed" : "Current"
     }
 
     private var currentStepText: String {
