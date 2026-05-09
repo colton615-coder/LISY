@@ -8,6 +8,7 @@ struct GarageActiveSessionView: View {
     @State private var session: ActivePracticeSession
     @State private var phase: GarageActiveSessionPhase = .focusRoom
     @State private var currentDrillIndex = 0
+    @State private var drillElapsedSeconds: [UUID: Int] = [:]
     @State private var isDrillDetailExpanded = false
     @State private var noteEditor: DrillNoteEditorState?
     @State private var summaryDraft: GarageSessionSummaryDraft?
@@ -52,14 +53,22 @@ struct GarageActiveSessionView: View {
                             presentNoteEditor(for: currentEntry)
                         }
                     },
-                    onPrimary: focusPrimaryAction,
+                    onPrimary: { elapsedSeconds in
+                        focusPrimaryAction(elapsedSeconds: elapsedSeconds)
+                    },
                     onExitEmptyRoutine: onEndSession
                 )
             case .review:
                 if summaryDraft != nil {
                     GarageSessionReviewView(
                         draft: Binding(
-                            get: { summaryDraft ?? GarageSessionSummaryDraft(session: session, benchmarkSnapshot: records.benchmarkSnapshot(for: session.templateName)) },
+                            get: {
+                                summaryDraft ?? GarageSessionSummaryDraft(
+                                    session: session,
+                                    benchmarkSnapshot: records.benchmarkSnapshot(for: session.templateName),
+                                    elapsedSecondsByDrillID: drillElapsedSeconds
+                                )
+                            },
                             set: { summaryDraft = $0 }
                         ),
                         entries: session.orderedDrillEntries,
@@ -227,11 +236,13 @@ struct GarageActiveSessionView: View {
         }
     }
 
-    private func completeCurrentDrill() {
+    private func completeCurrentDrill(elapsedSeconds: Int) {
         guard let currentEntry else {
             presentReview(autoRouted: false)
             return
         }
+
+        drillElapsedSeconds[currentEntry.drill.id] = max(elapsedSeconds, drillElapsedSeconds[currentEntry.drill.id] ?? 0)
 
         if currentEntry.progress.isCompleted == false {
             session.toggleCompletion(for: currentEntry.drill.id)
@@ -247,11 +258,11 @@ struct GarageActiveSessionView: View {
         }
     }
 
-    private func focusPrimaryAction() {
+    private func focusPrimaryAction(elapsedSeconds: Int) {
         if unresolvedDrillIndex == nil {
             presentReview(autoRouted: false)
         } else {
-            completeCurrentDrill()
+            completeCurrentDrill(elapsedSeconds: elapsedSeconds)
         }
     }
 
@@ -269,13 +280,18 @@ struct GarageActiveSessionView: View {
     private func presentReview(autoRouted: Bool = false) {
         summaryDraft = GarageSessionSummaryDraft(
             session: session,
-            benchmarkSnapshot: records.benchmarkSnapshot(for: session.templateName)
+            benchmarkSnapshot: records.benchmarkSnapshot(for: session.templateName),
+            elapsedSecondsByDrillID: drillElapsedSeconds
         )
         reviewHandoffMessage = autoRouted ? GarageFocusRoomCopy.reviewHandoffAutoRouteMessage : nil
         phase = .review
     }
 
     private func saveSummary(_ draft: GarageSessionSummaryDraft) {
+        for result in draft.drillResults {
+            session.updateNote(result.note, for: result.id)
+        }
+
         let record = session.makeRecord(
             drillResults: draft.drillResults.map(\.recordValue),
             sessionFeelNote: draft.sessionFeelNote
@@ -380,20 +396,7 @@ private struct GarageSessionReviewView: View {
         GarageProScaffold(bottomPadding: GarageSessionDockLayout.reviewBottomPadding) {
             GarageSessionReviewLeadCard(draft: draft, handoffMessage: handoffMessage)
 
-            GarageSessionReviewAccuracyGateCard(draft: draft)
-
-            GarageSessionReviewNotes(entries: entries)
-
-            VStack(alignment: .leading, spacing: ModuleSpacing.medium) {
-                GarageFocusLabel("Successful Reps")
-
-                ForEach($draft.drillResults) { $result in
-                    GarageDrillResultCard(
-                        result: $result,
-                        benchmarkSessionCount: draft.benchmarkSessionCount
-                    )
-                }
-            }
+            GarageSessionPerformanceList(draft: $draft)
 
             GarageTelemetrySurface {
                 GarageFocusLabel("Session Feel Note")
@@ -701,19 +704,90 @@ private struct GarageSessionReviewLeadCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(draft.aggregateEfficiencyText)
+                    Text(draft.totalElapsedTimeText)
                         .font(.system(size: 34, weight: .black, design: .monospaced))
                         .foregroundStyle(GarageProTheme.accent)
                         .lineLimit(1)
                         .minimumScaleFactor(0.72)
 
-                    Text("Efficiency")
+                    Text("Total Time")
                         .font(.system(size: 10, weight: .bold, design: .rounded))
                         .textCase(.uppercase)
                         .tracking(1.8)
                         .foregroundStyle(GarageProTheme.textSecondary)
                 }
             }
+        }
+    }
+}
+
+@MainActor
+private struct GarageSessionPerformanceList: View {
+    @Binding var draft: GarageSessionSummaryDraft
+
+    var body: some View {
+        GarageTelemetrySurface(isActive: true) {
+            HStack(alignment: .firstTextBaseline) {
+                GarageFocusLabel("Drill Performance")
+
+                Spacer(minLength: 12)
+
+                Text(draft.reviewProgressText)
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(GarageProTheme.textSecondary)
+            }
+
+            VStack(spacing: 0) {
+                ForEach($draft.drillResults) { $result in
+                    GarageSessionPerformanceRow(result: $result)
+                }
+            }
+        }
+    }
+}
+
+@MainActor
+private struct GarageSessionPerformanceRow: View {
+    @Binding var result: GarageSessionDrillResultDraft
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(result.name)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(GarageProTheme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Spacer(minLength: 8)
+
+                Text(result.elapsedTimeText)
+                    .font(.system(size: 20, weight: .black, design: .monospaced))
+                    .foregroundStyle(result.elapsedSeconds == nil ? GarageProTheme.textSecondary : GarageSessionSummaryPalette.activeSegment)
+                    .lineLimit(1)
+            }
+
+            Text(result.performanceCaption)
+                .font(.caption.weight(.black))
+                .textCase(.uppercase)
+                .tracking(1.1)
+                .foregroundStyle(result.elapsedSeconds == nil ? GarageProTheme.textSecondary : GarageSessionSummaryPalette.activeSegment)
+
+            TextField("What did this drill teach you?", text: $result.note, axis: .vertical)
+                .lineLimit(2...4)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(GarageProTheme.textPrimary)
+                .padding(12)
+                .background(GarageProTheme.insetSurface.opacity(0.86), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(GarageProTheme.border, lineWidth: 1)
+                )
+        }
+        .padding(.vertical, 16)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(GarageProTheme.border)
+                .frame(height: 1)
         }
     }
 }
@@ -1085,22 +1159,27 @@ private struct GarageSessionSummaryDraft: Identifiable {
 
     init(
         session: ActivePracticeSession,
-        benchmarkSnapshot: GarageTemplateBenchmarkSnapshot?
+        benchmarkSnapshot: GarageTemplateBenchmarkSnapshot?,
+        elapsedSecondsByDrillID: [UUID: Int]
     ) {
         id = session.id
         templateName = session.templateName
         benchmarkSessionCount = benchmarkSnapshot?.sourceSessionCount ?? 0
+        let entries = session.orderedDrillEntries
         drillResults = session.defaultDrillResults().enumerated().map { index, result in
-            GarageSessionDrillResultDraft(
-                id: session.drills[index].id,
+            let entry = entries[index]
+            return GarageSessionDrillResultDraft(
+                id: entry.drill.id,
                 name: result.name,
                 totalReps: result.totalReps,
                 successfulReps: result.successfulReps,
+                elapsedSeconds: elapsedSecondsByDrillID[entry.drill.id],
                 projectedSuccessfulReps: benchmarkSnapshot?.projectedSuccessfulReps(
                     for: result.name,
                     totalReps: result.totalReps
                 ),
-                isReviewed: false
+                note: entry.progress.note,
+                isReviewed: true
             )
         }
         sessionFeelNote = ""
@@ -1125,6 +1204,18 @@ private struct GarageSessionSummaryDraft: Identifiable {
 
     var aggregateEfficiencyText: String {
         "\(Int((aggregateEfficiency * 100).rounded()))%"
+    }
+
+    var totalElapsedSeconds: Int {
+        drillResults.compactMap(\.elapsedSeconds).reduce(0, +)
+    }
+
+    var totalElapsedTimeText: String {
+        guard totalElapsedSeconds > 0 else {
+            return "--:--"
+        }
+
+        return garageSessionSummaryTime(totalElapsedSeconds)
     }
 
     var projectedSuccessfulRepsTotal: Int {
@@ -1181,24 +1272,18 @@ private struct GarageSessionSummaryDraft: Identifiable {
     }
 
     var canSave: Bool {
-        allDrillResultsReviewed && hasCarryForwardCueDecision
+        drillResults.isEmpty == false && hasCarryForwardCueDecision
     }
 
     var reviewProgressText: String {
-        "\(reviewedDrillCount)/\(drillResults.count) drill results reviewed"
+        "\(drillResults.count) timed runs"
     }
 
     var saveGateMessage: String {
         var missingItems: [String] = []
-        let missingReviewCount = drillResults.count - reviewedDrillCount
 
         if drillResults.isEmpty {
             missingItems.append("add at least one drill result")
-        }
-
-        if missingReviewCount > 0 {
-            let suffix = missingReviewCount == 1 ? "drill result" : "drill results"
-            missingItems.append("review \(missingReviewCount) \(suffix)")
         }
 
         if hasCarryForwardCueDecision == false {
@@ -1206,7 +1291,7 @@ private struct GarageSessionSummaryDraft: Identifiable {
         }
 
         guard missingItems.isEmpty == false else {
-            return "Ready to save reviewed rep counts."
+            return "Ready to save the session."
         }
 
         return "Before saving: \(missingItems.joined(separator: " and "))."
@@ -1218,7 +1303,9 @@ private struct GarageSessionDrillResultDraft: Identifiable {
     let name: String
     let totalReps: Int
     var successfulReps: Int
+    let elapsedSeconds: Int?
     let projectedSuccessfulReps: Int?
+    var note: String
     var isReviewed: Bool
 
     var successPercentageText: String {
@@ -1228,6 +1315,22 @@ private struct GarageSessionDrillResultDraft: Identifiable {
 
         let percentage = Int((Double(successfulReps) / Double(totalReps) * 100).rounded())
         return "\(percentage)%"
+    }
+
+    var elapsedTimeText: String {
+        guard let elapsedSeconds else {
+            return "--:--"
+        }
+
+        return garageSessionSummaryTime(elapsedSeconds)
+    }
+
+    var performanceCaption: String {
+        guard elapsedSeconds != nil else {
+            return "No timer captured"
+        }
+
+        return "Timed run saved"
     }
 
     var recordValue: DrillResult {
@@ -1257,6 +1360,13 @@ private enum GarageSessionSummaryPalette {
     static let activeSegment = Color(hex: "#10B981")
     static let inactiveSegment = Color(red: 0.15, green: 0.16, blue: 0.18)
     static let projectedSegment = activeSegment.opacity(0.18)
+}
+
+private func garageSessionSummaryTime(_ seconds: Int) -> String {
+    let clampedSeconds = max(seconds, 0)
+    let minutes = clampedSeconds / 60
+    let seconds = clampedSeconds % 60
+    return String(format: "%02d:%02d", minutes, seconds)
 }
 
 #Preview("Garage Active Session") {

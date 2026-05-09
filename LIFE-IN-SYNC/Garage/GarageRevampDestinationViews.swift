@@ -402,14 +402,15 @@ struct GarageRoutineReviewView: View {
     let onStartRoutine: (GarageRoutineReviewPlan) -> Void
 
     var body: some View {
-        GarageProScaffold(bottomPadding: 44) {
+        GarageProScaffold(bottomPadding: 132) {
             pageHeader
-            routineHeader
             drillListSection
-            actionSection
         }
         .navigationTitle("Review Routine")
         .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            actionSection
+        }
         .alert("Unable To Save Routine", isPresented: saveErrorAlertIsPresented) {
             Button("OK", role: .cancel) {
                 saveErrorMessage = nil
@@ -421,9 +422,9 @@ struct GarageRoutineReviewView: View {
 
     private var pageHeader: some View {
         GarageCompactPageHeader(
-            eyebrow: reviewPlan.source.eyebrow,
+            eyebrow: surfaceRoutineEyebrow,
             title: "Review Routine",
-            subtitle: "Confirm the drill stack before you start."
+            subtitle: reviewPlan.title
         ) {
             GarageCompactStatBadge(
                 value: "\(reviewPlan.drillCount)",
@@ -432,50 +433,14 @@ struct GarageRoutineReviewView: View {
         }
     }
 
-    private var routineHeader: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Routine Summary")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .textCase(.uppercase)
-                        .tracking(1.8)
-                        .foregroundStyle(GarageProTheme.accent)
-
-                    Text(reviewPlan.title)
-                        .font(.system(size: 22, weight: .black, design: .rounded))
-                        .foregroundStyle(GarageProTheme.textPrimary)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.74)
-
-                    HStack(spacing: 8) {
-                        GarageCompactMetaPill(title: reviewPlan.environment.displayName, systemImage: reviewPlan.environment.systemImage)
-                        GarageCompactMetaPill(title: "\(reviewPlan.drillCount) drills", systemImage: "list.number")
-                    }
-                }
-
-                Spacer(minLength: 10)
-            }
-
-        }
-        .padding(14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .background(GarageProTheme.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(GarageProTheme.border, lineWidth: 1)
-        )
+    private var surfaceRoutineEyebrow: String {
+        "\(reviewPlan.environment.displayName) \(reviewPlan.drillCount) \(reviewPlan.drillCount == 1 ? "Drill" : "Drills")"
     }
 
     private var drillListSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            GarageProSectionHeader(
-                eyebrow: "Preview",
-                title: "Drill List"
-            )
-
+        VStack(alignment: .leading, spacing: 0) {
             if reviewPlan.drills.isEmpty {
-                GarageProCard(cornerRadius: 22, padding: 16) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text("No drills in this routine.")
                         .font(.system(.headline, design: .rounded).weight(.black))
                         .foregroundStyle(GarageProTheme.textPrimary)
@@ -484,8 +449,10 @@ struct GarageRoutineReviewView: View {
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(GarageProTheme.textSecondary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 18)
             } else {
-                VStack(spacing: 12) {
+                VStack(spacing: 0) {
                     ForEach(Array(reviewPlan.drills.prefix(5).enumerated()), id: \.element.id) { offset, drill in
                         GarageRoutineReviewDrillRow(index: offset + 1, drill: drill)
                     }
@@ -495,14 +462,16 @@ struct GarageRoutineReviewView: View {
                             .font(.footnote.weight(.bold))
                             .foregroundStyle(GarageProTheme.textSecondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 14)
                     }
                 }
             }
         }
+        .padding(.top, 6)
     }
 
     private var actionSection: some View {
-        GarageProCard(isActive: true, cornerRadius: 22, padding: 12) {
+        VStack(spacing: 10) {
             if reviewPlan.canStart == false {
                 Text("This routine needs at least one drill before it can start.")
                     .font(.footnote.weight(.semibold))
@@ -512,7 +481,7 @@ struct GarageRoutineReviewView: View {
 
             HStack(spacing: 10) {
                 GarageProPrimaryButton(
-                    title: "Start Routine",
+                    title: "Start Training Flow",
                     systemImage: "play.fill",
                     isEnabled: reviewPlan.canStart
                 ) {
@@ -528,6 +497,15 @@ struct GarageRoutineReviewView: View {
                     .frame(maxWidth: .infinity)
                 }
             }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 14)
+        .padding(.bottom, 18)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(GarageProTheme.border)
+                .frame(height: 1)
         }
     }
 
@@ -927,31 +905,31 @@ private struct GarageRoutineReviewDrillRow: View {
     let drill: PracticeTemplateDrill
 
     var body: some View {
-        GarageProCard(isActive: true, cornerRadius: 20, padding: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                Text("\(index)")
-                    .font(.system(size: 14, weight: .black, design: .monospaced))
-                    .foregroundStyle(GarageProTheme.accent)
-                    .frame(width: 34, height: 34)
-                    .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(GarageProTheme.accent.opacity(0.24), lineWidth: 1)
-                    )
+        HStack(alignment: .top, spacing: 14) {
+            Text("\(index)")
+                .font(.system(size: 16, weight: .black, design: .monospaced))
+                .foregroundStyle(ModuleTheme.garageAccent)
+                .frame(width: 24, alignment: .leading)
+                .padding(.top, 2)
 
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(drill.title)
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(GarageProTheme.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(drill.title)
+                    .font(.system(size: 18, weight: .black, design: .rounded))
+                    .foregroundStyle(GarageProTheme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                    Text(drill.metadataSummary)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(GarageProTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                Text(drill.metadataSummary)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(GarageProTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 18)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(GarageProTheme.border)
+                .frame(height: 1)
         }
     }
 }
