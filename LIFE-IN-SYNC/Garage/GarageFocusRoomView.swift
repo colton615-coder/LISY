@@ -8,6 +8,14 @@ struct GarageFocusDrillPresentation {
     let isCompleted: Bool
 }
 
+struct GarageFocusCompletionPayload {
+    let elapsedSeconds: Int
+    let trackerValue: Int
+    let mode: GarageDrillFocusMode
+    let goal: GarageDrillGoal
+    let goalMet: Bool
+}
+
 struct GarageFocusRoomView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isRoutineVisible = false
@@ -31,7 +39,7 @@ struct GarageFocusRoomView: View {
     let onToggleDetail: () -> Void
     let onSelectRailDrill: (Int) -> Void
     let onNote: () -> Void
-    let onPrimary: (Int) -> Void
+    let onPrimary: (GarageFocusCompletionPayload) -> Void
     let onExitEmptyRoutine: () -> Void
 
     var body: some View {
@@ -97,11 +105,21 @@ struct GarageFocusRoomView: View {
                 let state = completionState(for: drill)
                 FocusRoomBottomActions(
                     noteTitle: noteTitle,
-                    primaryTitle: state.primaryTitle(fallback: primaryCtaTitle),
-                    statusText: state.bottomStatusText,
+                    primaryTitle: state.primaryTitle(goal: drill.content.goal, fallback: primaryCtaTitle),
+                    statusText: statusText(for: drill.content.goal, state: state),
                     isNextEnabled: state.canConfirm,
                     onNote: onNote,
-                    onNext: { onPrimary(elapsedSeconds) }
+                    onNext: {
+                        onPrimary(
+                            GarageFocusCompletionPayload(
+                                elapsedSeconds: elapsedSeconds,
+                                trackerValue: trackerValue,
+                                mode: drill.content.mode,
+                                goal: drill.content.goal,
+                                goalMet: isGoalMet(drill.content.goal)
+                            )
+                        )
+                    }
                 )
             }
             .onAppear {
@@ -212,8 +230,12 @@ private extension GarageFocusRoomView {
             return .completed
         }
 
-        if elapsedSeconds > 0 {
+        if isGoalMet(drill.content.goal) {
             return .ready
+        }
+
+        if hasStarted(drill.content.goal) {
+            return .inProgress
         }
 
         return .notStarted
@@ -233,6 +255,40 @@ private extension GarageFocusRoomView {
             return trackerValue >= max(items.count, 1)
         case .manual:
             return trackerValue > 0
+        }
+    }
+
+    func hasStarted(_ goal: GarageDrillGoal) -> Bool {
+        switch goal {
+        case .timed:
+            return elapsedSeconds > 0
+        case .repTarget, .streak, .timeTrial, .ladder, .checklist, .manual:
+            return trackerValue > 0
+        }
+    }
+
+    func statusText(for goal: GarageDrillGoal, state: GarageFocusCompletionState) -> String {
+        if state == .completed {
+            return "Confirmed"
+        }
+
+        if state == .ready {
+            return "Ready when the drill is complete"
+        }
+
+        switch goal {
+        case .timed(let durationSeconds):
+            return "Work through \(formattedTime(durationSeconds))"
+        case .repTarget(let count, _), .streak(let count, _):
+            return "Log \(count) clean reps"
+        case .timeTrial(let targetCount, _):
+            return "Record \(targetCount) clean attempts"
+        case .ladder(let steps):
+            return "Complete \(steps.count) ladder steps"
+        case .checklist(let items):
+            return "Complete \(items.count) checklist items"
+        case .manual:
+            return "Mark the goal complete"
         }
     }
 }
@@ -278,14 +334,22 @@ private enum GarageFocusCompletionState: Hashable {
         }
     }
 
-    func primaryTitle(fallback: String) -> String {
-        switch self {
-        case .ready:
+    func primaryTitle(goal: GarageDrillGoal, fallback: String) -> String {
+        guard fallback != GarageFocusRoomCopy.focusRoomEnterReviewCta else {
             return fallback
-        case .completed:
-            return fallback
-        case .notStarted, .inProgress:
-            return fallback
+        }
+
+        switch goal {
+        case .timed:
+            return "Confirm Time"
+        case .repTarget:
+            return "Confirm Reps"
+        case .streak, .timeTrial:
+            return "Confirm Challenge"
+        case .ladder, .manual:
+            return "Confirm Goal"
+        case .checklist:
+            return "Confirm Checklist"
         }
     }
 }
@@ -421,9 +485,19 @@ private struct GarageFocusHeroContainer: View {
 
             FocusRoomInstructionList(instructions: instructionLines)
 
+            modeBody
+
+            if content.quickTags.isEmpty == false {
+                FocusRoomQuickTagStrip(
+                    tags: content.quickTags,
+                    selectedTags: selectedQuickTags,
+                    onToggle: onToggleQuickTag
+                )
+            }
+
             FocusRoomStopwatchPanel(
                 elapsedSeconds: elapsedSeconds,
-                personalBestText: "PB to beat: First timed run"
+                personalBestText: stopwatchCaption
             )
         }
         .padding(16)
@@ -500,6 +574,15 @@ private struct GarageFocusHeroContainer: View {
             return "\(min(trackerValue, items.count)) / \(items.count)"
         case .manual(let label):
             return trackerValue > 0 ? "Ready" : label
+        }
+    }
+
+    private var stopwatchCaption: String {
+        switch content.mode {
+        case .time:
+            return "Time goal is active"
+        case .reps, .goal, .challenge, .checklist:
+            return "Session clock running"
         }
     }
 }
@@ -1539,4 +1622,171 @@ private extension String {
         trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "."))
     }
+}
+
+private enum GarageFocusRoomPreviewData {
+    static func presentation(for mode: GarageDrillFocusMode) -> GarageFocusDrillPresentation {
+        GarageFocusDrillPresentation(
+            id: UUID(),
+            content: GarageDrillFocusContent(
+                title: previewTitle(for: mode),
+                task: "Execute the assigned drill standard.",
+                setupLine: "Set the station before the first attempt.",
+                executionCue: "Only count clean executions that match the cue.",
+                goal: previewGoal(for: mode),
+                mode: mode,
+                targetMetric: previewGoal(for: mode).goalText,
+                watchFor: "Loss of rhythm between attempts.",
+                finishRule: "Complete the drill requirement before advancing.",
+                teachingDetail: "Keep posture and tempo stable through the full set.",
+                reviewSummary: "Track what produced the cleanest outcome.",
+                quickTags: ["Tempo", "Contact", "Start Line"],
+                diagramKey: nil
+            ),
+            isCompleted: false
+        )
+    }
+
+    static var railItems: [GarageFocusDrillRailItem] {
+        [
+            GarageFocusDrillRailItem(
+                id: UUID(),
+                index: 0,
+                title: "Preview Drill",
+                metadata: "Mode QA",
+                status: .current,
+                isSelectable: false
+            )
+        ]
+    }
+
+    private static func previewGoal(for mode: GarageDrillFocusMode) -> GarageDrillGoal {
+        switch mode {
+        case .reps:
+            return .repTarget(count: 8, unit: "clean reps")
+        case .time:
+            return .timed(durationSeconds: 120)
+        case .goal:
+            return .ladder(steps: ["Step one", "Step two", "Step three"])
+        case .challenge:
+            return .streak(count: 5, unit: "clean starts")
+        case .checklist:
+            return .checklist(items: ["Setup", "Cue", "Finish"])
+        }
+    }
+
+    private static func previewTitle(for mode: GarageDrillFocusMode) -> String {
+        switch mode {
+        case .reps:
+            return "Rep Mode Preview"
+        case .time:
+            return "Time Mode Preview"
+        case .goal:
+            return "Goal Mode Preview"
+        case .challenge:
+            return "Challenge Mode Preview"
+        case .checklist:
+            return "Checklist Mode Preview"
+        }
+    }
+}
+
+#Preview("Focus Room - Reps") {
+    GarageFocusRoomView(
+        sessionTitle: "Preview Session",
+        environment: .range,
+        drillPositionText: "Drill 1 of 1",
+        completedCount: 0,
+        totalCount: 1,
+        drill: GarageFocusRoomPreviewData.presentation(for: .reps),
+        railItems: GarageFocusRoomPreviewData.railItems,
+        isDetailExpanded: false,
+        noteTitle: GarageFocusRoomCopy.focusRoomNoteAddCta,
+        primaryCtaTitle: GarageFocusRoomCopy.focusRoomMarkCompleteCta,
+        onToggleDetail: {},
+        onSelectRailDrill: { _ in },
+        onNote: {},
+        onPrimary: { _ in },
+        onExitEmptyRoutine: {}
+    )
+}
+
+#Preview("Focus Room - Time") {
+    GarageFocusRoomView(
+        sessionTitle: "Preview Session",
+        environment: .range,
+        drillPositionText: "Drill 1 of 1",
+        completedCount: 0,
+        totalCount: 1,
+        drill: GarageFocusRoomPreviewData.presentation(for: .time),
+        railItems: GarageFocusRoomPreviewData.railItems,
+        isDetailExpanded: false,
+        noteTitle: GarageFocusRoomCopy.focusRoomNoteAddCta,
+        primaryCtaTitle: GarageFocusRoomCopy.focusRoomMarkCompleteCta,
+        onToggleDetail: {},
+        onSelectRailDrill: { _ in },
+        onNote: {},
+        onPrimary: { _ in },
+        onExitEmptyRoutine: {}
+    )
+}
+
+#Preview("Focus Room - Goal") {
+    GarageFocusRoomView(
+        sessionTitle: "Preview Session",
+        environment: .range,
+        drillPositionText: "Drill 1 of 1",
+        completedCount: 0,
+        totalCount: 1,
+        drill: GarageFocusRoomPreviewData.presentation(for: .goal),
+        railItems: GarageFocusRoomPreviewData.railItems,
+        isDetailExpanded: false,
+        noteTitle: GarageFocusRoomCopy.focusRoomNoteAddCta,
+        primaryCtaTitle: GarageFocusRoomCopy.focusRoomMarkCompleteCta,
+        onToggleDetail: {},
+        onSelectRailDrill: { _ in },
+        onNote: {},
+        onPrimary: { _ in },
+        onExitEmptyRoutine: {}
+    )
+}
+
+#Preview("Focus Room - Challenge") {
+    GarageFocusRoomView(
+        sessionTitle: "Preview Session",
+        environment: .range,
+        drillPositionText: "Drill 1 of 1",
+        completedCount: 0,
+        totalCount: 1,
+        drill: GarageFocusRoomPreviewData.presentation(for: .challenge),
+        railItems: GarageFocusRoomPreviewData.railItems,
+        isDetailExpanded: false,
+        noteTitle: GarageFocusRoomCopy.focusRoomNoteAddCta,
+        primaryCtaTitle: GarageFocusRoomCopy.focusRoomMarkCompleteCta,
+        onToggleDetail: {},
+        onSelectRailDrill: { _ in },
+        onNote: {},
+        onPrimary: { _ in },
+        onExitEmptyRoutine: {}
+    )
+}
+
+#Preview("Focus Room - Checklist") {
+    GarageFocusRoomView(
+        sessionTitle: "Preview Session",
+        environment: .range,
+        drillPositionText: "Drill 1 of 1",
+        completedCount: 0,
+        totalCount: 1,
+        drill: GarageFocusRoomPreviewData.presentation(for: .checklist),
+        railItems: GarageFocusRoomPreviewData.railItems,
+        isDetailExpanded: false,
+        noteTitle: GarageFocusRoomCopy.focusRoomNoteAddCta,
+        primaryCtaTitle: GarageFocusRoomCopy.focusRoomMarkCompleteCta,
+        onToggleDetail: {},
+        onSelectRailDrill: { _ in },
+        onNote: {},
+        onPrimary: { _ in },
+        onExitEmptyRoutine: {}
+    )
 }

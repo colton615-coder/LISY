@@ -9,6 +9,7 @@ struct GarageActiveSessionView: View {
     @State private var phase: GarageActiveSessionPhase = .focusRoom
     @State private var currentDrillIndex = 0
     @State private var drillElapsedSeconds: [UUID: Int] = [:]
+    @State private var drillTrackerValues: [UUID: Int] = [:]
     @State private var isDrillDetailExpanded = false
     @State private var noteEditor: DrillNoteEditorState?
     @State private var summaryDraft: GarageSessionSummaryDraft?
@@ -53,8 +54,8 @@ struct GarageActiveSessionView: View {
                             presentNoteEditor(for: currentEntry)
                         }
                     },
-                    onPrimary: { elapsedSeconds in
-                        focusPrimaryAction(elapsedSeconds: elapsedSeconds)
+                    onPrimary: { payload in
+                        focusPrimaryAction(payload: payload)
                     },
                     onExitEmptyRoutine: onEndSession
                 )
@@ -66,7 +67,8 @@ struct GarageActiveSessionView: View {
                                 summaryDraft ?? GarageSessionSummaryDraft(
                                     session: session,
                                     benchmarkSnapshot: records.benchmarkSnapshot(for: session.templateName),
-                                    elapsedSecondsByDrillID: drillElapsedSeconds
+                                    elapsedSecondsByDrillID: drillElapsedSeconds,
+                                    trackerValueByDrillID: drillTrackerValues
                                 )
                             },
                             set: { summaryDraft = $0 }
@@ -236,13 +238,18 @@ struct GarageActiveSessionView: View {
         }
     }
 
-    private func completeCurrentDrill(elapsedSeconds: Int) {
+    private func completeCurrentDrill(payload: GarageFocusCompletionPayload) {
         guard let currentEntry else {
             presentReview(autoRouted: false)
             return
         }
 
-        drillElapsedSeconds[currentEntry.drill.id] = max(elapsedSeconds, drillElapsedSeconds[currentEntry.drill.id] ?? 0)
+        guard payload.goalMet else {
+            return
+        }
+
+        drillElapsedSeconds[currentEntry.drill.id] = max(payload.elapsedSeconds, drillElapsedSeconds[currentEntry.drill.id] ?? 0)
+        drillTrackerValues[currentEntry.drill.id] = max(payload.trackerValue, drillTrackerValues[currentEntry.drill.id] ?? 0)
 
         if currentEntry.progress.isCompleted == false {
             session.toggleCompletion(for: currentEntry.drill.id)
@@ -258,11 +265,11 @@ struct GarageActiveSessionView: View {
         }
     }
 
-    private func focusPrimaryAction(elapsedSeconds: Int) {
+    private func focusPrimaryAction(payload: GarageFocusCompletionPayload) {
         if unresolvedDrillIndex == nil {
             presentReview(autoRouted: false)
         } else {
-            completeCurrentDrill(elapsedSeconds: elapsedSeconds)
+            completeCurrentDrill(payload: payload)
         }
     }
 
@@ -281,7 +288,8 @@ struct GarageActiveSessionView: View {
         summaryDraft = GarageSessionSummaryDraft(
             session: session,
             benchmarkSnapshot: records.benchmarkSnapshot(for: session.templateName),
-            elapsedSecondsByDrillID: drillElapsedSeconds
+            elapsedSecondsByDrillID: drillElapsedSeconds,
+            trackerValueByDrillID: drillTrackerValues
         )
         reviewHandoffMessage = autoRouted ? GarageFocusRoomCopy.reviewHandoffAutoRouteMessage : nil
         phase = .review
@@ -906,7 +914,7 @@ private struct GarageDrillResultCard: View {
 
                     GarageReviewStatusBadge(isReviewed: result.isReviewed)
 
-                    Text("\(result.successfulReps) / \(result.totalReps) successful reps")
+                    Text(result.progressSummaryText)
                         .font(.subheadline)
                         .foregroundStyle(AppModule.garage.theme.textSecondary)
                 }
@@ -926,7 +934,7 @@ private struct GarageDrillResultCard: View {
                 )
                 .frame(height: 44)
 
-                Text("Set the exact number of reps that met the standard, then mark this drill reviewed.")
+                Text("Set the exact completion count that met the drill standard, then mark this drill reviewed.")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppModule.garage.theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1160,23 +1168,36 @@ private struct GarageSessionSummaryDraft: Identifiable {
     init(
         session: ActivePracticeSession,
         benchmarkSnapshot: GarageTemplateBenchmarkSnapshot?,
-        elapsedSecondsByDrillID: [UUID: Int]
+        elapsedSecondsByDrillID: [UUID: Int],
+        trackerValueByDrillID: [UUID: Int]
     ) {
         id = session.id
         templateName = session.templateName
         benchmarkSessionCount = benchmarkSnapshot?.sourceSessionCount ?? 0
         let entries = session.orderedDrillEntries
-        drillResults = session.defaultDrillResults().enumerated().map { index, result in
-            let entry = entries[index]
+        drillResults = entries.map { entry in
+            let detail = GarageDrillFocusDetails.detail(for: entry.drill)
+            let content = GarageDrillFocusContentAdapter.content(for: entry.drill, detail: detail)
+            let elapsedSeconds = elapsedSecondsByDrillID[entry.drill.id]
+            let trackerValue = trackerValueByDrillID[entry.drill.id] ?? 0
+            let execution = Self.executionMetrics(
+                for: content.goal,
+                trackerValue: trackerValue,
+                elapsedSeconds: elapsedSeconds,
+                isCompleted: entry.progress.isCompleted
+            )
+
             return GarageSessionDrillResultDraft(
                 id: entry.drill.id,
-                name: result.name,
-                totalReps: result.totalReps,
-                successfulReps: result.successfulReps,
-                elapsedSeconds: elapsedSecondsByDrillID[entry.drill.id],
+                name: entry.drill.title,
+                mode: content.mode,
+                goal: content.goal,
+                totalReps: execution.totalReps,
+                successfulReps: execution.successfulReps,
+                elapsedSeconds: elapsedSeconds,
                 projectedSuccessfulReps: benchmarkSnapshot?.projectedSuccessfulReps(
-                    for: result.name,
-                    totalReps: result.totalReps
+                    for: entry.drill.title,
+                    totalReps: execution.totalReps
                 ),
                 note: entry.progress.note,
                 isReviewed: true
@@ -1276,7 +1297,7 @@ private struct GarageSessionSummaryDraft: Identifiable {
     }
 
     var reviewProgressText: String {
-        "\(drillResults.count) timed runs"
+        "\(drillResults.count) drills logged"
     }
 
     var saveGateMessage: String {
@@ -1296,11 +1317,48 @@ private struct GarageSessionSummaryDraft: Identifiable {
 
         return "Before saving: \(missingItems.joined(separator: " and "))."
     }
+
+    private static func executionMetrics(
+        for goal: GarageDrillGoal,
+        trackerValue: Int,
+        elapsedSeconds: Int?,
+        isCompleted: Bool
+    ) -> (successfulReps: Int, totalReps: Int) {
+        switch goal {
+        case .timed(let durationSeconds):
+            let totalReps = 1
+            let elapsed = elapsedSeconds ?? 0
+            let successfulReps = elapsed >= max(durationSeconds, 1) ? 1 : (isCompleted ? 1 : 0)
+            return (successfulReps, totalReps)
+        case .repTarget(let count, _), .streak(let count, _):
+            let totalReps = max(count, 1)
+            let successfulReps = min(max(trackerValue, isCompleted ? totalReps : 0), totalReps)
+            return (successfulReps, totalReps)
+        case .timeTrial(let targetCount, _):
+            let totalReps = max(targetCount, 1)
+            let successfulReps = min(max(trackerValue, isCompleted ? totalReps : 0), totalReps)
+            return (successfulReps, totalReps)
+        case .ladder(let steps):
+            let totalReps = max(steps.count, 1)
+            let successfulReps = min(max(trackerValue, isCompleted ? totalReps : 0), totalReps)
+            return (successfulReps, totalReps)
+        case .checklist(let items):
+            let totalReps = max(items.count, 1)
+            let successfulReps = min(max(trackerValue, isCompleted ? totalReps : 0), totalReps)
+            return (successfulReps, totalReps)
+        case .manual:
+            let totalReps = 1
+            let successfulReps = trackerValue > 0 || isCompleted ? 1 : 0
+            return (successfulReps, totalReps)
+        }
+    }
 }
 
 private struct GarageSessionDrillResultDraft: Identifiable {
     let id: UUID
     let name: String
+    let mode: GarageDrillFocusMode
+    let goal: GarageDrillGoal
     let totalReps: Int
     var successfulReps: Int
     let elapsedSeconds: Int?
@@ -1326,11 +1384,40 @@ private struct GarageSessionDrillResultDraft: Identifiable {
     }
 
     var performanceCaption: String {
-        guard elapsedSeconds != nil else {
-            return "No timer captured"
+        switch mode {
+        case .time:
+            if elapsedSeconds == nil {
+                return "No timer captured"
+            }
+            return successfulReps >= totalReps ? "Timed block complete" : "Time goal not met"
+        case .reps:
+            return "Rep-based drill logged"
+        case .goal:
+            return "Goal progression logged"
+        case .challenge:
+            return "Challenge attempts logged"
+        case .checklist:
+            return "Checklist progress logged"
         }
+    }
 
-        return "Timed run saved"
+    var progressSummaryText: String {
+        switch goal {
+        case .timed:
+            return successfulReps >= totalReps ? "Timed block complete" : "Timed block incomplete"
+        case .repTarget(_, let unit):
+            return "\(successfulReps) / \(totalReps) \(unit)"
+        case .streak(_, let unit):
+            return "\(successfulReps) / \(totalReps) \(unit)"
+        case .timeTrial(_, let unit):
+            return "\(successfulReps) / \(totalReps) \(unit)"
+        case .ladder:
+            return "\(successfulReps) / \(totalReps) ladder steps"
+        case .checklist:
+            return "\(successfulReps) / \(totalReps) checklist items"
+        case .manual(let label):
+            return successfulReps > 0 ? "Goal complete" : label
+        }
     }
 
     var recordValue: DrillResult {
