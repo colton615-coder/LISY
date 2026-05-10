@@ -110,12 +110,30 @@ struct GarageEnvironmentDrillPlansView: View {
     let onBuildRoutine: () -> Void
     let onReviewManualSelection: (GarageRoutineReviewPlan) -> Void
 
-    private var manualDrills: [GarageManualPlanDrill] {
-        GarageManualPlanDrill.featuredDrills(for: environment)
+    @State private var drillSearchText = ""
+    @State private var selectedCategory: GarageDrillLibraryCategory?
+
+    private var allManualDrills: [GarageManualPlanDrill] {
+        GarageManualPlanDrill.directoryDrills()
     }
 
     private var selectedDrills: [GarageManualPlanDrill] {
-        manualDrills.filter { selectedDrillIDs.contains($0.id) }
+        allManualDrills.filter { selectedDrillIDs.contains($0.id) }
+    }
+
+    private var visibleManualDrills: [GarageManualPlanDrill] {
+        let trimmedSearch = drillSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return allManualDrills.filter { drill in
+            let matchesCategory = selectedCategory.map { drill.category == $0 } ?? true
+            let matchesSearch = trimmedSearch.isEmpty || drill.matches(trimmedSearch)
+            return matchesCategory && matchesSearch
+        }
+    }
+
+    private var availableCategories: [GarageDrillLibraryCategory] {
+        let categories = Set(allManualDrills.map(\.category))
+        return GarageDrillLibraryCategory.allCases.filter { categories.contains($0) }
     }
 
     var body: some View {
@@ -148,13 +166,29 @@ struct GarageEnvironmentDrillPlansView: View {
 
                     GarageManualDivider()
 
-                    VStack(spacing: 10) {
-                        ForEach(manualDrills) { drill in
-                            GarageManualPlanDrillRow(
-                                drill: drill,
-                                isSelected: selectedDrillIDs.contains(drill.id)
-                            ) {
-                                toggleManualDrill(drill)
+                    GarageManualDirectoryHeader(
+                        selectedCount: selectedDrills.count,
+                        totalCount: allManualDrills.count
+                    )
+
+                    GarageManualSearchField(text: $drillSearchText)
+
+                    GarageManualCategoryRail(
+                        categories: availableCategories,
+                        selectedCategory: $selectedCategory
+                    )
+
+                    if visibleManualDrills.isEmpty {
+                        GarageManualDirectoryEmptyState()
+                    } else {
+                        VStack(spacing: 10) {
+                            ForEach(visibleManualDrills) { drill in
+                                GarageManualPlanDrillRow(
+                                    drill: drill,
+                                    isSelected: selectedDrillIDs.contains(drill.id)
+                                ) {
+                                    toggleManualDrill(drill)
+                                }
                             }
                         }
                     }
@@ -173,12 +207,6 @@ struct GarageEnvironmentDrillPlansView: View {
                 isEnabled: selectedDrills.isEmpty == false,
                 action: reviewManualSelection
             )
-        }
-        .onAppear {
-            if selectedDrillIDs.isEmpty,
-               let defaultSelectionID = GarageManualPlanDrill.defaultSelectionID(for: environment) {
-                selectedDrillIDs = [defaultSelectionID]
-            }
         }
     }
 
@@ -203,12 +231,16 @@ struct GarageEnvironmentDrillPlansView: View {
 
         garageTriggerImpact(.heavy)
 
+        // Full-directory picks still launch under the current route environment to avoid mixed-environment persistence changes.
         let plan = GarageGeneratedPracticePlan(
             title: "\(environment.displayName) Manual Routine",
             environment: environment,
-            objective: "Manual \(environment.displayName.lowercased()) routine built from selected Garage drills.",
+            objective: "Manual routine compiled from the full Garage drill directory.",
             coachNote: "Review the selected drills, then start the session when the sequence matches the work you want.",
-            drills: selected.map { $0.practiceDrill }
+            drills: selected.map { $0.practiceDrill },
+            plannedDurationMinutes: selected.reduce(0) { partialResult, drill in
+                partialResult + GarageDrillFocusDetails.detail(for: drill.practiceDrill).estimatedMinutes
+            }
         )
 
         onReviewManualSelection(GarageRoutineReviewPlan(generatedPlan: plan))
@@ -588,65 +620,239 @@ private struct GarageManualPlanDrill: Identifiable, Hashable {
     let id: String
     let title: String
     let focus: String
+    let environment: PracticeEnvironment
+    let category: GarageDrillLibraryCategory
+    let club: ClubRange
     let systemImage: String
     let practiceDrill: PracticeTemplateDrill
 
-    static func defaultSelectionID(for environment: PracticeEnvironment) -> String? {
-        switch environment {
-        case .net:
-            return featuredDrills(for: .net).first?.id
-        case .range:
-            return featuredDrills(for: .range).first?.id
-        case .puttingGreen:
-            return featuredDrills(for: .puttingGreen).first?.id
-        }
+    var directorySubtitle: String {
+        "\(environment.displayName) • \(category.displayName) • \(club.displayName)"
     }
 
-    static func featuredDrills(for environment: PracticeEnvironment) -> [GarageManualPlanDrill] {
-        switch environment {
-        case .net:
-            return netFeaturedDrills
-        case .range:
-            return rangeFeaturedDrills
-        case .puttingGreen:
-            return puttingGreenFeaturedDrills
-        }
+    func matches(_ query: String) -> Bool {
+        let normalizedQuery = query.lowercased()
+        return title.lowercased().contains(normalizedQuery)
+            || focus.lowercased().contains(normalizedQuery)
+            || environment.displayName.lowercased().contains(normalizedQuery)
+            || category.displayName.lowercased().contains(normalizedQuery)
+            || club.displayName.lowercased().contains(normalizedQuery)
     }
 
-    private static var netFeaturedDrills: [GarageManualPlanDrill] {
-        DrillVault.drills(in: .net).prefix(3).enumerated().map { offset, drill in
-            GarageManualPlanDrill(
-                id: "net-\(drill.id)",
-                title: drill.title,
-                focus: drill.faultType.sensoryDescription,
-                systemImage: offset == 0 ? "scope" : offset == 1 ? "bolt.horizontal" : "figure.golf",
-                practiceDrill: drill.makeGeneratedPracticeTemplateDrill(seedKey: "manual-net-\(offset)-\(drill.id)")
+    static func directoryDrills() -> [GarageManualPlanDrill] {
+        DrillVault.masterPlaybook
+            .sorted { lhs, rhs in
+                if lhs.environment != rhs.environment {
+                    return lhs.environment.rawValue < rhs.environment.rawValue
+                }
+
+                if lhs.libraryCategory != rhs.libraryCategory {
+                    return lhs.libraryCategory.rawValue < rhs.libraryCategory.rawValue
+                }
+
+                return lhs.title < rhs.title
+            }
+            .map { drill in
+                GarageManualPlanDrill(
+                    id: drill.id,
+                    title: drill.title,
+                    focus: drill.faultType.sensoryDescription,
+                    environment: drill.environment,
+                    category: drill.libraryCategory,
+                    club: drill.clubRange,
+                    systemImage: systemImage(for: drill),
+                    practiceDrill: drill.makeGeneratedPracticeTemplateDrill(seedKey: "manual-directory-\(drill.id)")
+                )
+            }
+    }
+
+    private static func systemImage(for drill: GarageDrill) -> String {
+        switch drill.libraryCategory {
+        case .contact:
+            return "scope"
+        case .delivery:
+            return "bolt.horizontal"
+        case .rotation:
+            return "figure.golf"
+        case .faceControl:
+            return "viewfinder"
+        case .tempo:
+            return "metronome.fill"
+        case .distanceControl:
+            return "arrow.left.and.right"
+        case .pressure:
+            return "target"
+        case .putting:
+            return "circle.grid.cross"
+        }
+    }
+}
+
+private struct GarageManualDirectoryHeader: View {
+    let selectedCount: Int
+    let totalCount: Int
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Browse Drill Directory")
+                    .font(.system(size: 18, weight: .black, design: .rounded))
+                    .foregroundStyle(GarageProTheme.textPrimary)
+
+                Text("Compile a routine from every Garage drill.")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(GarageProTheme.textSecondary.opacity(0.82))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            VStack(alignment: .trailing, spacing: 4) {
+                Text("\(selectedCount)")
+                    .font(.system(size: 22, weight: .black, design: .monospaced))
+                    .foregroundStyle(ModuleTheme.garageAccent)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+
+                Text("\(selectedCount == 1 ? "drill" : "drills") selected")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .textCase(.uppercase)
+                    .tracking(1.1)
+                    .foregroundStyle(GarageProTheme.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(GarageProTheme.insetSurface.opacity(0.78), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(GarageProTheme.border, lineWidth: 1)
             )
         }
     }
+}
 
-    private static var rangeFeaturedDrills: [GarageManualPlanDrill] {
-        DrillVault.drills(in: .range).prefix(3).enumerated().map { offset, drill in
-            GarageManualPlanDrill(
-                id: "range-\(drill.id)",
-                title: drill.title,
-                focus: drill.faultType.sensoryDescription,
-                systemImage: offset == 0 ? "scope" : offset == 1 ? "flag" : "arrow.left.and.right",
-                practiceDrill: drill.makeGeneratedPracticeTemplateDrill(seedKey: "manual-range-\(offset)-\(drill.id)")
-            )
+private struct GarageManualSearchField: View {
+    @Binding var text: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(GarageProTheme.textSecondary)
+
+            TextField("Search drills", text: $text)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(GarageProTheme.textPrimary)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+
+            if text.isEmpty == false {
+                Button {
+                    garageTriggerSelection()
+                    text = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(GarageProTheme.textSecondary.opacity(0.82))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, minHeight: 46)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .background(GarageProTheme.insetSurface.opacity(0.82), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+}
+
+private struct GarageManualCategoryRail: View {
+    let categories: [GarageDrillLibraryCategory]
+    @Binding var selectedCategory: GarageDrillLibraryCategory?
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                GarageManualCategoryChip(
+                    title: "All",
+                    isSelected: selectedCategory == nil
+                ) {
+                    setCategory(nil)
+                }
+
+                ForEach(categories) { category in
+                    GarageManualCategoryChip(
+                        title: category.displayName,
+                        isSelected: selectedCategory == category
+                    ) {
+                        setCategory(category)
+                    }
+                }
+            }
+            .padding(.vertical, 2)
         }
     }
 
-    private static var puttingGreenFeaturedDrills: [GarageManualPlanDrill] {
-        DrillVault.drills(in: .puttingGreen).prefix(3).enumerated().map { offset, drill in
-            GarageManualPlanDrill(
-                id: "green-\(drill.id)",
-                title: drill.title,
-                focus: drill.faultType.sensoryDescription,
-                systemImage: offset == 0 ? "circle.grid.cross" : offset == 1 ? "speedometer" : "target",
-                practiceDrill: drill.makeGeneratedPracticeTemplateDrill(seedKey: "manual-green-\(offset)-\(drill.id)")
-            )
+    private func setCategory(_ category: GarageDrillLibraryCategory?) {
+        garageTriggerSelection()
+
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            selectedCategory = category
         }
+    }
+}
+
+private struct GarageManualCategoryChip: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .black, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+                .foregroundStyle(isSelected ? ModuleTheme.garageSurfaceDark : GarageProTheme.textSecondary)
+                .padding(.horizontal, 14)
+                .frame(height: 34)
+                .background(
+                    isSelected ? ModuleTheme.garageAccent : GarageProTheme.insetSurface.opacity(0.74),
+                    in: Capsule()
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(isSelected ? Color.white.opacity(0.18) : GarageProTheme.border, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct GarageManualDirectoryEmptyState: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("No matching drills.")
+                .font(.system(size: 18, weight: .black, design: .rounded))
+                .foregroundStyle(GarageProTheme.textPrimary)
+
+            Text("Clear the search or switch categories to keep building the routine.")
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(GarageProTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(GarageProTheme.insetSurface.opacity(0.72), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(GarageProTheme.border, lineWidth: 1)
+        )
     }
 }
 
@@ -780,6 +986,14 @@ private struct GarageManualPlanDrillRow: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                         .foregroundStyle(GarageProTheme.textSecondary.opacity(isSelected ? 0.9 : 0.78))
+
+                    Text(drill.directorySubtitle)
+                        .font(.system(size: 10, weight: .black, design: .rounded))
+                        .textCase(.uppercase)
+                        .tracking(0.7)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.66)
+                        .foregroundStyle(ModuleTheme.garageAccent.opacity(isSelected ? 0.86 : 0.68))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -789,7 +1003,7 @@ private struct GarageManualPlanDrillRow: View {
                     .frame(width: 30, height: 30)
             }
             .padding(.horizontal, 14)
-            .frame(maxWidth: .infinity, minHeight: 78, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             .background(
                 ModuleTheme.garageTurfSurface.opacity(isSelected ? 0.78 : 0.66),
@@ -824,18 +1038,21 @@ private struct GarageReviewSelectionDock: View {
                     Image(systemName: isEnabled ? "checkmark.seal.fill" : "checkmark.seal")
                         .font(.system(size: 16, weight: .bold))
 
-                    Text("Review Selection")
+                    Text("Review Practice")
                         .font(.system(size: 17, weight: .black, design: .rounded))
 
                     Spacer(minLength: 8)
 
-                    Text("\(selectionCount)")
-                        .font(.system(size: 15, weight: .black, design: .monospaced))
+                    Text(selectionSummary)
+                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.68)
                         .foregroundStyle(isEnabled ? ModuleTheme.garageSurfaceDark : GarageProTheme.textSecondary)
-                        .frame(width: 32, height: 32)
+                        .padding(.horizontal, 10)
+                        .frame(minHeight: 32)
                         .background(
                             isEnabled ? GarageProTheme.textPrimary.opacity(0.86) : GarageProTheme.insetSurface.opacity(0.9),
-                            in: Circle()
+                            in: Capsule()
                         )
                 }
                 .lineLimit(1)
@@ -862,6 +1079,10 @@ private struct GarageReviewSelectionDock: View {
         .padding(.bottom, 8)
         .background(.ultraThinMaterial)
         .background(ModuleTheme.garageSurfaceDark.opacity(0.76))
+    }
+
+    private var selectionSummary: String {
+        "\(selectionCount) \(selectionCount == 1 ? "drill" : "drills") selected"
     }
 }
 
