@@ -41,8 +41,18 @@ enum GarageDrillFocusMode: String, Hashable {
     }
 }
 
+enum GarageDrillAuthorityGoal: Hashable {
+    case timed
+    case reps(count: Int, unit: String)
+    case goal(count: Int, unit: String)
+    case challenge(count: Int, unit: String)
+    case checklist(items: [String])
+}
+
 struct GarageDrillFocusMetadata: Hashable {
     let mode: GarageDrillFocusMode
+    let authorityGoal: GarageDrillAuthorityGoal?
+    let durationSecondsOverride: Int?
     let commandCopy: String
     let setupLine: String
     let executionCue: String
@@ -54,6 +64,8 @@ struct GarageDrillFocusMetadata: Hashable {
 
     init(
         mode: GarageDrillFocusMode,
+        authorityGoal: GarageDrillAuthorityGoal? = nil,
+        durationSecondsOverride: Int? = nil,
         commandCopy: String,
         setupLine: String,
         executionCue: String,
@@ -64,6 +76,8 @@ struct GarageDrillFocusMetadata: Hashable {
         diagramKey: String? = nil
     ) {
         self.mode = mode
+        self.authorityGoal = authorityGoal
+        self.durationSecondsOverride = durationSecondsOverride
         self.commandCopy = commandCopy
         self.setupLine = setupLine
         self.executionCue = executionCue
@@ -106,6 +120,12 @@ enum GarageDrillFocusDetails {
         for drill: PracticeTemplateDrill,
         detail: GarageDrillFocusDetail
     ) -> GarageDrillFocusMetadata {
+        #if DEBUG
+        if let qaMetadata = GarageDrillAuthorityQAIdentifiers.metadata(for: drill, detail: detail) {
+            return qaMetadata
+        }
+        #endif
+
         guard let canonicalDrill = DrillVault.canonicalDrill(for: drill) else {
             #if DEBUG
             DrillVault.auditUnresolvedTemplateDrill(drill, context: "focus-metadata")
@@ -129,6 +149,7 @@ enum GarageDrillFocusDetails {
         case "n1":
             return GarageDrillFocusMetadata(
                 mode: .pressureTest,
+                authorityGoal: .challenge(count: 5, unit: "clean strikes"),
                 commandCopy: "Strike the ball without touching the towel behind it.",
                 setupLine: "Place a towel about 2 inches behind the ball.",
                 executionCue: "Count only ball-first strikes where the towel stays still.",
@@ -141,6 +162,7 @@ enum GarageDrillFocusDetails {
         case "n3":
             return GarageDrillFocusMetadata(
                 mode: .process,
+                authorityGoal: .timed,
                 commandCopy: "Rehearse hip depth without lunging toward the ball.",
                 setupLine: firstSetup,
                 executionCue: "Move slowly enough that posture stays intact.",
@@ -153,6 +175,7 @@ enum GarageDrillFocusDetails {
         case "n7":
             return GarageDrillFocusMetadata(
                 mode: .pressureTest,
+                authorityGoal: .challenge(count: 6, unit: "clean exits"),
                 commandCopy: "Exit low without clipping the headcover.",
                 setupLine: firstSetup,
                 executionCue: "Keep the chest turning through the low window.",
@@ -165,6 +188,7 @@ enum GarageDrillFocusDetails {
         case "r10":
             return GarageDrillFocusMetadata(
                 mode: .target,
+                authorityGoal: .goal(count: 5, unit: "start-line reads"),
                 commandCopy: "Start the ball through the same launch gate.",
                 setupLine: firstSetup,
                 executionCue: "Judge the first 10 yards before judging curve.",
@@ -177,6 +201,7 @@ enum GarageDrillFocusDetails {
         case "r12":
             return GarageDrillFocusMetadata(
                 mode: .target,
+                authorityGoal: .goal(count: 3, unit: "carry windows"),
                 commandCopy: "Move through three carry targets while contact stays clean.",
                 setupLine: firstSetup,
                 executionCue: "Restart the ladder if strike gets heavy or thin.",
@@ -189,6 +214,7 @@ enum GarageDrillFocusDetails {
         case "r13":
             return GarageDrillFocusMetadata(
                 mode: .target,
+                authorityGoal: .goal(count: 3, unit: "wedge carry numbers"),
                 commandCopy: "Carry the ball to each wedge number without changing rhythm.",
                 setupLine: "Pick three carry numbers such as 50, 65, and 80 yards.",
                 executionCue: "Adjust swing length, not tempo.",
@@ -201,6 +227,7 @@ enum GarageDrillFocusDetails {
         case "r14":
             return GarageDrillFocusMetadata(
                 mode: .process,
+                authorityGoal: .checklist(items: ["Low window", "Stock window", "High window"]),
                 commandCopy: "Hit low, stock, and high windows with the same effort.",
                 setupLine: firstSetup,
                 executionCue: "Change finish height and face feel, not effort.",
@@ -213,6 +240,7 @@ enum GarageDrillFocusDetails {
         case "r15":
             return GarageDrillFocusMetadata(
                 mode: .pressureTest,
+                authorityGoal: .challenge(count: 5, unit: "fairway starts"),
                 commandCopy: "Launch driver through a fairway-sized start gate.",
                 setupLine: firstSetup,
                 executionCue: "Hold the finish for two counts before judging the shot.",
@@ -225,6 +253,7 @@ enum GarageDrillFocusDetails {
         case "r17":
             return GarageDrillFocusMetadata(
                 mode: .pressureTest,
+                authorityGoal: .challenge(count: 3, unit: "pressure windows"),
                 commandCopy: "Advance through the fairway ladder without losing posture.",
                 setupLine: firstSetup,
                 executionCue: "Restart if the body stalls or crowds the ball.",
@@ -237,6 +266,7 @@ enum GarageDrillFocusDetails {
         case "p2":
             return GarageDrillFocusMetadata(
                 mode: .target,
+                authorityGoal: .goal(count: 1, unit: "distance ladder"),
                 commandCopy: "Roll each next ball slightly farther than the last.",
                 setupLine: firstSetup,
                 executionCue: "Control the gap with stroke length, not a jab.",
@@ -249,6 +279,7 @@ enum GarageDrillFocusDetails {
         case "p3":
             return GarageDrillFocusMetadata(
                 mode: .pressureTest,
+                authorityGoal: .challenge(count: 6, unit: "clean starts"),
                 commandCopy: "Roll the ball through the tee gate on your start line.",
                 setupLine: "Set two tees just wider than the putter head.",
                 executionCue: "Count only starts that miss both tees cleanly.",
@@ -261,6 +292,7 @@ enum GarageDrillFocusDetails {
         case "p4":
             return GarageDrillFocusMetadata(
                 mode: .process,
+                authorityGoal: .checklist(items: ["Station 1", "Station 2", "Station 3", "Station 4"]),
                 commandCopy: "Putt from each station while tempo stays the same.",
                 setupLine: firstSetup,
                 executionCue: "Change stroke length as distance changes.",
@@ -273,6 +305,7 @@ enum GarageDrillFocusDetails {
         case "p6":
             return GarageDrillFocusMetadata(
                 mode: .pressureTest,
+                authorityGoal: .challenge(count: 3, unit: "balls in the zone"),
                 commandCopy: "Stop three balls inside the same pace zone.",
                 setupLine: firstSetup,
                 executionCue: "Restart if one races long or dies short.",
@@ -598,6 +631,7 @@ enum GarageDrillFocusDetails {
 
         return GarageDrillFocusMetadata(
             mode: mode,
+            authorityGoal: defaultCount > 0 ? .reps(count: defaultCount, unit: "honest attempts") : .timed,
             commandCopy: cleanLine(detail.purpose) ?? "Complete the assigned practice task.",
             setupLine: setupLine,
             executionCue: executionCue,
@@ -641,3 +675,83 @@ enum GarageDrillFocusDetails {
         return cleaned.isEmpty ? nil : cleaned
     }
 }
+
+#if DEBUG
+enum GarageDrillAuthorityQAIdentifiers {
+    static let timedDefinitionID = UUID(uuidString: "9F9F2E62-6C2C-4D6C-ADE6-41E0F78CC101")!
+    static let pressureDefinitionID = UUID(uuidString: "9F9F2E62-6C2C-4D6C-ADE6-41E0F78CC102")!
+    static let repsDefinitionID = UUID(uuidString: "9F9F2E62-6C2C-4D6C-ADE6-41E0F78CC103")!
+    static let timedTargetDefinitionID = UUID(uuidString: "9F9F2E62-6C2C-4D6C-ADE6-41E0F78CC104")!
+
+    static let timedDrillID = UUID(uuidString: "9F9F2E62-6C2C-4D6C-ADE6-41E0F78CD101")!
+    static let pressureDrillID = UUID(uuidString: "9F9F2E62-6C2C-4D6C-ADE6-41E0F78CD102")!
+    static let repsDrillID = UUID(uuidString: "9F9F2E62-6C2C-4D6C-ADE6-41E0F78CD103")!
+    static let timedTargetDrillID = UUID(uuidString: "9F9F2E62-6C2C-4D6C-ADE6-41E0F78CD104")!
+
+    static func metadata(
+        for drill: PracticeTemplateDrill,
+        detail: GarageDrillFocusDetail
+    ) -> GarageDrillFocusMetadata? {
+        switch drill.definitionID {
+        case timedDefinitionID:
+            return GarageDrillFocusMetadata(
+                mode: .process,
+                authorityGoal: .timed,
+                durationSecondsOverride: 30,
+                commandCopy: "Run the timed authority block.",
+                setupLine: "Use the QA timed station.",
+                executionCue: "Let the timer start before resolving the drill.",
+                teachingDetail: nil,
+                reviewSummary: nil,
+                targetMetric: "30-second QA timer",
+                quickTags: [],
+                diagramKey: nil
+            )
+        case timedTargetDefinitionID:
+            return GarageDrillFocusMetadata(
+                mode: .process,
+                authorityGoal: .timed,
+                durationSecondsOverride: 2,
+                commandCopy: "Run the timed authority target block.",
+                setupLine: "Use the QA timed target station.",
+                executionCue: "Let the timer reach target before resolving the drill.",
+                teachingDetail: nil,
+                reviewSummary: nil,
+                targetMetric: "2-second QA timer",
+                quickTags: [],
+                diagramKey: nil
+            )
+        case pressureDefinitionID:
+            return GarageDrillFocusMetadata(
+                mode: .pressureTest,
+                authorityGoal: .challenge(count: 1, unit: "pressure standard"),
+                durationSecondsOverride: 2,
+                commandCopy: "Run the QA pressure standard.",
+                setupLine: "Use the QA pressure station.",
+                executionCue: "Do not mark the standard complete before resolving early.",
+                teachingDetail: nil,
+                reviewSummary: nil,
+                targetMetric: "1 pressure standard",
+                quickTags: [],
+                diagramKey: nil
+            )
+        case repsDefinitionID:
+            return GarageDrillFocusMetadata(
+                mode: .target,
+                authorityGoal: .reps(count: 1, unit: "clean rep"),
+                durationSecondsOverride: 2,
+                commandCopy: "Run the QA reps standard.",
+                setupLine: "Use the QA reps station.",
+                executionCue: "Resolve early before the clean rep is marked complete.",
+                teachingDetail: nil,
+                reviewSummary: nil,
+                targetMetric: "1 clean rep",
+                quickTags: [],
+                diagramKey: nil
+            )
+        default:
+            return nil
+        }
+    }
+}
+#endif

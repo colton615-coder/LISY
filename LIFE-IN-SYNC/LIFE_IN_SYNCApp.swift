@@ -7,10 +7,17 @@ struct LifeInSyncApp: App {
     private var sharedModelContainer: ModelContainer = {
         let schema = Schema(LISYSchemaV8.models)
         let isRunningForPreviews = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
-        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: isRunningForPreviews)
+        #if DEBUG
+        let isRunningGarageAuthorityQA = ProcessInfo.processInfo.arguments.contains("GARAGE_DRILL_AUTHORITY_QA")
+            || ProcessInfo.processInfo.arguments.contains("GARAGE_DRILL_AUTHORITY_QA_SUMMARY")
+        #else
+        let isRunningGarageAuthorityQA = false
+        #endif
+        let usesInMemoryStore = isRunningForPreviews || isRunningGarageAuthorityQA
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: usesInMemoryStore)
 
         do {
-            if isRunningForPreviews {
+            if usesInMemoryStore {
                 return try ModelContainer(for: schema, configurations: [configuration])
             }
 

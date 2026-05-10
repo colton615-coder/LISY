@@ -57,10 +57,10 @@ struct GarageActiveSessionView: View {
                         }
                     },
                     onPrimary: { payload in
-                        focusPrimaryAction(payload: payload)
+                        focusPrimaryAction(payload: payload, action: "next")
                     },
                     onSkip: { payload in
-                        resolveCurrentDrill(payload: payload, outcome: .skipped)
+                        resolveCurrentDrill(payload: payload, outcome: .skipped, action: "skip")
                     },
                     onExitEmptyRoutine: onEndSession
                 )
@@ -142,7 +142,7 @@ struct GarageActiveSessionView: View {
             GarageDrillResolverSheet(
                 state: resolver,
                 onResolve: resolveResolverSelection(_:),
-                onKeepWorking: { self.resolver = nil }
+                onKeepWorking: keepWorkingFromResolver
             )
         }
         .alert("Unable To Save Session", isPresented: saveErrorAlertIsPresented) {
@@ -306,30 +306,44 @@ struct GarageActiveSessionView: View {
     ) {
         drillReviews[pendingReview.drillID] = review
 
+        let completedCountBefore = session.completedDrillCount
+        let indexBefore = currentDrillIndex
         session.resolveDrill(pendingReview.drillID, outcome: .completedTarget)
+        logAuthorityResolution(
+            drillID: pendingReview.drillID,
+            drillTitle: pendingReview.title,
+            mode: pendingReview.mode,
+            action: "targetCompletion",
+            outcome: .completedTarget,
+            indexBefore: indexBefore,
+            indexAfter: nextUnresolvedDrillIndex(after: indexBefore) ?? indexBefore,
+            completedCountBefore: completedCountBefore,
+            completedCountAfter: session.completedDrillCount,
+            totalReps: 1
+        )
 
         self.pendingDrillReview = nil
         advanceAfterResolution()
     }
 
-    private func focusPrimaryAction(payload: GarageFocusCompletionPayload) {
+    private func focusPrimaryAction(payload: GarageFocusCompletionPayload, action: String) {
         if unresolvedDrillIndex == nil {
             presentReview(autoRouted: false)
         } else if payload.goalMet {
             completeCurrentDrill(payload: payload)
         } else {
-            resolveEarlyExit(payload: payload)
+            resolveEarlyExit(payload: payload, action: action)
         }
     }
 
-    private func resolveEarlyExit(payload: GarageFocusCompletionPayload) {
+    private func resolveEarlyExit(payload: GarageFocusCompletionPayload, action: String) {
         switch payload.mode {
         case .pressureTest:
-            resolveCurrentDrill(payload: payload, outcome: .skipped)
+            resolveCurrentDrill(payload: payload, outcome: .skipped, action: action)
         case .process, .target:
             switch payload.goal {
             case .timed:
-                resolveCurrentDrill(payload: payload, outcome: .partial)
+                resolveCurrentDrill(payload: payload, outcome: .partial, action: action)
             case .repTarget, .streak, .timeTrial, .ladder, .checklist, .manual:
                 presentResolver(payload: payload)
             }
@@ -374,26 +388,84 @@ struct GarageActiveSessionView: View {
             return
         }
 
-        resolveCurrentDrill(payload: resolver.payload, outcome: outcome)
+        resolveCurrentDrill(payload: resolver.payload, outcome: outcome, action: "resolver.\(outcome.rawValue)")
     }
 
     private func resolveCurrentDrill(
         payload: GarageFocusCompletionPayload,
-        outcome: GarageDrillOutcome
+        outcome: GarageDrillOutcome,
+        action: String
     ) {
         guard let currentEntry else {
             presentReview(autoRouted: false)
             return
         }
 
+        let indexBefore = currentDrillIndex
+        let completedCountBefore = session.completedDrillCount
         drillElapsedSeconds[currentEntry.drill.id] = max(payload.elapsedSeconds, drillElapsedSeconds[currentEntry.drill.id] ?? 0)
         session.resolveDrill(currentEntry.drill.id, outcome: outcome)
         drillReviews[currentEntry.drill.id] = GaragePostDrillReviewDraft(
             mode: payload.mode,
             outcome: outcome
         )
+        let indexAfter = nextUnresolvedDrillIndex(after: indexBefore) ?? indexBefore
+        logAuthorityResolution(
+            drillID: currentEntry.drill.id,
+            drillTitle: currentEntry.drill.title,
+            mode: payload.mode,
+            action: action,
+            outcome: outcome,
+            indexBefore: indexBefore,
+            indexAfter: indexAfter,
+            completedCountBefore: completedCountBefore,
+            completedCountAfter: session.completedDrillCount,
+            totalReps: outcome == .skipped ? 0 : 1
+        )
         resolver = nil
         advanceAfterResolution()
+    }
+
+    private func keepWorkingFromResolver() {
+        #if DEBUG
+        if GarageAuthorityQALogger.isEnabled,
+           let currentEntry,
+           let resolver {
+            GarageAuthorityQALogger.log(
+                "drillID=\(currentEntry.drill.id.uuidString) title=\"\(currentEntry.drill.title)\" mode=\(resolver.payload.mode.rawValue) action=resolver.keepWorking savedOutcome=none indexBefore=\(currentDrillIndex) indexAfter=\(currentDrillIndex) completedCountBefore=\(session.completedDrillCount) completedCountAfter=\(session.completedDrillCount)"
+            )
+        }
+        #endif
+        resolver = nil
+    }
+
+    private func logAuthorityResolution(
+        drillID: UUID,
+        drillTitle: String,
+        mode: GarageDrillFocusMode,
+        action: String,
+        outcome: GarageDrillOutcome,
+        indexBefore: Int,
+        indexAfter: Int,
+        completedCountBefore: Int,
+        completedCountAfter: Int,
+        totalReps: Int
+    ) {
+        #if DEBUG
+        guard GarageAuthorityQALogger.isEnabled else {
+            return
+        }
+
+        let result = DrillResult(
+            name: drillTitle,
+            successfulReps: outcome == .completedTarget ? 1 : 0,
+            totalReps: totalReps,
+            outcome: outcome
+        )
+        GarageAuthorityQALogger.log(
+            "drillID=\(drillID.uuidString) title=\"\(drillTitle)\" mode=\(mode.rawValue) action=\(action) savedOutcome=\(outcome.rawValue) indexBefore=\(indexBefore) indexAfter=\(indexAfter) completedCountBefore=\(completedCountBefore) completedCountAfter=\(completedCountAfter) trueCompletion=\(outcome.isTrueCompletion) adaptiveContributes=\(result.contributesToAdaptiveScoring) adaptiveRatio=\(result.adaptiveSuccessRatio)"
+        )
+        #endif
     }
 
     private func advanceAfterResolution() {
@@ -470,6 +542,19 @@ private enum GarageActiveSessionPhase {
     case postDrillReview
     case review
 }
+
+#if DEBUG
+private enum GarageAuthorityQALogger {
+    static var isEnabled: Bool {
+        ProcessInfo.processInfo.arguments.contains("GARAGE_DRILL_AUTHORITY_QA")
+        || ProcessInfo.processInfo.arguments.contains("GARAGE_DRILL_AUTHORITY_QA_SUMMARY")
+    }
+
+    static func log(_ message: String) {
+        NSLog("[GarageAuthorityQA] \(message)")
+    }
+}
+#endif
 
 private struct GaragePendingDrillReview: Hashable {
     let drillID: UUID
@@ -886,6 +971,7 @@ private struct GaragePostDrillOutcomeButton: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("garage-resolver-\(title.lowercased().replacingOccurrences(of: " ", with: "-").replacingOccurrences(of: "-", with: "-"))")
     }
 }
 

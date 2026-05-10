@@ -1022,6 +1022,8 @@ private struct FocusRoomBottomActions: View {
                         .shadow(color: FocusRoomPalette.green.opacity(0.28), radius: 14, x: 0, y: 0)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(primaryTitle)
+                .accessibilityIdentifier("garage-focus-next")
             }
         }
         .padding(.horizontal, 18)
@@ -1064,6 +1066,7 @@ private struct FocusRoomDockButton: View {
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("garage-focus-\(title.lowercased().replacingOccurrences(of: " ", with: "-"))")
     }
 }
 

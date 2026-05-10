@@ -56,8 +56,14 @@ enum GarageDrillFocusContentAdapter {
         metadata: GarageDrillFocusMetadata
     ) -> GarageDrillFocusContent {
         let title = cleanTitle(canonicalDrill?.title ?? drill.title, fallback: "Practice Drill")
-        let durationSeconds = max(detail.estimatedMinutes, 1) * 60
-        let goal = GarageDrillGoal.timed(durationSeconds: durationSeconds)
+        let durationSeconds = metadata.durationSecondsOverride ?? max(detail.estimatedMinutes, 1) * 60
+        let goal = goal(
+            for: drill,
+            canonicalDrill: canonicalDrill,
+            metadata: metadata,
+            durationSeconds: durationSeconds
+        )
+        let mode = focusMode(for: drill, metadata: metadata)
         let watchFor = firstCleanLine(detail.commonMisses)
         let guidanceText = suggestedVolumeText(for: drill, canonicalDrill: canonicalDrill)
 
@@ -67,7 +73,7 @@ enum GarageDrillFocusContentAdapter {
             setupLine: metadata.setupLine,
             executionCue: metadata.executionCue,
             goal: goal,
-            mode: metadata.mode,
+            mode: mode,
             durationSeconds: durationSeconds,
             targetMetric: metadata.targetMetric,
             guidanceText: guidanceText,
@@ -95,6 +101,58 @@ enum GarageDrillFocusContentAdapter {
 
     private static func finishRule(forDurationSeconds durationSeconds: Int) -> String {
         "Suggested: \(formattedDuration(durationSeconds)) of focused work."
+    }
+
+    private static func goal(
+        for drill: PracticeTemplateDrill,
+        canonicalDrill: GarageDrill?,
+        metadata: GarageDrillFocusMetadata,
+        durationSeconds: Int
+    ) -> GarageDrillGoal {
+        if let authorityGoal = metadata.authorityGoal {
+            return drillGoal(from: authorityGoal, durationSeconds: durationSeconds)
+        }
+
+        switch metadata.mode {
+        case .process:
+            let count = max(drill.defaultRepCount, canonicalDrill?.defaultRepCount ?? 0)
+            return count > 0 ? .repTarget(count: count, unit: "honest attempts") : .timed(durationSeconds: durationSeconds)
+        case .target:
+            return .repTarget(
+                count: max(drill.defaultRepCount, canonicalDrill?.defaultRepCount ?? 1, 1),
+                unit: "target reps"
+            )
+        case .pressureTest:
+            return .streak(
+                count: max(drill.defaultRepCount, canonicalDrill?.defaultRepCount ?? 1, 1),
+                unit: "pressure reps"
+            )
+        }
+    }
+
+    private static func drillGoal(
+        from authorityGoal: GarageDrillAuthorityGoal,
+        durationSeconds: Int
+    ) -> GarageDrillGoal {
+        switch authorityGoal {
+        case .timed:
+            return .timed(durationSeconds: durationSeconds)
+        case .reps(let count, let unit):
+            return .repTarget(count: max(count, 1), unit: unit)
+        case .goal(let count, let unit):
+            return .repTarget(count: max(count, 1), unit: unit)
+        case .challenge(let count, let unit):
+            return .streak(count: max(count, 1), unit: unit)
+        case .checklist(let items):
+            return .checklist(items: items.isEmpty ? ["Complete the drill standard"] : items)
+        }
+    }
+
+    private static func focusMode(
+        for drill: PracticeTemplateDrill,
+        metadata: GarageDrillFocusMetadata
+    ) -> GarageDrillFocusMode {
+        return metadata.mode
     }
 
     private static func cleanTitle(_ value: String, fallback: String) -> String {
