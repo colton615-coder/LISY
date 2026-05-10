@@ -150,16 +150,68 @@ final class PracticeTemplate {
 struct PracticeDrillProgress: Hashable, Codable {
     let drillID: UUID
     var isCompleted: Bool
+    var outcome: GarageDrillOutcome?
     var note: String
 
     init(
         drillID: UUID,
         isCompleted: Bool = false,
+        outcome: GarageDrillOutcome? = nil,
         note: String = ""
     ) {
         self.drillID = drillID
         self.isCompleted = isCompleted
+        self.outcome = outcome
         self.note = note
+    }
+
+    var resolvedOutcome: GarageDrillOutcome? {
+        outcome ?? (isCompleted ? .completedTarget : nil)
+    }
+
+    var isResolved: Bool {
+        resolvedOutcome != nil
+    }
+
+    var isCompletedTarget: Bool {
+        resolvedOutcome == .completedTarget
+    }
+}
+
+enum GarageDrillOutcome: String, Codable, Sendable, Hashable {
+    case completedTarget
+    case completedEarly
+    case partial
+    case skipped
+
+    nonisolated var displayTitle: String {
+        switch self {
+        case .completedTarget:
+            return "Completed Target"
+        case .completedEarly:
+            return "Moved On Early"
+        case .partial:
+            return "Partial"
+        case .skipped:
+            return "Skipped"
+        }
+    }
+
+    nonisolated var isTrueCompletion: Bool {
+        self == .completedTarget
+    }
+
+    nonisolated var adaptiveWeight: Double {
+        switch self {
+        case .completedTarget:
+            return 1
+        case .completedEarly:
+            return 0.35
+        case .partial:
+            return 0.5
+        case .skipped:
+            return 0
+        }
     }
 }
 
@@ -167,8 +219,50 @@ struct DrillResult: Hashable, Codable, Identifiable, Sendable {
     var name: String
     var successfulReps: Int
     var totalReps: Int
+    var outcome: GarageDrillOutcome?
 
     var id: String { name }
+
+    nonisolated var resolvedOutcome: GarageDrillOutcome {
+        if let outcome {
+            return outcome
+        }
+
+        return successfulReps >= totalReps && totalReps > 0 ? .completedTarget : .partial
+    }
+
+    nonisolated var isCompletedTarget: Bool {
+        resolvedOutcome == .completedTarget
+    }
+
+    nonisolated var contributesToAdaptiveScoring: Bool {
+        resolvedOutcome != .skipped && totalReps > 0
+    }
+
+    nonisolated var adaptiveSuccessfulReps: Double {
+        switch resolvedOutcome {
+        case .completedTarget:
+            return Double(successfulReps)
+        case .completedEarly:
+            return max(Double(successfulReps), Double(totalReps) * GarageDrillOutcome.completedEarly.adaptiveWeight)
+        case .partial:
+            return Double(successfulReps)
+        case .skipped:
+            return 0
+        }
+    }
+
+    nonisolated var adaptiveTotalReps: Double {
+        contributesToAdaptiveScoring ? Double(totalReps) : 0
+    }
+
+    nonisolated var adaptiveSuccessRatio: Double {
+        guard adaptiveTotalReps > 0 else {
+            return 1
+        }
+
+        return adaptiveSuccessfulReps / adaptiveTotalReps
+    }
 
     nonisolated var successRatio: Double {
         guard totalReps > 0 else {
@@ -302,7 +396,11 @@ extension PracticeDrillDefinition {
 
 extension ActivePracticeSession {
     var completedDrillCount: Int {
-        drillProgress.filter(\.isCompleted).count
+        drillProgress.filter(\.isCompletedTarget).count
+    }
+
+    var resolvedDrillCount: Int {
+        drillProgress.filter(\.isResolved).count
     }
 
     var totalDrillCount: Int {
@@ -324,6 +422,23 @@ extension ActivePracticeSession {
         }
 
         drillProgress[index].isCompleted.toggle()
+        drillProgress[index].outcome = drillProgress[index].isCompleted ? .completedTarget : nil
+    }
+
+    mutating func resolveDrill(_ drillID: UUID, outcome: GarageDrillOutcome) {
+        guard let index = drillProgress.firstIndex(where: { $0.drillID == drillID }) else {
+            drillProgress.append(
+                PracticeDrillProgress(
+                    drillID: drillID,
+                    isCompleted: true,
+                    outcome: outcome
+                )
+            )
+            return
+        }
+
+        drillProgress[index].isCompleted = true
+        drillProgress[index].outcome = outcome
     }
 
     mutating func updateNote(_ note: String, for drillID: UUID) {
@@ -355,8 +470,9 @@ extension ActivePracticeSession {
         orderedDrillEntries.map { entry in
             DrillResult(
                 name: entry.drill.title,
-                successfulReps: entry.progress.isCompleted ? entry.drill.defaultRepCount : 0,
-                totalReps: entry.drill.defaultRepCount
+                successfulReps: entry.progress.isCompletedTarget ? entry.drill.defaultRepCount : 0,
+                totalReps: entry.drill.defaultRepCount,
+                outcome: entry.progress.resolvedOutcome
             )
         }
     }

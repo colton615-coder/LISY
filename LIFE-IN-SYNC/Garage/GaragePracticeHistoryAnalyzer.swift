@@ -11,13 +11,13 @@ enum GarageCoachingSignalKind: String, Hashable {
 struct GarageSkillScore: Hashable {
     let id: String
     let title: String
-    let successfulReps: Int
-    let totalReps: Int
+    let successfulReps: Double
+    let totalReps: Double
     let sessionCount: Int
-    let recentSuccessfulReps: Int
-    let recentTotalReps: Int
-    let previousSuccessfulReps: Int
-    let previousTotalReps: Int
+    let recentSuccessfulReps: Double
+    let recentTotalReps: Double
+    let previousSuccessfulReps: Double
+    let previousTotalReps: Double
     let lastPracticedAt: Date?
 
     var successRatio: Double {
@@ -25,7 +25,7 @@ struct GarageSkillScore: Hashable {
             return 0
         }
 
-        return Double(successfulReps) / Double(totalReps)
+        return successfulReps / totalReps
     }
 
     var recentSuccessRatio: Double {
@@ -33,7 +33,7 @@ struct GarageSkillScore: Hashable {
             return successRatio
         }
 
-        return Double(recentSuccessfulReps) / Double(recentTotalReps)
+        return recentSuccessfulReps / recentTotalReps
     }
 
     var previousSuccessRatio: Double? {
@@ -41,7 +41,7 @@ struct GarageSkillScore: Hashable {
             return nil
         }
 
-        return Double(previousSuccessfulReps) / Double(previousTotalReps)
+        return previousSuccessfulReps / previousTotalReps
     }
 
     var trendDelta: Double {
@@ -139,7 +139,7 @@ enum GaragePracticeHistoryAnalyzer {
         var categoryBuckets: [GarageDrillLibraryCategory: GarageSkillAccumulator] = [:]
         var faultTagBuckets: [String: GarageSkillAccumulator] = [:]
         var environmentBuckets: [PracticeEnvironment: GarageSkillAccumulator] = [:]
-        var recentCategoryAttempts: [GarageDrillLibraryCategory: Int] = [:]
+        var recentCategoryAttempts: [GarageDrillLibraryCategory: Double] = [:]
         var focusTags = Set<String>()
 
         for record in filteredRecords {
@@ -148,7 +148,7 @@ enum GaragePracticeHistoryAnalyzer {
             let isPrevious = record.date < referenceDate.addingTimeInterval(-14 * 86_400)
                 && record.date >= referenceDate.addingTimeInterval(-30 * 86_400)
 
-            for result in record.drillResults where result.totalReps > 0 {
+            for result in record.drillResults where result.contributesToAdaptiveScoring {
                 guard let metadata = result.garageMetadataSnapshot else {
                     continue
                 }
@@ -161,7 +161,7 @@ enum GaragePracticeHistoryAnalyzer {
                     .record(result, date: record.date, isRecent: isRecent, isPrevious: isPrevious)
 
                 if isRecent {
-                    recentCategoryAttempts[metadata.primaryCategory, default: 0] += result.totalReps
+                    recentCategoryAttempts[metadata.primaryCategory, default: 0] += result.adaptiveTotalReps
                 }
 
                 for tag in metadata.faultTags {
@@ -169,7 +169,7 @@ enum GaragePracticeHistoryAnalyzer {
                         .record(result, date: record.date, isRecent: isRecent, isPrevious: isPrevious)
                 }
 
-                for tag in metadata.promptTags where result.successRatio < 0.65 {
+                for tag in metadata.promptTags where result.resolvedOutcome == .partial || result.adaptiveSuccessRatio < 0.65 {
                     focusTags.insert(tag)
                 }
 
@@ -411,13 +411,13 @@ enum GaragePracticeHistoryAnalyzer {
 private struct GarageSkillAccumulator {
     let id: String
     let title: String
-    private(set) var successfulReps = 0
-    private(set) var totalReps = 0
+    private(set) var successfulReps: Double = 0
+    private(set) var totalReps: Double = 0
     private(set) var sessionCount = 0
-    private(set) var recentSuccessfulReps = 0
-    private(set) var recentTotalReps = 0
-    private(set) var previousSuccessfulReps = 0
-    private(set) var previousTotalReps = 0
+    private(set) var recentSuccessfulReps: Double = 0
+    private(set) var recentTotalReps: Double = 0
+    private(set) var previousSuccessfulReps: Double = 0
+    private(set) var previousTotalReps: Double = 0
     private(set) var lastPracticedAt: Date?
     private var sessionDates = Set<Date>()
 
@@ -432,8 +432,8 @@ private struct GarageSkillAccumulator {
         isRecent: Bool,
         isPrevious: Bool
     ) {
-        successfulReps += result.successfulReps
-        totalReps += result.totalReps
+        successfulReps += result.adaptiveSuccessfulReps
+        totalReps += result.adaptiveTotalReps
 
         if sessionDates.insert(date).inserted {
             sessionCount += 1
@@ -446,11 +446,11 @@ private struct GarageSkillAccumulator {
         }
 
         if isRecent {
-            recentSuccessfulReps += result.successfulReps
-            recentTotalReps += result.totalReps
+            recentSuccessfulReps += result.adaptiveSuccessfulReps
+            recentTotalReps += result.adaptiveTotalReps
         } else if isPrevious {
-            previousSuccessfulReps += result.successfulReps
-            previousTotalReps += result.totalReps
+            previousSuccessfulReps += result.adaptiveSuccessfulReps
+            previousTotalReps += result.adaptiveTotalReps
         }
     }
 

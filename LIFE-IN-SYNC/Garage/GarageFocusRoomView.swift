@@ -39,6 +39,7 @@ struct GarageFocusRoomView: View {
     let onSelectRailDrill: (Int) -> Void
     let onNote: () -> Void
     let onPrimary: (GarageFocusCompletionPayload) -> Void
+    let onSkip: (GarageFocusCompletionPayload) -> Void
     let onExitEmptyRoutine: () -> Void
 
     var body: some View {
@@ -103,18 +104,12 @@ struct GarageFocusRoomView: View {
                     noteTitle: noteTitle,
                     primaryTitle: state.primaryTitle(goal: drill.content.goal, fallback: primaryCtaTitle),
                     statusText: statusText(for: drill.content.goal, state: state),
-                    isNextEnabled: state.canConfirm,
                     onNote: onNote,
+                    onSkip: {
+                        onSkip(completionPayload(for: drill))
+                    },
                     onNext: {
-                        onPrimary(
-                            GarageFocusCompletionPayload(
-                                elapsedSeconds: elapsedSeconds,
-                                mode: drill.content.mode,
-                                goal: drill.content.goal,
-                                durationSeconds: drill.content.durationSeconds,
-                                goalMet: isGoalMet(drill.content.goal)
-                            )
-                        )
+                        onPrimary(completionPayload(for: drill))
                     }
                 )
             }
@@ -208,6 +203,16 @@ private extension GarageFocusRoomView {
         }
     }
 
+    func completionPayload(for drill: GarageFocusDrillPresentation) -> GarageFocusCompletionPayload {
+        GarageFocusCompletionPayload(
+            elapsedSeconds: elapsedSeconds,
+            mode: drill.content.mode,
+            goal: drill.content.goal,
+            durationSeconds: drill.content.durationSeconds,
+            goalMet: isGoalMet(drill.content.goal)
+        )
+    }
+
     func completionState(for drill: GarageFocusDrillPresentation) -> GarageFocusCompletionState {
         if drill.isCompleted {
             return .completed
@@ -229,7 +234,7 @@ private extension GarageFocusRoomView {
         case .timed(let durationSeconds):
             return elapsedSeconds >= max(durationSeconds, 1)
         case .repTarget, .streak, .timeTrial, .ladder, .checklist, .manual:
-            return elapsedSeconds >= 1
+            return false
         }
     }
 
@@ -248,16 +253,16 @@ private extension GarageFocusRoomView {
         }
 
         if state == .ready {
-            return "Ready when the drill is complete"
+            return "Target reached"
         }
 
         switch goal {
         case .timed(let durationSeconds):
-            return "Work through \(formattedTime(max(durationSeconds - elapsedSeconds, 0))) remaining"
+            return "Suggested: \(formattedTime(durationSeconds))"
         case .repTarget, .streak, .timeTrial, .ladder, .checklist:
-            return "Work through the timed block"
+            return "Resolve honestly when ready"
         case .manual:
-            return "Work through the timed block"
+            return "Resolve honestly when ready"
         }
     }
 }
@@ -282,22 +287,17 @@ private enum GarageFocusCompletionState: Hashable {
     }
 
     var canConfirm: Bool {
-        switch self {
-        case .ready, .completed:
-            return true
-        case .notStarted, .inProgress:
-            return false
-        }
+        true
     }
 
     var bottomStatusText: String {
         switch self {
         case .notStarted:
-            return "Timer ready"
+            return "Ready"
         case .inProgress:
-            return "Keep going"
+            return "In progress"
         case .ready:
-            return "Ready when the drill is complete"
+            return "Target reached"
         case .completed:
             return "Confirmed"
         }
@@ -308,7 +308,7 @@ private enum GarageFocusCompletionState: Hashable {
             return fallback
         }
 
-        return "Finish Block"
+        return GarageFocusRoomCopy.focusRoomMarkCompleteCta
     }
 }
 
@@ -379,7 +379,7 @@ private struct FocusRoomHeader: View {
 
                 HStack(spacing: 8) {
                     Text(drillPositionText)
-                    Text("\(completedCount)/\(totalCount) complete")
+                    Text("\(completedCount)/\(totalCount) targets met")
                 }
                 .font(.caption.weight(.bold))
                 .foregroundStyle(FocusRoomPalette.secondaryText)
@@ -490,7 +490,7 @@ private struct GarageFocusHeroContainer: View {
     }
 
     private var stopwatchCaption: String {
-        content.guidanceText ?? "Timed block active"
+        content.guidanceText ?? "Suggested structure"
     }
 }
 
@@ -643,7 +643,7 @@ private struct TimeDrillHero: View {
             elapsedSeconds: elapsedSeconds,
             progress: progress,
             isCompleted: isReady,
-            statusText: isReady ? "Time target reached" : "Timer running"
+            statusText: isReady ? "Time target reached" : "Suggested structure"
         )
     }
 
@@ -697,7 +697,7 @@ private struct FocusRoomTimerControls: View {
 
     private var primaryTitle: String {
         if isComplete {
-            return "Block Complete"
+            return "Target Reached"
         }
 
         if isRunning {
@@ -974,29 +974,23 @@ private struct FocusRoomBottomActions: View {
     let noteTitle: String
     let primaryTitle: String
     let statusText: String
-    let isNextEnabled: Bool
     let onNote: () -> Void
+    let onSkip: () -> Void
     let onNext: () -> Void
 
     var body: some View {
         HStack(spacing: 14) {
-            Button {
-                garageTriggerSelection()
-                onNote()
-            } label: {
-                Label(noteTitle, systemImage: noteTitle == GarageFocusRoomCopy.focusRoomNoteAddCta ? "square.and.pencil" : "note.text")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                    .foregroundStyle(FocusRoomPalette.primaryText)
-                    .frame(maxWidth: .infinity, minHeight: 54)
-                    .background(FocusRoomPalette.panel.opacity(0.88), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 17, style: .continuous)
-                            .stroke(FocusRoomPalette.border, lineWidth: 1)
-                    )
-            }
-            .buttonStyle(.plain)
+            FocusRoomDockButton(
+                title: noteTitle,
+                systemImage: noteTitle == GarageFocusRoomCopy.focusRoomNoteAddCta ? "square.and.pencil" : "note.text",
+                action: onNote
+            )
+
+            FocusRoomDockButton(
+                title: "Skip Drill",
+                systemImage: "forward.end.fill",
+                action: onSkip
+            )
 
             HStack(spacing: 12) {
                 VStack(alignment: .trailing, spacing: 2) {
@@ -1013,26 +1007,21 @@ private struct FocusRoomBottomActions: View {
                 }
 
                 Button {
-                    guard isNextEnabled else {
-                        return
-                    }
-
                     garageTriggerImpact(.medium)
                     onNext()
                 } label: {
                     Image(systemName: "chevron.forward.2")
                         .font(.system(size: 18, weight: .black))
-                        .foregroundStyle(isNextEnabled ? FocusRoomPalette.background : FocusRoomPalette.secondaryText)
+                        .foregroundStyle(FocusRoomPalette.background)
                         .frame(width: 52, height: 52)
-                        .background(isNextEnabled ? FocusRoomPalette.green : FocusRoomPalette.panel.opacity(0.9), in: Circle())
+                        .background(FocusRoomPalette.green, in: Circle())
                         .overlay(
                             Circle()
-                                .stroke(isNextEnabled ? Color.white.opacity(0.16) : FocusRoomPalette.border, lineWidth: 1)
+                                .stroke(Color.white.opacity(0.16), lineWidth: 1)
                         )
-                        .shadow(color: isNextEnabled ? FocusRoomPalette.green.opacity(0.28) : .clear, radius: 14, x: 0, y: 0)
+                        .shadow(color: FocusRoomPalette.green.opacity(0.28), radius: 14, x: 0, y: 0)
                 }
                 .buttonStyle(.plain)
-                .disabled(isNextEnabled == false)
             }
         }
         .padding(.horizontal, 18)
@@ -1049,6 +1038,32 @@ private struct FocusRoomBottomActions: View {
                 endPoint: .bottom
             )
         )
+    }
+}
+
+private struct FocusRoomDockButton: View {
+    let title: String
+    let systemImage: String
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            garageTriggerSelection()
+            action()
+        } label: {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.68)
+                .foregroundStyle(FocusRoomPalette.primaryText)
+                .frame(maxWidth: .infinity, minHeight: 54)
+                .background(FocusRoomPalette.panel.opacity(0.88), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 17, style: .continuous)
+                        .stroke(FocusRoomPalette.border, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -1075,7 +1090,7 @@ private enum GarageFocusRoomPreviewData {
                 targetMetric: previewTarget(for: mode),
                 guidanceText: "Suggested volume: 12-18 focused swings.",
                 watchFor: "Loss of rhythm between attempts.",
-                finishRule: "Finish when the 7-minute timed block is complete.",
+                finishRule: "Suggested: 7 minutes of focused work.",
                 teachingDetail: "Keep posture and tempo stable through the full set.",
                 reviewSummary: "Track what produced the cleanest outcome.",
                 diagramKey: nil
@@ -1136,6 +1151,7 @@ private enum GarageFocusRoomPreviewData {
         onSelectRailDrill: { _ in },
         onNote: {},
         onPrimary: { _ in },
+        onSkip: { _ in },
         onExitEmptyRoutine: {}
     )
 }
@@ -1156,6 +1172,7 @@ private enum GarageFocusRoomPreviewData {
         onSelectRailDrill: { _ in },
         onNote: {},
         onPrimary: { _ in },
+        onSkip: { _ in },
         onExitEmptyRoutine: {}
     )
 }
@@ -1176,6 +1193,7 @@ private enum GarageFocusRoomPreviewData {
         onSelectRailDrill: { _ in },
         onNote: {},
         onPrimary: { _ in },
+        onSkip: { _ in },
         onExitEmptyRoutine: {}
     )
 }

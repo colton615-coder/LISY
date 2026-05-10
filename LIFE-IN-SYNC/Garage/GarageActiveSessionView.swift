@@ -13,6 +13,7 @@ struct GarageActiveSessionView: View {
     @State private var pendingDrillReview: GaragePendingDrillReview?
     @State private var isDrillDetailExpanded = false
     @State private var noteEditor: DrillNoteEditorState?
+    @State private var resolver: GarageDrillResolverState?
     @State private var summaryDraft: GarageSessionSummaryDraft?
     @State private var reviewHandoffMessage: String?
     @State private var saveErrorMessage: String?
@@ -24,7 +25,7 @@ struct GarageActiveSessionView: View {
         onEndSession: @escaping () -> Void
     ) {
         _session = State(initialValue: session)
-        let firstUnresolvedIndex = session.drillProgress.firstIndex { $0.isCompleted == false } ?? 0
+        let firstUnresolvedIndex = session.drillProgress.firstIndex { $0.isResolved == false } ?? 0
         _currentDrillIndex = State(initialValue: firstUnresolvedIndex)
         self.onEndSession = onEndSession
     }
@@ -57,6 +58,9 @@ struct GarageActiveSessionView: View {
                     },
                     onPrimary: { payload in
                         focusPrimaryAction(payload: payload)
+                    },
+                    onSkip: { payload in
+                        resolveCurrentDrill(payload: payload, outcome: .skipped)
                     },
                     onExitEmptyRoutine: onEndSession
                 )
@@ -134,6 +138,13 @@ struct GarageActiveSessionView: View {
                 }
             )
         }
+        .sheet(item: $resolver) { resolver in
+            GarageDrillResolverSheet(
+                state: resolver,
+                onResolve: resolveResolverSelection(_:),
+                onKeepWorking: { self.resolver = nil }
+            )
+        }
         .alert("Unable To Save Session", isPresented: saveErrorAlertIsPresented) {
             Button("OK", role: .cancel) {
                 saveErrorMessage = nil
@@ -184,7 +195,7 @@ struct GarageActiveSessionView: View {
     }
 
     private var unresolvedDrillIndex: Int? {
-        session.orderedDrillEntries.firstIndex(where: { $0.progress.isCompleted == false })
+        session.orderedDrillEntries.firstIndex(where: { $0.progress.isResolved == false })
     }
 
     private var currentDrillPresentation: GarageFocusDrillPresentation? {
@@ -201,7 +212,7 @@ struct GarageActiveSessionView: View {
         return GarageFocusDrillPresentation(
             id: currentEntry.drill.id,
             content: content,
-            isCompleted: currentEntry.progress.isCompleted
+            isCompleted: currentEntry.progress.isResolved
         )
     }
 
@@ -210,7 +221,7 @@ struct GarageActiveSessionView: View {
             let status: GarageFocusDrillRailStatus
             if index == currentDrillIndex {
                 status = .current
-            } else if entry.progress.isCompleted {
+            } else if entry.progress.isResolved {
                 status = .completed
             } else {
                 status = .upcoming
@@ -228,7 +239,7 @@ struct GarageActiveSessionView: View {
                     .goal
                     .railSummary,
                 status: status,
-                isSelectable: entry.progress.isCompleted
+                isSelectable: entry.progress.isResolved
             )
         }
     }
@@ -258,7 +269,7 @@ struct GarageActiveSessionView: View {
             return
         }
 
-        guard entries[index].progress.isCompleted else {
+        guard entries[index].progress.isResolved else {
             return
         }
 
@@ -272,10 +283,6 @@ struct GarageActiveSessionView: View {
     private func completeCurrentDrill(payload: GarageFocusCompletionPayload) {
         guard let currentEntry else {
             presentReview(autoRouted: false)
-            return
-        }
-
-        guard payload.goalMet else {
             return
         }
 
@@ -299,12 +306,97 @@ struct GarageActiveSessionView: View {
     ) {
         drillReviews[pendingReview.drillID] = review
 
-        if session.progress(for: pendingReview.drillID)?.isCompleted == false {
-            session.toggleCompletion(for: pendingReview.drillID)
-        }
+        session.resolveDrill(pendingReview.drillID, outcome: .completedTarget)
 
         self.pendingDrillReview = nil
+        advanceAfterResolution()
+    }
 
+    private func focusPrimaryAction(payload: GarageFocusCompletionPayload) {
+        if unresolvedDrillIndex == nil {
+            presentReview(autoRouted: false)
+        } else if payload.goalMet {
+            completeCurrentDrill(payload: payload)
+        } else {
+            resolveEarlyExit(payload: payload)
+        }
+    }
+
+    private func resolveEarlyExit(payload: GarageFocusCompletionPayload) {
+        switch payload.mode {
+        case .pressureTest:
+            resolveCurrentDrill(payload: payload, outcome: .skipped)
+        case .process, .target:
+            switch payload.goal {
+            case .timed:
+                resolveCurrentDrill(payload: payload, outcome: .partial)
+            case .repTarget, .streak, .timeTrial, .ladder, .checklist, .manual:
+                presentResolver(payload: payload)
+            }
+        }
+    }
+
+    private func presentResolver(payload: GarageFocusCompletionPayload) {
+        guard let currentEntry else {
+            presentReview(autoRouted: false)
+            return
+        }
+
+        resolver = GarageDrillResolverState(
+            drillID: currentEntry.drill.id,
+            drillTitle: currentEntry.drill.title,
+            payload: payload,
+            supportsCompletedEarly: supportsCompletedEarly(goal: payload.goal),
+            supportsPartial: supportsPartial(goal: payload.goal)
+        )
+    }
+
+    private func supportsCompletedEarly(goal: GarageDrillGoal) -> Bool {
+        switch goal {
+        case .timed, .checklist:
+            return false
+        case .repTarget, .streak, .timeTrial, .ladder, .manual:
+            return true
+        }
+    }
+
+    private func supportsPartial(goal: GarageDrillGoal) -> Bool {
+        switch goal {
+        case .timed:
+            return false
+        case .repTarget, .streak, .timeTrial, .ladder, .checklist, .manual:
+            return true
+        }
+    }
+
+    private func resolveResolverSelection(_ outcome: GarageDrillOutcome) {
+        guard let resolver else {
+            return
+        }
+
+        resolveCurrentDrill(payload: resolver.payload, outcome: outcome)
+    }
+
+    private func resolveCurrentDrill(
+        payload: GarageFocusCompletionPayload,
+        outcome: GarageDrillOutcome
+    ) {
+        guard let currentEntry else {
+            presentReview(autoRouted: false)
+            return
+        }
+
+        drillElapsedSeconds[currentEntry.drill.id] = max(payload.elapsedSeconds, drillElapsedSeconds[currentEntry.drill.id] ?? 0)
+        session.resolveDrill(currentEntry.drill.id, outcome: outcome)
+        drillReviews[currentEntry.drill.id] = GaragePostDrillReviewDraft(
+            mode: payload.mode,
+            outcome: outcome
+        )
+        resolver = nil
+        advanceAfterResolution()
+    }
+
+    private func advanceAfterResolution() {
         if let nextIndex = nextUnresolvedDrillIndex(after: currentDrillIndex) {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                 currentDrillIndex = nextIndex
@@ -316,14 +408,6 @@ struct GarageActiveSessionView: View {
         }
     }
 
-    private func focusPrimaryAction(payload: GarageFocusCompletionPayload) {
-        if unresolvedDrillIndex == nil {
-            presentReview(autoRouted: false)
-        } else {
-            completeCurrentDrill(payload: payload)
-        }
-    }
-
     private func nextUnresolvedDrillIndex(after index: Int) -> Int? {
         let entries = session.orderedDrillEntries
         guard entries.isEmpty == false else {
@@ -332,7 +416,7 @@ struct GarageActiveSessionView: View {
 
         let clampedIndex = max(0, min(index, entries.count - 1))
         let wrappedIndices = Array(entries.indices.dropFirst(clampedIndex + 1)) + Array(entries.indices.prefix(clampedIndex + 1))
-        return wrappedIndices.first(where: { entries[$0].progress.isCompleted == false })
+        return wrappedIndices.first(where: { entries[$0].progress.isResolved == false })
     }
 
     private func presentReview(autoRouted: Bool = false) {
@@ -398,6 +482,7 @@ private struct GaragePendingDrillReview: Hashable {
 
 private struct GaragePostDrillReviewDraft: Hashable {
     let mode: GarageDrillFocusMode
+    var outcome: GarageDrillOutcome
     var confidenceRating: Int
     var targetReached: Bool
     var pressurePassed: Bool
@@ -405,12 +490,14 @@ private struct GaragePostDrillReviewDraft: Hashable {
 
     init(
         mode: GarageDrillFocusMode,
+        outcome: GarageDrillOutcome = .completedTarget,
         confidenceRating: Int = 3,
         targetReached: Bool = false,
         pressurePassed: Bool = false,
         note: String = ""
     ) {
         self.mode = mode
+        self.outcome = outcome
         self.confidenceRating = confidenceRating
         self.targetReached = targetReached
         self.pressurePassed = pressurePassed
@@ -422,17 +509,25 @@ private struct GaragePostDrillReviewDraft: Hashable {
     }
 
     var successfulUnits: Int {
+        guard outcome != .skipped else {
+            return 0
+        }
+
         switch mode {
         case .process:
-            return confidenceRating >= 3 ? 1 : 0
+            return outcome == .completedTarget && confidenceRating >= 3 ? 1 : 0
         case .target:
-            return targetReached ? 1 : 0
+            return outcome == .completedTarget && targetReached ? 1 : 0
         case .pressureTest:
-            return pressurePassed ? 1 : 0
+            return outcome == .completedTarget && pressurePassed ? 1 : 0
         }
     }
 
     var outcomeSummary: String {
+        if outcome != .completedTarget {
+            return outcome.displayTitle
+        }
+
         switch mode {
         case .process:
             return "Quality \(confidenceRating)/5"
@@ -1448,6 +1543,130 @@ private struct DrillNoteEditorState: Identifiable {
     var id: UUID { drillID }
 }
 
+private struct GarageDrillResolverState: Identifiable {
+    let drillID: UUID
+    let drillTitle: String
+    let payload: GarageFocusCompletionPayload
+    let supportsCompletedEarly: Bool
+    let supportsPartial: Bool
+
+    var id: UUID { drillID }
+}
+
+@MainActor
+private struct GarageDrillResolverSheet: View {
+    let state: GarageDrillResolverState
+    let onResolve: (GarageDrillOutcome) -> Void
+    let onKeepWorking: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            GarageProScaffold(bottomPadding: 32) {
+                GarageProHeroCard(
+                    eyebrow: "Drill Authority",
+                    title: "Move on from this drill?",
+                    subtitle: state.drillTitle
+                )
+
+                GarageTelemetrySurface(isActive: true) {
+                    GarageDrillResolverAction(
+                        title: "Skip Drill",
+                        subtitle: "Bypass this drill and keep the routine moving.",
+                        systemImage: "forward.end.fill",
+                        isPrimary: true
+                    ) {
+                        onResolve(.skipped)
+                    }
+
+                    if state.supportsPartial {
+                        GarageDrillResolverAction(
+                            title: "Log Partial",
+                            subtitle: "Record useful work without claiming the target was met.",
+                            systemImage: "circle.lefthalf.filled",
+                            isPrimary: false
+                        ) {
+                            onResolve(.partial)
+                        }
+                    }
+
+                    if state.supportsCompletedEarly {
+                        GarageDrillResolverAction(
+                            title: "Got It - Next Drill",
+                            subtitle: "Move on early as an intentional choice.",
+                            systemImage: "checkmark.seal",
+                            isPrimary: false
+                        ) {
+                            onResolve(.completedEarly)
+                        }
+                    }
+
+                    GarageDrillResolverAction(
+                        title: "Keep Working",
+                        subtitle: "Return to the drill without logging an outcome yet.",
+                        systemImage: "arrow.uturn.backward",
+                        isPrimary: false,
+                        action: onKeepWorking
+                    )
+                }
+            }
+            .navigationTitle("Move On")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close", action: onKeepWorking)
+                }
+            }
+        }
+        .garagePuttingGreenSheetChrome()
+    }
+}
+
+private struct GarageDrillResolverAction: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let isPrimary: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            garageTriggerSelection()
+            action()
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 17, weight: .black))
+                    .foregroundStyle(isPrimary ? ModuleTheme.garageCanvas : GarageProTheme.accent)
+                    .frame(width: 44, height: 44)
+                    .background(
+                        isPrimary ? GarageProTheme.accent : GarageProTheme.insetSurface,
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    )
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+
+                    Text(subtitle)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 8)
+            }
+            .padding(12)
+            .background(GarageProTheme.insetSurface.opacity(isPrimary ? 0.94 : 0.72), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(isPrimary ? GarageProTheme.accent.opacity(0.42) : GarageProTheme.border, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 private struct GarageSessionSummaryDraft: Identifiable {
     let id: UUID
     let templateName: String
@@ -1472,13 +1691,15 @@ private struct GarageSessionSummaryDraft: Identifiable {
             let elapsedSeconds = elapsedSecondsByDrillID[entry.drill.id]
             let review = reviewByDrillID[entry.drill.id] ?? GaragePostDrillReviewDraft(mode: content.mode)
             let totalReps = 1
-            let successfulReps = entry.progress.isCompleted ? review.successfulUnits : 0
+            let outcome = entry.progress.resolvedOutcome ?? review.outcome
+            let successfulReps = entry.progress.isCompletedTarget ? review.successfulUnits : 0
 
             return GarageSessionDrillResultDraft(
                 id: entry.drill.id,
                 name: entry.drill.title,
                 mode: content.mode,
                 goal: content.goal,
+                outcome: outcome,
                 totalReps: totalReps,
                 successfulReps: successfulReps,
                 elapsedSeconds: elapsedSeconds,
@@ -1500,7 +1721,7 @@ private struct GarageSessionSummaryDraft: Identifiable {
     }
 
     var totalAttemptedReps: Int {
-        drillResults.reduce(0) { $0 + $1.totalReps }
+        drillResults.reduce(0) { $0 + ($1.outcome == .skipped ? 0 : $1.totalReps) }
     }
 
     var aggregateEfficiency: Double {
@@ -1529,7 +1750,7 @@ private struct GarageSessionSummaryDraft: Identifiable {
 
     var projectedSuccessfulRepsTotal: Int {
         drillResults.reduce(0) { partialResult, result in
-            partialResult + (result.projectedSuccessfulReps ?? 0)
+            partialResult + (result.outcome == .skipped ? 0 : (result.projectedSuccessfulReps ?? 0))
         }
     }
 
@@ -1625,6 +1846,7 @@ private struct GarageSessionDrillResultDraft: Identifiable {
     let name: String
     let mode: GarageDrillFocusMode
     let goal: GarageDrillGoal
+    let outcome: GarageDrillOutcome
     let totalReps: Int
     var successfulReps: Int
     let elapsedSeconds: Int?
@@ -1653,21 +1875,25 @@ private struct GarageSessionDrillResultDraft: Identifiable {
     var performanceCaption: String {
         switch mode {
         case .process:
+            if outcome == .skipped {
+                return "Skipped"
+            }
+
             if elapsedSeconds == nil {
                 return "No timer captured"
             }
-            return "Process block reviewed"
+            return outcome == .completedTarget ? "Process target completed" : outcome.displayTitle
         case .target:
-            return "Target block reviewed"
+            return outcome == .completedTarget ? "Target completed" : outcome.displayTitle
         case .pressureTest:
-            return "Pressure test reviewed"
+            return outcome == .completedTarget ? "Pressure test completed" : outcome.displayTitle
         }
     }
 
     var progressSummaryText: String {
         switch goal {
         case .timed:
-            return successfulReps >= totalReps ? "Timed block complete" : "Timed block incomplete"
+            return outcome == .completedTarget ? "Timed target complete" : outcome.displayTitle
         case .repTarget(_, let unit):
             return "\(successfulReps) / \(totalReps) \(unit)"
         case .streak(_, let unit):
@@ -1687,7 +1913,8 @@ private struct GarageSessionDrillResultDraft: Identifiable {
         DrillResult(
             name: name,
             successfulReps: successfulReps,
-            totalReps: totalReps
+            totalReps: outcome == .skipped ? 0 : totalReps,
+            outcome: outcome
         )
     }
 

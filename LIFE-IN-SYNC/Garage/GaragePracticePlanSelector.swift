@@ -268,17 +268,17 @@ enum GaragePracticePlanSelector {
         for record in recentEnvironmentRecords {
             var weakDrillsInSession = Set<String>()
 
-            for result in record.drillResults where result.totalReps > 0 {
+            for result in record.drillResults where result.contributesToAdaptiveScoring {
                 guard let drill = DrillVault.canonicalDrill(for: result.name),
                       drill.environment == environment,
                       environmentDrills.contains(where: { $0.id == drill.id }) else {
                     continue
                 }
 
-                if result.successRatio < 0.6 {
+                if result.resolvedOutcome == .partial || result.adaptiveSuccessRatio < 0.6 {
                     weights[drill.id, default: 0] += 12
                     weakDrillsInSession.insert(drill.id)
-                } else if result.successRatio < 0.8 {
+                } else if result.adaptiveSuccessRatio < 0.8 {
                     weights[drill.id, default: 0] += 5
                 }
             }

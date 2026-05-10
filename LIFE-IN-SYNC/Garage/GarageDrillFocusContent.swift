@@ -94,7 +94,7 @@ enum GarageDrillFocusContentAdapter {
     }
 
     private static func finishRule(forDurationSeconds durationSeconds: Int) -> String {
-        "Finish when the \(formattedDuration(durationSeconds)) timed block is complete."
+        "Suggested: \(formattedDuration(durationSeconds)) of focused work."
     }
 
     private static func cleanTitle(_ value: String, fallback: String) -> String {
@@ -158,7 +158,7 @@ extension GarageDrillGoal {
     var goalText: String {
         switch self {
         case .timed(let durationSeconds):
-            return "Work for \(GarageDrillGoalFormat.duration(durationSeconds))."
+            return "Suggested: \(GarageDrillGoalFormat.duration(durationSeconds))."
         case .repTarget(let count, let unit):
             return "Complete \(count) \(unit)."
         case .streak(let count, let unit):
