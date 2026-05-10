@@ -113,11 +113,11 @@ struct PracticeTemplateDrill: Identifiable, Hashable, Codable {
         if let canonicalDrill = DrillVault.canonicalDrill(for: self) {
             let detail = GarageDrillFocusDetails.detail(for: canonicalDrill)
             let metadata = GarageDrillFocusDetails.metadata(for: canonicalDrill, detail: detail)
-            parts.append(metadata.targetMetric)
+            parts.append("\(metadata.mode.controlLabel) - \(detail.estimatedMinutes) min")
         } else if defaultRepCount > 0 {
-            parts.append("\(defaultRepCount) attempts")
+            parts.append("Process - suggested volume \(defaultRepCount) attempts")
         } else {
-            parts.append("Timed task")
+            parts.append("Process - timed block")
         }
 
         return parts.joined(separator: " • ")

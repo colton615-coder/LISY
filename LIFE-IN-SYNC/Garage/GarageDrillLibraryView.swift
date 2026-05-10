@@ -95,7 +95,7 @@ struct GarageDrillLibraryView: View {
                                 GarageRoutinePreviewCard(
                                     title: routine.title,
                                     subtitle: routine.purpose,
-                                    detailText: "\(routine.drillIDs.count) drills • \(routine.makePracticeTemplate().drills.reduce(0) { $0 + $1.defaultRepCount }) planned reps",
+                                    detailText: "\(routine.drillIDs.count) drills - \(routine.estimatedMinutesText)",
                                     badgeText: "Built-In Routine",
                                     systemImage: environment.systemImage
                                 )
@@ -123,7 +123,7 @@ struct GarageDrillLibraryView: View {
                     GarageRoutinePreviewCard(
                         title: template.title,
                         subtitle: template.drills.first?.focusArea ?? "Saved routine",
-                        detailText: "\(template.drills.count) drills • \(template.drills.reduce(0) { $0 + $1.defaultRepCount }) planned reps",
+                        detailText: "\(template.drills.count) drills - \(template.garageEstimatedMinutesText)",
                         badgeText: "Saved Routine",
                         systemImage: "bookmark.fill"
                     )
@@ -235,7 +235,7 @@ private struct GarageDrillRowCard: View {
                         .foregroundStyle(GarageProTheme.textSecondary)
                         .lineLimit(2)
 
-                    Text("\(drill.environment.displayName) • \(drill.defaultRepCount) reps • \(drill.clubRange.displayName)")
+                    Text("\(drill.environment.displayName) - \(drill.garageModeDurationText) - \(drill.clubRange.displayName)")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(GarageProTheme.accent.opacity(0.88))
                 }
@@ -263,8 +263,8 @@ private struct GarageRoutineDetailSheet: View {
                     eyebrow: routine.sourceLabel,
                     title: routine.title,
                     subtitle: routine.purpose,
-                    value: "\(routine.totalRepCount)",
-                    valueLabel: "Planned Reps"
+                    value: "\(routine.estimatedMinutes)",
+                    valueLabel: "Minutes"
                 ) {
                     Image(systemName: routine.environment.systemImage)
                         .font(.system(size: 24, weight: .bold))
@@ -341,8 +341,8 @@ private struct GarageDrillDetailSheet: View {
                     eyebrow: drill.libraryCategory.displayName,
                     title: drill.title,
                     subtitle: drill.purpose,
-                    value: "\(drill.defaultRepCount)",
-                    valueLabel: "Default Reps"
+                    value: "\(GarageDrillFocusDetails.detail(for: drill).estimatedMinutes)",
+                    valueLabel: "Minutes"
                 ) {
                     Image(systemName: drill.environment.systemImage)
                         .font(.system(size: 24, weight: .bold))
@@ -438,6 +438,7 @@ private struct GarageLibraryRoutineDescriptor: Identifiable {
     let environment: PracticeEnvironment
     let sourceLabel: String
     let totalRepCount: Int
+    let estimatedMinutes: Int
     let drillRows: [GarageLibraryRoutineDrillRow]
     let launchTemplate: PracticeTemplate
 
@@ -451,11 +452,14 @@ private struct GarageLibraryRoutineDescriptor: Identifiable {
         self.environment = routine.environment
         self.sourceLabel = "Built-In Routine"
         self.totalRepCount = launchTemplate.drills.reduce(0) { $0 + $1.defaultRepCount }
+        self.estimatedMinutes = resolvedDrills.reduce(0) { $0 + GarageDrillFocusDetails.detail(for: $1).estimatedMinutes }
         self.drillRows = resolvedDrills.map {
-            GarageLibraryRoutineDrillRow(
+            let detail = GarageDrillFocusDetails.detail(for: $0)
+            let metadata = GarageDrillFocusDetails.metadata(for: $0, detail: detail)
+            return GarageLibraryRoutineDrillRow(
                 id: $0.id,
                 title: $0.title,
-                summary: $0.purpose
+                summary: "\(metadata.mode.controlLabel) - \(detail.estimatedMinutes) min - \($0.purpose)"
             )
         }
         self.launchTemplate = launchTemplate
@@ -468,15 +472,22 @@ private struct GarageLibraryRoutineDescriptor: Identifiable {
         self.environment = template.environmentValue
         self.sourceLabel = "Saved Routine"
         self.totalRepCount = template.drills.reduce(0) { $0 + $1.defaultRepCount }
+        self.estimatedMinutes = template.drills.reduce(0) { partialResult, drill in
+            partialResult + GarageDrillFocusDetails.detail(for: drill).estimatedMinutes
+        }
         self.drillRows = template.drills.map { drill in
             let summary = DrillVault.canonicalDrill(for: drill)?.purpose ?? drill.focusArea
             return GarageLibraryRoutineDrillRow(
                 id: drill.id.uuidString,
                 title: drill.title,
-                summary: summary.isEmpty ? "\(drill.defaultRepCount) planned reps" : summary
+                summary: summary.isEmpty ? drill.metadataSummary : "\(drill.metadataSummary) - \(summary)"
             )
         }
         self.launchTemplate = template
+    }
+
+    var estimatedMinutesText: String {
+        "\(estimatedMinutes) min"
     }
 }
 
@@ -484,6 +495,34 @@ private struct GarageLibraryRoutineDrillRow: Identifiable {
     let id: String
     let title: String
     let summary: String
+}
+
+private extension GarageRoutine {
+    var estimatedMinutesText: String {
+        let minutes = DrillVault.drills(for: self).reduce(0) { partialResult, drill in
+            partialResult + GarageDrillFocusDetails.detail(for: drill).estimatedMinutes
+        }
+
+        return "\(minutes) min"
+    }
+}
+
+private extension PracticeTemplate {
+    var garageEstimatedMinutesText: String {
+        let minutes = drills.reduce(0) { partialResult, drill in
+            partialResult + GarageDrillFocusDetails.detail(for: drill).estimatedMinutes
+        }
+
+        return "\(minutes) min"
+    }
+}
+
+private extension GarageDrill {
+    var garageModeDurationText: String {
+        let detail = GarageDrillFocusDetails.detail(for: self)
+        let metadata = GarageDrillFocusDetails.metadata(for: self, detail: detail)
+        return "\(metadata.mode.controlLabel) - \(detail.estimatedMinutes) min"
+    }
 }
 
 #Preview("Garage Drill Library") {

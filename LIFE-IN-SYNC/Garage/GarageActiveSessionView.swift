@@ -9,7 +9,8 @@ struct GarageActiveSessionView: View {
     @State private var phase: GarageActiveSessionPhase = .focusRoom
     @State private var currentDrillIndex = 0
     @State private var drillElapsedSeconds: [UUID: Int] = [:]
-    @State private var drillTrackerValues: [UUID: Int] = [:]
+    @State private var drillReviews: [UUID: GaragePostDrillReviewDraft] = [:]
+    @State private var pendingDrillReview: GaragePendingDrillReview?
     @State private var isDrillDetailExpanded = false
     @State private var noteEditor: DrillNoteEditorState?
     @State private var summaryDraft: GarageSessionSummaryDraft?
@@ -68,7 +69,7 @@ struct GarageActiveSessionView: View {
                                     session: session,
                                     benchmarkSnapshot: records.benchmarkSnapshot(for: session.templateName),
                                     elapsedSecondsByDrillID: drillElapsedSeconds,
-                                    trackerValueByDrillID: drillTrackerValues
+                                    reviewByDrillID: drillReviews
                                 )
                             },
                             set: { summaryDraft = $0 }
@@ -88,6 +89,34 @@ struct GarageActiveSessionView: View {
                     }
                     .onAppear {
                         presentReview()
+                    }
+                }
+            case .postDrillReview:
+                if let pendingDrillReview {
+                    GaragePostDrillReviewView(
+                        pendingReview: pendingDrillReview,
+                        review: Binding(
+                            get: {
+                                drillReviews[pendingDrillReview.drillID]
+                                ?? GaragePostDrillReviewDraft(mode: pendingDrillReview.mode)
+                            },
+                            set: { drillReviews[pendingDrillReview.drillID] = $0 }
+                        ),
+                        onBack: { phase = .focusRoom },
+                        onContinue: { review in
+                            finishPostDrillReview(review, for: pendingDrillReview)
+                        }
+                    )
+                } else {
+                    GarageProScaffold {
+                        GarageProHeroCard(
+                            eyebrow: "Drill Review",
+                            title: session.templateName,
+                            subtitle: "Preparing drill review."
+                        )
+                    }
+                    .onAppear {
+                        phase = .focusRoom
                     }
                 }
             }
@@ -118,6 +147,8 @@ struct GarageActiveSessionView: View {
         switch phase {
         case .focusRoom:
             GarageFocusRoomCopy.focusRoomNavTitle
+        case .postDrillReview:
+            "Drill Review"
         case .review:
             GarageFocusRoomCopy.reviewHandoffNavTitle
         }
@@ -249,16 +280,36 @@ struct GarageActiveSessionView: View {
         }
 
         drillElapsedSeconds[currentEntry.drill.id] = max(payload.elapsedSeconds, drillElapsedSeconds[currentEntry.drill.id] ?? 0)
-        drillTrackerValues[currentEntry.drill.id] = max(payload.trackerValue, drillTrackerValues[currentEntry.drill.id] ?? 0)
+        pendingDrillReview = GaragePendingDrillReview(
+            drillID: currentEntry.drill.id,
+            title: currentEntry.drill.title,
+            mode: payload.mode,
+            elapsedSeconds: payload.elapsedSeconds,
+            durationSeconds: payload.durationSeconds,
+            targetMetric: currentDrillPresentation?.content.targetMetric ?? "Complete the timed block."
+        )
+        drillReviews[currentEntry.drill.id] = drillReviews[currentEntry.drill.id]
+            ?? GaragePostDrillReviewDraft(mode: payload.mode)
+        phase = .postDrillReview
+    }
 
-        if currentEntry.progress.isCompleted == false {
-            session.toggleCompletion(for: currentEntry.drill.id)
+    private func finishPostDrillReview(
+        _ review: GaragePostDrillReviewDraft,
+        for pendingReview: GaragePendingDrillReview
+    ) {
+        drillReviews[pendingReview.drillID] = review
+
+        if session.progress(for: pendingReview.drillID)?.isCompleted == false {
+            session.toggleCompletion(for: pendingReview.drillID)
         }
+
+        self.pendingDrillReview = nil
 
         if let nextIndex = nextUnresolvedDrillIndex(after: currentDrillIndex) {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                 currentDrillIndex = nextIndex
                 isDrillDetailExpanded = false
+                phase = .focusRoom
             }
         } else {
             presentReview(autoRouted: false)
@@ -289,7 +340,7 @@ struct GarageActiveSessionView: View {
             session: session,
             benchmarkSnapshot: records.benchmarkSnapshot(for: session.templateName),
             elapsedSecondsByDrillID: drillElapsedSeconds,
-            trackerValueByDrillID: drillTrackerValues
+            reviewByDrillID: drillReviews
         )
         reviewHandoffMessage = autoRouted ? GarageFocusRoomCopy.reviewHandoffAutoRouteMessage : nil
         phase = .review
@@ -332,7 +383,65 @@ struct GarageActiveSessionView: View {
 
 private enum GarageActiveSessionPhase {
     case focusRoom
+    case postDrillReview
     case review
+}
+
+private struct GaragePendingDrillReview: Hashable {
+    let drillID: UUID
+    let title: String
+    let mode: GarageDrillFocusMode
+    let elapsedSeconds: Int
+    let durationSeconds: Int
+    let targetMetric: String
+}
+
+private struct GaragePostDrillReviewDraft: Hashable {
+    let mode: GarageDrillFocusMode
+    var confidenceRating: Int
+    var targetReached: Bool
+    var pressurePassed: Bool
+    var note: String
+
+    init(
+        mode: GarageDrillFocusMode,
+        confidenceRating: Int = 3,
+        targetReached: Bool = false,
+        pressurePassed: Bool = false,
+        note: String = ""
+    ) {
+        self.mode = mode
+        self.confidenceRating = confidenceRating
+        self.targetReached = targetReached
+        self.pressurePassed = pressurePassed
+        self.note = note
+    }
+
+    var isComplete: Bool {
+        (1...5).contains(confidenceRating)
+    }
+
+    var successfulUnits: Int {
+        switch mode {
+        case .process:
+            return confidenceRating >= 3 ? 1 : 0
+        case .target:
+            return targetReached ? 1 : 0
+        case .pressureTest:
+            return pressurePassed ? 1 : 0
+        }
+    }
+
+    var outcomeSummary: String {
+        switch mode {
+        case .process:
+            return "Quality \(confidenceRating)/5"
+        case .target:
+            return "\(targetReached ? "Target reached" : "Target close") - Confidence \(confidenceRating)/5"
+        case .pressureTest:
+            return "\(pressurePassed ? "Passed" : "Failed") - Confidence \(confidenceRating)/5"
+        }
+    }
 }
 
 private enum GarageSessionDockLayout {
@@ -356,7 +465,7 @@ private struct GarageSessionLobbyView: View {
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 GarageCompactMetricCard(title: "Environment", value: session.environment.displayName, systemImage: session.environment.systemImage, isActive: true)
-                GarageCompactMetricCard(title: "Planned Reps", value: "\(totalPlannedReps)", systemImage: "repeat", isActive: totalPlannedReps > 0)
+                GarageCompactMetricCard(title: "Suggested Volume", value: "\(totalPlannedReps)", systemImage: "repeat", isActive: totalPlannedReps > 0)
                 GarageCompactMetricCard(title: "Est. Time", value: "\(estimatedMinutes)m", systemImage: "timer", isActive: estimatedMinutes > 0)
                 GarageCompactMetricCard(title: "Completed", value: "\(session.completedDrillCount)/\(session.totalDrillCount)", systemImage: "checkmark.seal", isActive: session.completedDrillCount > 0)
             }
@@ -505,6 +614,183 @@ private struct GarageSessionReviewSaveActions: View {
                 }
             }
         }
+    }
+}
+
+@MainActor
+private struct GaragePostDrillReviewView: View {
+    let pendingReview: GaragePendingDrillReview
+    @Binding var review: GaragePostDrillReviewDraft
+    let onBack: () -> Void
+    let onContinue: (GaragePostDrillReviewDraft) -> Void
+
+    var body: some View {
+        GarageProScaffold(bottomPadding: GarageSessionDockLayout.reviewBottomPadding) {
+            GarageProHeroCard(
+                eyebrow: pendingReview.mode.controlLabel,
+                title: pendingReview.title,
+                subtitle: "Timer complete. Capture the outcome before moving on.",
+                value: garageSessionSummaryTime(pendingReview.elapsedSeconds),
+                valueLabel: "Elapsed"
+            )
+
+            GarageTelemetrySurface(isActive: true) {
+                GarageFocusLabel("Block Outcome")
+
+                Text(pendingReview.targetMetric)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(GarageProTheme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                modeSpecificControls
+            }
+
+            GarageTelemetrySurface(isActive: true) {
+                GarageFocusLabel("Quality / Confidence")
+
+                HStack(spacing: 8) {
+                    ForEach(1...5, id: \.self) { value in
+                        Button {
+                            garageTriggerSelection()
+                            review.confidenceRating = value
+                        } label: {
+                            Text("\(value)")
+                                .font(.system(size: 18, weight: .black, design: .rounded))
+                                .foregroundStyle(review.confidenceRating == value ? ModuleTheme.garageCanvas : GarageProTheme.textPrimary)
+                                .frame(maxWidth: .infinity, minHeight: 48)
+                                .background(
+                                    review.confidenceRating == value
+                                    ? GarageProTheme.accent
+                                    : GarageProTheme.insetSurface,
+                                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .stroke(GarageProTheme.border, lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                TextField("Optional note from the block", text: $review.note, axis: .vertical)
+                    .lineLimit(2...4)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(GarageProTheme.textPrimary)
+                    .padding(12)
+                    .background(GarageProTheme.insetSurface.opacity(0.86), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(GarageProTheme.border, lineWidth: 1)
+                    )
+            }
+
+            GarageTelemetrySurface(isActive: review.isComplete) {
+                HStack(spacing: 12) {
+                    GarageFocusSecondaryButton(
+                        title: "Back",
+                        systemImage: "chevron.left",
+                        action: onBack
+                    )
+
+                    GarageProPrimaryButton(
+                        title: "Continue",
+                        systemImage: "checkmark.seal.fill",
+                        isEnabled: review.isComplete
+                    ) {
+                        onContinue(review)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var modeSpecificControls: some View {
+        switch pendingReview.mode {
+        case .process:
+            GaragePostDrillOutcomeButton(
+                title: "Process block completed",
+                subtitle: "Quality rating is the main review signal.",
+                systemImage: "checkmark.seal.fill",
+                isSelected: true,
+                action: {}
+            )
+        case .target:
+            HStack(spacing: 10) {
+                GaragePostDrillOutcomeButton(
+                    title: "Reached",
+                    subtitle: "Target felt achieved.",
+                    systemImage: "scope",
+                    isSelected: review.targetReached,
+                    action: { review.targetReached = true }
+                )
+
+                GaragePostDrillOutcomeButton(
+                    title: "Close",
+                    subtitle: "Useful miss or near target.",
+                    systemImage: "circle.dashed",
+                    isSelected: review.targetReached == false,
+                    action: { review.targetReached = false }
+                )
+            }
+        case .pressureTest:
+            HStack(spacing: 10) {
+                GaragePostDrillOutcomeButton(
+                    title: "Pass",
+                    subtitle: "Pressure standard held.",
+                    systemImage: "checkmark.seal.fill",
+                    isSelected: review.pressurePassed,
+                    action: { review.pressurePassed = true }
+                )
+
+                GaragePostDrillOutcomeButton(
+                    title: "Fail",
+                    subtitle: "Standard broke under pressure.",
+                    systemImage: "xmark.seal.fill",
+                    isSelected: review.pressurePassed == false,
+                    action: { review.pressurePassed = false }
+                )
+            }
+        }
+    }
+}
+
+private struct GaragePostDrillOutcomeButton: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            garageTriggerSelection()
+            action()
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 18, weight: .bold))
+
+                Text(title)
+                    .font(.headline.weight(.bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+
+                Text(subtitle)
+                    .font(.caption.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .foregroundStyle(isSelected ? GarageProTheme.accent : GarageProTheme.textPrimary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(GarageProTheme.insetSurface.opacity(isSelected ? 0.94 : 0.72), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(isSelected ? GarageProTheme.accent.opacity(0.42) : GarageProTheme.border, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -779,6 +1065,11 @@ private struct GarageSessionPerformanceRow: View {
                 .textCase(.uppercase)
                 .tracking(1.1)
                 .foregroundStyle(result.elapsedSeconds == nil ? GarageProTheme.textSecondary : GarageSessionSummaryPalette.activeSegment)
+
+            Text(result.reviewSummary)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(GarageProTheme.accent)
+                .fixedSize(horizontal: false, vertical: true)
 
             TextField("What did this drill teach you?", text: $result.note, axis: .vertical)
                 .lineLimit(2...4)
@@ -1169,7 +1460,7 @@ private struct GarageSessionSummaryDraft: Identifiable {
         session: ActivePracticeSession,
         benchmarkSnapshot: GarageTemplateBenchmarkSnapshot?,
         elapsedSecondsByDrillID: [UUID: Int],
-        trackerValueByDrillID: [UUID: Int]
+        reviewByDrillID: [UUID: GaragePostDrillReviewDraft]
     ) {
         id = session.id
         templateName = session.templateName
@@ -1179,27 +1470,24 @@ private struct GarageSessionSummaryDraft: Identifiable {
             let detail = GarageDrillFocusDetails.detail(for: entry.drill)
             let content = GarageDrillFocusContentAdapter.content(for: entry.drill, detail: detail)
             let elapsedSeconds = elapsedSecondsByDrillID[entry.drill.id]
-            let trackerValue = trackerValueByDrillID[entry.drill.id] ?? 0
-            let execution = Self.executionMetrics(
-                for: content.goal,
-                trackerValue: trackerValue,
-                elapsedSeconds: elapsedSeconds,
-                isCompleted: entry.progress.isCompleted
-            )
+            let review = reviewByDrillID[entry.drill.id] ?? GaragePostDrillReviewDraft(mode: content.mode)
+            let totalReps = 1
+            let successfulReps = entry.progress.isCompleted ? review.successfulUnits : 0
 
             return GarageSessionDrillResultDraft(
                 id: entry.drill.id,
                 name: entry.drill.title,
                 mode: content.mode,
                 goal: content.goal,
-                totalReps: execution.totalReps,
-                successfulReps: execution.successfulReps,
+                totalReps: totalReps,
+                successfulReps: successfulReps,
                 elapsedSeconds: elapsedSeconds,
                 projectedSuccessfulReps: benchmarkSnapshot?.projectedSuccessfulReps(
                     for: entry.drill.title,
-                    totalReps: execution.totalReps
+                    totalReps: totalReps
                 ),
-                note: entry.progress.note,
+                reviewSummary: review.outcomeSummary,
+                note: Self.combinedNote(existingNote: entry.progress.note, review: review),
                 isReviewed: true
             )
         }
@@ -1318,39 +1606,17 @@ private struct GarageSessionSummaryDraft: Identifiable {
         return "Before saving: \(missingItems.joined(separator: " and "))."
     }
 
-    private static func executionMetrics(
-        for goal: GarageDrillGoal,
-        trackerValue: Int,
-        elapsedSeconds: Int?,
-        isCompleted: Bool
-    ) -> (successfulReps: Int, totalReps: Int) {
-        switch goal {
-        case .timed(let durationSeconds):
-            let totalReps = 1
-            let elapsed = elapsedSeconds ?? 0
-            let successfulReps = elapsed >= max(durationSeconds, 1) ? 1 : (isCompleted ? 1 : 0)
-            return (successfulReps, totalReps)
-        case .repTarget(let count, _), .streak(let count, _):
-            let totalReps = max(count, 1)
-            let successfulReps = min(max(trackerValue, isCompleted ? totalReps : 0), totalReps)
-            return (successfulReps, totalReps)
-        case .timeTrial(let targetCount, _):
-            let totalReps = max(targetCount, 1)
-            let successfulReps = min(max(trackerValue, isCompleted ? totalReps : 0), totalReps)
-            return (successfulReps, totalReps)
-        case .ladder(let steps):
-            let totalReps = max(steps.count, 1)
-            let successfulReps = min(max(trackerValue, isCompleted ? totalReps : 0), totalReps)
-            return (successfulReps, totalReps)
-        case .checklist(let items):
-            let totalReps = max(items.count, 1)
-            let successfulReps = min(max(trackerValue, isCompleted ? totalReps : 0), totalReps)
-            return (successfulReps, totalReps)
-        case .manual:
-            let totalReps = 1
-            let successfulReps = trackerValue > 0 || isCompleted ? 1 : 0
-            return (successfulReps, totalReps)
-        }
+    private static func combinedNote(
+        existingNote: String,
+        review: GaragePostDrillReviewDraft
+    ) -> String {
+        let trimmedExistingNote = existingNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedReviewNote = review.note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let reviewLine = "Review: \(review.outcomeSummary)"
+
+        return [reviewLine, trimmedExistingNote, trimmedReviewNote]
+            .filter { $0.isEmpty == false }
+            .joined(separator: "\n")
     }
 }
 
@@ -1363,6 +1629,7 @@ private struct GarageSessionDrillResultDraft: Identifiable {
     var successfulReps: Int
     let elapsedSeconds: Int?
     let projectedSuccessfulReps: Int?
+    let reviewSummary: String
     var note: String
     var isReviewed: Bool
 
@@ -1385,19 +1652,15 @@ private struct GarageSessionDrillResultDraft: Identifiable {
 
     var performanceCaption: String {
         switch mode {
-        case .time:
+        case .process:
             if elapsedSeconds == nil {
                 return "No timer captured"
             }
-            return successfulReps >= totalReps ? "Timed block complete" : "Time goal not met"
-        case .reps:
-            return "Rep-based drill logged"
-        case .goal:
-            return "Goal progression logged"
-        case .challenge:
-            return "Challenge attempts logged"
-        case .checklist:
-            return "Checklist progress logged"
+            return "Process block reviewed"
+        case .target:
+            return "Target block reviewed"
+        case .pressureTest:
+            return "Pressure test reviewed"
         }
     }
 

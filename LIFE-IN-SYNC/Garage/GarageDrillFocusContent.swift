@@ -7,12 +7,13 @@ struct GarageDrillFocusContent: Hashable {
     let executionCue: String
     let goal: GarageDrillGoal
     let mode: GarageDrillFocusMode
+    let durationSeconds: Int
     let targetMetric: String
+    let guidanceText: String?
     let watchFor: String?
     let finishRule: String
     let teachingDetail: String?
     let reviewSummary: String?
-    let quickTags: [String]
     let diagramKey: String?
 }
 
@@ -55,8 +56,10 @@ enum GarageDrillFocusContentAdapter {
         metadata: GarageDrillFocusMetadata
     ) -> GarageDrillFocusContent {
         let title = cleanTitle(canonicalDrill?.title ?? drill.title, fallback: "Practice Drill")
-        let goal = goal(for: drill, detail: detail, canonicalDrill: canonicalDrill, metadata: metadata)
+        let durationSeconds = max(detail.estimatedMinutes, 1) * 60
+        let goal = GarageDrillGoal.timed(durationSeconds: durationSeconds)
         let watchFor = firstCleanLine(detail.commonMisses)
+        let guidanceText = suggestedVolumeText(for: drill, canonicalDrill: canonicalDrill)
 
         return GarageDrillFocusContent(
             title: title,
@@ -65,115 +68,33 @@ enum GarageDrillFocusContentAdapter {
             executionCue: metadata.executionCue,
             goal: goal,
             mode: metadata.mode,
+            durationSeconds: durationSeconds,
             targetMetric: metadata.targetMetric,
+            guidanceText: guidanceText,
             watchFor: watchFor,
-            finishRule: finishRule(for: goal),
+            finishRule: finishRule(forDurationSeconds: durationSeconds),
             teachingDetail: metadata.teachingDetail,
             reviewSummary: metadata.reviewSummary,
-            quickTags: metadata.quickTags,
             diagramKey: metadata.diagramKey
         )
     }
 
-    private static func goal(
+    private static func suggestedVolumeText(
         for drill: PracticeTemplateDrill,
-        detail: GarageDrillFocusDetail,
-        canonicalDrill: GarageDrill?,
-        metadata: GarageDrillFocusMetadata
-    ) -> GarageDrillGoal {
-        let executionSteps = cleanLines(detail.execution)
-        let defaultCount = drill.defaultRepCount > 0 ? drill.defaultRepCount : (canonicalDrill?.defaultRepCount ?? 1)
-
-        switch metadata.mode {
-        case .reps:
-            return .repTarget(count: max(defaultCount, 1), unit: "clean reps")
-        case .time:
-            return .timed(durationSeconds: max(detail.estimatedMinutes, 1) * 60)
-        case .goal:
-            if canonicalDrill?.id == "r13" {
-                return .ladder(steps: [
-                    "Land one ball at the short carry number.",
-                    "Land one ball at the middle carry number.",
-                    "Land one ball at the long carry number.",
-                    "Repeat the ladder with the same rhythm."
-                ])
-            }
-
-            if canonicalDrill?.id == "p2" {
-                return .ladder(steps: [
-                    "Roll the first ball to the starting distance.",
-                    "Roll the next ball slightly past it.",
-                    "Keep each next ball one foot farther.",
-                    "Stop before one races outside the corridor."
-                ])
-            }
-
-            if executionSteps.count > 1 {
-                return .ladder(steps: Array(executionSteps.prefix(4)))
-            }
-
-            return .manual(label: metadata.targetMetric)
-        case .challenge:
-            switch canonicalDrill?.id {
-            case "n1":
-                return .streak(count: 5, unit: "clean strikes")
-            case "n7":
-                return .repTarget(count: 6, unit: "clean exits")
-            case "p3":
-                return .timeTrial(targetCount: 6, unit: "clean starts")
-            case "r15":
-                return .streak(count: 5, unit: "fairway starts")
-            case "r17":
-                return .ladder(steps: [
-                    "Hit the easiest fairway window.",
-                    "Hit the middle fairway window.",
-                    "Hit the hardest fairway window."
-                ])
-            case "p6":
-                return .streak(count: 3, unit: "balls in the zone")
-            default:
-                return .repTarget(count: max(defaultCount, 1), unit: "clean attempts")
-            }
-        case .checklist:
-            if canonicalDrill?.id == "r14" {
-                return .checklist(items: [
-                    "Hit the low window.",
-                    "Hit the stock window.",
-                    "Hit the high window."
-                ])
-            }
-
-            if canonicalDrill?.id == "p4" {
-                return .checklist(items: [
-                    "Complete station one.",
-                    "Complete station two.",
-                    "Complete station three.",
-                    "Complete station four."
-                ])
-            }
-
-            let items = executionSteps.isEmpty ? [metadata.executionCue] : executionSteps
-            return .checklist(items: Array(items.prefix(5)))
+        canonicalDrill: GarageDrill?
+    ) -> String? {
+        let count = drill.defaultRepCount > 0 ? drill.defaultRepCount : (canonicalDrill?.defaultRepCount ?? 0)
+        guard count > 0 else {
+            return nil
         }
+
+        let lowerBound = max(count, 1)
+        let upperBound = max(lowerBound + 5, Int((Double(lowerBound) * 1.4).rounded()))
+        return "Suggested volume: \(lowerBound)-\(upperBound) focused swings."
     }
 
-    private static func finishRule(for goal: GarageDrillGoal) -> String {
-        switch goal {
-        case .timed(let durationSeconds):
-            return "Finish when the \(formattedDuration(durationSeconds)) block is complete."
-        case .repTarget(let count, let unit):
-            return "Finish after \(count) \(unit)."
-        case .streak(let count, let unit):
-            return "Finish when you reach \(count) \(unit) in a row."
-        case .timeTrial(let targetCount, let unit):
-            return "Finish when \(targetCount) \(unit) are recorded."
-        case .ladder:
-            return "Finish when every ladder step is complete."
-        case .checklist:
-            return "Finish when every checklist item is complete."
-        case .manual(let label):
-            return label
-        }
+    private static func finishRule(forDurationSeconds durationSeconds: Int) -> String {
+        "Finish when the \(formattedDuration(durationSeconds)) timed block is complete."
     }
 
     private static func cleanTitle(_ value: String, fallback: String) -> String {
@@ -218,7 +139,7 @@ extension GarageDrillGoal {
     var railSummary: String {
         switch self {
         case .timed(let durationSeconds):
-            return "\(GarageDrillGoalFormat.duration(durationSeconds)) timed"
+            return GarageDrillGoalFormat.duration(durationSeconds)
         case .repTarget(let count, let unit):
             return "\(count) \(unit)"
         case .streak(let count, let unit):
