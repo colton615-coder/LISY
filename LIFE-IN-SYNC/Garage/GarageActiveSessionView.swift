@@ -11,7 +11,6 @@ struct GarageActiveSessionView: View {
     @State private var drillElapsedSeconds: [UUID: Int] = [:]
     @State private var drillReviews: [UUID: GaragePostDrillReviewDraft] = [:]
     @State private var pendingDrillReview: GaragePendingDrillReview?
-    @State private var isDrillDetailExpanded = false
     @State private var noteEditor: DrillNoteEditorState?
     @State private var resolver: GarageDrillResolverState?
     @State private var summaryDraft: GarageSessionSummaryDraft?
@@ -42,14 +41,8 @@ struct GarageActiveSessionView: View {
                     totalCount: session.totalDrillCount,
                     drill: currentDrillPresentation,
                     railItems: focusRailItems,
-                    isDetailExpanded: isDrillDetailExpanded,
                     noteTitle: focusNoteCtaTitle,
                     primaryCtaTitle: focusPrimaryCtaTitle,
-                    onToggleDetail: {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                            isDrillDetailExpanded.toggle()
-                        }
-                    },
                     onSelectRailDrill: selectDrill(at:),
                     onNote: {
                         if let currentEntry {
@@ -279,7 +272,6 @@ struct GarageActiveSessionView: View {
         garageTriggerSelection()
         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
             currentDrillIndex = index
-            isDrillDetailExpanded = false
         }
     }
 
@@ -475,7 +467,6 @@ struct GarageActiveSessionView: View {
         if let nextIndex = nextUnresolvedDrillIndex(after: currentDrillIndex) {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                 currentDrillIndex = nextIndex
-                isDrillDetailExpanded = false
                 phase = .focusRoom
             }
         } else {

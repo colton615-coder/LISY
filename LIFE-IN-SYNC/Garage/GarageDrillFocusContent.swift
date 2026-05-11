@@ -5,6 +5,8 @@ struct GarageDrillFocusContent: Hashable {
     let task: String
     let setupLine: String
     let executionCue: String
+    let setupSteps: [String]
+    let cueSteps: [String]
     let goal: GarageDrillGoal
     let mode: GarageDrillFocusMode
     let durationSeconds: Int
@@ -73,6 +75,8 @@ enum GarageDrillFocusContentAdapter {
             task: metadata.commandCopy,
             setupLine: prescription.activeSetupReminder ?? metadata.setupLine,
             executionCue: prescription.activeCue ?? metadata.executionCue,
+            setupSteps: setupSteps(detail: detail, prescription: prescription, fallback: metadata.setupLine),
+            cueSteps: cueSteps(detail: detail, prescription: prescription, fallback: metadata.executionCue),
             goal: goal,
             mode: mode,
             durationSeconds: durationSeconds,
@@ -147,6 +151,58 @@ enum GarageDrillFocusContentAdapter {
         values
             .map(\.garageFocusContentTrimmed)
             .filter { $0.isEmpty == false }
+    }
+
+    private static func setupSteps(
+        detail: GarageDrillFocusDetail,
+        prescription: GarageDrillPrescription,
+        fallback: String
+    ) -> [String] {
+        let source = cleanLines(detail.setup)
+        if source.isEmpty == false {
+            return Array(source.prefix(5))
+        }
+
+        let reminder = prescription.activeSetupReminder?.garageFocusContentTrimmed ?? ""
+        if reminder.isEmpty == false {
+            return bulletSteps(from: reminder)
+        }
+
+        return bulletSteps(from: fallback)
+    }
+
+    private static func cueSteps(
+        detail: GarageDrillFocusDetail,
+        prescription: GarageDrillPrescription,
+        fallback: String
+    ) -> [String] {
+        let source = cleanLines(detail.execution)
+        if source.isEmpty == false {
+            return Array(source.prefix(4))
+        }
+
+        let reminder = prescription.activeCue?.garageFocusContentTrimmed ?? ""
+        if reminder.isEmpty == false {
+            return bulletSteps(from: reminder)
+        }
+
+        return bulletSteps(from: fallback)
+    }
+
+    private static func bulletSteps(from value: String) -> [String] {
+        let trimmed = value.garageFocusContentTrimmed
+        if trimmed.isEmpty {
+            return []
+        }
+
+        let split = trimmed
+            .split(whereSeparator: { [".", ";", "|", "\n", "•", "·", "-"].contains($0) })
+            .map { String($0).garageFocusContentTrimmed }
+            .filter { $0.isEmpty == false }
+        if split.isEmpty {
+            return [trimmed]
+        }
+        return Array(split.prefix(5))
     }
 
     private static func firstCleanLine(_ groups: [String]...) -> String? {
