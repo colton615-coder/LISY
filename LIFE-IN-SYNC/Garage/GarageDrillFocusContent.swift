@@ -178,15 +178,15 @@ enum GarageDrillFocusContentAdapter {
     ) -> [String] {
         let source = cleanLines(detail.execution)
         if source.isEmpty == false {
-            return conciseSteps(Array(source.prefix(2)), maxWords: 8)
+            return conciseSteps(Array(source.prefix(1)), maxWords: 8)
         }
 
         let reminder = prescription.activeCue?.garageFocusContentTrimmed ?? ""
         if reminder.isEmpty == false {
-            return conciseSteps(Array(bulletSteps(from: reminder).prefix(2)), maxWords: 8)
+            return conciseSteps(Array(bulletSteps(from: reminder).prefix(1)), maxWords: 8)
         }
 
-        return conciseSteps(Array(bulletSteps(from: fallback).prefix(2)), maxWords: 8)
+        return conciseSteps(Array(bulletSteps(from: fallback).prefix(1)), maxWords: 8)
     }
 
     private static func bulletSteps(from value: String) -> [String] {

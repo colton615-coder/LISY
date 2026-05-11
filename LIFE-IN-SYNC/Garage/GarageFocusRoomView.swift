@@ -60,9 +60,6 @@ struct GarageFocusRoomView: View {
                             elapsedSeconds: elapsedSeconds,
                             completionState: completionState(for: drill),
                             isTimerRunning: isTimerRunning,
-                            isRoutineVisible: isRoutineVisible,
-                            railItems: railItems,
-                            onSelectRailDrill: onSelectRailDrill,
                             onResetTimer: resetTimer
                         )
                         .padding(.horizontal, 16)
@@ -75,9 +72,6 @@ struct GarageFocusRoomView: View {
                                 elapsedSeconds: elapsedSeconds,
                                 completionState: completionState(for: drill),
                                 isTimerRunning: isTimerRunning,
-                                isRoutineVisible: isRoutineVisible,
-                                railItems: railItems,
-                                onSelectRailDrill: onSelectRailDrill,
                                 onResetTimer: resetTimer
                             )
                             .padding(.horizontal, 16)
@@ -90,6 +84,22 @@ struct GarageFocusRoomView: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .tint(FocusRoomPalette.green)
+            .sheet(isPresented: $isRoutineVisible) {
+                ScrollView {
+                    GarageFocusDrillStackRail(
+                        items: railItems,
+                        onSelectDrill: { index in
+                            isRoutineVisible = false
+                            onSelectRailDrill(index)
+                        }
+                    )
+                    .padding(16)
+                }
+                .scrollIndicators(.hidden)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(FocusRoomPalette.background)
+            }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 let state = completionState(for: drill)
                 FocusRoomBottomActions(
@@ -454,14 +464,11 @@ private struct FocusRoomExecutionSurface: View {
     let elapsedSeconds: Int
     let completionState: GarageFocusCompletionState
     let isTimerRunning: Bool
-    let isRoutineVisible: Bool
-    let railItems: [GarageFocusDrillRailItem]
-    let onSelectRailDrill: (Int) -> Void
     let onResetTimer: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            FocusRoomGoalBanner(text: drill.content.goal.goalText.garageFocusRoomSentenceTrimmed)
+            FocusRoomGoalBanner(text: drill.content.goal.focusRoomGoalText)
 
             FocusRoomTeachingSection(
                 setupSteps: drill.content.setupSteps,
@@ -475,14 +482,6 @@ private struct FocusRoomExecutionSurface: View {
                 isTimerRunning: isTimerRunning,
                 onReset: onResetTimer
             )
-
-            if isRoutineVisible {
-                GarageFocusDrillStackRail(
-                    items: railItems,
-                    onSelectDrill: onSelectRailDrill
-                )
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
         }
     }
 }
@@ -495,38 +494,42 @@ private struct GarageFocusHeroContainer: View {
     let onReset: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            FocusRoomCompactTracker(
-                goal: content.goal,
-                elapsedSeconds: elapsedSeconds,
-                isReady: completionState == .ready || completionState == .completed
-            )
-
-            VStack(alignment: .leading, spacing: 6) {
-                FocusRoomMiniTag(
-                    title: "State",
-                    value: timerControlTitle
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                FocusRoomCompactTracker(
+                    goal: content.goal,
+                    elapsedSeconds: elapsedSeconds,
+                    isReady: completionState == .ready || completionState == .completed,
+                    style: .expanded
                 )
-                FocusRoomMiniTag(
-                    title: "Target",
-                    value: content.goal.trackerTargetText
+
+                FocusRoomTrackerTags(
+                    stateText: timerControlTitle,
+                    targetText: content.goal.trackerTargetText,
+                    style: .expanded
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                resetButton
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    FocusRoomCompactTracker(
+                        goal: content.goal,
+                        elapsedSeconds: elapsedSeconds,
+                        isReady: completionState == .ready || completionState == .completed,
+                        style: .compact
+                    )
+                    resetButton
+                }
+
+                FocusRoomTrackerTags(
+                    stateText: timerControlTitle,
+                    targetText: content.goal.trackerTargetText,
+                    style: .compact
                 )
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Button {
-                onReset()
-            } label: {
-                Image(systemName: "arrow.counterclockwise")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(FocusRoomPalette.primaryText)
-                    .frame(width: 34, height: 34)
-                    .background(FocusRoomPalette.panel.opacity(0.95), in: Circle())
-                    .overlay(Circle().stroke(FocusRoomPalette.border, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-            .opacity(elapsedSeconds > 0 ? 1 : 0.38)
-            .disabled(elapsedSeconds == 0)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
@@ -546,6 +549,24 @@ private struct GarageFocusHeroContainer: View {
         }
         return elapsedSeconds > 0 ? "Resume" : "Start"
     }
+
+    @ViewBuilder
+    private var resetButton: some View {
+        if elapsedSeconds > 0 {
+            Button {
+                onReset()
+            } label: {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(FocusRoomPalette.primaryText)
+                    .frame(width: 34, height: 34)
+                    .background(FocusRoomPalette.panel.opacity(0.95), in: Circle())
+                    .overlay(Circle().stroke(FocusRoomPalette.border, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Reset timer")
+        }
+    }
 }
 
 private struct FocusRoomTeachingSection: View {
@@ -563,7 +584,7 @@ private struct FocusRoomTeachingSection: View {
             FocusRoomBulletBlock(
                 title: "CUE",
                 tint: FocusRoomPalette.yellow,
-                steps: Array(cueSteps.prefix(2))
+                steps: Array(cueSteps.prefix(1))
             )
         }
         .padding(.horizontal, 4)
@@ -601,35 +622,43 @@ private struct FocusRoomBulletBlock: View {
 }
 
 private struct FocusRoomCompactTracker: View {
+    enum Style {
+        case expanded
+        case compact
+    }
+
     let goal: GarageDrillGoal
     let elapsedSeconds: Int
     let isReady: Bool
+    let style: Style
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: style == .expanded ? 10 : 8) {
             FocusRoomCompactRing(
                 primary: goal.trackerPrimaryValue(elapsedSeconds: elapsedSeconds),
                 progress: goal.trackerProgress(elapsedSeconds: elapsedSeconds, isReady: isReady),
                 isReady: isReady
             )
-            .frame(width: 76, height: 76)
+            .frame(width: style == .expanded ? 76 : 58, height: style == .expanded ? 76 : 58)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Tracker")
-                    .font(.system(size: 10, weight: .black, design: .rounded))
+                    .font(.system(size: style == .expanded ? 10 : 9, weight: .black, design: .rounded))
                     .textCase(.uppercase)
-                    .tracking(1.2)
+                    .tracking(style == .expanded ? 1.2 : 0.8)
                     .foregroundStyle(FocusRoomPalette.secondaryText)
                 Text(goal.trackerPrimaryValue(elapsedSeconds: elapsedSeconds))
-                    .font(.system(size: 26, weight: .black, design: .monospaced))
+                    .font(.system(size: style == .expanded ? 26 : 22, weight: .black, design: .monospaced))
                     .foregroundStyle(FocusRoomPalette.primaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
-                Text(goal.trackerTargetText)
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(FocusRoomPalette.yellow)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                if style == .expanded {
+                    Text(goal.trackerTargetText)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(FocusRoomPalette.yellow)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -664,24 +693,58 @@ private struct FocusRoomCompactRing: View {
     }
 }
 
-private struct FocusRoomMiniTag: View {
-    let title: String
-    let value: String
+private struct FocusRoomTrackerTags: View {
+    enum Style {
+        case expanded
+        case compact
+    }
+
+    let stateText: String
+    let targetText: String
+    let style: Style
 
     var body: some View {
-        HStack(spacing: 6) {
-            Text(title)
-                .font(.system(size: 9, weight: .black, design: .rounded))
-                .textCase(.uppercase)
-                .tracking(1.1)
-                .foregroundStyle(FocusRoomPalette.secondaryText)
+        HStack(spacing: style == .expanded ? 6 : 5) {
+            FocusRoomMiniTag(
+                title: "State",
+                value: stateText,
+                style: style == .expanded ? .expanded : .compact
+            )
+            FocusRoomMiniTag(
+                title: "Goal",
+                value: targetText.garageFocusRoomCompactLabel,
+                style: style == .expanded ? .expanded : .compact
+            )
+        }
+    }
+}
+
+private struct FocusRoomMiniTag: View {
+    enum Style {
+        case expanded
+        case compact
+    }
+
+    let title: String
+    let value: String
+    let style: Style
+
+    var body: some View {
+        HStack(spacing: style == .expanded ? 6 : 4) {
+            if style == .expanded {
+                Text(title)
+                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .textCase(.uppercase)
+                    .tracking(1.1)
+                    .foregroundStyle(FocusRoomPalette.secondaryText)
+            }
             Text(value)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .font(.system(size: style == .expanded ? 11 : 10, weight: .bold, design: .rounded))
                 .foregroundStyle(FocusRoomPalette.primaryText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, style == .expanded ? 8 : 7)
         .padding(.vertical, 5)
         .background(FocusRoomPalette.panel.opacity(0.88), in: Capsule())
         .overlay(
@@ -692,22 +755,41 @@ private struct FocusRoomMiniTag: View {
 }
 
 private extension GarageDrillGoal {
+    var focusRoomGoalText: String {
+        switch self {
+        case .timed(let durationSeconds):
+            return "Timer · \(formattedMinutes(durationSeconds))"
+        case .repTarget(let count, let unit):
+            return "\(count) \(unit)"
+        case .streak(let count, let unit):
+            return "\(count) \(unit)"
+        case .timeTrial(let targetCount, let unit):
+            return "\(targetCount) \(unit)"
+        case .ladder(let steps):
+            return "\(steps.count) steps"
+        case .checklist(let items):
+            return "\(items.count) items"
+        case .manual(let label):
+            return label.garageFocusRoomSentenceTrimmed.garageFocusRoomLimitedWords(7)
+        }
+    }
+
     var trackerTargetText: String {
         switch self {
         case .timed(let durationSeconds):
-            return "Target \(formattedTime(durationSeconds))"
+            return formattedTime(durationSeconds)
         case .repTarget(let count, let unit):
-            return "Target \(count) \(unit)"
+            return "\(count) \(unit)"
         case .streak(let count, let unit):
-            return "Target \(count) \(unit)"
+            return "\(count) \(unit)"
         case .timeTrial(let targetCount, let unit):
-            return "Target \(targetCount) \(unit)"
+            return "\(targetCount) \(unit)"
         case .ladder(let steps):
-            return "Target \(steps.count) steps"
+            return "\(steps.count) steps"
         case .checklist(let items):
-            return "Target \(items.count) items"
+            return "\(items.count) items"
         case .manual(let label):
-            return label.garageFocusRoomSentenceTrimmed
+            return label.garageFocusRoomSentenceTrimmed.garageFocusRoomLimitedWords(5)
         }
     }
 
@@ -748,6 +830,11 @@ private func formattedTime(_ value: Int) -> String {
     return "\(minutes):\(String(format: "%02d", seconds))"
 }
 
+private func formattedMinutes(_ value: Int) -> String {
+    let minutes = max(Int(ceil(Double(max(value, 0)) / 60.0)), 1)
+    return "\(minutes) min"
+}
+
 private struct FocusRoomBottomActions: View {
     let noteTitle: String
     let primaryTitle: String
@@ -757,34 +844,37 @@ private struct FocusRoomBottomActions: View {
     let onPrimary: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            FocusRoomDockButton(
-                title: noteTitle,
-                systemImage: noteTitle == GarageFocusRoomCopy.focusRoomNoteAddCta ? "square.and.pencil" : "note.text",
-                action: onNote
-            )
+        HStack(alignment: .center, spacing: 10) {
+            HStack(spacing: 8) {
+                FocusRoomDockButton(
+                    title: noteTitle,
+                    systemImage: noteTitle == GarageFocusRoomCopy.focusRoomNoteAddCta ? "square.and.pencil" : "note.text",
+                    action: onNote
+                )
 
-            FocusRoomDockButton(
-                title: "Skip Drill",
-                systemImage: "forward.end.fill",
-                action: onSkip
-            )
+                FocusRoomDockButton(
+                    title: "Skip Drill",
+                    systemImage: "forward.end.fill",
+                    action: onSkip
+                )
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Button {
                 garageTriggerImpact(.medium)
                 onPrimary()
             } label: {
-                Label(primaryTitle, systemImage: primarySystemImage)
-                    .font(.system(size: 14, weight: .black, design: .rounded))
-                    .lineLimit(1)
+                Image(systemName: primarySystemImage)
+                    .font(.system(size: 21, weight: .black))
                     .minimumScaleFactor(0.7)
                     .foregroundStyle(FocusRoomPalette.background)
-                    .frame(maxWidth: .infinity, minHeight: 46)
-                    .background(FocusRoomPalette.green, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .frame(width: 58, height: 58)
+                    .background(FocusRoomPalette.green, in: Circle())
                     .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        Circle()
                             .stroke(Color.white.opacity(0.15), lineWidth: 1)
                     )
+                    .shadow(color: FocusRoomPalette.green.opacity(0.32), radius: 14, x: 0, y: 6)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(primaryTitle)
@@ -843,6 +933,18 @@ private extension String {
     var garageFocusRoomSentenceTrimmed: String {
         trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+    }
+
+    var garageFocusRoomCompactLabel: String {
+        garageFocusRoomSentenceTrimmed.garageFocusRoomLimitedWords(4)
+    }
+
+    func garageFocusRoomLimitedWords(_ limit: Int) -> String {
+        let words = split(whereSeparator: \.isWhitespace).map(String.init)
+        guard words.count > limit else {
+            return garageFocusRoomSentenceTrimmed
+        }
+        return words.prefix(limit).joined(separator: " ")
     }
 }
 
