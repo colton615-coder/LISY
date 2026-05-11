@@ -1390,6 +1390,17 @@ extension GarageRoutine {
 }
 
 extension GarageDrill {
+    func makeActivePracticeSession() -> ActivePracticeSession {
+        let template = makePracticeTemplate()
+        let prescriptions = Dictionary(uniqueKeysWithValues: template.drills.enumerated().map { offset, drill in
+            (drill.id, GarageDrillCatalog.defaultPrescription(for: drill, sessionOrder: offset))
+        })
+        return ActivePracticeSession(
+            template: template,
+            prescriptionsByDrillID: prescriptions
+        )
+    }
+
     func makePracticeTemplate() -> PracticeTemplate {
         PracticeTemplate(
             id: GarageCatalogBridge.uuid(for: "prescription-template:\(id)"),

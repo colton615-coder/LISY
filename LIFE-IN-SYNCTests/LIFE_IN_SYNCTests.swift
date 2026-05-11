@@ -47,6 +47,91 @@ struct LIFE_IN_SYNCTests {
         #expect(record.notes == "Ball started left.")
     }
 
+    @Test func garageCanonicalDrillBuildsDefaultPrescriptionWithoutMutatingCatalogTruth() async throws {
+        let drill = try #require(DrillVault.drill(for: "r13"))
+        let practiceDrill = drill.makeGeneratedPracticeTemplateDrill(seedKey: "test:r13")
+        let prescription = GarageDrillCatalog.defaultPrescription(for: practiceDrill)
+
+        #expect(prescription.selectedClub == drill.clubRange.displayName)
+        #expect(prescription.mode == .goal)
+        #expect(prescription.targetCount == 3)
+        #expect(prescription.goalText.contains("3 wedge carry numbers"))
+    }
+
+    @Test func garageCustomDrillFallsBackToTransientPrescriptionLayer() async throws {
+        let customDrill = PracticeTemplateDrill(
+            title: "Custom Contact Builder",
+            focusArea: "Contact",
+            targetClub: "7 Iron",
+            defaultRepCount: 12
+        )
+        let prescription = GarageDrillCatalog.defaultPrescription(for: customDrill)
+
+        #expect(prescription.selectedClub == "7 Iron")
+        #expect(prescription.mode == .reps)
+        #expect(prescription.targetCount == 12)
+        #expect(prescription.goalText.contains("12"))
+    }
+
+    @Test func garageDirectorySummaryStaysCompactAndAvoidsLegacySessionCopy() async throws {
+        let drill = try #require(DrillVault.drill(for: "n1"))
+        let practiceDrill = drill.makeGeneratedPracticeTemplateDrill(seedKey: "test:n1")
+        let summary = practiceDrill.metadataSummary.lowercased()
+
+        #expect(summary.contains("min") == false)
+        #expect(summary.contains("pass") == false)
+        #expect(summary.contains("towel") == false)
+    }
+
+    @Test func garageFocusRoomContentUsesPrescriptionGoalAndCompactExecutionFields() async throws {
+        let drill = try #require(DrillVault.drill(for: "r15"))
+        let practiceDrill = drill.makeGeneratedPracticeTemplateDrill(seedKey: "test:r15")
+        let base = GarageDrillCatalog.defaultPrescription(for: practiceDrill)
+        let prescription = GarageDrillPrescription(
+            drillID: practiceDrill.id,
+            selectedClub: "Driver",
+            mode: .challenge,
+            durationSeconds: nil,
+            targetCount: 4,
+            goalText: "Own 4 fairway starts.",
+            intensity: .high,
+            activeCue: "Hold the finish.",
+            activeSetupReminder: "Pick one fairway gate.",
+            scoringBehavior: .challengeCompletion,
+            progressionNotes: "Reset if the finish gets loose.",
+            sessionOrder: 0
+        )
+        let detail = GarageDrillFocusDetails.detail(for: practiceDrill)
+        let content = GarageDrillFocusContentAdapter.content(
+            for: practiceDrill,
+            detail: detail,
+            prescription: prescription
+        )
+
+        #expect(content.targetMetric == "Own 4 fairway starts.")
+        #expect(content.setupLine == "Pick one fairway gate.")
+        #expect(content.executionCue == "Hold the finish.")
+        #expect(content.finishRule.lowercased().contains("pass") == false)
+        #expect(content.goal.goalText == "Reach 4 goal reps in a row.")
+        _ = base
+    }
+
+    @Test func garageGeneratedPlanKeepsPrescriptionSidecarSeparateFromDrillDefinitions() async throws {
+        let plan = GarageLocalCoachPlanner.generatePlan(
+            for: .range,
+            recentRecords: [],
+            desiredDurationMinutes: 24,
+            desiredDrillCount: 3
+        )
+        let session = plan.makeActivePracticeSession()
+
+        #expect(plan.drills.isEmpty == false)
+        #expect(plan.prescriptionsByDrillID.count == plan.drills.count)
+        #expect(session.drills.count == plan.drills.count)
+        #expect(session.drills.allSatisfy { session.prescriptionsByDrillID[$0.id] != nil })
+        #expect(plan.drills.map(\.title) == session.drills.map(\.title))
+    }
+
     @Test func garageCourseMappingReusesTheActiveSessionLedger() async throws {
         let container = try makeInMemoryContainer()
         let context = container.mainContext

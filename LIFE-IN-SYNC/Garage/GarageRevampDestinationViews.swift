@@ -32,6 +32,7 @@ struct GarageRoutineReviewPlan: Identifiable, Hashable {
     let purpose: String
     let note: String?
     let drills: [PracticeTemplateDrill]
+    let prescriptionsByDrillID: [UUID: GarageDrillPrescription]
     let source: Source
     let createdAt: Date
 
@@ -45,6 +46,7 @@ struct GarageRoutineReviewPlan: Identifiable, Hashable {
         self.purpose = fallbackPurpose?.isEmpty == false ? fallbackPurpose ?? "Saved routine" : "Saved routine"
         self.note = nil
         self.drills = template.drills
+        self.prescriptionsByDrillID = [:]
         self.source = .saved
         self.createdAt = template.createdAt
     }
@@ -58,6 +60,7 @@ struct GarageRoutineReviewPlan: Identifiable, Hashable {
         self.purpose = generatedPlan.objective
         self.note = note.isEmpty ? nil : note
         self.drills = generatedPlan.drills
+        self.prescriptionsByDrillID = generatedPlan.prescriptionsByDrillID
         self.source = .generated
         self.createdAt = .now
     }
@@ -93,6 +96,13 @@ struct GarageRoutineReviewPlan: Identifiable, Hashable {
             environment: environment.rawValue,
             drills: drills,
             createdAt: createdAt
+        )
+    }
+
+    func makeActivePracticeSession() -> ActivePracticeSession {
+        ActivePracticeSession(
+            template: makePracticeTemplate(),
+            prescriptionsByDrillID: prescriptionsByDrillID.isEmpty ? nil : prescriptionsByDrillID
         )
     }
 }
@@ -207,6 +217,9 @@ struct GarageEnvironmentDrillPlansView: View {
             objective: "Manual routine compiled from the full Garage drill directory.",
             coachNote: "Review the selected drills, then start the session when the sequence matches the work you want.",
             drills: selected.map { $0.practiceDrill },
+            prescriptionsByDrillID: Dictionary(uniqueKeysWithValues: selected.enumerated().map { offset, drill in
+                (drill.practiceDrill.id, GarageDrillCatalog.defaultPrescription(for: drill.practiceDrill, sessionOrder: offset))
+            }),
             plannedDurationMinutes: selected.reduce(0) { partialResult, drill in
                 partialResult + GarageDrillFocusDetails.detail(for: drill.practiceDrill).estimatedMinutes
             }

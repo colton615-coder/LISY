@@ -36,7 +36,8 @@ enum GarageDrillGoal: Hashable {
 enum GarageDrillFocusContentAdapter {
     static func content(
         for drill: PracticeTemplateDrill,
-        detail: GarageDrillFocusDetail
+        detail: GarageDrillFocusDetail,
+        prescription: GarageDrillPrescription? = nil
     ) -> GarageDrillFocusContent {
         let canonicalDrill = DrillVault.canonicalDrill(for: drill)
         let metadata = GarageDrillFocusDetails.metadata(for: drill, detail: detail)
@@ -45,7 +46,8 @@ enum GarageDrillFocusContentAdapter {
             for: drill,
             detail: detail,
             canonicalDrill: canonicalDrill,
-            metadata: metadata
+            metadata: metadata,
+            prescription: prescription ?? GarageDrillCatalog.defaultPrescription(for: drill)
         )
     }
 
@@ -53,106 +55,87 @@ enum GarageDrillFocusContentAdapter {
         for drill: PracticeTemplateDrill,
         detail: GarageDrillFocusDetail,
         canonicalDrill: GarageDrill?,
-        metadata: GarageDrillFocusMetadata
+        metadata: GarageDrillFocusMetadata,
+        prescription: GarageDrillPrescription
     ) -> GarageDrillFocusContent {
         let title = cleanTitle(canonicalDrill?.title ?? drill.title, fallback: "Practice Drill")
-        let durationSeconds = metadata.durationSecondsOverride ?? max(detail.estimatedMinutes, 1) * 60
+        let durationSeconds = prescription.durationSeconds ?? metadata.durationSecondsOverride ?? max(detail.estimatedMinutes, 1) * 60
         let goal = goal(
-            for: drill,
-            canonicalDrill: canonicalDrill,
-            metadata: metadata,
+            prescription: prescription,
             durationSeconds: durationSeconds
         )
-        let mode = focusMode(for: drill, metadata: metadata)
+        let mode = focusMode(for: prescription)
         let watchFor = firstCleanLine(detail.commonMisses)
-        let guidanceText = suggestedVolumeText(for: drill, canonicalDrill: canonicalDrill)
+        let guidanceText = guidanceText(for: prescription)
 
         return GarageDrillFocusContent(
             title: title,
             task: metadata.commandCopy,
-            setupLine: metadata.setupLine,
-            executionCue: metadata.executionCue,
+            setupLine: prescription.activeSetupReminder ?? metadata.setupLine,
+            executionCue: prescription.activeCue ?? metadata.executionCue,
             goal: goal,
             mode: mode,
             durationSeconds: durationSeconds,
-            targetMetric: metadata.targetMetric,
+            targetMetric: prescription.goalText,
             guidanceText: guidanceText,
             watchFor: watchFor,
-            finishRule: finishRule(forDurationSeconds: durationSeconds),
+            finishRule: finishRule(for: prescription, durationSeconds: durationSeconds),
             teachingDetail: metadata.teachingDetail,
-            reviewSummary: metadata.reviewSummary,
+            reviewSummary: prescription.progressionNotes ?? metadata.reviewSummary,
             diagramKey: metadata.diagramKey
         )
     }
 
-    private static func suggestedVolumeText(
-        for drill: PracticeTemplateDrill,
-        canonicalDrill: GarageDrill?
-    ) -> String? {
-        let count = drill.defaultRepCount > 0 ? drill.defaultRepCount : (canonicalDrill?.defaultRepCount ?? 0)
-        guard count > 0 else {
-            return nil
+    private static func guidanceText(for prescription: GarageDrillPrescription) -> String? {
+        switch prescription.mode {
+        case .timed:
+            return "Stay disciplined for the full timer."
+        case .reps:
+            return prescription.targetCount.map { "Complete \($0) honest reps before moving on." }
+        case .goal:
+            return "Judge success by the stated goal, not by speed."
+        case .challenge:
+            return "Pressure only counts when the standard stays honest."
+        case .checklist:
+            return prescription.targetCount.map { "Work through \($0) checklist items with no skipped setup." }
         }
-
-        let lowerBound = max(count, 1)
-        let upperBound = max(lowerBound + 5, Int((Double(lowerBound) * 1.4).rounded()))
-        return "Suggested volume: \(lowerBound)-\(upperBound) focused swings."
     }
 
-    private static func finishRule(forDurationSeconds durationSeconds: Int) -> String {
-        "Suggested: \(formattedDuration(durationSeconds)) of focused work."
+    private static func finishRule(for prescription: GarageDrillPrescription, durationSeconds: Int) -> String {
+        switch prescription.mode {
+        case .timed:
+            return "Finish the full \(formattedDuration(durationSeconds)) block."
+        case .reps:
+            return "Stop when the rep target is honest."
+        case .goal:
+            return "Stop when the goal is met or the standard breaks down."
+        case .challenge:
+            return "If the pressure standard breaks, reset honestly."
+        case .checklist:
+            return "Close the drill only after each checklist item is covered."
+        }
     }
 
     private static func goal(
-        for drill: PracticeTemplateDrill,
-        canonicalDrill: GarageDrill?,
-        metadata: GarageDrillFocusMetadata,
+        prescription: GarageDrillPrescription,
         durationSeconds: Int
     ) -> GarageDrillGoal {
-        if let authorityGoal = metadata.authorityGoal {
-            return drillGoal(from: authorityGoal, durationSeconds: durationSeconds)
-        }
-
-        switch metadata.mode {
-        case .process:
-            let count = max(drill.defaultRepCount, canonicalDrill?.defaultRepCount ?? 0)
-            return count > 0 ? .repTarget(count: count, unit: "honest attempts") : .timed(durationSeconds: durationSeconds)
-        case .target:
-            return .repTarget(
-                count: max(drill.defaultRepCount, canonicalDrill?.defaultRepCount ?? 1, 1),
-                unit: "target reps"
-            )
-        case .pressureTest:
-            return .streak(
-                count: max(drill.defaultRepCount, canonicalDrill?.defaultRepCount ?? 1, 1),
-                unit: "pressure reps"
-            )
-        }
-    }
-
-    private static func drillGoal(
-        from authorityGoal: GarageDrillAuthorityGoal,
-        durationSeconds: Int
-    ) -> GarageDrillGoal {
-        switch authorityGoal {
+        switch prescription.mode {
         case .timed:
             return .timed(durationSeconds: durationSeconds)
-        case .reps(let count, let unit):
-            return .repTarget(count: max(count, 1), unit: unit)
-        case .goal(let count, let unit):
-            return .repTarget(count: max(count, 1), unit: unit)
-        case .challenge(let count, let unit):
-            return .streak(count: max(count, 1), unit: unit)
-        case .checklist(let items):
-            return .checklist(items: items.isEmpty ? ["Complete the drill standard"] : items)
+        case .reps:
+            return .repTarget(count: max(prescription.targetCount ?? 1, 1), unit: "reps")
+        case .goal:
+            return .manual(label: prescription.goalText)
+        case .challenge:
+            return .streak(count: max(prescription.targetCount ?? 1, 1), unit: "goal reps")
+        case .checklist:
+            return .checklist(items: (prescription.targetCount ?? 1) > 1 ? Array(repeating: "Checkpoint", count: prescription.targetCount ?? 1) : [prescription.goalText])
         }
     }
 
-    private static func focusMode(
-        for drill: PracticeTemplateDrill,
-        metadata: GarageDrillFocusMetadata
-    ) -> GarageDrillFocusMode {
-        return metadata.mode
+    private static func focusMode(for prescription: GarageDrillPrescription) -> GarageDrillFocusMode {
+        prescription.mode.focusMode
     }
 
     private static func cleanTitle(_ value: String, fallback: String) -> String {

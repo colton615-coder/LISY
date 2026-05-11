@@ -330,6 +330,52 @@ enum GarageDrillFocusDetails {
         }
     }
 
+    static func instructionContent(
+        for drill: GarageDrill,
+        detail: GarageDrillFocusDetail
+    ) -> GarageDrillInstructionContent {
+        let metadata = metadata(for: drill, detail: detail)
+        return GarageDrillInstructionContent(
+            whatItTrains: detail.purpose,
+            whyItMatters: cleanLine(detail.successCriteria.first) ?? drill.purpose,
+            setupWalkthrough: detail.setup,
+            keyCues: [drill.abstractFeelCue] + detail.execution.prefix(2),
+            commonMistakes: detail.commonMisses,
+            variations: detail.successCriteria,
+            suggestedClubs: [drill.clubRange.displayName],
+            supportedModes: GarageDrillCatalog.defaultPrescription(
+                for: drill.makeGeneratedPracticeTemplateDrill(seedKey: "instruction:\(drill.id)")
+            ).mode.mapToArray,
+            recommendedUseCases: recommendedUseCases(for: drill, metadata: metadata)
+        )
+    }
+
+    static func instructionContent(
+        for drill: PracticeTemplateDrill,
+        detail: GarageDrillFocusDetail
+    ) -> GarageDrillInstructionContent {
+        if let canonicalDrill = DrillVault.canonicalDrill(for: drill) {
+            return instructionContent(for: canonicalDrill, detail: detail)
+        }
+
+        let mode = GarageDrillCatalog.defaultPrescription(for: drill).mode
+        let targetClub = drill.targetClub.trimmingCharacters(in: .whitespacesAndNewlines)
+        return GarageDrillInstructionContent(
+            whatItTrains: detail.purpose,
+            whyItMatters: cleanLine(detail.successCriteria.first) ?? "Clarifies the custom practice standard before launch.",
+            setupWalkthrough: detail.setup,
+            keyCues: detail.execution,
+            commonMistakes: detail.commonMisses,
+            variations: detail.successCriteria,
+            suggestedClubs: targetClub.isEmpty ? [] : [targetClub],
+            supportedModes: [mode],
+            recommendedUseCases: [
+                "Use when you already know the drill and only need a clean execution setup.",
+                "Promote into a saved routine only after the goal and setup stay consistent."
+            ]
+        )
+    }
+
     static func detail(for drill: GarageDrill) -> GarageDrillFocusDetail {
         switch drill.id {
         case "n1":
@@ -674,6 +720,30 @@ enum GarageDrillFocusDetails {
             .trimmingCharacters(in: CharacterSet(charactersIn: "."))
         return cleaned.isEmpty ? nil : cleaned
     }
+
+    private static func recommendedUseCases(
+        for drill: GarageDrill,
+        metadata: GarageDrillFocusMetadata
+    ) -> [String] {
+        var useCases = [
+            "Use when \(drill.faultType.sensoryDescription.lowercased()) keeps showing up in practice."
+        ]
+
+        switch metadata.mode {
+        case .process:
+            useCases.append("Best for rehearsals, clean contact blocks, and low-friction station work.")
+        case .target:
+            useCases.append("Best when you want measurable windows, start lines, or carry numbers.")
+        case .pressureTest:
+            useCases.append("Best late in the session when you want honest consequence and tighter standards.")
+        }
+
+        return useCases
+    }
+}
+
+private extension GarageDrillSessionMode {
+    var mapToArray: [GarageDrillSessionMode] { [self] }
 }
 
 #if DEBUG

@@ -640,10 +640,12 @@ private struct TimeDrillHero: View {
 
     var body: some View {
         FocusRoomTimerHeroPanel(
-            elapsedSeconds: elapsedSeconds,
+            title: panelTitle,
+            primaryValue: primaryValue,
+            secondaryValue: secondaryValue,
             progress: progress,
             isCompleted: isReady,
-            statusText: isReady ? "Time target reached" : "Suggested structure"
+            statusText: statusText
         )
     }
 
@@ -657,7 +659,62 @@ private struct TimeDrillHero: View {
     }
 
     private var progress: Double {
-        min(max(Double(elapsedSeconds) / Double(durationSeconds), 0), 1)
+        switch goal {
+        case .timed:
+            return min(max(Double(elapsedSeconds) / Double(durationSeconds), 0), 1)
+        case .repTarget, .streak, .timeTrial, .ladder, .checklist, .manual:
+            return isReady ? 1 : (elapsedSeconds > 0 ? 0.16 : 0.035)
+        }
+    }
+
+    private var panelTitle: String {
+        switch goal {
+        case .timed:
+            return "Timer"
+        case .repTarget, .streak, .timeTrial, .ladder, .checklist, .manual:
+            return "Goal"
+        }
+    }
+
+    private var primaryValue: String {
+        switch goal {
+        case .timed:
+            return formattedTime(elapsedSeconds)
+        case .repTarget(let count, let unit):
+            return "\(count) \(unit)"
+        case .streak(let count, let unit):
+            return "\(count) \(unit)"
+        case .timeTrial(let targetCount, let unit):
+            return "\(targetCount) \(unit)"
+        case .ladder(let steps):
+            return "\(steps.count) steps"
+        case .checklist(let items):
+            return "\(items.count) items"
+        case .manual(let label):
+            return label
+        }
+    }
+
+    private var secondaryValue: String {
+        switch goal {
+        case .timed(let durationSeconds):
+            return "Target \(formattedTime(durationSeconds))"
+        case .repTarget, .streak, .timeTrial, .ladder, .checklist, .manual:
+            return "Elapsed \(formattedTime(elapsedSeconds))"
+        }
+    }
+
+    private var statusText: String {
+        if isReady {
+            return "Goal reached"
+        }
+
+        switch goal {
+        case .timed:
+            return "Suggested structure"
+        case .repTarget, .streak, .timeTrial, .ladder, .checklist, .manual:
+            return "Current goal"
+        }
     }
 }
 
@@ -717,7 +774,9 @@ private struct FocusRoomTimerControls: View {
 }
 
 private struct FocusRoomTimerHeroPanel: View {
-    let elapsedSeconds: Int
+    let title: String
+    let primaryValue: String
+    let secondaryValue: String
     let progress: Double
     let isCompleted: Bool
     let statusText: String
@@ -739,7 +798,9 @@ private struct FocusRoomTimerHeroPanel: View {
 
             VStack(spacing: 14) {
                 FocusRoomCircularTimer(
-                    elapsedSeconds: elapsedSeconds,
+                    title: title,
+                    primaryValue: primaryValue,
+                    secondaryValue: secondaryValue,
                     progress: progress,
                     isCompleted: isCompleted
                 )
@@ -771,12 +832,14 @@ private struct FocusRoomTimerHeroPanel: View {
         )
         .shadow(color: Color.black.opacity(0.32), radius: 20, x: 0, y: 14)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Elapsed time \(formattedTime(elapsedSeconds)). \(statusText).")
+        .accessibilityLabel("\(title) \(primaryValue). \(secondaryValue). \(statusText).")
     }
 }
 
 private struct FocusRoomCircularTimer: View {
-    let elapsedSeconds: Int
+    let title: String
+    let primaryValue: String
+    let secondaryValue: String
     let progress: Double
     let isCompleted: Bool
 
@@ -819,22 +882,23 @@ private struct FocusRoomCircularTimer: View {
                 .padding(18)
 
             VStack(spacing: 7) {
-                Text("Elapsed")
+                Text(title)
                     .font(.system(size: 11, weight: .black, design: .rounded))
                     .textCase(.uppercase)
                     .tracking(1.6)
                     .foregroundStyle(FocusRoomPalette.secondaryText)
 
-                Text(formattedTime(elapsedSeconds))
+                Text(primaryValue)
                     .font(.system(size: 42, weight: .black, design: .monospaced))
                     .foregroundStyle(FocusRoomPalette.primaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.68)
 
-                Text(isCompleted ? "Done" : "In session")
+                Text(isCompleted ? "Done" : secondaryValue)
                     .font(.system(size: 12, weight: .black, design: .rounded))
                     .foregroundStyle(isCompleted ? FocusRoomPalette.green : FocusRoomPalette.yellow)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
             }
             .padding(.horizontal, 18)
         }

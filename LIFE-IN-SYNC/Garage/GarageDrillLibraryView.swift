@@ -8,7 +8,7 @@ struct GarageDrillLibraryView: View {
     @State private var selectedRoutine: GarageLibraryRoutineDescriptor?
     @State private var selectedDrill: GarageDrill?
 
-    let onStartRoutine: (PracticeTemplate) -> Void
+    let onStartSession: (ActivePracticeSession) -> Void
 
     var body: some View {
         GarageProScaffold(bottomPadding: 28) {
@@ -27,11 +27,14 @@ struct GarageDrillLibraryView: View {
         .sheet(item: $selectedRoutine) { routine in
             GarageRoutineDetailSheet(
                 routine: routine,
-                onStartRoutine: onStartRoutine
+                onStartSession: onStartSession
             )
         }
         .sheet(item: $selectedDrill) { drill in
-            GarageDrillDetailSheet(drill: drill)
+            GarageDrillDetailSheet(
+                drill: drill,
+                onStartSession: onStartSession
+            )
         }
     }
 
@@ -216,6 +219,7 @@ private struct GarageDrillRowCard: View {
     let drill: GarageDrill
 
     var body: some View {
+        let catalog = GarageDrillCatalog.content(for: drill)
         GarageProCard(cornerRadius: 20, padding: 12) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: drill.environment.systemImage)
@@ -230,14 +234,12 @@ private struct GarageDrillRowCard: View {
                         .foregroundStyle(GarageProTheme.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text(drill.purpose)
+                    Text(catalog.faultTargets.first ?? catalog.primarySkill)
                         .font(.footnote.weight(.medium))
                         .foregroundStyle(GarageProTheme.textSecondary)
                         .lineLimit(2)
 
-                    Text("\(drill.environment.displayName) - \(drill.garageModeDurationText) - \(drill.clubRange.displayName)")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(GarageProTheme.accent.opacity(0.88))
+                    GarageDrillDirectoryMetaRow(catalog: catalog, environment: drill.environment)
                 }
 
                 Spacer(minLength: 8)
@@ -254,7 +256,7 @@ private struct GarageRoutineDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let routine: GarageLibraryRoutineDescriptor
-    let onStartRoutine: (PracticeTemplate) -> Void
+    let onStartSession: (ActivePracticeSession) -> Void
 
     var body: some View {
         NavigationStack {
@@ -303,7 +305,7 @@ private struct GarageRoutineDetailSheet: View {
                     title: "Start Routine",
                     systemImage: "play.fill"
                 ) {
-                    onStartRoutine(routine.launchTemplate)
+                    onStartSession(ActivePracticeSession(template: routine.launchTemplate))
                     dismiss()
                 }
             }
@@ -322,16 +324,31 @@ private struct GarageRoutineDetailSheet: View {
 
 private struct GarageDrillDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var launchDraft: GarageDrillLaunchDraft
 
     let drill: GarageDrill
+    let onStartSession: (ActivePracticeSession) -> Void
 
     private var detail: GarageDrillFocusDetail {
         GarageDrillFocusDetails.detail(for: drill)
     }
 
+    private var catalog: GarageDrillCatalogContent {
+        GarageDrillCatalog.content(for: drill)
+    }
+
     private var routineTitles: String {
         let titles = DrillVault.routines(containing: drill).map(\.title)
         return titles.isEmpty ? "Reference drill" : titles.joined(separator: " • ")
+    }
+
+    init(
+        drill: GarageDrill,
+        onStartSession: @escaping (ActivePracticeSession) -> Void
+    ) {
+        self.drill = drill
+        self.onStartSession = onStartSession
+        _launchDraft = State(initialValue: GarageDrillLaunchDraft(drill: drill))
     }
 
     var body: some View {
@@ -341,8 +358,8 @@ private struct GarageDrillDetailSheet: View {
                     eyebrow: drill.libraryCategory.displayName,
                     title: drill.title,
                     subtitle: drill.purpose,
-                    value: "\(GarageDrillFocusDetails.detail(for: drill).estimatedMinutes)",
-                    valueLabel: "Minutes"
+                    value: catalog.difficulty.rawValue,
+                    valueLabel: "Difficulty"
                 ) {
                     Image(systemName: drill.environment.systemImage)
                         .font(.system(size: 24, weight: .bold))
@@ -367,20 +384,44 @@ private struct GarageDrillDetailSheet: View {
                         .foregroundStyle(GarageProTheme.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("\(drill.environment.displayName) • \(drill.clubRange.displayName) • \(routineTitles)")
+                    Text("\(drill.environment.displayName) • \(catalog.category) • \(routineTitles)")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(GarageProTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
                 GarageProCard(cornerRadius: 24, padding: 18) {
-                    Text("Setup")
+                    Text("What It Trains")
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .textCase(.uppercase)
                         .tracking(2)
                         .foregroundStyle(GarageProTheme.accent)
 
-                    ForEach(detail.setup, id: \.self) { item in
+                    Text(catalog.richInstructionContent.whatItTrains)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text("Why It Matters")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .textCase(.uppercase)
+                        .tracking(2)
+                        .foregroundStyle(GarageProTheme.accent)
+
+                    Text(catalog.richInstructionContent.whyItMatters)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                GarageProCard(cornerRadius: 24, padding: 18) {
+                    Text("Setup Walkthrough")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .textCase(.uppercase)
+                        .tracking(2)
+                        .foregroundStyle(GarageProTheme.accent)
+
+                    ForEach(catalog.richInstructionContent.setupWalkthrough, id: \.self) { item in
                         Text(item)
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(GarageProTheme.textSecondary)
@@ -389,13 +430,13 @@ private struct GarageDrillDetailSheet: View {
                 }
 
                 GarageProCard(cornerRadius: 24, padding: 18) {
-                    Text("Execution")
+                    Text("Key Cues")
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .textCase(.uppercase)
                         .tracking(2)
                         .foregroundStyle(GarageProTheme.accent)
 
-                    ForEach(detail.execution, id: \.self) { item in
+                    ForEach(catalog.richInstructionContent.keyCues, id: \.self) { item in
                         Text(item)
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(GarageProTheme.textSecondary)
@@ -404,18 +445,28 @@ private struct GarageDrillDetailSheet: View {
                 }
 
                 GarageProCard(cornerRadius: 24, padding: 18) {
-                    Text("Success Standard")
+                    Text("Common Mistakes")
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .textCase(.uppercase)
                         .tracking(2)
                         .foregroundStyle(GarageProTheme.accent)
 
-                    ForEach(detail.successCriteria, id: \.self) { item in
+                    ForEach(catalog.richInstructionContent.commonMistakes, id: \.self) { item in
                         Text(item)
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(GarageProTheme.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                }
+
+                GarageDrillLaunchConfigCard(draft: $launchDraft, catalog: catalog)
+
+                GarageProPrimaryButton(
+                    title: "Start Drill",
+                    systemImage: "play.fill"
+                ) {
+                    onStartSession(launchDraft.makeSession(for: drill))
+                    dismiss()
                 }
             }
             .navigationTitle(drill.environment.displayName)
@@ -497,6 +548,193 @@ private struct GarageLibraryRoutineDrillRow: Identifiable {
     let summary: String
 }
 
+private struct GarageDrillDirectoryMetaRow: View {
+    let catalog: GarageDrillCatalogContent
+    let environment: PracticeEnvironment
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                GarageDrillMetaPill(title: catalog.category)
+                GarageDrillMetaPill(title: catalog.difficulty.rawValue)
+                GarageDrillMetaPill(title: environment.displayName)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(catalog.supportedModes, id: \.self) { mode in
+                        GarageDrillMetaPill(title: mode.directoryLabel)
+                    }
+
+                    ForEach(catalog.equipment.prefix(2), id: \.self) { item in
+                        GarageDrillMetaPill(title: item)
+                    }
+
+                    if let club = catalog.suggestedClubs.first {
+                        GarageDrillMetaPill(title: club, isAccent: true)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct GarageDrillMetaPill: View {
+    let title: String
+    var isAccent = false
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: 11, weight: .bold, design: .rounded))
+            .foregroundStyle(isAccent ? GarageProTheme.accent : GarageProTheme.textSecondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background((isAccent ? GarageProTheme.accent.opacity(0.14) : GarageProTheme.insetSurface), in: Capsule())
+            .overlay(
+                Capsule()
+                    .stroke(isAccent ? GarageProTheme.accent.opacity(0.22) : GarageProTheme.border, lineWidth: 1)
+            )
+    }
+}
+
+private struct GarageDrillLaunchConfigCard: View {
+    @Binding var draft: GarageDrillLaunchDraft
+    let catalog: GarageDrillCatalogContent
+
+    var body: some View {
+        GarageProCard(cornerRadius: 24, padding: 18) {
+            Text("Launch Config")
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(2)
+                .foregroundStyle(GarageProTheme.accent)
+
+            GarageLaunchTextField(title: "Club", text: $draft.selectedClub, prompt: catalog.suggestedClubs.first ?? "Optional")
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Mode")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(GarageProTheme.textSecondary)
+
+                Picker("Mode", selection: $draft.mode) {
+                    ForEach(catalog.supportedModes, id: \.self) { mode in
+                        Text(mode.directoryLabel).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
+            HStack(spacing: 12) {
+                GarageLaunchStepperCard(title: "Minutes", value: $draft.durationMinutes, range: 1...20)
+                GarageLaunchStepperCard(title: "Target", value: $draft.targetCount, range: 1...20)
+            }
+
+            GarageLaunchTextField(title: "Goal", text: $draft.goalText, prompt: "Define today's goal")
+            GarageLaunchTextField(title: "Active Cue", text: $draft.activeCue, prompt: "One compact cue")
+            GarageLaunchTextField(title: "Setup Reminder", text: $draft.activeSetupReminder, prompt: "One setup reminder")
+        }
+    }
+}
+
+private struct GarageLaunchTextField: View {
+    let title: String
+    @Binding var text: String
+    let prompt: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(GarageProTheme.textSecondary)
+
+            TextField(prompt, text: $text)
+                .textInputAutocapitalization(.sentences)
+                .foregroundStyle(GarageProTheme.textPrimary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(GarageProTheme.insetSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(GarageProTheme.border, lineWidth: 1)
+                )
+        }
+    }
+}
+
+private struct GarageLaunchStepperCard: View {
+    let title: String
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+
+    var body: some View {
+        Stepper(value: $value, in: range) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(GarageProTheme.textSecondary)
+
+                Text("\(value)")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(GarageProTheme.textPrimary)
+            }
+        }
+        .padding(12)
+        .background(GarageProTheme.insetSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(GarageProTheme.border, lineWidth: 1)
+        )
+    }
+}
+
+private struct GarageDrillLaunchDraft {
+    var selectedClub: String
+    var mode: GarageDrillSessionMode
+    var durationMinutes: Int
+    var targetCount: Int
+    var goalText: String
+    var activeCue: String
+    var activeSetupReminder: String
+
+    init(drill: GarageDrill) {
+        let practiceDrill = drill.makeGeneratedPracticeTemplateDrill(seedKey: "library-launch-\(drill.id)")
+        let prescription = GarageDrillCatalog.defaultPrescription(for: practiceDrill)
+        self.selectedClub = prescription.selectedClub ?? ""
+        self.mode = prescription.mode
+        self.durationMinutes = max((prescription.durationSeconds ?? 300) / 60, 1)
+        self.targetCount = max(prescription.targetCount ?? max(practiceDrill.defaultRepCount, 1), 1)
+        self.goalText = prescription.goalText
+        self.activeCue = prescription.activeCue ?? ""
+        self.activeSetupReminder = prescription.activeSetupReminder ?? ""
+    }
+
+    func makeSession(for drill: GarageDrill) -> ActivePracticeSession {
+        let template = drill.makePracticeTemplate()
+        let drills = template.drills
+        let prescriptions = Dictionary(uniqueKeysWithValues: drills.enumerated().map { offset, practiceDrill in
+            let base = GarageDrillCatalog.defaultPrescription(for: practiceDrill, sessionOrder: offset)
+            let isPrimary = offset == 0
+            let customized = GarageDrillPrescription(
+                drillID: practiceDrill.id,
+                selectedClub: isPrimary ? selectedClub.nilIfBlank : base.selectedClub,
+                mode: isPrimary ? mode : base.mode,
+                durationSeconds: isPrimary && mode == .timed ? max(durationMinutes, 1) * 60 : base.durationSeconds,
+                targetCount: isPrimary && mode != .timed ? max(targetCount, 1) : base.targetCount,
+                goalText: isPrimary ? goalText.fallback(to: base.goalText) : base.goalText,
+                intensity: base.intensity,
+                activeCue: isPrimary ? activeCue.nilIfBlank ?? base.activeCue : base.activeCue,
+                activeSetupReminder: isPrimary ? activeSetupReminder.nilIfBlank ?? base.activeSetupReminder : base.activeSetupReminder,
+                scoringBehavior: isPrimary ? mode.scoringBehavior : base.scoringBehavior,
+                progressionNotes: base.progressionNotes,
+                sessionOrder: offset
+            )
+            return (practiceDrill.id, customized)
+        })
+
+        return ActivePracticeSession(template: template, prescriptionsByDrillID: prescriptions)
+    }
+}
+
 private extension GarageRoutine {
     var estimatedMinutesText: String {
         let minutes = DrillVault.drills(for: self).reduce(0) { partialResult, drill in
@@ -517,11 +755,31 @@ private extension PracticeTemplate {
     }
 }
 
-private extension GarageDrill {
-    var garageModeDurationText: String {
-        let detail = GarageDrillFocusDetails.detail(for: self)
-        let metadata = GarageDrillFocusDetails.metadata(for: self, detail: detail)
-        return "\(metadata.mode.controlLabel) - \(detail.estimatedMinutes) min"
+private extension String {
+    var nilIfBlank: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    func fallback(to value: String) -> String {
+        nilIfBlank ?? value
+    }
+}
+
+private extension GarageDrillSessionMode {
+    var scoringBehavior: GarageDrillScoringBehavior {
+        switch self {
+        case .timed:
+            return .timedCompletion
+        case .reps:
+            return .repCompletion
+        case .goal:
+            return .goalCompletion
+        case .challenge:
+            return .challengeCompletion
+        case .checklist:
+            return .checklistCompletion
+        }
     }
 }
 

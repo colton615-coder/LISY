@@ -204,9 +204,11 @@ struct GarageActiveSessionView: View {
         }
 
         let detail = GarageDrillFocusDetails.detail(for: currentEntry.drill)
+        let prescription = session.prescription(for: currentEntry.drill.id)
         let content = GarageDrillFocusContentAdapter.content(
             for: currentEntry.drill,
-            detail: detail
+            detail: detail,
+            prescription: prescription
         )
 
         return GarageFocusDrillPresentation(
@@ -234,7 +236,8 @@ struct GarageActiveSessionView: View {
                 metadata: GarageDrillFocusContentAdapter
                     .content(
                         for: entry.drill,
-                        detail: GarageDrillFocusDetails.detail(for: entry.drill)
+                        detail: GarageDrillFocusDetails.detail(for: entry.drill),
+                        prescription: session.prescription(for: entry.drill.id)
                     )
                     .goal
                     .railSummary,
@@ -1773,10 +1776,15 @@ private struct GarageSessionSummaryDraft: Identifiable {
         let entries = session.orderedDrillEntries
         drillResults = entries.map { entry in
             let detail = GarageDrillFocusDetails.detail(for: entry.drill)
-            let content = GarageDrillFocusContentAdapter.content(for: entry.drill, detail: detail)
+            let prescription = session.prescription(for: entry.drill.id)
+            let content = GarageDrillFocusContentAdapter.content(
+                for: entry.drill,
+                detail: detail,
+                prescription: prescription
+            )
             let elapsedSeconds = elapsedSecondsByDrillID[entry.drill.id]
             let review = reviewByDrillID[entry.drill.id] ?? GaragePostDrillReviewDraft(mode: content.mode)
-            let totalReps = 1
+            let totalReps = max(prescription.projectedAttemptCount, 1)
             let outcome = entry.progress.resolvedOutcome ?? review.outcome
             let successfulReps = entry.progress.isCompletedTarget ? review.successfulUnits : 0
 

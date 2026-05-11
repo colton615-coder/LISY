@@ -100,26 +100,23 @@ struct PracticeTemplateDrill: Identifiable, Hashable, Codable {
     }
 
     var metadataSummary: String {
+        let catalog = GarageDrillCatalog.content(for: self)
+        let prescription = GarageDrillCatalog.defaultPrescription(for: self)
         var parts: [String] = []
 
-        if focusArea.isEmpty == false {
-            parts.append(focusArea)
+        if catalog.category.isEmpty == false {
+            parts.append(catalog.category)
         }
 
-        if targetClub.isEmpty == false {
-            parts.append(targetClub)
+        if let faultTarget = catalog.faultTargets.first {
+            parts.append(faultTarget)
         }
 
-        if let canonicalDrill = DrillVault.canonicalDrill(for: self) {
-            let detail = GarageDrillFocusDetails.detail(for: canonicalDrill)
-            let metadata = GarageDrillFocusDetails.metadata(for: canonicalDrill, detail: detail)
-            parts.append("\(metadata.mode.controlLabel) - \(detail.estimatedMinutes) min")
-        } else if defaultRepCount > 0 {
-            parts.append("Process - suggested volume \(defaultRepCount) attempts")
-        } else {
-            parts.append("Process - timed block")
+        if let selectedClub = prescription.selectedClub {
+            parts.append(selectedClub)
         }
 
+        parts.append(prescription.mode.directoryLabel)
         return parts.joined(separator: " • ")
     }
 }
@@ -310,6 +307,7 @@ struct ActivePracticeSession: Identifiable, Hashable, Codable {
     let startedAt: Date
     var endedAt: Date?
     let drills: [PracticeTemplateDrill]
+    let prescriptionsByDrillID: [UUID: GarageDrillPrescription]
     var drillProgress: [PracticeDrillProgress]
 
     init(
@@ -317,6 +315,7 @@ struct ActivePracticeSession: Identifiable, Hashable, Codable {
         template: PracticeTemplate,
         startedAt: Date = .now,
         endedAt: Date? = nil,
+        prescriptionsByDrillID: [UUID: GarageDrillPrescription]? = nil,
         drillProgress: [PracticeDrillProgress]? = nil
     ) {
         let environmentValue = PracticeEnvironment(rawValue: template.environment) ?? .net
@@ -328,6 +327,11 @@ struct ActivePracticeSession: Identifiable, Hashable, Codable {
         self.startedAt = startedAt
         self.endedAt = endedAt
         self.drills = template.drills
+        self.prescriptionsByDrillID = prescriptionsByDrillID ?? Dictionary(
+            uniqueKeysWithValues: template.drills.enumerated().map { offset, drill in
+                (drill.id, GarageDrillCatalog.defaultPrescription(for: drill, sessionOrder: offset))
+            }
+        )
         self.drillProgress = drillProgress ?? template.drills.map {
             PracticeDrillProgress(drillID: $0.id)
         }
@@ -453,6 +457,23 @@ extension ActivePracticeSession {
         drillProgress.first(where: { $0.drillID == drillID })
     }
 
+    func prescription(for drillID: UUID) -> GarageDrillPrescription {
+        prescriptionsByDrillID[drillID] ?? GarageDrillPrescription(
+            drillID: drillID,
+            selectedClub: nil,
+            mode: .timed,
+            durationSeconds: 300,
+            targetCount: nil,
+            goalText: "Complete the drill honestly.",
+            intensity: .medium,
+            activeCue: nil,
+            activeSetupReminder: nil,
+            scoringBehavior: .honestResolution,
+            progressionNotes: nil,
+            sessionOrder: nil
+        )
+    }
+
     var aggregatedNotes: String {
         orderedDrillEntries
             .compactMap { entry in
@@ -468,10 +489,11 @@ extension ActivePracticeSession {
 
     func defaultDrillResults() -> [DrillResult] {
         orderedDrillEntries.map { entry in
-            DrillResult(
+            let totalReps = prescription(for: entry.drill.id).projectedAttemptCount
+            return DrillResult(
                 name: entry.drill.title,
-                successfulReps: entry.progress.isCompletedTarget ? entry.drill.defaultRepCount : 0,
-                totalReps: entry.drill.defaultRepCount,
+                successfulReps: entry.progress.isCompletedTarget ? totalReps : 0,
+                totalReps: totalReps,
                 outcome: entry.progress.resolvedOutcome
             )
         }

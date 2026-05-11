@@ -87,24 +87,24 @@ struct GarageView: View {
                     case .vault:
                         GarageSkillVaultView()
                     case .drillLibrary:
-                        GarageDrillLibraryView { template in
+                        GarageDrillLibraryView { session in
                             garageTriggerSelection()
-                            path.append(.activeSession(ActivePracticeSession(template: template)))
+                            path.append(.activeSession(session))
                         }
                     case let .routineReview(reviewPlan):
                         GarageRoutineReviewView(reviewPlan: reviewPlan) { reviewedPlan in
                             garageTriggerSelection()
-                            path.append(.activeSession(ActivePracticeSession(template: reviewedPlan.makePracticeTemplate())))
+                            path.append(.activeSession(reviewedPlan.makeActivePracticeSession()))
                         }
                     case let .coachPlan(plan):
                         GarageCoachPlanReviewView(plan: plan) { reviewedPlan in
                             garageTriggerSelection()
-                            path.append(.activeSession(ActivePracticeSession(template: reviewedPlan.makePracticeTemplate())))
+                            path.append(.activeSession(reviewedPlan.makeActivePracticeSession()))
                         }
                     case let .diagnostic(environment):
                         GarageDiagnosticView(initialEnvironment: environment) { drill in
                             garageTriggerSelection()
-                            path.append(.activeSession(ActivePracticeSession(template: drill.makePracticeTemplate())))
+                            path.append(.activeSession(drill.makeActivePracticeSession()))
                         }
                     case let .activeSession(session):
                         GarageActiveSessionView(

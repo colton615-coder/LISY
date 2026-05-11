@@ -8,6 +8,7 @@ struct GarageGeneratedPracticePlan: Identifiable, Hashable {
     var coachNote: String
     var carryForwardNote: String?
     var drills: [PracticeTemplateDrill]
+    var prescriptionsByDrillID: [UUID: GarageDrillPrescription]
     var plannedDurationMinutes: Int?
     var coachRead: GarageCoachRead?
 
@@ -19,6 +20,7 @@ struct GarageGeneratedPracticePlan: Identifiable, Hashable {
         coachNote: String,
         carryForwardNote: String? = nil,
         drills: [PracticeTemplateDrill],
+        prescriptionsByDrillID: [UUID: GarageDrillPrescription] = [:],
         plannedDurationMinutes: Int? = nil,
         coachRead: GarageCoachRead? = nil
     ) {
@@ -29,6 +31,7 @@ struct GarageGeneratedPracticePlan: Identifiable, Hashable {
         self.coachNote = coachNote
         self.carryForwardNote = carryForwardNote
         self.drills = drills
+        self.prescriptionsByDrillID = prescriptionsByDrillID
         self.plannedDurationMinutes = plannedDurationMinutes
         self.coachRead = coachRead
     }
@@ -63,6 +66,13 @@ struct GarageGeneratedPracticePlan: Identifiable, Hashable {
             title: title,
             environment: environment.rawValue,
             drills: drills
+        )
+    }
+
+    func makeActivePracticeSession() -> ActivePracticeSession {
+        ActivePracticeSession(
+            template: makePracticeTemplate(),
+            prescriptionsByDrillID: prescriptionsByDrillID
         )
     }
 }
@@ -106,12 +116,33 @@ enum GarageLocalCoachPlanner {
                 adaptiveRecommendations: adaptiveRecommendations
             )
         )
-        let templateDrills = selection.selectedDrills.enumerated().map { offset, selectedDrill in
-            selectedDrill.drill.makeGeneratedPracticeTemplateDrill(
+        let plannedDrills = selection.selectedDrills.enumerated().map { offset, selectedDrill in
+            let templateDrill = selectedDrill.drill.makeGeneratedPracticeTemplateDrill(
                 seedKey: "local-plan:\(environment.rawValue):\(offset):\(selectedDrill.drill.id)",
                 prescribedRepCount: selectedDrill.prescribedRepCount
             )
+            let basePrescription = GarageDrillCatalog.defaultPrescription(
+                for: templateDrill,
+                sessionOrder: offset
+            )
+            let customizedPrescription = GarageDrillPrescription(
+                drillID: templateDrill.id,
+                selectedClub: selectedDrill.drill.clubRange.displayName,
+                mode: basePrescription.mode,
+                durationSeconds: desiredDurationMinutes.flatMap { selection.selectedDrills.isEmpty ? nil : max(Int((Double($0) / Double(selection.selectedDrills.count) * 60.0).rounded()), 60) } ?? basePrescription.durationSeconds,
+                targetCount: selectedDrill.prescribedRepCount,
+                goalText: basePrescription.goalText,
+                intensity: basePrescription.intensity,
+                activeCue: basePrescription.activeCue,
+                activeSetupReminder: basePrescription.activeSetupReminder,
+                scoringBehavior: basePrescription.scoringBehavior,
+                progressionNotes: basePrescription.progressionNotes,
+                sessionOrder: offset
+            )
+            return (templateDrill, customizedPrescription)
         }
+        let templateDrills = plannedDrills.map(\.0)
+        let prescriptionsByDrillID = Dictionary(uniqueKeysWithValues: plannedDrills.map { ($0.0.id, $0.1) })
         let trimmedPrompt = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
 
         return GarageGeneratedPracticePlan(
@@ -132,6 +163,7 @@ enum GarageLocalCoachPlanner {
             ),
             carryForwardNote: carryForwardCue,
             drills: templateDrills,
+            prescriptionsByDrillID: prescriptionsByDrillID,
             plannedDurationMinutes: selection.estimatedDurationMinutes,
             coachRead: coachRead
         )
