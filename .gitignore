@@ -4,3 +4,5 @@ DerivedData/
 *.xcworkspace/xcshareddata/
 
 .DS_Store
+.codex_audit_frames/
+audit-screenshots/

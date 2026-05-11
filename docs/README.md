@@ -28,7 +28,7 @@ Authoritative product and implementation rules.
 Durable system guidance that supports the canonical docs.
 
 ### `docs/plans/active/`
-Current execution plans only. Leave empty when there is no approved active plan.
+Current execution plans only. This folder should be absent or empty when there is no approved active plan.
 
 ### `docs/operations/`
 Runbooks and environment workflows used as needed.
