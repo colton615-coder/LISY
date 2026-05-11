@@ -54,37 +54,38 @@ struct GarageFocusRoomView: View {
                         onToggleRoutine: toggleRoutineVisibility
                     )
 
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 22) {
-                            FocusRoomGoalBanner(text: drill.content.goal.goalText.garageFocusRoomSentenceTrimmed)
+                    ViewThatFits(in: .vertical) {
+                        FocusRoomExecutionSurface(
+                            drill: drill,
+                            elapsedSeconds: elapsedSeconds,
+                            completionState: completionState(for: drill),
+                            isTimerRunning: isTimerRunning,
+                            isRoutineVisible: isRoutineVisible,
+                            railItems: railItems,
+                            onSelectRailDrill: onSelectRailDrill,
+                            onResetTimer: resetTimer
+                        )
+                        .padding(.horizontal, 16)
+                        .padding(.top, 4)
+                        .padding(.bottom, GarageFocusRoomLayout.contentBottomInset)
 
-                            GarageFocusHeroContainer(
-                                content: drill.content,
+                        ScrollView {
+                            FocusRoomExecutionSurface(
+                                drill: drill,
                                 elapsedSeconds: elapsedSeconds,
                                 completionState: completionState(for: drill),
                                 isTimerRunning: isTimerRunning,
-                                onToggleTimer: toggleTimer,
-                                onReset: resetTimer
+                                isRoutineVisible: isRoutineVisible,
+                                railItems: railItems,
+                                onSelectRailDrill: onSelectRailDrill,
+                                onResetTimer: resetTimer
                             )
-
-                            FocusRoomTeachingSection(
-                                setupSteps: drill.content.setupSteps,
-                                cueSteps: drill.content.cueSteps
-                            )
-
-                            if isRoutineVisible {
-                                GarageFocusDrillStackRail(
-                                    items: railItems,
-                                    onSelectDrill: onSelectRailDrill
-                                )
-                                .transition(.opacity.combined(with: .move(edge: .top)))
-                            }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 4)
+                            .padding(.bottom, GarageFocusRoomLayout.contentBottomInset)
                         }
-                        .padding(.horizontal, 22)
-                        .padding(.top, 10)
-                        .padding(.bottom, GarageFocusRoomLayout.contentBottomInset)
+                        .scrollIndicators(.hidden)
                     }
-                    .scrollIndicators(.hidden)
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -149,7 +150,7 @@ struct GarageFocusRoomView: View {
 
 
 private enum GarageFocusRoomLayout {
-    static let contentBottomInset: CGFloat = 116
+    static let contentBottomInset: CGFloat = 98
 }
 
 private enum FocusRoomPalette {
@@ -377,9 +378,9 @@ private struct FocusRoomHeader: View {
                     onBack()
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 19, weight: .bold))
+                        .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(FocusRoomPalette.primaryText)
-                        .frame(width: 44, height: 44)
+                        .frame(width: 38, height: 38)
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
@@ -390,9 +391,9 @@ private struct FocusRoomHeader: View {
                     onToggleRoutine()
                 } label: {
                     Image(systemName: isRoutineVisible ? "list.bullet.rectangle.fill" : "list.bullet.rectangle")
-                        .font(.system(size: 17, weight: .bold))
+                        .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(isRoutineVisible ? FocusRoomPalette.green : FocusRoomPalette.secondaryText)
-                        .frame(width: 44, height: 44)
+                        .frame(width: 38, height: 38)
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
@@ -400,7 +401,7 @@ private struct FocusRoomHeader: View {
 
             VStack(spacing: 3) {
                 Text(drillTitle)
-                    .font(.system(size: 20, weight: .black, design: .rounded))
+                    .font(.system(size: 18, weight: .black, design: .rounded))
                     .foregroundStyle(FocusRoomPalette.primaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
@@ -408,14 +409,14 @@ private struct FocusRoomHeader: View {
                 HStack(spacing: 8) {
                     Text(drillPositionText)
                 }
-                .font(.caption.weight(.bold))
+                .font(.system(size: 12, weight: .bold, design: .rounded))
                 .foregroundStyle(FocusRoomPalette.secondaryText)
             }
             .padding(.horizontal, 58)
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 8)
-        .padding(.bottom, 8)
+        .padding(.horizontal, 12)
+        .padding(.top, 4)
+        .padding(.bottom, 4)
     }
 }
 
@@ -423,23 +424,23 @@ private struct FocusRoomGoalBanner: View {
     let text: String
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             Image(systemName: "scope")
-                .font(.system(size: 18, weight: .black))
+                .font(.system(size: 13, weight: .black))
                 .foregroundStyle(FocusRoomPalette.green)
             Text("GOAL")
-                .font(.system(size: 13, weight: .black, design: .rounded))
+                .font(.system(size: 11, weight: .black, design: .rounded))
                 .textCase(.uppercase)
-                .tracking(1.4)
+                .tracking(1.2)
                 .foregroundStyle(FocusRoomPalette.green)
             Text(text)
-                .font(.system(size: 19, weight: .bold, design: .rounded))
+                .font(.system(size: 15, weight: .bold, design: .rounded))
                 .foregroundStyle(FocusRoomPalette.primaryText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
         .background(Color.black.opacity(0.2), in: Capsule())
         .overlay(
             Capsule()
@@ -448,62 +449,92 @@ private struct FocusRoomGoalBanner: View {
     }
 }
 
+private struct FocusRoomExecutionSurface: View {
+    let drill: GarageFocusDrillPresentation
+    let elapsedSeconds: Int
+    let completionState: GarageFocusCompletionState
+    let isTimerRunning: Bool
+    let isRoutineVisible: Bool
+    let railItems: [GarageFocusDrillRailItem]
+    let onSelectRailDrill: (Int) -> Void
+    let onResetTimer: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            FocusRoomGoalBanner(text: drill.content.goal.goalText.garageFocusRoomSentenceTrimmed)
+
+            FocusRoomTeachingSection(
+                setupSteps: drill.content.setupSteps,
+                cueSteps: drill.content.cueSteps
+            )
+
+            GarageFocusHeroContainer(
+                content: drill.content,
+                elapsedSeconds: elapsedSeconds,
+                completionState: completionState,
+                isTimerRunning: isTimerRunning,
+                onReset: onResetTimer
+            )
+
+            if isRoutineVisible {
+                GarageFocusDrillStackRail(
+                    items: railItems,
+                    onSelectDrill: onSelectRailDrill
+                )
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+}
+
 private struct GarageFocusHeroContainer: View {
     let content: GarageDrillFocusContent
     let elapsedSeconds: Int
     let completionState: GarageFocusCompletionState
     let isTimerRunning: Bool
-    let onToggleTimer: () -> Void
     let onReset: () -> Void
 
     var body: some View {
-        VStack(spacing: 16) {
-            HStack(spacing: 14) {
-                FocusRoomSideUtilityButton(
-                    title: "Reset",
-                    systemImage: "arrow.counterclockwise",
-                    action: onReset
-                )
-                .opacity(elapsedSeconds > 0 ? 1 : 0.45)
-                .disabled(elapsedSeconds == 0)
-
-                TimeDrillHero(
-                    goal: content.goal,
-                    elapsedSeconds: elapsedSeconds,
-                    isReady: completionState == .ready || completionState == .completed
-                )
-                .frame(maxWidth: .infinity)
-
-                FocusRoomMetricBadge(label: "Target", value: targetValue)
-            }
-
-            FocusRoomExecutionStatusRow(
-                mode: content.mode,
-                state: completionState,
-                timerTitle: timerControlTitle,
-                isComplete: completionState == .ready || completionState == .completed,
-                onToggle: onToggleTimer
+        HStack(spacing: 10) {
+            FocusRoomCompactTracker(
+                goal: content.goal,
+                elapsedSeconds: elapsedSeconds,
+                isReady: completionState == .ready || completionState == .completed
             )
-        }
-    }
 
-    private var targetValue: String {
-        switch content.goal {
-        case .timed(let durationSeconds):
-            return formattedTime(durationSeconds)
-        case .repTarget(let count, let unit):
-            return "\(count) \(unit)"
-        case .streak(let count, let unit):
-            return "\(count) \(unit)"
-        case .timeTrial(let targetCount, let unit):
-            return "\(targetCount) \(unit)"
-        case .ladder(let steps):
-            return "\(steps.count) steps"
-        case .checklist(let items):
-            return "\(items.count) items"
-        case .manual(let label):
-            return label.garageFocusRoomSentenceTrimmed
+            VStack(alignment: .leading, spacing: 6) {
+                FocusRoomMiniTag(
+                    title: "State",
+                    value: timerControlTitle
+                )
+                FocusRoomMiniTag(
+                    title: "Target",
+                    value: content.goal.trackerTargetText
+                )
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button {
+                onReset()
+            } label: {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(FocusRoomPalette.primaryText)
+                    .frame(width: 34, height: 34)
+                    .background(FocusRoomPalette.panel.opacity(0.95), in: Circle())
+                    .overlay(Circle().stroke(FocusRoomPalette.border, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .opacity(elapsedSeconds > 0 ? 1 : 0.38)
+            .disabled(elapsedSeconds == 0)
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(Color.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(FocusRoomPalette.border, lineWidth: 1)
+        )
     }
 
     private var timerControlTitle: String {
@@ -517,96 +548,142 @@ private struct GarageFocusHeroContainer: View {
     }
 }
 
-private struct FocusRoomInstructionList: View {
-    let instructions: [String]
+private struct FocusRoomTeachingSection: View {
+    let setupSteps: [String]
+    let cueSteps: [String]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(Array(instructions.prefix(3).enumerated()), id: \.offset) { index, instruction in
-                FocusRoomInstructionRow(index: index + 1, instruction: instruction)
+        VStack(alignment: .leading, spacing: 8) {
+            FocusRoomBulletBlock(
+                title: "SETUP",
+                tint: FocusRoomPalette.green,
+                steps: Array(setupSteps.prefix(3))
+            )
+            Divider().overlay(FocusRoomPalette.border.opacity(0.8))
+            FocusRoomBulletBlock(
+                title: "CUE",
+                tint: FocusRoomPalette.yellow,
+                steps: Array(cueSteps.prefix(2))
+            )
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
+    }
+}
+
+private struct FocusRoomBulletBlock: View {
+    let title: String
+    let tint: Color
+    let steps: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.system(size: 11, weight: .black, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(1.3)
+                .foregroundStyle(tint)
+
+            ForEach(Array(steps.enumerated()), id: \.offset) { _, step in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("•")
+                        .font(.system(size: 13, weight: .black))
+                        .foregroundStyle(FocusRoomPalette.primaryText)
+                    Text(step.garageFocusRoomSentenceTrimmed)
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(FocusRoomPalette.primaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                }
+            }
+        }
+    }
+}
+
+private struct FocusRoomCompactTracker: View {
+    let goal: GarageDrillGoal
+    let elapsedSeconds: Int
+    let isReady: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            FocusRoomCompactRing(
+                primary: goal.trackerPrimaryValue(elapsedSeconds: elapsedSeconds),
+                progress: goal.trackerProgress(elapsedSeconds: elapsedSeconds, isReady: isReady),
+                isReady: isReady
+            )
+            .frame(width: 76, height: 76)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Tracker")
+                    .font(.system(size: 10, weight: .black, design: .rounded))
+                    .textCase(.uppercase)
+                    .tracking(1.2)
+                    .foregroundStyle(FocusRoomPalette.secondaryText)
+                Text(goal.trackerPrimaryValue(elapsedSeconds: elapsedSeconds))
+                    .font(.system(size: 26, weight: .black, design: .monospaced))
+                    .foregroundStyle(FocusRoomPalette.primaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Text(goal.trackerTargetText)
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(FocusRoomPalette.yellow)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 4)
     }
 }
 
-private struct FocusRoomInstructionRow: View {
-    let index: Int
-    let instruction: String
+private struct FocusRoomCompactRing: View {
+    let primary: String
+    let progress: Double
+    let isReady: Bool
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text("\(index)")
-                .font(.system(size: 16, weight: .black, design: .monospaced))
-                .foregroundStyle(FocusRoomPalette.yellow)
-                .frame(width: 22, alignment: .leading)
+        ZStack {
+            Circle()
+                .stroke(FocusRoomPalette.green.opacity(0.18), lineWidth: 7)
 
-            Text(instruction)
-                .font(.system(size: 18, weight: .black, design: .rounded))
+            Circle()
+                .trim(from: 0, to: max(progress, 0.03))
+                .stroke(
+                    isReady ? FocusRoomPalette.green : FocusRoomPalette.yellow,
+                    style: StrokeStyle(lineWidth: 7, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: progress)
+
+            Text(primary)
+                .font(.system(size: 11, weight: .black, design: .monospaced))
                 .foregroundStyle(FocusRoomPalette.primaryText)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(1)
+                .minimumScaleFactor(0.55)
         }
     }
 }
 
-private struct FocusRoomStopwatchPanel: View {
-    let elapsedSeconds: Int
-    let personalBestText: String
+private struct FocusRoomMiniTag: View {
+    let title: String
+    let value: String
 
     var body: some View {
-        VStack(spacing: 8) {
-            Text("Elapsed Time")
-                .font(.system(size: 11, weight: .black, design: .rounded))
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.system(size: 9, weight: .black, design: .rounded))
                 .textCase(.uppercase)
-                .tracking(1.8)
+                .tracking(1.1)
                 .foregroundStyle(FocusRoomPalette.secondaryText)
-
-            Text(formattedTime(elapsedSeconds))
-                .font(.system(size: 46, weight: .black, design: .monospaced))
+            Text(value)
+                .font(.system(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(FocusRoomPalette.primaryText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
-
-            Text(personalBestText)
-                .font(.system(size: 12, weight: .black, design: .rounded))
-                .textCase(.uppercase)
-                .tracking(1.2)
-                .foregroundStyle(FocusRoomPalette.yellow)
-                .lineLimit(1)
-                .minimumScaleFactor(0.74)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 22)
-        .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(FocusRoomPalette.border, lineWidth: 1)
-        )
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Elapsed time \(formattedTime(elapsedSeconds)). \(personalBestText).")
-    }
-}
-
-private struct FocusRoomModeBadge: View {
-    let mode: GarageDrillFocusMode
-    let state: GarageFocusCompletionState
-
-    var body: some View {
-        HStack(spacing: 7) {
-            Circle()
-                .fill(state == .ready || state == .completed ? FocusRoomPalette.green : FocusRoomPalette.yellow)
-                .frame(width: 7, height: 7)
-
-            Text(mode.controlLabel)
-                .font(.system(size: 11, weight: .black, design: .rounded))
-                .textCase(.uppercase)
-                .tracking(1.4)
-                .foregroundStyle(FocusRoomPalette.primaryText)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(Color.black.opacity(0.2), in: Capsule())
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(FocusRoomPalette.panel.opacity(0.88), in: Capsule())
         .overlay(
             Capsule()
                 .stroke(FocusRoomPalette.border, lineWidth: 1)
@@ -614,92 +691,28 @@ private struct FocusRoomModeBadge: View {
     }
 }
 
-private struct FocusRoomCommandSummary: View {
-    let setupLine: String
-    let executionCue: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            FocusRoomInlineCommand(label: "Setup", text: setupLine, systemImage: "mappin.and.ellipse")
-            FocusRoomInlineCommand(label: "Cue", text: executionCue, systemImage: "bolt.fill")
-        }
-        .padding(12)
-        .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
-}
-
-private struct FocusRoomInlineCommand: View {
-    let label: String
-    let text: String
-    let systemImage: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: systemImage)
-                .font(.system(size: 13, weight: .black))
-                .foregroundStyle(FocusRoomPalette.green)
-                .frame(width: 22, height: 22)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .font(.system(size: 9, weight: .black, design: .rounded))
-                    .textCase(.uppercase)
-                    .tracking(1.2)
-                    .foregroundStyle(FocusRoomPalette.secondaryText)
-
-                Text(text.garageFocusRoomSentenceTrimmed)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundStyle(FocusRoomPalette.primaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-}
-
-private struct TimeDrillHero: View {
-    let goal: GarageDrillGoal
-    let elapsedSeconds: Int
-    let isReady: Bool
-
-    var body: some View {
-        FocusRoomCircularTimer(
-            title: panelTitle,
-            primaryValue: primaryValue,
-            secondaryValue: secondaryValue,
-            progress: progress,
-            isCompleted: isReady
-        )
-    }
-
-    private var durationSeconds: Int {
-        switch goal {
+private extension GarageDrillGoal {
+    var trackerTargetText: String {
+        switch self {
         case .timed(let durationSeconds):
-            return max(durationSeconds, 1)
-        default:
-            return 1
+            return "Target \(formattedTime(durationSeconds))"
+        case .repTarget(let count, let unit):
+            return "Target \(count) \(unit)"
+        case .streak(let count, let unit):
+            return "Target \(count) \(unit)"
+        case .timeTrial(let targetCount, let unit):
+            return "Target \(targetCount) \(unit)"
+        case .ladder(let steps):
+            return "Target \(steps.count) steps"
+        case .checklist(let items):
+            return "Target \(items.count) items"
+        case .manual(let label):
+            return label.garageFocusRoomSentenceTrimmed
         }
     }
 
-    private var progress: Double {
-        switch goal {
-        case .timed:
-            return min(max(Double(elapsedSeconds) / Double(durationSeconds), 0), 1)
-        case .repTarget, .streak, .timeTrial, .ladder, .checklist, .manual:
-            return isReady ? 1 : (elapsedSeconds > 0 ? 0.16 : 0.035)
-        }
-    }
-
-    private var panelTitle: String {
-        switch goal {
-        case .timed:
-            return "Timer"
-        case .repTarget, .streak, .timeTrial, .ladder, .checklist, .manual:
-            return "Goal"
-        }
-    }
-
-    private var primaryValue: String {
-        switch goal {
+    func trackerPrimaryValue(elapsedSeconds: Int) -> String {
+        switch self {
         case .timed:
             return formattedTime(elapsedSeconds)
         case .repTarget(let count, let unit):
@@ -709,220 +722,22 @@ private struct TimeDrillHero: View {
         case .timeTrial(let targetCount, let unit):
             return "\(targetCount) \(unit)"
         case .ladder(let steps):
-            return "\(steps.count) steps"
+            return "\(steps.count) stp"
         case .checklist(let items):
-            return "\(items.count) items"
-        case .manual(let label):
-            return label
+            return "\(items.count) itm"
+        case .manual:
+            return formattedTime(elapsedSeconds)
         }
     }
 
-    private var secondaryValue: String {
-        switch goal {
+    func trackerProgress(elapsedSeconds: Int, isReady: Bool) -> Double {
+        switch self {
         case .timed(let durationSeconds):
-            return "Target \(formattedTime(durationSeconds))"
+            let total = max(durationSeconds, 1)
+            return min(max(Double(elapsedSeconds) / Double(total), 0), 1)
         case .repTarget, .streak, .timeTrial, .ladder, .checklist, .manual:
-            return "Elapsed \(formattedTime(elapsedSeconds))"
+            return isReady ? 1 : (elapsedSeconds > 0 ? 0.14 : 0.03)
         }
-    }
-}
-
-private struct FocusRoomTimerControls: View {
-    let isRunning: Bool
-    let hasStarted: Bool
-    let isComplete: Bool
-    let onStartPause: () -> Void
-    let onReset: () -> Void
-
-    var body: some View {
-        HStack(spacing: 10) {
-            FocusRoomActionButton(
-                title: primaryTitle,
-                systemImage: primarySystemImage,
-                isProminent: true,
-                action: {
-                    guard isComplete == false else {
-                        return
-                    }
-
-                    onStartPause()
-                }
-            )
-            .opacity(isComplete ? 0.7 : 1)
-
-            FocusRoomActionButton(
-                title: "Reset",
-                systemImage: "arrow.counterclockwise",
-                isProminent: false,
-                action: onReset
-            )
-            .disabled(hasStarted == false)
-            .opacity(hasStarted ? 1 : 0.46)
-        }
-    }
-
-    private var primaryTitle: String {
-        if isComplete {
-            return "Target Reached"
-        }
-
-        if isRunning {
-            return "Pause"
-        }
-
-        return hasStarted ? "Resume" : "Start"
-    }
-
-    private var primarySystemImage: String {
-        if isComplete {
-            return "checkmark.seal.fill"
-        }
-
-        return isRunning ? "pause.fill" : "play.fill"
-    }
-}
-
-private struct FocusRoomTimerHeroPanel: View {
-    let title: String
-    let primaryValue: String
-    let secondaryValue: String
-    let progress: Double
-    let isCompleted: Bool
-    let statusText: String
-
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(FocusRoomPalette.panel.opacity(0.42))
-
-            LinearGradient(
-                colors: [
-                    FocusRoomPalette.green.opacity(0.14),
-                    Color.black.opacity(0.08),
-                    Color.black.opacity(0.24)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            VStack(spacing: 14) {
-                FocusRoomCircularTimer(
-                    title: title,
-                    primaryValue: primaryValue,
-                    secondaryValue: secondaryValue,
-                    progress: progress,
-                    isCompleted: isCompleted
-                )
-                .frame(width: 188, height: 188)
-
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(isCompleted ? FocusRoomPalette.green : FocusRoomPalette.yellow)
-                        .frame(width: 7, height: 7)
-                        .shadow(color: (isCompleted ? FocusRoomPalette.green : FocusRoomPalette.yellow).opacity(0.4), radius: 8)
-
-                    Text(statusText)
-                        .font(.system(size: 12, weight: .black, design: .rounded))
-                        .textCase(.uppercase)
-                        .tracking(1.2)
-                        .foregroundStyle(FocusRoomPalette.secondaryText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.74)
-                }
-            }
-            .padding(.vertical, 18)
-        }
-        .frame(maxWidth: .infinity)
-        .frame(minHeight: 250)
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(FocusRoomPalette.border, lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.32), radius: 20, x: 0, y: 14)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(title) \(primaryValue). \(secondaryValue). \(statusText).")
-    }
-}
-
-private struct FocusRoomCircularTimer: View {
-    let title: String
-    let primaryValue: String
-    let secondaryValue: String
-    let progress: Double
-    let isCompleted: Bool
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            FocusRoomPalette.green.opacity(0.12),
-                            FocusRoomPalette.panel.opacity(0.7),
-                            Color.black.opacity(0.4)
-                        ],
-                        center: .center,
-                        startRadius: 8,
-                        endRadius: 102
-                    )
-                )
-                .overlay(
-                    Circle()
-                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
-                )
-                .shadow(color: Color.black.opacity(0.4), radius: 18, x: 0, y: 12)
-
-            Circle()
-                .stroke(FocusRoomPalette.green.opacity(0.13), lineWidth: 13)
-
-            Circle()
-                .trim(from: 0, to: max(progress, 0.035))
-                .stroke(
-                    timerStroke,
-                    style: StrokeStyle(lineWidth: 13, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-                .shadow(color: FocusRoomPalette.green.opacity(isCompleted ? 0.38 : 0.22), radius: 12)
-                .animation(.spring(response: 0.35, dampingFraction: 0.82), value: progress)
-
-            Circle()
-                .stroke(Color.black.opacity(0.35), lineWidth: 1)
-                .padding(18)
-
-            VStack(spacing: 7) {
-                Text(title)
-                    .font(.system(size: 11, weight: .black, design: .rounded))
-                    .textCase(.uppercase)
-                    .tracking(1.6)
-                    .foregroundStyle(FocusRoomPalette.secondaryText)
-
-                Text(primaryValue)
-                    .font(.system(size: 42, weight: .black, design: .monospaced))
-                    .foregroundStyle(FocusRoomPalette.primaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.68)
-
-                Text(isCompleted ? "Done" : secondaryValue)
-                    .font(.system(size: 12, weight: .black, design: .rounded))
-                    .foregroundStyle(isCompleted ? FocusRoomPalette.green : FocusRoomPalette.yellow)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.horizontal, 18)
-        }
-    }
-
-    private var timerStroke: AngularGradient {
-        AngularGradient(
-            colors: [
-                FocusRoomPalette.green,
-                FocusRoomPalette.greenSoft,
-                isCompleted ? FocusRoomPalette.green : FocusRoomPalette.yellow,
-                FocusRoomPalette.green
-            ],
-            center: .center
-        )
     }
 }
 
@@ -931,173 +746,6 @@ private func formattedTime(_ value: Int) -> String {
     let minutes = clampedValue / 60
     let seconds = clampedValue % 60
     return "\(minutes):\(String(format: "%02d", seconds))"
-}
-
-private struct FocusRoomActionButton: View {
-    let title: String
-    let systemImage: String
-    let isProminent: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .font(.system(size: 14, weight: .black, design: .rounded))
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-                .foregroundStyle(isProminent ? FocusRoomPalette.background : FocusRoomPalette.primaryText)
-                .frame(maxWidth: .infinity, minHeight: 48)
-                .background(isProminent ? FocusRoomPalette.yellow : FocusRoomPalette.panel, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 15, style: .continuous)
-                        .stroke(isProminent ? Color.white.opacity(0.18) : FocusRoomPalette.border, lineWidth: 1)
-                )
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-private struct FocusRoomSideUtilityButton: View {
-    let title: String
-    let systemImage: String
-    let action: () -> Void
-
-    var body: some View {
-        Button {
-            garageTriggerSelection()
-            action()
-        } label: {
-            VStack(spacing: 8) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(FocusRoomPalette.primaryText)
-                    .frame(width: 46, height: 46)
-                    .background(FocusRoomPalette.panel.opacity(0.9), in: Circle())
-                Text(title)
-                    .font(.system(size: 10, weight: .black, design: .rounded))
-                    .textCase(.uppercase)
-                    .tracking(1.3)
-                    .foregroundStyle(FocusRoomPalette.secondaryText)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-private struct FocusRoomMetricBadge: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        VStack(spacing: 4) {
-            Image(systemName: "flag")
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(FocusRoomPalette.primaryText)
-                .frame(width: 46, height: 46)
-                .background(FocusRoomPalette.panel.opacity(0.9), in: Circle())
-            Text(label)
-                .font(.system(size: 10, weight: .black, design: .rounded))
-                .textCase(.uppercase)
-                .tracking(1.3)
-                .foregroundStyle(FocusRoomPalette.secondaryText)
-            Text(value)
-                .font(.system(size: 20, weight: .black, design: .rounded))
-                .foregroundStyle(FocusRoomPalette.primaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-        }
-        .frame(minWidth: 60)
-    }
-}
-
-private struct FocusRoomExecutionStatusRow: View {
-    let mode: GarageDrillFocusMode
-    let state: GarageFocusCompletionState
-    let timerTitle: String
-    let isComplete: Bool
-    let onToggle: () -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            FocusRoomModeBadge(mode: mode, state: state)
-            Spacer(minLength: 0)
-            FocusRoomActionButton(
-                title: timerTitle,
-                systemImage: isComplete ? "checkmark.seal.fill" : (timerTitle == "Pause" ? "pause.fill" : "play.fill"),
-                isProminent: true,
-                action: onToggle
-            )
-            .frame(width: 128)
-            .opacity(isComplete ? 0.7 : 1)
-            .disabled(isComplete)
-        }
-    }
-}
-
-private struct FocusRoomTeachingSection: View {
-    let setupSteps: [String]
-    let cueSteps: [String]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            FocusRoomBulletBlock(
-                title: "SETUP",
-                icon: "wrench.and.screwdriver.fill",
-                tint: FocusRoomPalette.green,
-                steps: setupSteps
-            )
-            Divider().overlay(FocusRoomPalette.border)
-            FocusRoomBulletBlock(
-                title: "CUE",
-                icon: "ellipsis.bubble.fill",
-                tint: FocusRoomPalette.yellow,
-                steps: cueSteps
-            )
-        }
-        .padding(16)
-        .background(Color.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(FocusRoomPalette.border, lineWidth: 1)
-        )
-    }
-}
-
-private struct FocusRoomBulletBlock: View {
-    let title: String
-    let icon: String
-    let tint: Color
-    let steps: [String]
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: icon)
-                .font(.system(size: 16, weight: .black))
-                .foregroundStyle(tint)
-                .frame(width: 42, height: 42)
-                .background(FocusRoomPalette.panel.opacity(0.8), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text(title)
-                    .font(.system(size: 14, weight: .black, design: .rounded))
-                    .textCase(.uppercase)
-                    .tracking(1.4)
-                    .foregroundStyle(tint)
-
-                ForEach(Array(steps.prefix(5).enumerated()), id: \.offset) { _, step in
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text("•")
-                            .font(.system(size: 15, weight: .black))
-                            .foregroundStyle(FocusRoomPalette.primaryText)
-                        Text(step.garageFocusRoomSentenceTrimmed)
-                            .font(.system(size: 16, weight: .semibold, design: .rounded))
-                            .foregroundStyle(FocusRoomPalette.primaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            }
-        }
-    }
 }
 
 private struct FocusRoomBottomActions: View {
@@ -1109,7 +757,7 @@ private struct FocusRoomBottomActions: View {
     let onPrimary: () -> Void
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 8) {
             FocusRoomDockButton(
                 title: noteTitle,
                 systemImage: noteTitle == GarageFocusRoomCopy.focusRoomNoteAddCta ? "square.and.pencil" : "note.text",
@@ -1126,32 +774,25 @@ private struct FocusRoomBottomActions: View {
                 garageTriggerImpact(.medium)
                 onPrimary()
             } label: {
-                VStack(spacing: 8) {
-                    Image(systemName: primarySystemImage)
-                        .font(.system(size: 24, weight: .black))
-                        .foregroundStyle(FocusRoomPalette.background)
-                        .frame(width: 72, height: 72)
-                        .background(FocusRoomPalette.green, in: Circle())
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white.opacity(0.16), lineWidth: 1)
-                        )
-                        .shadow(color: FocusRoomPalette.green.opacity(0.28), radius: 14, x: 0, y: 0)
-                    Text(primaryTitle)
-                        .font(.system(size: 12, weight: .black, design: .rounded))
-                        .foregroundStyle(FocusRoomPalette.green)
-                        .textCase(.uppercase)
-                        .tracking(1.4)
-                }
-                .frame(minWidth: 88)
+                Label(primaryTitle, systemImage: primarySystemImage)
+                    .font(.system(size: 14, weight: .black, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .foregroundStyle(FocusRoomPalette.background)
+                    .frame(maxWidth: .infinity, minHeight: 46)
+                    .background(FocusRoomPalette.green, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    )
             }
             .buttonStyle(.plain)
             .accessibilityLabel(primaryTitle)
             .accessibilityIdentifier("garage-focus-primary")
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 10)
-        .padding(.bottom, 12)
+        .padding(.horizontal, 14)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
         .background(
             LinearGradient(
                 colors: [
@@ -1163,6 +804,11 @@ private struct FocusRoomBottomActions: View {
                 endPoint: .bottom
             )
         )
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(FocusRoomPalette.border.opacity(0.7))
+                .frame(height: 1)
+        }
     }
 }
 
@@ -1181,7 +827,7 @@ private struct FocusRoomDockButton: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.68)
                 .foregroundStyle(FocusRoomPalette.primaryText)
-                .frame(maxWidth: .infinity, minHeight: 54)
+                .frame(maxWidth: .infinity, minHeight: 46)
                 .background(FocusRoomPalette.panel.opacity(0.88), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 17, style: .continuous)

@@ -160,15 +160,15 @@ enum GarageDrillFocusContentAdapter {
     ) -> [String] {
         let source = cleanLines(detail.setup)
         if source.isEmpty == false {
-            return Array(source.prefix(5))
+            return conciseSteps(Array(source.prefix(3)), maxWords: 9)
         }
 
         let reminder = prescription.activeSetupReminder?.garageFocusContentTrimmed ?? ""
         if reminder.isEmpty == false {
-            return bulletSteps(from: reminder)
+            return conciseSteps(Array(bulletSteps(from: reminder).prefix(3)), maxWords: 9)
         }
 
-        return bulletSteps(from: fallback)
+        return conciseSteps(Array(bulletSteps(from: fallback).prefix(3)), maxWords: 9)
     }
 
     private static func cueSteps(
@@ -178,15 +178,15 @@ enum GarageDrillFocusContentAdapter {
     ) -> [String] {
         let source = cleanLines(detail.execution)
         if source.isEmpty == false {
-            return Array(source.prefix(4))
+            return conciseSteps(Array(source.prefix(2)), maxWords: 8)
         }
 
         let reminder = prescription.activeCue?.garageFocusContentTrimmed ?? ""
         if reminder.isEmpty == false {
-            return bulletSteps(from: reminder)
+            return conciseSteps(Array(bulletSteps(from: reminder).prefix(2)), maxWords: 8)
         }
 
-        return bulletSteps(from: fallback)
+        return conciseSteps(Array(bulletSteps(from: fallback).prefix(2)), maxWords: 8)
     }
 
     private static func bulletSteps(from value: String) -> [String] {
@@ -203,6 +203,26 @@ enum GarageDrillFocusContentAdapter {
             return [trimmed]
         }
         return Array(split.prefix(5))
+    }
+
+    private static func conciseSteps(_ steps: [String], maxWords: Int) -> [String] {
+        let cleaned = steps
+            .map { step in
+                let words = step
+                    .split(whereSeparator: \.isWhitespace)
+                    .map(String.init)
+                if words.count <= maxWords {
+                    return step.garageFocusContentTrimmed
+                }
+                return words.prefix(maxWords).joined(separator: " ")
+            }
+            .map(\.garageFocusContentTrimmed)
+            .filter { $0.isEmpty == false }
+
+        if cleaned.isEmpty {
+            return ["Hold the drill standard."]
+        }
+        return cleaned
     }
 
     private static func firstCleanLine(_ groups: [String]...) -> String? {
