@@ -19,6 +19,20 @@ struct GarageDrillFocusContent: Hashable {
     let diagramKey: String?
 }
 
+struct GarageCompactDrillCopy: Hashable {
+    let title: String
+    let environment: PracticeEnvironment
+    let feelCategory: String
+    let clubGroup: String
+    let shortIntent: String
+    let setupBullets: [String]
+    let executionBullets: [String]
+    let target: String
+    let suggestedTime: String
+    let club: String
+    let resetCue: String?
+}
+
 extension GarageDrillFocusContent {
     var hasTeachingDetails: Bool {
         teachingDetail?.isEmpty == false || reviewSummary?.isEmpty == false
@@ -36,6 +50,46 @@ enum GarageDrillGoal: Hashable {
 }
 
 enum GarageDrillFocusContentAdapter {
+    static func compactCopy(
+        for drill: PracticeTemplateDrill,
+        detail: GarageDrillFocusDetail,
+        prescription: GarageDrillPrescription? = nil,
+        environment fallbackEnvironment: PracticeEnvironment? = nil
+    ) -> GarageCompactDrillCopy {
+        let canonicalDrill = DrillVault.canonicalDrill(for: drill)
+        let metadata = GarageDrillFocusDetails.metadata(for: drill, detail: detail)
+        let resolvedPrescription = prescription ?? GarageDrillCatalog.defaultPrescription(for: drill)
+        let durationSeconds = resolvedPrescription.durationSeconds
+            ?? metadata.durationSecondsOverride
+            ?? max(detail.estimatedMinutes, 1) * 60
+        let environment = canonicalDrill?.environment ?? fallbackEnvironment ?? .net
+        let clubGroup = compactClubGroup(canonicalDrill: canonicalDrill, drill: drill)
+
+        return GarageCompactDrillCopy(
+            title: cleanTitle(canonicalDrill?.title ?? drill.title, fallback: "Practice Drill"),
+            environment: environment,
+            feelCategory: compactFeelCategory(canonicalDrill: canonicalDrill, drill: drill),
+            clubGroup: clubGroup,
+            shortIntent: compactIntent(canonicalDrill: canonicalDrill, detail: detail),
+            setupBullets: compactBullets(
+                detail.setup,
+                fallback: resolvedPrescription.activeSetupReminder ?? metadata.setupLine,
+                limit: 2,
+                maxWords: 9
+            ),
+            executionBullets: compactBullets(
+                detail.execution,
+                fallback: resolvedPrescription.activeCue ?? metadata.executionCue,
+                limit: 3,
+                maxWords: 10
+            ),
+            target: compactTarget(from: resolvedPrescription.goalText, detail: detail),
+            suggestedTime: GarageDrillGoalFormat.duration(durationSeconds),
+            club: compactSelectedClub(prescription: resolvedPrescription, canonicalDrill: canonicalDrill, fallbackClubGroup: clubGroup),
+            resetCue: compactResetCue(detail.resetCue)
+        )
+    }
+
     static func content(
         for drill: PracticeTemplateDrill,
         detail: GarageDrillFocusDetail,
@@ -235,6 +289,82 @@ enum GarageDrillFocusContentAdapter {
         return nil
     }
 
+    private static func compactFeelCategory(canonicalDrill: GarageDrill?, drill: PracticeTemplateDrill) -> String {
+        if let canonicalDrill {
+            return canonicalDrill.libraryCategory.displayName
+        }
+
+        let focus = drill.focusArea.garageFocusContentTrimmed
+        return focus.isEmpty ? "Practice" : focus.garageFocusContentSentenceLimited(maxWords: 4)
+    }
+
+    private static func compactClubGroup(canonicalDrill: GarageDrill?, drill: PracticeTemplateDrill) -> String {
+        if let canonicalDrill {
+            return canonicalDrill.clubRange.displayName
+        }
+
+        let targetClub = drill.targetClub.garageFocusContentTrimmed
+        return targetClub.isEmpty ? "Club" : targetClub.garageFocusContentSentenceLimited(maxWords: 5)
+    }
+
+    private static func compactIntent(canonicalDrill: GarageDrill?, detail: GarageDrillFocusDetail) -> String {
+        let source = firstCleanLine([canonicalDrill?.purpose ?? "", detail.purpose]) ?? "Run the drill with one clear goal."
+        return compactPlayerCopy(source, maxWords: 10)
+    }
+
+    private static func compactTarget(from goalText: String, detail: GarageDrillFocusDetail) -> String {
+        if goalText.garageFocusContentTrimmed.isEmpty == false {
+            return compactPlayerCopy(goalText, maxWords: 10)
+        }
+
+        let fallback = firstCleanLine(detail.successCriteria) ?? "Complete the drill with clean intent."
+        return compactPlayerCopy(fallback, maxWords: 10)
+    }
+
+    private static func compactSelectedClub(
+        prescription: GarageDrillPrescription,
+        canonicalDrill: GarageDrill?,
+        fallbackClubGroup: String
+    ) -> String {
+        let selectedClub = prescription.selectedClub?.garageFocusContentTrimmed ?? ""
+        if selectedClub.isEmpty == false {
+            return selectedClub.garageFocusContentSentenceLimited(maxWords: 5)
+        }
+
+        return canonicalDrill?.clubRange.displayName ?? fallbackClubGroup
+    }
+
+    private static func compactResetCue(_ value: String) -> String? {
+        let cleaned = compactPlayerCopy(value, maxWords: 6)
+        return cleaned.isEmpty ? nil : cleaned
+    }
+
+    private static func compactBullets(
+        _ source: [String],
+        fallback: String,
+        limit: Int,
+        maxWords: Int
+    ) -> [String] {
+        let sourceLines = cleanLines(source)
+        let candidates = sourceLines.isEmpty ? bulletSteps(from: fallback) : sourceLines
+        let cleaned = candidates
+            .prefix(limit)
+            .map { compactPlayerCopy($0, maxWords: maxWords) }
+            .filter { $0.isEmpty == false }
+
+        if cleaned.isEmpty {
+            return ["Set a clear station."]
+        }
+
+        return cleaned
+    }
+
+    private static func compactPlayerCopy(_ value: String, maxWords: Int) -> String {
+        value
+            .garageFocusContentPlayerSanitized
+            .garageFocusContentSentenceLimited(maxWords: maxWords)
+    }
+
     private static func formattedDuration(_ seconds: Int) -> String {
         let clampedSeconds = max(seconds, 0)
         let minutes = clampedSeconds / 60
@@ -314,5 +444,53 @@ private extension String {
     var garageFocusContentTrimmed: String {
         trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+    }
+
+    var garageFocusContentPlayerSanitized: String {
+        var cleaned = garageFocusContentTrimmed
+        let replacements: [(String, String)] = [
+            ("Pressure Test", "Target"),
+            ("pressure test", "target"),
+            ("pressure standard", "target"),
+            ("Process Block", "Practice Block"),
+            ("process block", "practice block"),
+            ("Target Block", "Target"),
+            ("target block", "target"),
+            ("authority", "practice"),
+            ("Authority", "Practice"),
+            ("fallback", "backup"),
+            ("Fallback", "Backup"),
+            ("remedial", "backup"),
+            ("Remedial", "Backup"),
+            ("diagnostic", "practice"),
+            ("Diagnostic", "Practice"),
+            ("challenge", "target"),
+            ("Challenge", "Target"),
+            ("Mode", "Style"),
+            ("mode", "style")
+        ]
+
+        for replacement in replacements {
+            cleaned = cleaned.replacingOccurrences(of: replacement.0, with: replacement.1)
+        }
+
+        return cleaned.garageFocusContentTrimmed
+    }
+
+    func garageFocusContentSentenceLimited(maxWords: Int) -> String {
+        let sentence = garageFocusContentTrimmed
+            .split(separator: ".", maxSplits: 1, omittingEmptySubsequences: true)
+            .first
+            .map(String.init)?
+            .garageFocusContentTrimmed ?? garageFocusContentTrimmed
+        let words = sentence
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
+
+        guard words.count > maxWords else {
+            return sentence
+        }
+
+        return words.prefix(maxWords).joined(separator: " ")
     }
 }
