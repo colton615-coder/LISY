@@ -60,7 +60,11 @@ struct GarageFocusRoomView: View {
                             elapsedSeconds: elapsedSeconds,
                             completionState: completionState(for: drill),
                             isTimerRunning: isTimerRunning,
-                            onResetTimer: resetTimer
+                            nextDrill: nextRailItem(after: drill),
+                            onResetTimer: resetTimer,
+                            onNext: {
+                                onPrimary(completionPayload(for: drill))
+                            }
                         )
                         .padding(.horizontal, 16)
                         .padding(.top, 4)
@@ -72,7 +76,11 @@ struct GarageFocusRoomView: View {
                                 elapsedSeconds: elapsedSeconds,
                                 completionState: completionState(for: drill),
                                 isTimerRunning: isTimerRunning,
-                                onResetTimer: resetTimer
+                                nextDrill: nextRailItem(after: drill),
+                                onResetTimer: resetTimer,
+                                onNext: {
+                                    onPrimary(completionPayload(for: drill))
+                                }
                             )
                             .padding(.horizontal, 16)
                             .padding(.top, 4)
@@ -247,6 +255,15 @@ private extension GarageFocusRoomView {
         return state == .notStarted || state == .inProgress
     }
 
+    func nextRailItem(after drill: GarageFocusDrillPresentation) -> GarageFocusDrillRailItem? {
+        guard let currentIndex = railItems.firstIndex(where: { $0.id == drill.id }) else {
+            return railItems.first { $0.status == .upcoming }
+        }
+
+        return railItems[(currentIndex + 1)...].first { $0.status == .upcoming }
+            ?? railItems.first { $0.status == .upcoming }
+    }
+
     func primaryDockTitle(state: GarageFocusCompletionState) -> String {
         if state == .completed || state == .ready {
             return GarageFocusRoomCopy.focusRoomMarkCompleteCta
@@ -299,6 +316,118 @@ private enum GarageFocusCompletionState: Hashable {
             return "Confirmed"
         }
     }
+}
+
+private enum FocusHeroVisualState: Hashable {
+    case idle
+    case running
+    case paused
+    case completed
+    case skipped
+
+    init(
+        completionState: GarageFocusCompletionState,
+        isTimerRunning: Bool,
+        elapsedSeconds: Int
+    ) {
+        switch completionState {
+        case .completed, .ready:
+            self = .completed
+        case .inProgress:
+            self = isTimerRunning ? .running : .paused
+        case .notStarted:
+            self = elapsedSeconds > 0 ? .paused : .idle
+        }
+    }
+
+    var style: FocusHeroStyle {
+        switch self {
+        case .idle:
+            return FocusHeroStyle(
+                ringLineWidth: 24,
+                trackOpacity: 0.22,
+                ringOpacity: 0.88,
+                heroOpacity: 1,
+                elapsedFont: .system(size: 52, weight: .black, design: .monospaced),
+                targetFont: .system(size: 15, weight: .black, design: .rounded),
+                statusFont: .system(size: 11, weight: .black, design: .rounded),
+                progressFont: .system(size: 12, weight: .bold, design: .rounded),
+                shouldAnimateRing: false,
+                showsCompletionPrompt: false,
+                showsNextDrillCard: false
+            )
+        case .running:
+            return FocusHeroStyle(
+                ringLineWidth: 28,
+                trackOpacity: 0.18,
+                ringOpacity: 1,
+                heroOpacity: 1,
+                elapsedFont: .system(size: 56, weight: .black, design: .monospaced),
+                targetFont: .system(size: 15, weight: .black, design: .rounded),
+                statusFont: .system(size: 11, weight: .black, design: .rounded),
+                progressFont: .system(size: 12, weight: .bold, design: .rounded),
+                shouldAnimateRing: true,
+                showsCompletionPrompt: false,
+                showsNextDrillCard: false
+            )
+        case .paused:
+            return FocusHeroStyle(
+                ringLineWidth: 26,
+                trackOpacity: 0.16,
+                ringOpacity: 0.7,
+                heroOpacity: 0.74,
+                elapsedFont: .system(size: 54, weight: .black, design: .monospaced),
+                targetFont: .system(size: 15, weight: .black, design: .rounded),
+                statusFont: .system(size: 11, weight: .black, design: .rounded),
+                progressFont: .system(size: 12, weight: .bold, design: .rounded),
+                shouldAnimateRing: false,
+                showsCompletionPrompt: false,
+                showsNextDrillCard: false
+            )
+        case .completed:
+            return FocusHeroStyle(
+                ringLineWidth: 28,
+                trackOpacity: 0.14,
+                ringOpacity: 1,
+                heroOpacity: 1,
+                elapsedFont: .system(size: 56, weight: .black, design: .monospaced),
+                targetFont: .system(size: 15, weight: .black, design: .rounded),
+                statusFont: .system(size: 11, weight: .black, design: .rounded),
+                progressFont: .system(size: 12, weight: .bold, design: .rounded),
+                shouldAnimateRing: false,
+                showsCompletionPrompt: true,
+                showsNextDrillCard: true
+            )
+        case .skipped:
+            return FocusHeroStyle(
+                ringLineWidth: 24,
+                trackOpacity: 0.16,
+                ringOpacity: 0.78,
+                heroOpacity: 0.9,
+                elapsedFont: .system(size: 52, weight: .black, design: .monospaced),
+                targetFont: .system(size: 15, weight: .black, design: .rounded),
+                statusFont: .system(size: 11, weight: .black, design: .rounded),
+                progressFont: .system(size: 12, weight: .bold, design: .rounded),
+                shouldAnimateRing: false,
+                showsCompletionPrompt: false,
+                showsNextDrillCard: true
+            )
+        }
+    }
+}
+
+private struct FocusHeroStyle {
+    let ringLineWidth: CGFloat
+    let trackOpacity: Double
+    let ringOpacity: Double
+    let heroOpacity: Double
+    let elapsedFont: Font
+    let targetFont: Font
+    let statusFont: Font
+    let progressFont: Font
+    let shouldAnimateRing: Bool
+    let showsCompletionPrompt: Bool
+    let showsNextDrillCard: Bool
 }
 
 private struct FocusRoomBackground: View {
@@ -383,7 +512,17 @@ private struct FocusRoomExecutionSurface: View {
     let elapsedSeconds: Int
     let completionState: GarageFocusCompletionState
     let isTimerRunning: Bool
+    let nextDrill: GarageFocusDrillRailItem?
     let onResetTimer: () -> Void
+    let onNext: () -> Void
+
+    private var visualState: FocusHeroVisualState {
+        FocusHeroVisualState(
+            completionState: completionState,
+            isTimerRunning: isTimerRunning,
+            elapsedSeconds: elapsedSeconds
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -399,7 +538,21 @@ private struct FocusRoomExecutionSurface: View {
                 isTimerRunning: isTimerRunning,
                 onReset: onResetTimer
             )
+
+            if visualState.style.showsCompletionPrompt {
+                FocusRoomCompletionPrompt()
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
+            if visualState.style.showsNextDrillCard {
+                FocusRoomNextDrillCard(
+                    nextDrill: nextDrill,
+                    action: onNext
+                )
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.88), value: visualState)
     }
 }
 
@@ -452,10 +605,24 @@ private struct GarageFocusHeroContainer: View {
 }
 
 private struct GarageDominantTimerHero: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     let durationSeconds: Int
     let elapsedSeconds: Int
     let completionState: GarageFocusCompletionState
     let isTimerRunning: Bool
+
+    private var visualState: FocusHeroVisualState {
+        FocusHeroVisualState(
+            completionState: completionState,
+            isTimerRunning: isTimerRunning,
+            elapsedSeconds: elapsedSeconds
+        )
+    }
+
+    private var style: FocusHeroStyle {
+        visualState.style
+    }
 
     private var progress: Double {
         focusRoomTimerProgress(elapsedSeconds: elapsedSeconds, durationSeconds: durationSeconds)
@@ -466,16 +633,27 @@ private struct GarageDominantTimerHero: View {
     }
 
     private var statusText: String {
-        switch completionState {
+        switch visualState {
         case .completed:
             return "Confirmed"
-        case .ready:
-            return "Timer complete"
-        case .inProgress:
-            return isTimerRunning ? "Timer running" : "Timer paused"
-        case .notStarted:
+        case .running:
+            return "Running"
+        case .paused:
+            return "Paused"
+        case .skipped:
+            return "Skipped"
+        case .idle:
             return "Timer"
         }
+    }
+
+    private var accessibilityValue: String {
+        [
+            "\(formattedTime(elapsedSeconds)) elapsed",
+            "of \(formattedTime(durationSeconds))",
+            statusText,
+            progressPercentText
+        ].joined(separator: ". ")
     }
 
     var body: some View {
@@ -498,18 +676,27 @@ private struct GarageDominantTimerHero: View {
                     )
 
                 Circle()
-                    .stroke(FocusRoomPalette.green.opacity(0.16), lineWidth: 18)
-                    .padding(10)
+                    .stroke(FocusRoomPalette.green.opacity(style.trackOpacity), lineWidth: style.ringLineWidth)
+                    .padding(style.ringLineWidth / 2)
 
                 Circle()
                     .trim(from: 0, to: max(progress, 0.035))
                     .stroke(
-                        completionState == .ready || completionState == .completed ? FocusRoomPalette.green : FocusRoomPalette.yellow,
-                        style: StrokeStyle(lineWidth: 18, lineCap: .round)
+                        visualState == .completed ? FocusRoomPalette.green.opacity(style.ringOpacity) : FocusRoomPalette.yellow.opacity(style.ringOpacity),
+                        style: StrokeStyle(lineWidth: style.ringLineWidth, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
-                    .padding(10)
-                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: progress)
+                    .padding(style.ringLineWidth / 2)
+                    .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.86), value: progress)
+                    .overlay {
+                        if style.shouldAnimateRing, reduceMotion == false {
+                            RunningSweepHighlight(
+                                progress: progress,
+                                lineWidth: style.ringLineWidth
+                            )
+                            .padding(style.ringLineWidth / 2)
+                        }
+                    }
 
                 Circle()
                     .stroke(Color.white.opacity(0.1), lineWidth: 1)
@@ -519,29 +706,30 @@ private struct GarageDominantTimerHero: View {
                     .stroke(Color.black.opacity(0.32), lineWidth: 1)
                     .padding(18)
 
-                VStack(spacing: 9) {
-                    Text(statusText)
-                        .font(.system(size: 11, weight: .black, design: .rounded))
-                        .textCase(.uppercase)
-                        .tracking(1.7)
-                        .foregroundStyle(FocusRoomPalette.green)
-                        .lineLimit(1)
-
+                VStack(spacing: 8) {
                     Text(formattedTime(elapsedSeconds))
-                        .font(.system(size: 54, weight: .black, design: .monospaced))
+                        .font(style.elapsedFont)
+                        .monospacedDigit()
                         .foregroundStyle(FocusRoomPalette.primaryText)
                         .lineLimit(1)
                         .minimumScaleFactor(0.52)
                         .shadow(color: FocusRoomPalette.green.opacity(0.2), radius: 10, x: 0, y: 0)
 
                     Text("Target \(formattedTime(durationSeconds))")
-                        .font(.system(size: 15, weight: .black, design: .rounded))
+                        .font(style.targetFont)
                         .foregroundStyle(FocusRoomPalette.yellow)
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
 
+                    Text(statusText)
+                        .font(style.statusFont)
+                        .textCase(.uppercase)
+                        .tracking(1.7)
+                        .foregroundStyle(visualState == .paused ? FocusRoomPalette.secondaryText : FocusRoomPalette.green)
+                        .lineLimit(1)
+
                     Text(progressPercentText)
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .font(style.progressFont)
                         .foregroundStyle(FocusRoomPalette.secondaryText)
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
@@ -552,6 +740,7 @@ private struct GarageDominantTimerHero: View {
                 }
                 .padding(.horizontal, 40)
             }
+            .opacity(style.heroOpacity)
             .frame(width: diameter, height: diameter)
             .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
         }
@@ -559,6 +748,47 @@ private struct GarageDominantTimerHero: View {
         .frame(height: 350)
         .shadow(color: FocusRoomPalette.green.opacity(0.22), radius: 24, x: 0, y: 14)
         .shadow(color: Color.black.opacity(0.4), radius: 18, x: 0, y: 12)
+        .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.88), value: visualState)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Focus timer")
+        .accessibilityValue(accessibilityValue)
+        .accessibilityHint(accessibilityHint)
+    }
+
+    private var accessibilityHint: String {
+        switch visualState {
+        case .running:
+            return "Timer is active."
+        case .paused:
+            return "Timer is paused. Resume is available in the bottom controls."
+        case .completed:
+            return "Timer is complete. Continue is available below."
+        case .skipped:
+            return "Current drill was skipped."
+        case .idle:
+            return "Timer is ready."
+        }
+    }
+}
+
+private struct RunningSweepHighlight: View {
+    let progress: Double
+    let lineWidth: CGFloat
+
+    @State private var pulse = false
+
+    var body: some View {
+        Circle()
+            .trim(from: max(progress - 0.055, 0), to: max(progress, 0.035))
+            .stroke(
+                Color.white.opacity(pulse ? 0.35 : 0.16),
+                style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+            )
+            .rotationEffect(.degrees(-90))
+            .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: pulse)
+            .onAppear {
+                pulse = true
+            }
     }
 }
 
@@ -582,6 +812,92 @@ private struct FocusRoomTeachingSection: View {
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 2)
+    }
+}
+
+private struct FocusRoomCompletionPrompt: View {
+    var body: some View {
+        VStack(spacing: 4) {
+            Text("Timer complete.")
+                .font(.system(size: 15, weight: .black, design: .rounded))
+                .foregroundStyle(FocusRoomPalette.primaryText)
+
+            Text("Log the rep, then move cleanly into the next drill.")
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(FocusRoomPalette.secondaryText)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 2)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct FocusRoomNextDrillCard: View {
+    let nextDrill: GarageFocusDrillRailItem?
+    let action: () -> Void
+
+    private var title: String {
+        nextDrill?.title ?? "Finish Routine"
+    }
+
+    private var subtitle: String {
+        nextDrill?.metadata ?? "Review the session and save the work."
+    }
+
+    var body: some View {
+        Button {
+            garageTriggerImpact(.medium)
+            action()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: nextDrill == nil ? "checkmark.seal.fill" : "arrow.forward.circle.fill")
+                    .font(.system(size: 22, weight: .black))
+                    .foregroundStyle(FocusRoomPalette.background)
+                    .frame(width: 44, height: 44)
+                    .background(FocusRoomPalette.green, in: Circle())
+                    .overlay(Circle().stroke(Color.white.opacity(0.16), lineWidth: 1))
+                    .shadow(color: FocusRoomPalette.green.opacity(0.24), radius: 12, x: 0, y: 6)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(nextDrill == nil ? "Routine Complete" : "Next Drill")
+                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .textCase(.uppercase)
+                        .tracking(1.4)
+                        .foregroundStyle(FocusRoomPalette.green)
+
+                    Text(title)
+                        .font(.system(size: 16, weight: .black, design: .rounded))
+                        .foregroundStyle(FocusRoomPalette.primaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.74)
+
+                    Text(subtitle)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(FocusRoomPalette.secondaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.76)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundStyle(FocusRoomPalette.secondaryText)
+            }
+            .padding(14)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .background(FocusRoomPalette.panel.opacity(0.62), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(FocusRoomPalette.border.opacity(0.95), lineWidth: 1)
+            )
+            .shadow(color: FocusRoomPalette.green.opacity(0.16), radius: 18, x: 0, y: 8)
+            .shadow(color: Color.black.opacity(0.34), radius: 14, x: 0, y: 10)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(nextDrill == nil ? "Finish routine" : "Next drill, \(title)")
+        .accessibilityValue(subtitle)
     }
 }
 
