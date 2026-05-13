@@ -74,7 +74,7 @@ enum GarageDrillFocusContentAdapter {
             setupBullets: compactBullets(
                 detail.setup,
                 fallback: resolvedPrescription.activeSetupReminder ?? metadata.setupLine,
-                limit: 2,
+                limit: 3,
                 maxWords: 9
             ),
             executionBullets: compactBullets(
@@ -121,7 +121,6 @@ enum GarageDrillFocusContentAdapter {
             durationSeconds: durationSeconds
         )
         let mode = focusMode(for: prescription)
-        let watchFor = firstCleanLine(detail.commonMisses)
         let guidanceText = guidanceText(for: prescription)
 
         return GarageDrillFocusContent(
@@ -136,10 +135,10 @@ enum GarageDrillFocusContentAdapter {
             durationSeconds: durationSeconds,
             targetMetric: prescription.goalText,
             guidanceText: guidanceText,
-            watchFor: watchFor,
+            watchFor: nil,
             finishRule: finishRule(for: prescription, durationSeconds: durationSeconds),
-            teachingDetail: metadata.teachingDetail,
-            reviewSummary: prescription.progressionNotes ?? metadata.reviewSummary,
+            teachingDetail: nil,
+            reviewSummary: nil,
             diagramKey: metadata.diagramKey
         )
     }
@@ -232,15 +231,15 @@ enum GarageDrillFocusContentAdapter {
     ) -> [String] {
         let source = cleanLines(detail.execution)
         if source.isEmpty == false {
-            return conciseSteps(Array(source.prefix(1)), maxWords: 8)
+            return conciseSteps(Array(source.prefix(3)), maxWords: 10)
         }
 
         let reminder = prescription.activeCue?.garageFocusContentTrimmed ?? ""
         if reminder.isEmpty == false {
-            return conciseSteps(Array(bulletSteps(from: reminder).prefix(1)), maxWords: 8)
+            return conciseSteps(Array(bulletSteps(from: reminder).prefix(3)), maxWords: 10)
         }
 
-        return conciseSteps(Array(bulletSteps(from: fallback).prefix(1)), maxWords: 8)
+        return conciseSteps(Array(bulletSteps(from: fallback).prefix(3)), maxWords: 10)
     }
 
     private static func bulletSteps(from value: String) -> [String] {

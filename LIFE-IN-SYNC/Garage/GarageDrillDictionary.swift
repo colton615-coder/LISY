@@ -1435,8 +1435,8 @@ extension GarageDrill {
             id: GarageCatalogBridge.uuid(for: "routine-drill:\(seedKey)"),
             definitionID: GarageCatalogBridge.uuid(for: "catalog-drill:\(id)"),
             title: title,
-            focusArea: faultType.sensoryDescription,
-            targetClub: clubRange.displayName,
+            focusArea: libraryCategory.displayName,
+            targetClub: clubRange.garageCompactDisplayName,
             defaultRepCount: clampedRepCount
         )
     }
@@ -1446,8 +1446,8 @@ extension GarageDrill {
             id: GarageCatalogBridge.uuid(for: "routine-drill:\(seedKey)"),
             definitionID: GarageCatalogBridge.uuid(for: "catalog-drill:\(id)"),
             title: title,
-            focusArea: faultType.sensoryDescription,
-            targetClub: clubRange.displayName,
+            focusArea: libraryCategory.displayName,
+            targetClub: clubRange.garageCompactDisplayName,
             defaultRepCount: defaultRepCount
         )
     }

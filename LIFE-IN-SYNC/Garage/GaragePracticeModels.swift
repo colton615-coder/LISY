@@ -100,16 +100,20 @@ struct PracticeTemplateDrill: Identifiable, Hashable, Codable {
     }
 
     var metadataSummary: String {
-        let catalog = GarageDrillCatalog.content(for: self)
         let prescription = GarageDrillCatalog.defaultPrescription(for: self)
+        if let canonicalDrill = DrillVault.canonicalDrill(for: self) {
+            return [
+                canonicalDrill.libraryCategory.displayName,
+                canonicalDrill.clubRange.garageCompactDisplayName,
+                prescription.mode.directoryLabel
+            ].joined(separator: " • ")
+        }
+
+        let catalog = GarageDrillCatalog.content(for: self)
         var parts: [String] = []
 
         if catalog.category.isEmpty == false {
             parts.append(catalog.category)
-        }
-
-        if let faultTarget = catalog.faultTargets.first {
-            parts.append(faultTarget)
         }
 
         if let selectedClub = prescription.selectedClub {
@@ -118,6 +122,25 @@ struct PracticeTemplateDrill: Identifiable, Hashable, Codable {
 
         parts.append(prescription.mode.directoryLabel)
         return parts.joined(separator: " • ")
+    }
+}
+
+extension ClubRange {
+    var garageCompactDisplayName: String {
+        switch self {
+        case .driver:
+            return "Driver"
+        case .woods:
+            return "Woods & Hybrids"
+        case .longIrons:
+            return "Long Irons"
+        case .scoringIrons:
+            return "Scoring Irons"
+        case .wedges:
+            return "Wedges"
+        case .putter:
+            return "Putter"
+        }
     }
 }
 

@@ -220,6 +220,7 @@ private struct GarageDrillRowCard: View {
 
     var body: some View {
         let catalog = GarageDrillCatalog.content(for: drill)
+        let detail = GarageDrillFocusDetails.detail(for: drill)
         GarageProCard(cornerRadius: 20, padding: 12) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: drill.environment.systemImage)
@@ -234,12 +235,12 @@ private struct GarageDrillRowCard: View {
                         .foregroundStyle(GarageProTheme.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text(catalog.faultTargets.first ?? catalog.primarySkill)
+                    Text(detail.purpose)
                         .font(.footnote.weight(.medium))
                         .foregroundStyle(GarageProTheme.textSecondary)
                         .lineLimit(2)
 
-                    GarageDrillDirectoryMetaRow(catalog: catalog, environment: drill.environment)
+                GarageDrillDirectoryMetaRow(catalog: catalog, clubFamily: drill.clubRange.garageCompactDisplayName)
                 }
 
                 Spacer(minLength: 8)
@@ -384,7 +385,7 @@ private struct GarageDrillDetailSheet: View {
                         .foregroundStyle(GarageProTheme.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("\(drill.environment.displayName) • \(catalog.category) • \(routineTitles)")
+                    Text("\(catalog.category) • \(drill.clubRange.garageCompactDisplayName) • \(GarageDrillCatalog.defaultPrescription(for: drill.makeGeneratedPracticeTemplateDrill(seedKey: "detail-meta-\(drill.id)")).mode.directoryLabel)")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(GarageProTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -505,12 +506,10 @@ private struct GarageLibraryRoutineDescriptor: Identifiable {
         self.totalRepCount = launchTemplate.drills.reduce(0) { $0 + $1.defaultRepCount }
         self.estimatedMinutes = resolvedDrills.reduce(0) { $0 + GarageDrillFocusDetails.detail(for: $1).estimatedMinutes }
         self.drillRows = resolvedDrills.map {
-            let detail = GarageDrillFocusDetails.detail(for: $0)
-            let metadata = GarageDrillFocusDetails.metadata(for: $0, detail: detail)
             return GarageLibraryRoutineDrillRow(
                 id: $0.id,
                 title: $0.title,
-                summary: "\(metadata.mode.controlLabel) - \(detail.estimatedMinutes) min - \($0.purpose)"
+                summary: "\($0.libraryCategory.displayName) • \($0.clubRange.garageCompactDisplayName) • \(GarageDrillCatalog.defaultPrescription(for: $0.makeGeneratedPracticeTemplateDrill(seedKey: "routine-row-\($0.id)")).mode.directoryLabel)"
             )
         }
         self.launchTemplate = launchTemplate
@@ -527,11 +526,10 @@ private struct GarageLibraryRoutineDescriptor: Identifiable {
             partialResult + GarageDrillFocusDetails.detail(for: drill).estimatedMinutes
         }
         self.drillRows = template.drills.map { drill in
-            let summary = DrillVault.canonicalDrill(for: drill)?.purpose ?? drill.focusArea
             return GarageLibraryRoutineDrillRow(
                 id: drill.id.uuidString,
                 title: drill.title,
-                summary: summary.isEmpty ? drill.metadataSummary : "\(drill.metadataSummary) - \(summary)"
+                summary: drill.metadataSummary
             )
         }
         self.launchTemplate = template
@@ -550,28 +548,22 @@ private struct GarageLibraryRoutineDrillRow: Identifiable {
 
 private struct GarageDrillDirectoryMetaRow: View {
     let catalog: GarageDrillCatalogContent
-    let environment: PracticeEnvironment
+    let clubFamily: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 GarageDrillMetaPill(title: catalog.category)
-                GarageDrillMetaPill(title: catalog.difficulty.rawValue)
-                GarageDrillMetaPill(title: environment.displayName)
+                GarageDrillMetaPill(title: clubFamily)
+                if let mode = catalog.supportedModes.first {
+                    GarageDrillMetaPill(title: mode.directoryLabel)
+                }
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    ForEach(catalog.supportedModes, id: \.self) { mode in
-                        GarageDrillMetaPill(title: mode.directoryLabel)
-                    }
-
                     ForEach(catalog.equipment.prefix(2), id: \.self) { item in
                         GarageDrillMetaPill(title: item)
-                    }
-
-                    if let club = catalog.suggestedClubs.first {
-                        GarageDrillMetaPill(title: club, isAccent: true)
                     }
                 }
             }

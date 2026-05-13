@@ -436,19 +436,20 @@ struct GarageRoutineReviewView: View {
 
     private var pageHeader: some View {
         GarageCompactPageHeader(
-            eyebrow: surfaceRoutineEyebrow,
-            title: "Review Routine",
-            subtitle: reviewPlan.title
+            eyebrow: "Review Routine",
+            title: reviewPlan.title,
+            subtitle: reviewPlan.environment.displayName
         ) {
-            GarageCompactStatBadge(
-                value: "\(reviewPlan.drillCount)",
-                label: reviewPlan.drillCount == 1 ? "Drill" : "Drills"
-            )
+            Text("\(reviewPlan.drillCount) \(reviewPlan.drillCount == 1 ? "Drill" : "Drills")")
+                .font(.system(size: 11, weight: .black, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .foregroundStyle(ModuleTheme.garageAccent)
+                .padding(.horizontal, 10)
+                .frame(minHeight: 28)
+                .background(GarageProTheme.insetSurface.opacity(0.8), in: Capsule())
+                .overlay(Capsule().stroke(GarageProTheme.border, lineWidth: 1))
         }
-    }
-
-    private var surfaceRoutineEyebrow: String {
-        "\(reviewPlan.environment.displayName) \(reviewPlan.drillCount) \(reviewPlan.drillCount == 1 ? "Drill" : "Drills")"
     }
 
     private var drillListSection: some View {
@@ -605,15 +606,16 @@ private struct GarageManualPlanDrill: Identifiable, Hashable {
     let environment: PracticeEnvironment
     let category: GarageDrillLibraryCategory
     let club: ClubRange
+    let mode: GarageDrillSessionMode
     let systemImage: String
     let practiceDrill: PracticeTemplateDrill
 
     var directorySubtitle: String {
-        "\(environment.displayName) • \(category.displayName) • \(club.displayName)"
+        "\(category.displayName) • \(club.garageCompactDisplayName) • \(mode.directoryLabel)"
     }
 
     var compactMetadata: String {
-        "\(category.displayName) • \(club.displayName) • \(environment.displayName)"
+        "\(category.displayName) • \(club.garageCompactDisplayName) • \(mode.directoryLabel)"
     }
 
     func matches(_ query: String) -> Bool {
@@ -642,10 +644,13 @@ private struct GarageManualPlanDrill: Identifiable, Hashable {
                 GarageManualPlanDrill(
                     id: drill.id,
                     title: drill.title,
-                    focus: drill.faultType.sensoryDescription,
+                    focus: drill.libraryCategory.displayName,
                     environment: drill.environment,
                     category: drill.libraryCategory,
                     club: drill.clubRange,
+                    mode: GarageDrillCatalog.defaultPrescription(
+                        for: drill.makeGeneratedPracticeTemplateDrill(seedKey: "manual-directory-mode-\(drill.id)")
+                    ).mode,
                     systemImage: systemImage(for: drill),
                     practiceDrill: drill.makeGeneratedPracticeTemplateDrill(seedKey: "manual-directory-\(drill.id)")
                 )
@@ -1310,18 +1315,6 @@ private struct GarageReviewSelectionDock: View {
                         .font(.system(size: 17, weight: .black, design: .rounded))
 
                     Spacer(minLength: 8)
-
-                    Text(selectionSummary)
-                        .font(.system(size: 11, weight: .black, design: .rounded))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.68)
-                        .foregroundStyle(isEnabled ? ModuleTheme.garageSurfaceDark : GarageProTheme.textSecondary)
-                        .padding(.horizontal, 10)
-                        .frame(minHeight: 32)
-                        .background(
-                            isEnabled ? GarageProTheme.textPrimary.opacity(0.86) : GarageProTheme.insetSurface.opacity(0.9),
-                            in: Capsule()
-                        )
                 }
                 .lineLimit(1)
                 .minimumScaleFactor(0.76)
@@ -1349,9 +1342,6 @@ private struct GarageReviewSelectionDock: View {
         .background(ModuleTheme.garageSurfaceDark.opacity(0.76))
     }
 
-    private var selectionSummary: String {
-        "\(selectionCount) \(selectionCount == 1 ? "drill" : "drills") selected"
-    }
 }
 
 private struct GarageRoutineReviewMetric: View {

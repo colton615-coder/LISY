@@ -378,35 +378,6 @@ private struct FocusRoomHeader: View {
     }
 }
 
-private struct FocusRoomGoalBanner: View {
-    let text: String
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "scope")
-                .font(.system(size: 13, weight: .black))
-                .foregroundStyle(FocusRoomPalette.green)
-            Text("GOAL")
-                .font(.system(size: 11, weight: .black, design: .rounded))
-                .textCase(.uppercase)
-                .tracking(1.2)
-                .foregroundStyle(FocusRoomPalette.green)
-            Text(text)
-                .font(.system(size: 15, weight: .bold, design: .rounded))
-                .foregroundStyle(FocusRoomPalette.primaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color.black.opacity(0.2), in: Capsule())
-        .overlay(
-            Capsule()
-                .stroke(FocusRoomPalette.border, lineWidth: 1)
-        )
-    }
-}
-
 private struct FocusRoomExecutionSurface: View {
     let drill: GarageFocusDrillPresentation
     let elapsedSeconds: Int
@@ -416,8 +387,6 @@ private struct FocusRoomExecutionSurface: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            FocusRoomGoalBanner(text: focusRoomTimerGoalText(durationSeconds: drill.content.durationSeconds))
-
             FocusRoomTeachingSection(
                 setupSteps: drill.content.setupSteps,
                 cueSteps: drill.content.cueSteps
@@ -442,43 +411,25 @@ private struct GarageFocusHeroContainer: View {
     let onReset: () -> Void
 
     var body: some View {
-        VStack(spacing: 12) {
-            FocusRoomLargeTracker(
+        ZStack(alignment: .topTrailing) {
+            GarageDominantTimerHero(
                 durationSeconds: durationSeconds,
                 elapsedSeconds: elapsedSeconds,
-                isReady: completionState == .ready || completionState == .completed
+                completionState: completionState,
+                isTimerRunning: isTimerRunning
             )
 
-            HStack(spacing: 8) {
-                FocusRoomTrackerTags(
-                    stateText: timerControlTitle,
-                    targetText: formattedTime(durationSeconds),
-                    style: .compact
-                )
-
-                Spacer(minLength: 4)
-
-                resetButton
-            }
+            resetButton
+                .padding(14)
         }
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 14)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 12)
         .background(Color.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(FocusRoomPalette.border, lineWidth: 1)
         )
-    }
-
-    private var timerControlTitle: String {
-        if completionState == .ready || completionState == .completed {
-            return "Done"
-        }
-        if isTimerRunning {
-            return "Pause"
-        }
-        return elapsedSeconds > 0 ? "Resume" : "Start"
     }
 
     @ViewBuilder
@@ -500,104 +451,114 @@ private struct GarageFocusHeroContainer: View {
     }
 }
 
-private struct FocusRoomLargeTracker: View {
+private struct GarageDominantTimerHero: View {
     let durationSeconds: Int
     let elapsedSeconds: Int
-    let isReady: Bool
+    let completionState: GarageFocusCompletionState
+    let isTimerRunning: Bool
 
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 18) {
-                FocusRoomLargeRing(
-                    primary: formattedTime(elapsedSeconds),
-                    progress: focusRoomTimerProgress(elapsedSeconds: elapsedSeconds, durationSeconds: durationSeconds),
-                    isReady: isReady
-                )
-                .frame(width: 174, height: 174)
+    private var progress: Double {
+        focusRoomTimerProgress(elapsedSeconds: elapsedSeconds, durationSeconds: durationSeconds)
+    }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Tracker")
-                        .font(.system(size: 12, weight: .black, design: .rounded))
-                        .textCase(.uppercase)
-                        .tracking(1.8)
-                        .foregroundStyle(FocusRoomPalette.secondaryText)
-                    Text(formattedTime(elapsedSeconds))
-                        .font(.system(size: 42, weight: .black, design: .monospaced))
-                        .foregroundStyle(FocusRoomPalette.primaryText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.58)
-                    Text("Timer · \(formattedTime(durationSeconds))")
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
-                        .foregroundStyle(FocusRoomPalette.yellow)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
+    private var progressPercentText: String {
+        "\(Int((progress * 100).rounded()))% complete"
+    }
 
-            VStack(spacing: 10) {
-                FocusRoomLargeRing(
-                    primary: formattedTime(elapsedSeconds),
-                    progress: focusRoomTimerProgress(elapsedSeconds: elapsedSeconds, durationSeconds: durationSeconds),
-                    isReady: isReady
-                )
-                .frame(width: 156, height: 156)
-
-                Text(formattedTime(elapsedSeconds))
-                    .font(.system(size: 36, weight: .black, design: .monospaced))
-                    .foregroundStyle(FocusRoomPalette.primaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-            }
-            .frame(maxWidth: .infinity)
+    private var statusText: String {
+        switch completionState {
+        case .completed:
+            return "Confirmed"
+        case .ready:
+            return "Timer complete"
+        case .inProgress:
+            return isTimerRunning ? "Timer running" : "Timer paused"
+        case .notStarted:
+            return "Timer"
         }
     }
-}
-
-private struct FocusRoomLargeRing: View {
-    let primary: String
-    let progress: Double
-    let isReady: Bool
 
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            FocusRoomPalette.panel.opacity(0.96),
-                            Color.black.opacity(0.18)
-                        ],
-                        center: .center,
-                        startRadius: 20,
-                        endRadius: 90
+        GeometryReader { proxy in
+            let diameter = max(min(proxy.size.width - 8, proxy.size.height - 4), 1)
+
+            ZStack {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                FocusRoomPalette.panel.opacity(0.98),
+                                FocusRoomPalette.backgroundLift.opacity(0.76),
+                                Color.black.opacity(0.2)
+                            ],
+                            center: .center,
+                            startRadius: diameter * 0.12,
+                            endRadius: diameter * 0.54
+                        )
                     )
-                )
 
-            Circle()
-                .stroke(FocusRoomPalette.green.opacity(0.18), lineWidth: 14)
+                Circle()
+                    .stroke(FocusRoomPalette.green.opacity(0.16), lineWidth: 18)
+                    .padding(10)
 
-            Circle()
-                .trim(from: 0, to: max(progress, 0.035))
-                .stroke(
-                    isReady ? FocusRoomPalette.green : FocusRoomPalette.yellow,
-                    style: StrokeStyle(lineWidth: 14, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: progress)
+                Circle()
+                    .trim(from: 0, to: max(progress, 0.035))
+                    .stroke(
+                        completionState == .ready || completionState == .completed ? FocusRoomPalette.green : FocusRoomPalette.yellow,
+                        style: StrokeStyle(lineWidth: 18, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .padding(10)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: progress)
 
-            Circle()
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                .padding(18)
+                Circle()
+                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    .padding(34)
 
-            Text(primary)
-                .font(.system(size: 21, weight: .black, design: .monospaced))
-                .foregroundStyle(FocusRoomPalette.primaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.42)
-                .padding(.horizontal, 20)
+                Circle()
+                    .stroke(Color.black.opacity(0.32), lineWidth: 1)
+                    .padding(18)
+
+                VStack(spacing: 9) {
+                    Text(statusText)
+                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .textCase(.uppercase)
+                        .tracking(1.7)
+                        .foregroundStyle(FocusRoomPalette.green)
+                        .lineLimit(1)
+
+                    Text(formattedTime(elapsedSeconds))
+                        .font(.system(size: 54, weight: .black, design: .monospaced))
+                        .foregroundStyle(FocusRoomPalette.primaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.52)
+                        .shadow(color: FocusRoomPalette.green.opacity(0.2), radius: 10, x: 0, y: 0)
+
+                    Text("Target \(formattedTime(durationSeconds))")
+                        .font(.system(size: 15, weight: .black, design: .rounded))
+                        .foregroundStyle(FocusRoomPalette.yellow)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+
+                    Text(progressPercentText)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(FocusRoomPalette.secondaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 5)
+                        .background(Color.black.opacity(0.22), in: Capsule())
+                        .overlay(Capsule().stroke(FocusRoomPalette.border, lineWidth: 1))
+                }
+                .padding(.horizontal, 40)
+            }
+            .frame(width: diameter, height: diameter)
+            .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
         }
-        .shadow(color: FocusRoomPalette.green.opacity(0.18), radius: 16, x: 0, y: 8)
+        .frame(maxWidth: .infinity)
+        .frame(height: 350)
+        .shadow(color: FocusRoomPalette.green.opacity(0.22), radius: 24, x: 0, y: 14)
+        .shadow(color: Color.black.opacity(0.4), radius: 18, x: 0, y: 12)
     }
 }
 
@@ -614,9 +575,9 @@ private struct FocusRoomTeachingSection: View {
             )
             Divider().overlay(FocusRoomPalette.border.opacity(0.8))
             FocusRoomBulletBlock(
-                title: "CUE",
+                title: "STEPS",
                 tint: FocusRoomPalette.yellow,
-                steps: Array(cueSteps.prefix(1))
+                steps: Array(cueSteps.prefix(3))
             )
         }
         .padding(.horizontal, 4)
@@ -653,67 +614,6 @@ private struct FocusRoomBulletBlock: View {
     }
 }
 
-private struct FocusRoomTrackerTags: View {
-    enum Style {
-        case expanded
-        case compact
-    }
-
-    let stateText: String
-    let targetText: String
-    let style: Style
-
-    var body: some View {
-        HStack(spacing: style == .expanded ? 6 : 5) {
-            FocusRoomMiniTag(
-                title: "State",
-                value: stateText,
-                style: style == .expanded ? .expanded : .compact
-            )
-            FocusRoomMiniTag(
-                title: "Timer",
-                value: targetText.garageFocusRoomCompactLabel,
-                style: style == .expanded ? .expanded : .compact
-            )
-        }
-    }
-}
-
-private struct FocusRoomMiniTag: View {
-    enum Style {
-        case expanded
-        case compact
-    }
-
-    let title: String
-    let value: String
-    let style: Style
-
-    var body: some View {
-        HStack(spacing: style == .expanded ? 6 : 4) {
-            if style == .expanded {
-                Text(title)
-                    .font(.system(size: 9, weight: .black, design: .rounded))
-                    .textCase(.uppercase)
-                    .tracking(1.1)
-                    .foregroundStyle(FocusRoomPalette.secondaryText)
-            }
-            Text(value)
-                .font(.system(size: style == .expanded ? 11 : 10, weight: .bold, design: .rounded))
-                .foregroundStyle(FocusRoomPalette.primaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-        }
-        .padding(.horizontal, style == .expanded ? 8 : 7)
-        .padding(.vertical, 5)
-        .background(FocusRoomPalette.panel.opacity(0.88), in: Capsule())
-        .overlay(
-            Capsule()
-                .stroke(FocusRoomPalette.border, lineWidth: 1)
-        )
-    }
-}
-
 private func formattedTime(_ value: Int) -> String {
     let clampedValue = max(value, 0)
     let minutes = clampedValue / 60
@@ -721,18 +621,9 @@ private func formattedTime(_ value: Int) -> String {
     return "\(minutes):\(String(format: "%02d", seconds))"
 }
 
-private func focusRoomTimerGoalText(durationSeconds: Int) -> String {
-    "Timer · \(formattedMinutes(durationSeconds))"
-}
-
 private func focusRoomTimerProgress(elapsedSeconds: Int, durationSeconds: Int) -> Double {
     let total = max(durationSeconds, 1)
     return min(max(Double(elapsedSeconds) / Double(total), 0), 1)
-}
-
-private func formattedMinutes(_ value: Int) -> String {
-    let minutes = max(Int(ceil(Double(max(value, 0)) / 60.0)), 1)
-    return "\(minutes) min"
 }
 
 private struct FocusRoomBottomActions: View {
