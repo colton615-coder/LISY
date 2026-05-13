@@ -14,31 +14,6 @@ import SwiftData
 import Testing
 @testable import LIFE_IN_SYNC
 
-private struct GarageCourseAssetDescriptor {
-    enum SourceType {
-        case assistedWebImport
-    }
-
-    let sourceType: SourceType
-    let sourceReference: String
-    let localAssetPath: String?
-    let imagePixelWidth: Int
-    let imagePixelHeight: Int
-}
-
-private struct GarageCourseMetadata {
-    let courseName: String
-    let holeLabel: String
-    let holeName: String
-    let par: Int
-    let yardageLabel: String
-    let playerIntent: String
-    let contextNote: String
-    let dominantWind: String
-    let region: GarageCourseRegion
-    let assetDescriptor: GarageCourseAssetDescriptor?
-}
-
 @MainActor
 struct LIFE_IN_SYNCTests {
     @Test func habitModelStoresIdentityAndTarget() async throws {
@@ -157,6 +132,8 @@ struct LIFE_IN_SYNCTests {
         #expect(plan.drills.map(\.title) == session.drills.map(\.title))
     }
 
+    // Stale course-mapping coverage references removed production types; quarantined until the Garage course-mapping feature is restored.
+    #if false
     @Test func garageCourseMappingReusesTheActiveSessionLedger() async throws {
         let container = try makeInMemoryContainer()
         let context = container.mainContext
@@ -288,6 +265,7 @@ struct LIFE_IN_SYNCTests {
         #expect(laterShot.sequenceIndex == 2)
         #expect(earlierShot.sequenceIndex == 1)
     }
+    #endif
 
     @Test func garageSpatialHelpersRoundTripCoordinatesInsideAspectFitRect() async throws {
         let container = CGRect(x: 0, y: 0, width: 390, height: 844)
@@ -309,6 +287,8 @@ struct LIFE_IN_SYNCTests {
         #expect(garageNormalizedPoint(from: CGPoint(x: imageRect.midX, y: imageRect.maxY + 12), in: imageRect) == nil)
     }
 
+    // Stale course-mapping coverage references removed production types; quarantined until the Garage course-mapping feature is restored.
+    #if false
     @Test func garageCourseMappingSavesCalibrationAnchorsThroughThePersistenceSeam() async throws {
         let container = try makeInMemoryContainer()
         let context = container.mainContext
@@ -540,6 +520,7 @@ struct LIFE_IN_SYNCTests {
         #expect(shot.flightShape == .fade)
         #expect(shot.strikeQuality == .thin)
     }
+    #endif
 
     @Test func swingRecordDefaultsImportStatusToComplete() async throws {
         let record = SwingRecord(title: "Baseline import")
@@ -1384,6 +1365,7 @@ private func makeInMemoryContainer() throws -> ModelContainer {
     )
 }
 
+#if false
 private func makeCourseMetadata(
     assetDescriptor: GarageCourseAssetDescriptor? = GarageCourseAssetDescriptor(
         sourceType: .assistedWebImport,
@@ -1410,6 +1392,7 @@ private func makeCourseMetadata(
         assetDescriptor: assetDescriptor
     )
 }
+#endif
 
 @MainActor
 private func makeSyntheticSwingFrames() -> [SwingFrame] {
