@@ -14,6 +14,31 @@ import SwiftData
 import Testing
 @testable import LIFE_IN_SYNC
 
+private struct GarageCourseAssetDescriptor {
+    enum SourceType {
+        case assistedWebImport
+    }
+
+    let sourceType: SourceType
+    let sourceReference: String
+    let localAssetPath: String?
+    let imagePixelWidth: Int
+    let imagePixelHeight: Int
+}
+
+private struct GarageCourseMetadata {
+    let courseName: String
+    let holeLabel: String
+    let holeName: String
+    let par: Int
+    let yardageLabel: String
+    let playerIntent: String
+    let contextNote: String
+    let dominantWind: String
+    let region: GarageCourseRegion
+    let assetDescriptor: GarageCourseAssetDescriptor?
+}
+
 @MainActor
 struct LIFE_IN_SYNCTests {
     @Test func habitModelStoresIdentityAndTarget() async throws {
