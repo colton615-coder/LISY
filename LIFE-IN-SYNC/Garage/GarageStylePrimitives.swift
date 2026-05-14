@@ -175,7 +175,7 @@ struct GarageGlassPanel<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             content
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -210,8 +210,8 @@ struct GarageGlassPanel<Content: View>: View {
                     lineWidth: 1
                 )
         )
-        .shadow(color: Color.black.opacity(0.34), radius: 24, x: 0, y: 18)
-        .shadow(color: GaragePremiumPalette.gold.opacity(isProminent ? 0.12 : 0.05), radius: 20, x: 0, y: 0)
+        .shadow(color: Color.black.opacity(0.3), radius: 18, x: 0, y: 12)
+        .shadow(color: GaragePremiumPalette.gold.opacity(isProminent ? 0.1 : 0.04), radius: 16, x: 0, y: 0)
     }
 }
 
@@ -228,11 +228,11 @@ struct GarageGoldButton: View {
             action()
         } label: {
             Label(title, systemImage: systemImage)
-                .font(.system(.headline, design: .rounded).weight(.black))
+                .font(.headline.weight(.bold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.78)
                 .foregroundStyle(GaragePremiumPalette.emeraldDeep)
-                .frame(maxWidth: .infinity, minHeight: 62)
+                .frame(maxWidth: .infinity, minHeight: 54)
                 .background(
                     LinearGradient(
                         colors: [
@@ -243,16 +243,16 @@ struct GarageGoldButton: View {
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
-                    in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .stroke(Color.white.opacity(0.22), lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
         .opacity(isEnabled ? 1 : 0.5)
-        .shadow(color: GaragePremiumPalette.gold.opacity(isEnabled ? 0.32 : 0), radius: 18, x: 0, y: 12)
+        .shadow(color: GaragePremiumPalette.gold.opacity(isEnabled ? 0.24 : 0), radius: 14, x: 0, y: 8)
         .disabled(isEnabled == false)
     }
 }
@@ -266,9 +266,9 @@ struct GarageSectionHeader: View {
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             Text(eyebrow)
-                .font(.system(size: 11, weight: .black, design: .rounded))
+                .font(.system(size: 10, weight: .bold))
                 .textCase(.uppercase)
-                .tracking(2.4)
+                .tracking(2.0)
                 .foregroundStyle(GaragePremiumPalette.mintText)
 
             Spacer(minLength: 12)
@@ -279,9 +279,9 @@ struct GarageSectionHeader: View {
                     action()
                 } label: {
                     Label(actionTitle, systemImage: actionSystemImage)
-                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .font(.system(size: 10, weight: .bold))
                         .textCase(.uppercase)
-                        .tracking(1.5)
+                        .tracking(1.2)
                         .foregroundStyle(GaragePremiumPalette.gold)
                 }
                 .buttonStyle(.plain)
@@ -319,24 +319,24 @@ struct GarageHeroCard<Trailing: View>: View {
     }
 
     var body: some View {
-        GarageGlassPanel(cornerRadius: 30, padding: 22, isProminent: true) {
-            HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 14) {
+        GarageGlassPanel(cornerRadius: 24, padding: 17, isProminent: true) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 10) {
                     Text(eyebrow)
-                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .font(.system(size: 10, weight: .bold))
                         .textCase(.uppercase)
-                        .tracking(2.6)
+                        .tracking(2.1)
                         .foregroundStyle(GaragePremiumPalette.gold)
 
                     Text(title)
-                        .font(.system(size: 26, weight: .black, design: .rounded))
-                        .lineLimit(3)
-                        .minimumScaleFactor(0.72)
+                        .font(.system(size: 22, weight: .heavy))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.78)
                         .foregroundStyle(GarageProTheme.textPrimary)
 
                     Text(subtitle)
-                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
-                        .lineSpacing(3)
+                        .font(.footnote.weight(.medium))
+                        .lineSpacing(2)
                         .foregroundStyle(GaragePremiumPalette.mintText)
                         .fixedSize(horizontal: false, vertical: true)
 
@@ -346,10 +346,10 @@ struct GarageHeroCard<Trailing: View>: View {
                             ctaAction()
                         } label: {
                             Label(ctaTitle, systemImage: ctaSystemImage)
-                                .font(.system(.subheadline, design: .rounded).weight(.black))
+                                .font(.footnote.weight(.bold))
                                 .foregroundStyle(GaragePremiumPalette.gold)
-                                .padding(.horizontal, 14)
-                                .frame(minHeight: 42)
+                                .padding(.horizontal, 12)
+                                .frame(minHeight: 34)
                                 .background(GaragePremiumPalette.emeraldDeep.opacity(0.72), in: Capsule())
                                 .overlay(
                                     Capsule()
@@ -381,32 +381,32 @@ struct GarageQuickActionTile: View {
             garageTriggerSelection()
             action()
         } label: {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 20, weight: .black))
+                    .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(isPrimary ? GaragePremiumPalette.emeraldDeep : GaragePremiumPalette.gold)
-                    .frame(width: 42, height: 42)
+                    .frame(width: 34, height: 34)
                     .background(
                         isPrimary ? GaragePremiumPalette.gold : GaragePremiumPalette.gold.opacity(0.12),
-                        in: RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                     )
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
-                        .font(.system(.subheadline, design: .rounded).weight(.black))
+                        .font(.subheadline.weight(.bold))
                         .foregroundStyle(GarageProTheme.textPrimary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
 
                     Text(subtitle)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(GarageProTheme.textSecondary)
                         .lineLimit(2)
                         .minimumScaleFactor(0.78)
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 128, alignment: .topLeading)
-            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 100, alignment: .topLeading)
+            .padding(12)
             .background(
                 LinearGradient(
                     colors: [
@@ -416,10 +416,10 @@ struct GarageQuickActionTile: View {
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 ),
-                in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(isPrimary ? GaragePremiumPalette.gold.opacity(0.34) : GarageProTheme.border, lineWidth: 1)
             )
         }
@@ -441,32 +441,32 @@ struct GarageRecentSessionRow: View {
             garageTriggerSelection()
             action()
         } label: {
-            HStack(spacing: 14) {
+            HStack(spacing: 12) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 18, weight: .black))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(GaragePremiumPalette.gold)
-                    .frame(width: 54, height: 54)
-                    .background(GaragePremiumPalette.emerald.opacity(0.55), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+                    .frame(width: 46, height: 46)
+                    .background(GaragePremiumPalette.emerald.opacity(0.55), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 17, style: .continuous)
+                        RoundedRectangle(cornerRadius: 15, style: .continuous)
                             .stroke(GaragePremiumPalette.gold.opacity(0.22), lineWidth: 1)
                     )
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
-                        .font(.system(.headline, design: .rounded).weight(.black))
+                        .font(.headline.weight(.bold))
                         .foregroundStyle(GarageProTheme.textPrimary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
 
                     Text(subtitle)
-                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .font(.subheadline.weight(.medium))
                         .foregroundStyle(GaragePremiumPalette.mintText)
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
 
                     Text(detail)
-                        .font(.system(.footnote, design: .rounded).weight(.medium))
+                        .font(.footnote.weight(.medium))
                         .foregroundStyle(GarageProTheme.textSecondary)
                         .lineLimit(1)
                 }
@@ -491,10 +491,10 @@ struct GarageRecentSessionRow: View {
                         .foregroundStyle(GaragePremiumPalette.gold)
                 }
             }
-            .padding(12)
-            .background(GaragePremiumPalette.emeraldGlass.opacity(0.58), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .padding(10)
+            .background(GaragePremiumPalette.emeraldGlass.opacity(0.58), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(GarageProTheme.border, lineWidth: 1)
             )
         }
