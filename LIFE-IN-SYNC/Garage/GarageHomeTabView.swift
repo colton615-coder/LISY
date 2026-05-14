@@ -145,11 +145,11 @@ private enum GarageHomeService: String, CaseIterable, Identifiable {
     var pageHeight: CGFloat {
         switch self {
         case .drillPlans:
-            548
+            610
         case .tempoBuilder:
-            486
+            552
         case .journal:
-            502
+            560
         }
     }
 }
@@ -164,16 +164,27 @@ private struct GarageDrillPlansServicePage: View {
             subtitle: "Choose the surface, then start or create a repeatable routine.",
             artwork: GaragePracticeArtwork()
         ) {
-            VStack(alignment: .leading, spacing: 12) {
-                GarageSectionHeader(eyebrow: "Choose Surface")
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 12) {
+                    GarageSectionHeader(eyebrow: "Choose Surface")
 
-                VStack(spacing: 0) {
-                    ForEach(PracticeEnvironment.allCases) { environment in
-                        GaragePlatformCard(environment: environment) {
-                            onOpenEnvironment(environment)
+                    VStack(spacing: 0) {
+                        ForEach(PracticeEnvironment.allCases) { environment in
+                            GaragePlatformCard(environment: environment) {
+                                onOpenEnvironment(environment)
+                            }
                         }
                     }
                 }
+
+                Spacer(minLength: 24)
+
+                GarageEditorialFooter(
+                    label: "Today's Focus",
+                    text: "Start with one clean rep. Pick the surface that matches today's work.",
+                    hint: "Select a surface to continue",
+                    systemImage: "scope"
+                )
             }
         }
     }
@@ -189,14 +200,25 @@ private struct GarageTempoServicePage: View {
             subtitle: "Train swing rhythm and timing with a focused, standalone tool.",
             artwork: GarageRhythmArtwork()
         ) {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 0) {
                 GarageTempoPreview()
 
-                GarageGoldButton(
-                    title: "Start",
-                    systemImage: "play.fill",
-                    action: onStartTempoBuilder
-                )
+                Spacer(minLength: 24)
+
+                VStack(alignment: .leading, spacing: 14) {
+                    GarageGoldButton(
+                        title: "Start",
+                        systemImage: "play.fill",
+                        action: onStartTempoBuilder
+                    )
+
+                    GarageEditorialFooter(
+                        label: "Coaching Cue",
+                        text: "Let the beat shape the rehearsal. Keep the swing smooth before adding speed.",
+                        hint: "Start Tempo Builder",
+                        systemImage: "metronome.fill"
+                    )
+                }
             }
         }
     }
@@ -213,7 +235,7 @@ private struct GarageJournalServicePage: View {
             subtitle: "Capture the cues, feels, and course lessons worth carrying forward.",
             artwork: GarageJournalArtwork()
         ) {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 14) {
                     GarageSectionHeader(eyebrow: "Quick Capture")
 
@@ -224,19 +246,30 @@ private struct GarageJournalServicePage: View {
                     }
                 }
 
-                VStack(spacing: 0) {
-                    GarageHubActionButton(
-                        title: "New Entry",
-                        systemImage: "square.and.pencil",
-                        isPrimary: true,
-                        action: onNewJournalEntry
-                    )
+                Spacer(minLength: 24)
 
-                    GarageHubActionButton(
-                        title: "Archive",
-                        systemImage: "archivebox.fill",
-                        isPrimary: false,
-                        action: onOpenJournalArchive
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(spacing: 0) {
+                        GarageHubActionButton(
+                            title: "New Entry",
+                            systemImage: "square.and.pencil",
+                            isPrimary: true,
+                            action: onNewJournalEntry
+                        )
+
+                        GarageHubActionButton(
+                            title: "Archive",
+                            systemImage: "archivebox.fill",
+                            isPrimary: false,
+                            action: onOpenJournalArchive
+                        )
+                    }
+
+                    GarageEditorialFooter(
+                        label: "Carry Forward",
+                        text: "Save the feel while it is fresh. One clear note is enough.",
+                        hint: "New Entry keeps today's cue alive",
+                        systemImage: "quote.opening"
                     )
                 }
             }
@@ -290,7 +323,7 @@ private struct GarageServiceCard<Artwork: View, Content: View>: View {
         .padding(.top, 8)
         .padding(.horizontal, 2)
         .padding(.bottom, 2)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(alignment: .topTrailing) {
             LinearGradient(
                 colors: [
@@ -303,6 +336,62 @@ private struct GarageServiceCard<Artwork: View, Content: View>: View {
             .blur(radius: 22)
             .frame(width: 170, height: 126)
             .offset(x: 34, y: -22)
+        }
+    }
+}
+
+private struct GarageEditorialFooter: View {
+    let label: String
+    let text: String
+    let hint: String
+    let systemImage: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Rectangle()
+                .fill(GaragePremiumPalette.mintText.opacity(0.12))
+                .frame(height: 1)
+
+            HStack(alignment: .top, spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(GaragePremiumPalette.gold.opacity(0.11))
+                        .frame(width: 34, height: 34)
+
+                    Image(systemName: systemImage)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(GaragePremiumPalette.gold)
+                }
+                .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(label)
+                        .font(.system(size: 10, weight: .bold))
+                        .textCase(.uppercase)
+                        .tracking(2.2)
+                        .foregroundStyle(GaragePremiumPalette.gold)
+
+                    Text(text)
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(hint)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(GaragePremiumPalette.mintText.opacity(0.86))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(alignment: .bottomTrailing) {
+            Circle()
+                .fill(GaragePremiumPalette.gold.opacity(0.07))
+                .blur(radius: 18)
+                .frame(width: 86, height: 86)
+                .offset(x: 28, y: 28)
         }
     }
 }
