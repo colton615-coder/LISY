@@ -129,6 +129,149 @@ enum GaragePremiumPalette {
     static let mintText = Color(red: 0.66, green: 0.84, blue: 0.70)
 }
 
+struct GaragePracticeAtmosphereBackground: View {
+    var body: some View {
+        ZStack {
+            Color(red: 0.006, green: 0.024, blue: 0.018)
+
+            LinearGradient(
+                colors: [
+                    Color(red: 0.018, green: 0.078, blue: 0.052),
+                    Color(red: 0.005, green: 0.026, blue: 0.02),
+                    ModuleTheme.garageSurfaceDark.opacity(0.95)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            RadialGradient(
+                colors: [
+                    GaragePremiumPalette.emerald.opacity(0.62),
+                    GaragePremiumPalette.emerald.opacity(0.16),
+                    .clear
+                ],
+                center: .topTrailing,
+                startRadius: 22,
+                endRadius: 420
+            )
+
+            RadialGradient(
+                colors: [
+                    GaragePremiumPalette.gold.opacity(0.2),
+                    .clear
+                ],
+                center: .bottomLeading,
+                startRadius: 8,
+                endRadius: 320
+            )
+
+            GarageEnergyStreaks()
+                .opacity(0.62)
+
+            GarageRangeHorizon()
+                .opacity(0.4)
+        }
+        .ignoresSafeArea()
+    }
+}
+
+private struct GarageEnergyStreaks: View {
+    var body: some View {
+        ZStack {
+            Capsule()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            .clear,
+                            GaragePremiumPalette.emerald.opacity(0.1),
+                            FocusGreen.opacity(0.75),
+                            GaragePremiumPalette.gold.opacity(0.28),
+                            .clear
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(width: 430, height: 9)
+                .blur(radius: 9)
+                .rotationEffect(.degrees(-20))
+                .offset(x: 74, y: -122)
+
+            Capsule()
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            .clear,
+                            FocusGreen.opacity(0.72),
+                            GaragePremiumPalette.gold.opacity(0.5),
+                            .clear
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    ),
+                    lineWidth: 1.2
+                )
+                .frame(width: 360, height: 90)
+                .blur(radius: 1.4)
+                .rotationEffect(.degrees(-19))
+                .offset(x: 94, y: -94)
+
+            ForEach(0..<18, id: \.self) { index in
+                Circle()
+                    .fill(index.isMultiple(of: 3) ? GaragePremiumPalette.gold.opacity(0.48) : FocusGreen.opacity(0.34))
+                    .frame(width: CGFloat(1 + (index % 3)), height: CGFloat(1 + (index % 3)))
+                    .offset(
+                        x: CGFloat((index * 37) % 310) - 130,
+                        y: CGFloat((index * 53) % 520) - 250
+                    )
+            }
+        }
+    }
+
+    private var FocusGreen: Color {
+        Color(red: 0.27, green: 1.0, blue: 0.47)
+    }
+}
+
+private struct GarageRangeHorizon: View {
+    var body: some View {
+        VStack {
+            Spacer()
+
+            ZStack(alignment: .bottom) {
+                LinearGradient(
+                    colors: [
+                        .clear,
+                        Color.black.opacity(0.22),
+                        Color.black.opacity(0.54)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 230)
+
+                HStack(alignment: .bottom, spacing: 18) {
+                    ForEach(0..<9, id: \.self) { index in
+                        Rectangle()
+                            .fill(Color.white.opacity(0.08))
+                            .frame(width: 1, height: CGFloat(82 + (index % 4) * 18))
+                            .overlay(alignment: .top) {
+                                Circle()
+                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                    .frame(width: 28, height: 18)
+                                    .offset(y: -6)
+                            }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.trailing, 22)
+                .padding(.bottom, 12)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
 struct GaragePremiumBackground: View {
     var body: some View {
         ZStack {

@@ -15,21 +15,32 @@ struct GarageCoachPlanReviewView: View {
     }
 
     var body: some View {
-        GarageProScaffold(bottomPadding: 56) {
-            pageHeader
-            summaryCard
-            objectiveCard
-            drillListSection
-            startSessionAction
+        ZStack {
+            GaragePracticeAtmosphereBackground()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    pageHeader
+                    summaryCard
+                    objectiveCard
+                    drillListSection
+                    startSessionAction
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.top, 20)
+                .padding(.bottom, 56)
+            }
+            .scrollIndicators(.hidden)
         }
-        .navigationTitle("Coach Plan")
+        .navigationTitle("Review Routine")
         .navigationBarTitleDisplayMode(.inline)
     }
 
     private var pageHeader: some View {
         GarageCompactPageHeader(
             eyebrow: "Local Coach Plan",
-            title: "Coach Plan",
+            title: "Review Routine",
             subtitle: "Review the sequence before entering Focus Room."
         ) {
             GarageCompactStatBadge(
@@ -50,7 +61,7 @@ struct GarageCoachPlanReviewView: View {
 
                 VStack(alignment: .leading, spacing: 7) {
                     Text(draftPlan.title)
-                        .font(.system(size: 20, weight: .black, design: .rounded))
+                        .font(.system(size: 20, weight: .bold))
                         .foregroundStyle(GarageProTheme.textPrimary)
                         .lineLimit(2)
                         .minimumScaleFactor(0.78)
@@ -112,8 +123,8 @@ struct GarageCoachPlanReviewView: View {
 
     private var startSessionAction: some View {
         HStack {
-            GarageProPrimaryButton(
-                title: "Start Session",
+            GarageGoldButton(
+                title: "Start Training",
                 systemImage: "play.fill",
                 isEnabled: draftPlan.canStart
             ) {

@@ -433,17 +433,16 @@ private struct FocusHeroStyle {
 private struct FocusRoomBackground: View {
     var body: some View {
         ZStack {
-            FocusRoomPalette.background
-                .ignoresSafeArea()
+            GaragePracticeAtmosphereBackground()
 
-            LinearGradient(
+            RadialGradient(
                 colors: [
-                    FocusRoomPalette.backgroundLift.opacity(0.88),
-                    FocusRoomPalette.background,
-                    ModuleTheme.garageCanvas.opacity(0.72)
+                    FocusRoomPalette.green.opacity(0.24),
+                    .clear
                 ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
+                center: .center,
+                startRadius: 32,
+                endRadius: 330
             )
             .ignoresSafeArea()
         }
@@ -488,7 +487,7 @@ private struct FocusRoomHeader: View {
 
             VStack(spacing: 3) {
                 Text(drillTitle)
-                    .font(.system(size: 18, weight: .black, design: .rounded))
+                    .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(FocusRoomPalette.primaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
@@ -496,8 +495,8 @@ private struct FocusRoomHeader: View {
                 HStack(spacing: 8) {
                     Text(drillPositionText)
                 }
-                .font(.system(size: 12, weight: .bold, design: .rounded))
-                .foregroundStyle(FocusRoomPalette.secondaryText)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(FocusRoomPalette.green)
             }
             .padding(.horizontal, 58)
         }
@@ -526,9 +525,13 @@ private struct FocusRoomExecutionSurface: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            FocusRoomModeTabs()
+
             FocusRoomTeachingSection(
                 setupSteps: drill.content.setupSteps,
-                cueSteps: drill.content.cueSteps
+                cueSteps: drill.content.cueSteps,
+                modeLabel: drill.content.mode.controlLabel,
+                durationText: formattedTime(drill.content.durationSeconds)
             )
 
             GarageFocusHeroContainer(
@@ -576,13 +579,7 @@ private struct GarageFocusHeroContainer: View {
                 .padding(14)
         }
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 12)
-        .background(Color.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(FocusRoomPalette.border, lineWidth: 1)
-        )
+        .padding(.vertical, 4)
     }
 
     @ViewBuilder
@@ -745,8 +742,8 @@ private struct GarageDominantTimerHero: View {
             .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 350)
-        .shadow(color: FocusRoomPalette.green.opacity(0.22), radius: 24, x: 0, y: 14)
+        .frame(height: 380)
+        .shadow(color: FocusRoomPalette.green.opacity(0.26), radius: 28, x: 0, y: 14)
         .shadow(color: Color.black.opacity(0.4), radius: 18, x: 0, y: 12)
         .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.88), value: visualState)
         .accessibilityElement(children: .ignore)
@@ -795,23 +792,96 @@ private struct RunningSweepHighlight: View {
 private struct FocusRoomTeachingSection: View {
     let setupSteps: [String]
     let cueSteps: [String]
+    let modeLabel: String
+    let durationText: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            FocusRoomBulletBlock(
-                title: "SETUP",
-                tint: FocusRoomPalette.green,
-                steps: Array(setupSteps.prefix(3))
-            )
-            Divider().overlay(FocusRoomPalette.border.opacity(0.8))
-            FocusRoomBulletBlock(
-                title: "STEPS",
-                tint: FocusRoomPalette.yellow,
-                steps: Array(cueSteps.prefix(3))
-            )
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
+                FocusRoomBulletBlock(
+                    title: "SETUP",
+                    tint: FocusRoomPalette.green,
+                    steps: Array(setupSteps.prefix(3))
+                )
+                Divider().overlay(FocusRoomPalette.border.opacity(0.8))
+                FocusRoomBulletBlock(
+                    title: "STEPS",
+                    tint: FocusRoomPalette.yellow,
+                    steps: Array(cueSteps.prefix(2))
+                )
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+
+            VStack(spacing: 8) {
+                FocusRoomMiniMetric(value: modeLabel, title: "Mode", systemImage: "flag")
+                FocusRoomMiniMetric(value: durationText, title: "Goal", systemImage: "timer")
+            }
+            .frame(width: 92)
         }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 2)
+        .padding(12)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(FocusRoomPalette.panel.opacity(0.48), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+}
+
+private struct FocusRoomModeTabs: View {
+    private let tabs = ["Overview", "Steps", "Keys"]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(tabs, id: \.self) { tab in
+                Text(tab)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(tab == "Overview" ? FocusRoomPalette.primaryText : FocusRoomPalette.secondaryText)
+                    .frame(maxWidth: .infinity, minHeight: 38)
+                    .background {
+                        if tab == "Overview" {
+                            Capsule()
+                                .fill(FocusRoomPalette.green.opacity(0.18))
+                                .overlay(Capsule().stroke(FocusRoomPalette.green.opacity(0.18), lineWidth: 1))
+                        }
+                    }
+            }
+        }
+        .padding(4)
+        .background(Color.black.opacity(0.22), in: Capsule())
+        .overlay(Capsule().stroke(Color.white.opacity(0.07), lineWidth: 1))
+        .accessibilityHidden(true)
+    }
+}
+
+private struct FocusRoomMiniMetric: View {
+    let value: String
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(FocusRoomPalette.yellow)
+
+            Text(value)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(FocusRoomPalette.primaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.62)
+
+            Text(title)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(FocusRoomPalette.secondaryText)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, minHeight: 68)
+        .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.07), lineWidth: 1)
+        )
     }
 }
 
@@ -909,7 +979,7 @@ private struct FocusRoomBulletBlock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(title)
-                .font(.system(size: 11, weight: .black, design: .rounded))
+                .font(.system(size: 11, weight: .black))
                 .textCase(.uppercase)
                 .tracking(1.3)
                 .foregroundStyle(tint)
@@ -918,9 +988,9 @@ private struct FocusRoomBulletBlock: View {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text("•")
                         .font(.system(size: 13, weight: .black))
-                        .foregroundStyle(FocusRoomPalette.primaryText)
+                        .foregroundStyle(tint)
                     Text(step.garageFocusRoomSentenceTrimmed)
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(FocusRoomPalette.primaryText)
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
@@ -974,14 +1044,25 @@ private struct FocusRoomBottomActions: View {
                 Image(systemName: primarySystemImage)
                     .font(.system(size: 21, weight: .black))
                     .minimumScaleFactor(0.7)
-                    .foregroundStyle(FocusRoomPalette.background)
+                    .foregroundStyle(GaragePremiumPalette.emeraldDeep)
                     .frame(width: 58, height: 58)
-                    .background(FocusRoomPalette.green, in: Circle())
+                    .background(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 1.0, green: 0.86, blue: 0.27),
+                                GaragePremiumPalette.gold,
+                                GaragePremiumPalette.goldDeep
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: Circle()
+                    )
                     .overlay(
                         Circle()
                             .stroke(Color.white.opacity(0.15), lineWidth: 1)
                     )
-                    .shadow(color: FocusRoomPalette.green.opacity(0.32), radius: 14, x: 0, y: 6)
+                    .shadow(color: GaragePremiumPalette.gold.opacity(0.34), radius: 14, x: 0, y: 6)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(primaryTitle)
@@ -1020,12 +1101,12 @@ private struct FocusRoomDockButton: View {
             action()
         } label: {
             Label(title, systemImage: systemImage)
-                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .font(.system(size: 13, weight: .bold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.68)
                 .foregroundStyle(FocusRoomPalette.primaryText)
                 .frame(maxWidth: .infinity, minHeight: 46)
-                .background(FocusRoomPalette.panel.opacity(0.88), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+                .background(FocusRoomPalette.panel.opacity(0.78), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 17, style: .continuous)
                         .stroke(FocusRoomPalette.border, lineWidth: 1)

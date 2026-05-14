@@ -131,29 +131,26 @@ struct GarageEnvironmentDrillPlansView: View {
 
     var body: some View {
         ZStack {
-            ModuleTheme.garageBackground
-                .ignoresSafeArea()
-
-            LinearGradient(
-                colors: [
-                    ModuleTheme.garageTurfBackground.opacity(0.98),
-                    ModuleTheme.garageTurfSurface.opacity(0.96),
-                    ModuleTheme.garageSurfaceDark.opacity(0.94)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            GaragePracticeAtmosphereBackground()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    Text("AI Plan Generator")
-                        .font(.system(size: 30, weight: .heavy, design: .rounded))
-                        .foregroundStyle(GarageProTheme.textPrimary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.74)
+                VStack(alignment: .leading, spacing: 18) {
+                    GaragePlanGeneratorHeader()
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("What's today's focus?")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(Color(red: 0.45, green: 1.0, blue: 0.55))
+
+                        Text("Describe the session you want. Garage will build a local, reviewable routine before anything starts.")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(GarageProTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
 
                     GaragePlanPromptField(text: $prompt)
+
+                    GaragePlanConstraintRow(environment: environment)
 
                     GaragePlanGenerateButton(action: generatePlan)
 
@@ -167,8 +164,8 @@ struct GarageEnvironmentDrillPlansView: View {
                     )
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 24)
-                .padding(.top, 42)
+                .padding(.horizontal, 20)
+                .padding(.top, 20)
                 .padding(.bottom, 132)
             }
         }
@@ -416,9 +413,21 @@ struct GarageRoutineReviewView: View {
     let onStartRoutine: (GarageRoutineReviewPlan) -> Void
 
     var body: some View {
-        GarageProScaffold(bottomPadding: 132) {
-            pageHeader
-            drillListSection
+        ZStack {
+            GaragePracticeAtmosphereBackground()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    pageHeader
+                    overviewStrip
+                    drillListSection
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.top, 20)
+                .padding(.bottom, 132)
+            }
+            .scrollIndicators(.hidden)
         }
         .navigationTitle("Review Routine")
         .navigationBarTitleDisplayMode(.inline)
@@ -435,21 +444,48 @@ struct GarageRoutineReviewView: View {
     }
 
     private var pageHeader: some View {
-        GarageCompactPageHeader(
-            eyebrow: "Review Routine",
-            title: reviewPlan.title,
-            subtitle: reviewPlan.environment.displayName
-        ) {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Review Routine")
+                    .font(.system(size: 28, weight: .heavy))
+                    .foregroundStyle(GarageProTheme.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.74)
+
+                Text(reviewPlan.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(GarageProTheme.textSecondary)
+                    .lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
             Text("\(reviewPlan.drillCount) \(reviewPlan.drillCount == 1 ? "Drill" : "Drills")")
-                .font(.system(size: 11, weight: .black, design: .rounded))
+                .font(.system(size: 11, weight: .black))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .foregroundStyle(ModuleTheme.garageAccent)
+                .foregroundStyle(GaragePremiumPalette.gold)
                 .padding(.horizontal, 10)
                 .frame(minHeight: 28)
-                .background(GarageProTheme.insetSurface.opacity(0.8), in: Capsule())
-                .overlay(Capsule().stroke(GarageProTheme.border, lineWidth: 1))
+                .background(Color.black.opacity(0.24), in: Capsule())
+                .overlay(Capsule().stroke(GaragePremiumPalette.gold.opacity(0.38), lineWidth: 1))
         }
+    }
+
+    private var overviewStrip: some View {
+        HStack(spacing: 0) {
+            GarageRoutineOverviewMetric(title: "Est. Time", value: "\(reviewPlan.estimatedDurationMinutes) min", systemImage: "clock")
+            GarageRoutineOverviewDivider()
+            GarageRoutineOverviewMetric(title: "Environment", value: reviewPlan.environment.displayName, systemImage: reviewPlan.environment.systemImage)
+            GarageRoutineOverviewDivider()
+            GarageRoutineOverviewMetric(title: "Drills", value: "\(reviewPlan.drillCount)", systemImage: "list.number")
+        }
+        .padding(.vertical, 14)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(GaragePremiumPalette.emeraldGlass.opacity(0.52), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.white.opacity(0.09), lineWidth: 1)
+        )
     }
 
     private var drillListSection: some View {
@@ -495,8 +531,8 @@ struct GarageRoutineReviewView: View {
             }
 
             HStack(spacing: 10) {
-                GarageProPrimaryButton(
-                    title: "Start Training Flow",
+                GarageGoldButton(
+                    title: "Start Training",
                     systemImage: "play.fill",
                     isEnabled: reviewPlan.canStart
                 ) {
@@ -517,6 +553,7 @@ struct GarageRoutineReviewView: View {
         .padding(.top, 14)
         .padding(.bottom, 18)
         .background(.ultraThinMaterial)
+        .background(Color(red: 0.006, green: 0.024, blue: 0.018).opacity(0.88))
         .overlay(alignment: .top) {
             Rectangle()
                 .fill(GarageProTheme.border)
@@ -686,56 +723,21 @@ private struct GarageManualBuildSection: View {
     let onRemove: (GarageManualPlanDrill) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            header
-
+        VStack(alignment: .leading, spacing: 12) {
             GarageManualBrowseButton(action: onBrowse)
 
-            if selectedDrills.isEmpty {
-                GarageManualEmptySelectionState(onBrowse: onBrowse)
-            } else {
+            if selectedDrills.isEmpty == false {
                 GarageSelectedDrillQueue(
                     drills: selectedDrills,
                     onRemove: onRemove
                 )
+                .padding(.top, 2)
+            } else {
+                Text("\(selectedCount) \(selectedCount == 1 ? "drill" : "drills") selected")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(GarageProTheme.textSecondary.opacity(0.7))
+                    .padding(.horizontal, 4)
             }
-        }
-        .padding(18)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .background(ModuleTheme.garageTurfSurface.opacity(0.58), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-        )
-        .shadow(color: AppModule.garage.theme.shadowDark.opacity(0.28), radius: 12, x: 0, y: 8)
-    }
-
-    private var header: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Build Manually")
-                    .font(.system(size: 20, weight: .black, design: .rounded))
-                    .foregroundStyle(GarageProTheme.textPrimary)
-
-                Text("Choose drills from your Garage directory.")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(GarageProTheme.textSecondary.opacity(0.82))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Text("\(selectedCount) \(selectedCount == 1 ? "drill" : "drills") selected")
-                .font(.system(size: 11, weight: .black, design: .rounded))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .foregroundStyle(ModuleTheme.garageAccent)
-                .padding(.horizontal, 10)
-                .frame(minHeight: 30)
-                .background(GarageProTheme.insetSurface.opacity(0.78), in: Capsule())
-                .overlay(
-                    Capsule()
-                        .stroke(GarageProTheme.border, lineWidth: 1)
-                )
         }
     }
 }
@@ -745,17 +747,39 @@ private struct GarageManualBrowseButton: View {
 
     var body: some View {
         Button(action: action) {
-            Label("Browse Drill Directory", systemImage: "square.grid.2x2.fill")
-                .font(.system(size: 14, weight: .black, design: .rounded))
-                .lineLimit(1)
-                .minimumScaleFactor(0.76)
-                .foregroundStyle(ModuleTheme.garageSurfaceDark)
-                .frame(maxWidth: .infinity, minHeight: 48)
-                .background(ModuleTheme.garageAccent, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 17, style: .continuous)
-                        .stroke(Color.white.opacity(0.16), lineWidth: 1)
-                )
+            HStack(spacing: 14) {
+                Image(systemName: "bag.fill")
+                    .font(.system(size: 19, weight: .bold))
+                    .foregroundStyle(GaragePremiumPalette.gold)
+                    .frame(width: 48, height: 48)
+                    .background(GaragePremiumPalette.emerald.opacity(0.42), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Build Manually")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+
+                    Text("Browse the drill directory and create your own plan.")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 15, weight: .black))
+                    .foregroundStyle(GaragePremiumPalette.gold)
+                    .frame(width: 38, height: 38)
+                    .background(Color.black.opacity(0.24), in: Circle())
+                    .overlay(Circle().stroke(GaragePremiumPalette.gold.opacity(0.32), lineWidth: 1))
+            }
+            .padding(14)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .background(GaragePremiumPalette.emeraldGlass.opacity(0.55), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(Color.white.opacity(0.09), lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
     }
@@ -1200,11 +1224,30 @@ private struct GaragePlanPromptField: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
-                .fill(ModuleTheme.garageSurfaceDark.opacity(0.8))
+                .fill(Color(red: 0.01, green: 0.055, blue: 0.038).opacity(0.84))
                 .overlay(
                     RoundedRectangle(cornerRadius: 30, style: .continuous)
-                        .stroke(isFocused ? ModuleTheme.garageAccent.opacity(0.34) : Color.white.opacity(0.08), lineWidth: 1)
+                        .stroke(isFocused ? GaragePremiumPalette.gold.opacity(0.42) : Color.white.opacity(0.09), lineWidth: 1)
                 )
+                .overlay(alignment: .trailing) {
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    .clear,
+                                    Color(red: 0.29, green: 1.0, blue: 0.46).opacity(0.42),
+                                    GaragePremiumPalette.gold.opacity(0.18),
+                                    .clear
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: 220, height: 7)
+                        .blur(radius: 9)
+                        .rotationEffect(.degrees(-22))
+                        .offset(x: -10, y: 26)
+                }
                 .overlay(
                     RoundedRectangle(cornerRadius: 30, style: .continuous)
                         .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
@@ -1224,7 +1267,7 @@ private struct GaragePlanPromptField: View {
 
             if text.isEmpty {
                 Text("E.g. 30 minutes on shallowing the club and driver consistency")
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .font(.system(size: 16, weight: .medium))
                     .lineSpacing(4)
                     .foregroundStyle(GarageProTheme.textSecondary.opacity(0.76))
                     .padding(.horizontal, 22)
@@ -1233,7 +1276,7 @@ private struct GaragePlanPromptField: View {
             }
 
             TextEditor(text: $text)
-                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(GarageProTheme.textPrimary)
                 .scrollContentBackground(.hidden)
                 .focused($isFocused)
@@ -1241,6 +1284,13 @@ private struct GaragePlanPromptField: View {
                 .padding(.vertical, 14)
                 .background(Color.clear)
                 .frame(minHeight: 118)
+
+            Text("\(text.count)/120")
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundStyle(GarageProTheme.textSecondary.opacity(0.72))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .padding(.trailing, 18)
+                .padding(.bottom, 14)
         }
         .frame(minHeight: 118)
     }
@@ -1254,18 +1304,29 @@ private struct GaragePlanGenerateButton: View {
             garageTriggerImpact(.heavy)
             action()
         } label: {
-            Label("Generate with AI", systemImage: "sparkles")
-                .font(.system(size: 21, weight: .black, design: .rounded))
+            Label("Generate My Plan", systemImage: "sparkles")
+                .font(.system(size: 19, weight: .bold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .foregroundStyle(ModuleTheme.garageSurfaceDark)
-                .frame(maxWidth: .infinity, minHeight: 66)
-                .background(ModuleTheme.garageAccent, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .foregroundStyle(GaragePremiumPalette.emeraldDeep)
+                .frame(maxWidth: .infinity, minHeight: 58)
+                .background(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 1.0, green: 0.86, blue: 0.27),
+                            GaragePremiumPalette.gold,
+                            GaragePremiumPalette.goldDeep
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+                )
                 .overlay(
                     RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                        .stroke(Color.white.opacity(0.22), lineWidth: 1)
                 )
-                .shadow(color: AppModule.garage.theme.shadowDark.opacity(0.34), radius: 12, x: 0, y: 8)
+                .shadow(color: GaragePremiumPalette.gold.opacity(0.24), radius: 16, x: 0, y: 8)
         }
         .buttonStyle(.plain)
     }
@@ -1278,8 +1339,8 @@ private struct GarageManualDivider: View {
                 .fill(ModuleTheme.garageDivider.opacity(0.42))
                 .frame(height: 1)
 
-            Text("Build manually")
-                .font(.system(size: 12, weight: .bold, design: .rounded))
+            Text("OR")
+                .font(.system(size: 11, weight: .bold))
                 .textCase(.uppercase)
                 .tracking(1.6)
                 .foregroundStyle(GarageProTheme.textSecondary.opacity(0.68))
@@ -1290,6 +1351,67 @@ private struct GarageManualDivider: View {
                 .fill(ModuleTheme.garageDivider.opacity(0.42))
                 .frame(height: 1)
         }
+    }
+}
+
+private struct GaragePlanGeneratorHeader: View {
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("AI Plan Generator")
+                    .font(.system(size: 31, weight: .heavy))
+                    .foregroundStyle(GarageProTheme.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Label("AI", systemImage: "sparkles")
+                .font(.system(size: 12, weight: .black))
+                .foregroundStyle(GaragePremiumPalette.gold)
+                .padding(.horizontal, 11)
+                .frame(minHeight: 34)
+                .background(Color.black.opacity(0.24), in: Capsule())
+                .overlay(Capsule().stroke(GaragePremiumPalette.gold.opacity(0.36), lineWidth: 1))
+        }
+    }
+}
+
+private struct GaragePlanConstraintRow: View {
+    let environment: PracticeEnvironment
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Constraints (optional)")
+                .font(.system(size: 10, weight: .bold))
+                .textCase(.uppercase)
+                .tracking(1.8)
+                .foregroundStyle(GaragePremiumPalette.mintText)
+
+            HStack(spacing: 8) {
+                GaragePlanConstraintPill(title: "30 min", systemImage: "clock")
+                GaragePlanConstraintPill(title: environment.displayName, systemImage: environment.systemImage)
+                GaragePlanConstraintPill(title: "Driver", systemImage: "figure.golf")
+                GaragePlanConstraintPill(title: environment == .net ? "Indoor" : "Outdoor", systemImage: environment == .net ? "house" : "flag")
+            }
+        }
+    }
+}
+
+private struct GaragePlanConstraintPill: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        Label(title, systemImage: systemImage)
+            .font(.system(size: 12, weight: .semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .foregroundStyle(GaragePremiumPalette.mintText)
+            .padding(.horizontal, 10)
+            .frame(minHeight: 34)
+            .background(GaragePremiumPalette.emeraldGlass.opacity(0.5), in: Capsule())
+            .overlay(Capsule().stroke(Color(red: 0.32, green: 1.0, blue: 0.5).opacity(0.22), lineWidth: 1))
     }
 }
 
@@ -1344,6 +1466,44 @@ private struct GarageReviewSelectionDock: View {
 
 }
 
+private struct GarageRoutineOverviewMetric: View {
+    let title: String
+    let value: String
+    let systemImage: String
+
+    var body: some View {
+        VStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(GaragePremiumPalette.gold)
+
+            Text(value)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(GarageProTheme.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.68)
+
+            Text(title)
+                .font(.system(size: 10, weight: .bold))
+                .textCase(.uppercase)
+                .tracking(1.1)
+                .foregroundStyle(GarageProTheme.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 6)
+    }
+}
+
+private struct GarageRoutineOverviewDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.08))
+            .frame(width: 1, height: 48)
+    }
+}
+
 private struct GarageRoutineReviewMetric: View {
     let title: String
     let value: String
@@ -1386,30 +1546,43 @@ private struct GarageRoutineReviewDrillRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
             Text("\(index)")
-                .font(.system(size: 16, weight: .black, design: .monospaced))
-                .foregroundStyle(ModuleTheme.garageAccent)
-                .frame(width: 24, alignment: .leading)
-                .padding(.top, 2)
+                .font(.system(size: 14, weight: .black, design: .monospaced))
+                .foregroundStyle(index == 1 ? GaragePremiumPalette.emeraldDeep : GaragePremiumPalette.gold)
+                .frame(width: 34, height: 34)
+                .background(index == 1 ? GaragePremiumPalette.gold : GaragePremiumPalette.emeraldGlass.opacity(0.72), in: Circle())
+                .overlay(Circle().stroke(index == 1 ? GaragePremiumPalette.gold.opacity(0.55) : Color.white.opacity(0.09), lineWidth: 1))
+                .shadow(color: index == 1 ? GaragePremiumPalette.gold.opacity(0.2) : .clear, radius: 12, x: 0, y: 4)
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(drill.title)
-                    .font(.system(size: 18, weight: .black, design: .rounded))
+                    .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(GarageProTheme.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text(drill.metadataSummary)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(GarageProTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 18)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(index == 1 ? GaragePremiumPalette.emeraldGlass.opacity(0.72) : Color.white.opacity(0.035))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(index == 1 ? GaragePremiumPalette.gold.opacity(0.42) : Color.white.opacity(0.07), lineWidth: 1)
+        )
+        .shadow(color: index == 1 ? GaragePremiumPalette.gold.opacity(0.12) : .clear, radius: 16, x: 0, y: 6)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(GarageProTheme.border)
+                .fill(Color.clear)
                 .frame(height: 1)
         }
+        .padding(.bottom, 10)
     }
 }
 
