@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import SwiftData
 import SwiftUI
 
@@ -1616,18 +1617,208 @@ private struct GarageRoutineReviewSaveButton: View {
     }
 }
 
+private enum GarageTempoRunState: Equatable {
+    case ready
+    case running
+    case paused
+    case complete
+
+    var label: String {
+        switch self {
+        case .ready:
+            return "Ready"
+        case .running:
+            return "Running"
+        case .paused:
+            return "Paused"
+        case .complete:
+            return "Complete"
+        }
+    }
+}
+
+private enum GarageTempoRunMode: String, CaseIterable, Identifiable {
+    case endless
+    case target
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .endless:
+            return "Endless"
+        case .target:
+            return "Target"
+        }
+    }
+}
+
+private struct GarageTempoConfiguration: Equatable {
+    var beatsPerMinute: Double = 72
+    var backswingRatio: Double = 0.7
+
+    var downswingRatio: Double {
+        1 - backswingRatio
+    }
+
+    var cycleDuration: TimeInterval {
+        120 / beatsPerMinute
+    }
+
+    var bpmText: String {
+        "\(Int(beatsPerMinute.rounded()))"
+    }
+
+    var ratioText: String {
+        "\(Int((backswingRatio * 100).rounded())) / \(Int((downswingRatio * 100).rounded()))"
+    }
+}
+
+@MainActor
+private final class GarageTempoEngine: NSObject, ObservableObject {
+    @Published private(set) var state: GarageTempoRunState = .ready
+    @Published private(set) var progress: Double = 0
+    @Published private(set) var cycleCount = 0
+    @Published private(set) var impactPulseID = 0
+    @Published private(set) var configuration = GarageTempoConfiguration()
+
+    private var timer: Timer?
+    private var cycleStartDate: Date?
+    private var pausedProgress: Double = 0
+    private var targetCycles: Int?
+
+    var phaseLabel: String {
+        switch state {
+        case .ready:
+            return "Takeaway"
+        case .paused:
+            return "Paused"
+        case .complete:
+            return "Set Complete"
+        case .running:
+            return progress < configuration.backswingRatio ? "Load" : "Release"
+        }
+    }
+
+    func start(configuration: GarageTempoConfiguration, targetCycles: Int?) {
+        self.configuration = configuration
+        self.targetCycles = targetCycles
+        progress = 0
+        pausedProgress = 0
+        cycleCount = 0
+        state = .running
+        cycleStartDate = .now
+        startTimer()
+    }
+
+    func resume() {
+        guard state == .paused else { return }
+        state = .running
+        cycleStartDate = Date().addingTimeInterval(-pausedProgress * configuration.cycleDuration)
+        startTimer()
+    }
+
+    func pause() {
+        guard state == .running else { return }
+        pausedProgress = progress
+        state = .paused
+        stopTimer()
+    }
+
+    func stop() {
+        state = .ready
+        progress = 0
+        pausedProgress = 0
+        cycleCount = 0
+        cycleStartDate = nil
+        targetCycles = nil
+        stopTimer()
+    }
+
+    func stopForDisappear() {
+        stop()
+    }
+
+    func updateConfiguration(_ nextConfiguration: GarageTempoConfiguration) {
+        let currentProgress = progress
+        configuration = nextConfiguration
+
+        if state == .running {
+            cycleStartDate = Date().addingTimeInterval(-currentProgress * nextConfiguration.cycleDuration)
+        } else if state == .paused {
+            pausedProgress = currentProgress
+        }
+    }
+
+    func triggerImpactPulse() {
+        impactPulseID += 1
+        garageTriggerImpact(.medium)
+    }
+
+    private func startTimer() {
+        stopTimer()
+        timer = Timer.scheduledTimer(
+            timeInterval: 1.0 / 60.0,
+            target: self,
+            selector: #selector(timerDidFire(_:)),
+            userInfo: nil,
+            repeats: true
+        )
+    }
+
+    private func stopTimer() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    private func tick(now: Date = .now) {
+        guard state == .running, let cycleStartDate else { return }
+
+        let elapsed = now.timeIntervalSince(cycleStartDate)
+        let duration = max(configuration.cycleDuration, 0.1)
+        let completedCycles = Int(elapsed / duration)
+        let cycleElapsed = elapsed.truncatingRemainder(dividingBy: duration)
+
+        if completedCycles > cycleCount {
+            cycleCount = completedCycles
+            impactPulseID += 1
+            garageTriggerImpact(.light)
+
+            if let targetCycles, cycleCount >= targetCycles {
+                progress = 1
+                state = .complete
+                stopTimer()
+                return
+            }
+        }
+
+        progress = cycleElapsed / duration
+    }
+
+    @objc private func timerDidFire(_ timer: Timer) {
+        tick()
+    }
+}
+
 @MainActor
 struct GarageTempoBuilderView: View {
-    @State private var isRunning = false
+    @StateObject private var engine = GarageTempoEngine()
+    @State private var configuration = GarageTempoConfiguration()
+    @State private var runMode: GarageTempoRunMode = .endless
+    @State private var targetCycles = 12
+
+    private var targetCycleValue: Int? {
+        runMode == .target ? targetCycles : nil
+    }
 
     var body: some View {
         GarageProScaffold(bottomPadding: 48) {
             GarageProHeroCard(
                 eyebrow: "Tempo Builder",
-                title: "Rhythm Work",
-                subtitle: "A focused space for swing timing, rehearsal pace, and repeatable tempo.",
-                value: isRunning ? "On" : "Ready",
-                valueLabel: "State"
+                title: "Tempo Fingerprint",
+                subtitle: "Build a repeatable rehearsal rhythm with a slower load and a faster release.",
+                value: configuration.bpmText,
+                valueLabel: "BPM"
             ) {
                 Image(systemName: "metronome.fill")
                     .font(.system(size: 24, weight: .bold))
@@ -1640,28 +1831,527 @@ struct GarageTempoBuilderView: View {
                     )
             }
 
-            GarageProCard(isActive: isRunning, cornerRadius: 28, padding: 20) {
-                Text(isRunning ? "Tempo Session Active" : "Tempo Session")
-                    .font(.system(.title3, design: .rounded).weight(.black))
-                    .foregroundStyle(GarageProTheme.textPrimary)
+            GarageTempoDialCard(
+                configuration: configuration,
+                progress: engine.progress,
+                phaseLabel: engine.phaseLabel,
+                runState: engine.state,
+                cycleCount: engine.cycleCount,
+                targetCycles: targetCycleValue,
+                impactPulseID: engine.impactPulseID
+            )
 
-                Text(isRunning ? "Keep the movement smooth and repeatable." : "Start a simple rhythm block without adding analysis or saved data.")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(GarageProTheme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            GarageTempoControlCard(
+                configuration: $configuration,
+                runMode: $runMode,
+                targetCycles: $targetCycles,
+                engineState: engine.state,
+                onConfigurationChange: engine.updateConfiguration,
+                onPrimaryAction: handlePrimaryAction,
+                onStop: engine.stop,
+                onManualPulse: engine.triggerImpactPulse
+            )
 
-                GarageProPrimaryButton(
-                    title: isRunning ? "Stop" : "Start",
-                    systemImage: isRunning ? "stop.fill" : "play.fill"
-                ) {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                        isRunning.toggle()
-                    }
-                }
-            }
+            GarageTempoFoundationCard(configuration: configuration)
+        }
+        .onDisappear {
+            engine.stopForDisappear()
         }
         .navigationTitle("Tempo Builder")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func handlePrimaryAction() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            switch engine.state {
+            case .running:
+                engine.pause()
+            case .paused:
+                engine.resume()
+            case .ready, .complete:
+                engine.start(configuration: configuration, targetCycles: targetCycleValue)
+            }
+        }
+    }
+}
+
+private struct GarageTempoDialCard: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let configuration: GarageTempoConfiguration
+    let progress: Double
+    let phaseLabel: String
+    let runState: GarageTempoRunState
+    let cycleCount: Int
+    let targetCycles: Int?
+    let impactPulseID: Int
+
+    @State private var impactPulse = false
+
+    private var repText: String {
+        if let targetCycles {
+            return "\(cycleCount) / \(targetCycles)"
+        }
+
+        return "\(cycleCount)"
+    }
+
+    var body: some View {
+        GarageProCard(isActive: runState == .running, cornerRadius: 30, padding: 18) {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(runState.label)
+                            .font(.system(size: 11, weight: .black, design: .rounded))
+                            .textCase(.uppercase)
+                            .tracking(2.2)
+                            .foregroundStyle(GaragePremiumPalette.gold)
+
+                        Text(phaseLabel)
+                            .font(.system(.title2, design: .rounded).weight(.black))
+                            .foregroundStyle(GarageProTheme.textPrimary)
+                    }
+
+                    Spacer(minLength: 12)
+
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(repText)
+                            .font(.system(size: 34, weight: .black, design: .monospaced))
+                            .foregroundStyle(GarageProTheme.textPrimary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+
+                        Text(targetCycles == nil ? "REPS" : "TARGET")
+                            .font(.system(size: 10, weight: .black, design: .rounded))
+                            .textCase(.uppercase)
+                            .tracking(1.8)
+                            .foregroundStyle(GarageProTheme.textSecondary)
+                    }
+                }
+
+                GarageTempoDial(
+                    progress: progress,
+                    backswingRatio: configuration.backswingRatio,
+                    impactPulse: impactPulse && reduceMotion == false
+                )
+                .frame(maxWidth: .infinity)
+                .aspectRatio(1, contentMode: .fit)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Tempo dial")
+                .accessibilityValue("\(phaseLabel), \(configuration.ratioText) ratio, \(repText) reps")
+
+                HStack(spacing: 10) {
+                    GarageTempoLandmarkPill(title: "Start", subtitle: "Takeaway")
+                    GarageTempoLandmarkPill(title: "Top", subtitle: "Loaded")
+                    GarageTempoLandmarkPill(title: "Impact", subtitle: "Release", isImpact: true)
+                }
+            }
+        }
+        .onChange(of: impactPulseID) { _, newValue in
+            guard newValue > 0 else { return }
+            impactPulse = true
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                impactPulse = false
+            }
+        }
+    }
+}
+
+private struct GarageTempoDial: View {
+    let progress: Double
+    let backswingRatio: Double
+    let impactPulse: Bool
+
+    private var clampedProgress: Double {
+        min(max(progress, 0), 1)
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let size = min(proxy.size.width, proxy.size.height)
+            let center = CGPoint(x: proxy.size.width / 2, y: proxy.size.height / 2)
+            let radius = size * 0.39
+            let handAngle = angle(for: clampedProgress)
+            let topAngle = angle(for: backswingRatio)
+            let handPoint = point(center: center, radius: radius, angle: handAngle)
+            let startPoint = point(center: center, radius: radius, angle: angle(for: 0))
+            let topPoint = point(center: center, radius: radius, angle: topAngle)
+
+            ZStack {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                GarageProTheme.accent.opacity(0.22),
+                                GaragePremiumPalette.emerald.opacity(0.20),
+                                GarageProTheme.insetSurface.opacity(0.92)
+                            ],
+                            center: .center,
+                            startRadius: 8,
+                            endRadius: radius * 1.6
+                        )
+                    )
+                    .frame(width: size * 0.88, height: size * 0.88)
+                    .position(center)
+                    .shadow(color: GarageProTheme.glow.opacity(0.18), radius: 28, x: 0, y: 18)
+
+                Circle()
+                    .stroke(GaragePremiumPalette.mintText.opacity(0.12), lineWidth: 18)
+                    .frame(width: radius * 2, height: radius * 2)
+                    .position(center)
+
+                Circle()
+                    .trim(from: 0, to: backswingRatio)
+                    .stroke(
+                        GaragePremiumPalette.gold.opacity(0.86),
+                        style: StrokeStyle(lineWidth: 13, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .frame(width: radius * 2, height: radius * 2)
+                    .position(center)
+
+                Circle()
+                    .trim(from: backswingRatio, to: 1)
+                    .stroke(
+                        GarageProTheme.accent.opacity(0.88),
+                        style: StrokeStyle(lineWidth: 13, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .frame(width: radius * 2, height: radius * 2)
+                    .position(center)
+
+                Path { path in
+                    path.move(to: center)
+                    path.addLine(to: handPoint)
+                }
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            GarageProTheme.textPrimary.opacity(0.96),
+                            GarageProTheme.accent.opacity(0.72)
+                        ],
+                        startPoint: .center,
+                        endPoint: .top
+                    ),
+                    style: StrokeStyle(lineWidth: 7, lineCap: .round)
+                )
+                .shadow(color: GarageProTheme.glow.opacity(0.36), radius: 14, x: 0, y: 0)
+
+                Circle()
+                    .fill(GarageProTheme.textPrimary)
+                    .frame(width: 18, height: 18)
+                    .position(center)
+
+                GarageTempoMarker(point: startPoint, title: "Start")
+                GarageTempoMarker(point: topPoint, title: "Top")
+                GarageTempoMarker(point: startPoint, title: "Impact", isImpact: true, isPulsing: impactPulse)
+
+                Circle()
+                    .fill(GarageProTheme.textPrimary)
+                    .frame(width: 20, height: 20)
+                    .overlay(
+                        Circle()
+                            .stroke(GarageProTheme.accent.opacity(0.72), lineWidth: 4)
+                    )
+                    .position(handPoint)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private func angle(for progress: Double) -> Angle {
+        .degrees(-90 + progress * 360)
+    }
+
+    private func point(center: CGPoint, radius: CGFloat, angle: Angle) -> CGPoint {
+        let radians = CGFloat(angle.radians)
+        return CGPoint(
+            x: center.x + cos(radians) * radius,
+            y: center.y + sin(radians) * radius
+        )
+    }
+}
+
+private struct GarageTempoMarker: View {
+    let point: CGPoint
+    let title: String
+    var isImpact = false
+    var isPulsing = false
+
+    var body: some View {
+        ZStack {
+            if isImpact {
+                Circle()
+                    .stroke(GarageProTheme.accent.opacity(isPulsing ? 0.48 : 0.18), lineWidth: 2)
+                    .frame(width: isPulsing ? 54 : 34, height: isPulsing ? 54 : 34)
+                    .animation(.spring(response: 0.24, dampingFraction: 0.68), value: isPulsing)
+            }
+
+            Circle()
+                .fill(isImpact ? GarageProTheme.accent : GaragePremiumPalette.gold)
+                .frame(width: isImpact ? 20 : 16, height: isImpact ? 20 : 16)
+                .overlay {
+                    if isImpact {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 9, weight: .black))
+                            .foregroundStyle(ModuleTheme.garageSurfaceDark)
+                    }
+                }
+        }
+        .overlay(alignment: .bottom) {
+            Text(title)
+                .font(.system(size: 9, weight: .black, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(1.2)
+                .foregroundStyle(GarageProTheme.textPrimary.opacity(0.72))
+                .offset(y: 22)
+        }
+        .position(point)
+    }
+}
+
+private struct GarageTempoLandmarkPill: View {
+    let title: String
+    let subtitle: String
+    var isImpact = false
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(title)
+                .font(.system(size: 12, weight: .black, design: .rounded))
+                .foregroundStyle(isImpact ? GarageProTheme.accent : GarageProTheme.textPrimary)
+
+            Text(subtitle)
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(GarageProTheme.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.74)
+        }
+        .frame(maxWidth: .infinity, minHeight: 52)
+        .background(GarageProTheme.insetSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(isImpact ? GarageProTheme.accent.opacity(0.28) : GarageProTheme.border, lineWidth: 1)
+        )
+    }
+}
+
+private struct GarageTempoControlCard: View {
+    @Binding var configuration: GarageTempoConfiguration
+    @Binding var runMode: GarageTempoRunMode
+    @Binding var targetCycles: Int
+
+    let engineState: GarageTempoRunState
+    let onConfigurationChange: (GarageTempoConfiguration) -> Void
+    let onPrimaryAction: () -> Void
+    let onStop: () -> Void
+    let onManualPulse: () -> Void
+
+    var body: some View {
+        GarageProCard(cornerRadius: 28, padding: 18) {
+            VStack(alignment: .leading, spacing: 18) {
+                GarageProSectionHeader(eyebrow: "Controls", title: "Rehearsal Pace")
+
+                GarageTempoSliderRow(
+                    title: "BPM",
+                    valueText: configuration.bpmText,
+                    rangeText: "Rhythm pace",
+                    value: Binding(
+                        get: { configuration.beatsPerMinute },
+                        set: { nextValue in
+                            configuration.beatsPerMinute = nextValue.rounded()
+                            onConfigurationChange(configuration)
+                        }
+                    ),
+                    bounds: 48...96,
+                    step: 1
+                )
+
+                GarageTempoSliderRow(
+                    title: "Back / Down",
+                    valueText: configuration.ratioText,
+                    rangeText: "Uneven swing cycle",
+                    value: Binding(
+                        get: { configuration.backswingRatio },
+                        set: { nextValue in
+                            configuration.backswingRatio = nextValue
+                            onConfigurationChange(configuration)
+                        }
+                    ),
+                    bounds: 0.55...0.8,
+                    step: 0.01
+                )
+
+                GarageProSegmentedSelector(options: GarageTempoRunMode.allCases, selection: $runMode) { option, selected in
+                    Text(option.title)
+                        .font(.system(size: 13, weight: .black, design: .rounded))
+                        .foregroundStyle(selected ? GarageProTheme.textPrimary : GarageProTheme.textSecondary)
+                }
+
+                if runMode == .target {
+                    Stepper(value: $targetCycles, in: 3...60, step: 3) {
+                        HStack {
+                            Text("Target reps")
+                                .font(.headline.weight(.bold))
+                                .foregroundStyle(GarageProTheme.textPrimary)
+
+                            Spacer()
+
+                            Text("\(targetCycles)")
+                                .font(.system(size: 20, weight: .black, design: .monospaced))
+                                .foregroundStyle(GaragePremiumPalette.gold)
+                        }
+                    }
+                    .tint(GarageProTheme.accent)
+                }
+
+                HStack(spacing: 12) {
+                    GarageProPrimaryButton(
+                        title: primaryTitle,
+                        systemImage: primaryIcon,
+                        action: onPrimaryAction
+                    )
+
+                    GarageTempoSecondaryButton(
+                        title: "Stop",
+                        systemImage: "stop.fill",
+                        isEnabled: engineState != .ready,
+                        action: onStop
+                    )
+                }
+
+                GarageTempoSecondaryButton(
+                    title: "Pulse Impact",
+                    systemImage: "checkmark.seal.fill",
+                    isEnabled: true,
+                    action: onManualPulse
+                )
+            }
+        }
+    }
+
+    private var primaryTitle: String {
+        switch engineState {
+        case .running:
+            return "Pause"
+        case .paused:
+            return "Resume"
+        case .ready, .complete:
+            return "Start"
+        }
+    }
+
+    private var primaryIcon: String {
+        switch engineState {
+        case .running:
+            return "pause.fill"
+        case .paused, .ready, .complete:
+            return "play.fill"
+        }
+    }
+}
+
+private struct GarageTempoSliderRow: View {
+    let title: String
+    let valueText: String
+    let rangeText: String
+    @Binding var value: Double
+    let bounds: ClosedRange<Double>
+    let step: Double
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.headline.weight(.black))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+
+                    Text(rangeText)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                }
+
+                Spacer(minLength: 12)
+
+                Text(valueText)
+                    .font(.system(size: 22, weight: .black, design: .monospaced))
+                    .foregroundStyle(GaragePremiumPalette.gold)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+
+            Slider(value: $value, in: bounds, step: step)
+                .tint(GarageProTheme.accent)
+        }
+        .padding(14)
+        .background(GarageProTheme.insetSurface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(GarageProTheme.border, lineWidth: 1)
+        )
+    }
+}
+
+private struct GarageTempoSecondaryButton: View {
+    let title: String
+    let systemImage: String
+    let isEnabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            guard isEnabled else { return }
+            garageTriggerSelection()
+            action()
+        } label: {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+                .foregroundStyle(GarageProTheme.textPrimary)
+                .frame(maxWidth: .infinity, minHeight: 60)
+                .background(GarageProTheme.insetSurface.opacity(0.9), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(GarageProTheme.border, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .opacity(isEnabled ? 1 : 0.44)
+        .disabled(isEnabled == false)
+    }
+}
+
+private struct GarageTempoFoundationCard: View {
+    let configuration: GarageTempoConfiguration
+
+    var body: some View {
+        GarageProCard(cornerRadius: 24, padding: 16) {
+            HStack(alignment: .top, spacing: 14) {
+                Image(systemName: "shield.lefthalf.filled")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(GarageProTheme.accent)
+                    .frame(width: 44, height: 44)
+                    .background(GarageProTheme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Local rehearsal tool")
+                        .font(.headline.weight(.black))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+
+                    Text("No camera, mic, AI, or sensor-based claims. History and saved fingerprints stay behind a later persistence gate.")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text("\(configuration.bpmText) BPM - \(configuration.ratioText) load/release")
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(GaragePremiumPalette.gold)
+                }
+            }
+        }
     }
 }
 
