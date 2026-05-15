@@ -1959,6 +1959,7 @@ struct GarageTempoBuilderView: View {
     @State private var runMode: GarageTempoRunMode = .endless
     @State private var profile: GarageTempoProfile = .fullSwing
     @State private var targetCycles = 12
+    @State private var showsMoreControls = false
 
     private var targetCycleValue: Int? {
         runMode == .target ? targetCycles : nil
@@ -1968,8 +1969,15 @@ struct GarageTempoBuilderView: View {
         ZStack {
             GarageTempoCockpitBackground()
 
-            ScrollView {
-                VStack(spacing: engine.state == .running ? 14 : 18) {
+            GeometryReader { proxy in
+                let isActive = engine.state == .running
+                let horizontalPadding: CGFloat = 16
+                let dialSize = min(
+                    proxy.size.width - horizontalPadding * 2,
+                    proxy.size.height * (isActive ? 0.48 : 0.38)
+                )
+
+                VStack(spacing: isActive ? 10 : 9) {
                     GarageTempoTopBar(
                         profile: profile,
                         onBack: {
@@ -1977,6 +1985,7 @@ struct GarageTempoBuilderView: View {
                             dismiss()
                         }
                     )
+                    .frame(height: 44)
 
                     GarageTempoHeroReadout(
                         configuration: configuration,
@@ -1985,6 +1994,7 @@ struct GarageTempoBuilderView: View {
                         cycleCount: engine.cycleCount,
                         targetCycles: targetCycleValue
                     )
+                    .frame(height: isActive ? 92 : 104)
 
                     GarageTempoDialCard(
                         configuration: configuration,
@@ -1995,6 +2005,8 @@ struct GarageTempoBuilderView: View {
                         targetCycles: targetCycleValue,
                         impactPulseID: engine.impactPulseID
                     )
+                    .frame(width: dialSize, height: dialSize)
+                    .frame(maxWidth: .infinity)
 
                     GarageTempoControlTray(
                         configuration: $configuration,
@@ -2006,17 +2018,30 @@ struct GarageTempoBuilderView: View {
                         onPrimaryAction: handlePrimaryAction,
                         onStop: engine.stop,
                         onManualPulse: engine.triggerImpactPulse
-                    )
-
-                    if engine.state != .running {
-                        GarageTempoFoundationCard(configuration: configuration)
+                    ) {
+                        garageTriggerSelection()
+                        showsMoreControls = true
                     }
+                    .frame(maxHeight: isActive ? 82 : 218)
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 14)
-                .padding(.bottom, 34)
+                .padding(.horizontal, horizontalPadding)
+                .padding(.top, 8)
+                .padding(.bottom, 10)
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
             }
-            .scrollIndicators(.hidden)
+        }
+        .sheet(isPresented: $showsMoreControls) {
+            GarageTempoMoreControlsSheet(
+                configuration: $configuration,
+                targetCycles: $targetCycles,
+                runMode: $runMode,
+                engineState: engine.state,
+                onConfigurationChange: engine.updateConfiguration,
+                onReset: engine.stop,
+                onPulse: engine.triggerImpactPulse
+            )
+            .presentationDetents([.height(420), .medium])
+            .presentationDragIndicator(.visible)
         }
         .onDisappear {
             engine.stopForDisappear()
@@ -2105,7 +2130,7 @@ private struct GarageTempoTopBar: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
                 .foregroundStyle(GaragePremiumPalette.gold)
-                .frame(width: 92, height: 36)
+                .frame(width: 88, height: 34)
                 .background(GaragePremiumPalette.gold.opacity(0.10), in: Capsule())
                 .overlay(Capsule().stroke(GaragePremiumPalette.gold.opacity(0.25), lineWidth: 1))
         }
@@ -2128,10 +2153,10 @@ private struct GarageTempoHeroReadout: View {
     }
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 6) {
             HStack(alignment: .lastTextBaseline, spacing: 10) {
                 Text(configuration.bpmText)
-                    .font(.system(size: 72, weight: .black, design: .rounded))
+                    .font(.system(size: 62, weight: .black, design: .rounded))
                     .foregroundStyle(GarageProTheme.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
@@ -2149,7 +2174,6 @@ private struct GarageTempoHeroReadout: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 2)
     }
 }
 
@@ -2160,7 +2184,7 @@ private struct GarageTempoReadoutChip: View {
     var body: some View {
         VStack(spacing: 3) {
             Text(value)
-                .font(.system(size: 15, weight: .black, design: .rounded))
+                .font(.system(size: 13, weight: .black, design: .rounded))
                 .foregroundStyle(GarageProTheme.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -2171,11 +2195,11 @@ private struct GarageTempoReadoutChip: View {
                 .tracking(1.3)
                 .foregroundStyle(GarageProTheme.textSecondary)
         }
-        .frame(maxWidth: .infinity, minHeight: 48)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .background(GarageProTheme.insetSurface.opacity(0.72), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .frame(maxWidth: .infinity, minHeight: 38)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .background(GarageProTheme.insetSurface.opacity(0.72), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
                 .stroke(GarageProTheme.border, lineWidth: 1)
         )
     }
@@ -2216,17 +2240,17 @@ private struct GarageTempoDialCard: View {
             }
             .frame(maxWidth: .infinity)
             .aspectRatio(1, contentMode: .fit)
-            .padding(8)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 34, style: .continuous))
+            .padding(4)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
             .background(
-                RoundedRectangle(cornerRadius: 34, style: .continuous)
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
                     .fill(runState == .running ? GarageProTheme.elevatedSurface.opacity(0.68) : GarageProTheme.surface.opacity(0.52))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 34, style: .continuous)
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
                     .stroke(runState == .running ? GarageProTheme.accent.opacity(0.32) : GarageProTheme.border, lineWidth: 1)
             )
-            .shadow(color: GarageProTheme.glow.opacity(runState == .running ? 0.24 : 0.10), radius: 30, x: 0, y: 18)
+            .shadow(color: GarageProTheme.glow.opacity(runState == .running ? 0.24 : 0.10), radius: 20, x: 0, y: 12)
         }
         .onChange(of: impactPulseID) { _, newValue in
             guard newValue > 0 else { return }
@@ -2446,16 +2470,16 @@ private struct GarageTempoControlTray: View {
     let onPrimaryAction: () -> Void
     let onStop: () -> Void
     let onManualPulse: () -> Void
+    let onMore: () -> Void
 
     private var isRunning: Bool {
         engineState == .running
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 8) {
             if isRunning == false {
-                VStack(alignment: .leading, spacing: 12) {
-                    GarageTempoTrayLabel("Profile")
+                VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
                         ForEach(GarageTempoProfile.allCases) { option in
                             GarageTempoChip(
@@ -2467,7 +2491,6 @@ private struct GarageTempoControlTray: View {
                         }
                     }
 
-                    GarageTempoTrayLabel("Mode")
                     HStack(spacing: 8) {
                         ForEach(GarageTempoRunMode.allCases) { option in
                             GarageTempoChip(
@@ -2477,48 +2500,49 @@ private struct GarageTempoControlTray: View {
                                 runMode = option
                             }
                         }
-                    }
 
-                    if runMode == .target {
-                        GarageTempoStepperRow(
-                            title: "Target reps",
-                            value: "\(targetCycles)",
+                        GarageTempoMiniStepper(
+                            title: "Reps",
+                            value: runMode == .target ? "\(targetCycles)" : "--",
+                            isEnabled: runMode == .target,
                             decrement: { targetCycles = max(3, targetCycles - 3) },
                             increment: { targetCycles = min(60, targetCycles + 3) }
                         )
                     }
 
-                    GarageTempoStepperRow(
-                        title: "BPM",
-                        value: configuration.bpmText,
-                        decrement: {
-                            configuration.beatsPerMinute = max(48, configuration.beatsPerMinute - 1)
-                            onConfigurationChange(configuration)
-                        },
-                        increment: {
-                            configuration.beatsPerMinute = min(96, configuration.beatsPerMinute + 1)
-                            onConfigurationChange(configuration)
-                        }
-                    )
+                    HStack(spacing: 8) {
+                        GarageTempoMiniStepper(
+                            title: "BPM",
+                            value: configuration.bpmText,
+                            decrement: {
+                                configuration.beatsPerMinute = max(48, configuration.beatsPerMinute - 1)
+                                onConfigurationChange(configuration)
+                            },
+                            increment: {
+                                configuration.beatsPerMinute = min(96, configuration.beatsPerMinute + 1)
+                                onConfigurationChange(configuration)
+                            }
+                        )
 
-                    GarageTempoStepperRow(
-                        title: "Load / Release",
-                        value: configuration.ratioText,
-                        decrement: {
-                            configuration.backswingRatio = max(0.55, configuration.backswingRatio - 0.01)
-                            onConfigurationChange(configuration)
-                        },
-                        increment: {
-                            configuration.backswingRatio = min(0.8, configuration.backswingRatio + 0.01)
-                            onConfigurationChange(configuration)
-                        }
-                    )
+                        GarageTempoMiniStepper(
+                            title: "Ratio",
+                            value: configuration.ratioText,
+                            decrement: {
+                                configuration.backswingRatio = max(0.55, configuration.backswingRatio - 0.01)
+                                onConfigurationChange(configuration)
+                            },
+                            increment: {
+                                configuration.backswingRatio = min(0.8, configuration.backswingRatio + 0.01)
+                                onConfigurationChange(configuration)
+                            }
+                        )
+                    }
                 }
-                .padding(16)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-                .background(GarageProTheme.elevatedSurface.opacity(0.62), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                .padding(10)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .background(GarageProTheme.elevatedSurface.opacity(0.62), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
                         .stroke(GarageProTheme.border, lineWidth: 1)
                 )
             }
@@ -2546,12 +2570,19 @@ private struct GarageTempoControlTray: View {
                     isEnabled: true,
                     action: onManualPulse
                 )
+
+                GarageTempoSecondaryButton(
+                    title: "More",
+                    systemImage: "ellipsis",
+                    isEnabled: true,
+                    action: onMore
+                )
             }
-            .padding(10)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-            .background(GarageProTheme.insetSurface.opacity(0.78), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .padding(8)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .background(GarageProTheme.insetSurface.opacity(0.78), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .stroke(GarageProTheme.accent.opacity(engineState == .running ? 0.32 : 0.12), lineWidth: 1)
             )
         }
@@ -2610,7 +2641,7 @@ private struct GarageTempoChip: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
                 .foregroundStyle(isSelected ? GarageProTheme.textPrimary : GarageProTheme.textSecondary)
-                .frame(maxWidth: .infinity, minHeight: 42)
+                .frame(maxWidth: .infinity, minHeight: 34)
                 .background(isSelected ? GarageProTheme.accent.opacity(0.18) : GarageProTheme.insetSurface.opacity(0.72), in: Capsule())
                 .overlay(
                     Capsule()
@@ -2618,6 +2649,45 @@ private struct GarageTempoChip: View {
                 )
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct GarageTempoMiniStepper: View {
+    let title: String
+    let value: String
+    var isEnabled = true
+    let decrement: () -> Void
+    let increment: () -> Void
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Text(title)
+                .font(.system(size: 10, weight: .black, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(0.9)
+                .foregroundStyle(GarageProTheme.textSecondary)
+
+            Spacer(minLength: 2)
+
+            GarageTempoIconButton(systemImage: "minus", size: 28, isEnabled: isEnabled, action: decrement)
+
+            Text(value)
+                .font(.system(size: 13, weight: .black, design: .monospaced))
+                .foregroundStyle(isEnabled ? GaragePremiumPalette.gold : GarageProTheme.textSecondary)
+                .frame(minWidth: 42)
+                .lineLimit(1)
+                .minimumScaleFactor(0.68)
+
+            GarageTempoIconButton(systemImage: "plus", size: 28, isEnabled: isEnabled, action: increment)
+        }
+        .frame(maxWidth: .infinity, minHeight: 38)
+        .padding(.horizontal, 8)
+        .background(GarageProTheme.insetSurface.opacity(0.64), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(GarageProTheme.border, lineWidth: 1)
+        )
+        .opacity(isEnabled ? 1 : 0.48)
     }
 }
 
@@ -2658,21 +2728,113 @@ private struct GarageTempoStepperRow: View {
 
 private struct GarageTempoIconButton: View {
     let systemImage: String
+    var size: CGFloat = 36
+    var isEnabled = true
     let action: () -> Void
 
     var body: some View {
         Button {
+            guard isEnabled else { return }
             garageTriggerSelection()
             action()
         } label: {
             Image(systemName: systemImage)
                 .font(.system(size: 12, weight: .black))
                 .foregroundStyle(GarageProTheme.textPrimary)
-                .frame(width: 36, height: 36)
+                .frame(width: size, height: size)
                 .background(.ultraThinMaterial, in: Circle())
                 .overlay(Circle().stroke(GarageProTheme.border, lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .disabled(isEnabled == false)
+    }
+}
+
+private struct GarageTempoMoreControlsSheet: View {
+    @Binding var configuration: GarageTempoConfiguration
+    @Binding var targetCycles: Int
+    @Binding var runMode: GarageTempoRunMode
+
+    let engineState: GarageTempoRunState
+    let onConfigurationChange: (GarageTempoConfiguration) -> Void
+    let onReset: () -> Void
+    let onPulse: () -> Void
+
+    @State private var audioEnabled = true
+    @State private var hapticsEnabled = true
+
+    var body: some View {
+        ZStack {
+            GarageTempoCockpitBackground()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    GarageProSectionHeader(eyebrow: "More", title: "Secondary Controls")
+
+                    GarageProCard(cornerRadius: 22, padding: 14) {
+                        Toggle("Audio cues", isOn: $audioEnabled)
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(GarageProTheme.textPrimary)
+
+                        Toggle("Haptics", isOn: $hapticsEnabled)
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(GarageProTheme.textPrimary)
+                    }
+
+                    GarageProCard(cornerRadius: 22, padding: 14) {
+                        GarageTempoSliderRow(
+                            title: "Advanced BPM",
+                            valueText: configuration.bpmText,
+                            rangeText: "Fine pace control",
+                            value: Binding(
+                                get: { configuration.beatsPerMinute },
+                                set: { nextValue in
+                                    configuration.beatsPerMinute = nextValue.rounded()
+                                    onConfigurationChange(configuration)
+                                }
+                            ),
+                            bounds: 48...96,
+                            step: 1
+                        )
+
+                        GarageTempoSliderRow(
+                            title: "Advanced Ratio",
+                            valueText: configuration.ratioText,
+                            rangeText: "Load / release balance",
+                            value: Binding(
+                                get: { configuration.backswingRatio },
+                                set: { nextValue in
+                                    configuration.backswingRatio = nextValue
+                                    onConfigurationChange(configuration)
+                                }
+                            ),
+                            bounds: 0.55...0.8,
+                            step: 0.01
+                        )
+                    }
+
+                    HStack(spacing: 10) {
+                        GarageTempoSecondaryButton(
+                            title: "Pulse Impact",
+                            systemImage: "checkmark.seal.fill",
+                            isEnabled: true,
+                            action: onPulse
+                        )
+
+                        GarageTempoSecondaryButton(
+                            title: "Reset",
+                            systemImage: "arrow.counterclockwise",
+                            isEnabled: engineState != .ready,
+                            action: onReset
+                        )
+                    }
+
+                    GarageTempoFoundationCard(configuration: configuration)
+                }
+                .padding(18)
+            }
+            .scrollIndicators(.hidden)
+        }
     }
 }
 
@@ -2736,7 +2898,7 @@ private struct GarageTempoSecondaryButton: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.78)
                 .foregroundStyle(isProminent ? ModuleTheme.garageSurfaceDark : GarageProTheme.textPrimary)
-                .frame(maxWidth: .infinity, minHeight: 60)
+                .frame(maxWidth: .infinity, minHeight: 52)
                 .background {
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
                         .fill(GarageProTheme.insetSurface.opacity(0.9))
