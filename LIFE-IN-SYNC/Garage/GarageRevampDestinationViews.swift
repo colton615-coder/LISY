@@ -2024,13 +2024,14 @@ struct GarageTempoBuilderView: View {
             GeometryReader { proxy in
                 let isActive = engine.state == .running
                 let isComplete = engine.state == .complete
-                let horizontalPadding: CGFloat = 16
+                let horizontalPadding: CGFloat = 12
+                let bottomPadding = max(proxy.safeAreaInsets.bottom - 12, 4)
                 let dialSize = min(
                     proxy.size.width - horizontalPadding * 2,
-                    proxy.size.height * (isActive ? 0.58 : (isComplete ? 0.30 : 0.52))
+                    proxy.size.height * (isActive ? 0.60 : (isComplete ? 0.30 : 0.55))
                 )
 
-                VStack(spacing: isActive ? 8 : 10) {
+                VStack(spacing: isActive ? 7 : 9) {
                     GarageTempoTopBar(
                         profile: profile,
                         hapticsEnabled: configuration.hapticsEnabled,
@@ -2062,6 +2063,8 @@ struct GarageTempoBuilderView: View {
                     .frame(width: dialSize, height: dialSize)
                     .frame(maxWidth: .infinity)
 
+                    Spacer(minLength: isComplete ? 4 : 8)
+
                     GarageTempoControlTray(
                         configuration: $configuration,
                         runMode: $runMode,
@@ -2073,7 +2076,7 @@ struct GarageTempoBuilderView: View {
                     ) {
                         showsMoreControls = true
                     }
-                    .frame(maxHeight: isActive ? 104 : (isComplete ? 96 : 150))
+                    .frame(maxHeight: isComplete ? 108 : 174)
 
                     if isComplete {
                         GarageTempoCompletionPanel(
@@ -2090,8 +2093,8 @@ struct GarageTempoBuilderView: View {
                     }
                 }
                 .padding(.horizontal, horizontalPadding)
-                .padding(.top, 8)
-                .padding(.bottom, 10)
+                .padding(.top, 10)
+                .padding(.bottom, bottomPadding)
                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
             }
         }
@@ -2731,7 +2734,7 @@ private struct GarageTempoActionBar: View {
     let onMore: () -> Void
 
     var body: some View {
-        HStack(spacing: 9) {
+        VStack(spacing: 6) {
             Button {
                 if hapticsEnabled {
                     garageTriggerSelection()
@@ -2743,7 +2746,7 @@ private struct GarageTempoActionBar: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                     .foregroundStyle(ModuleTheme.garageSurfaceDark)
-                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .frame(maxWidth: .infinity, minHeight: 58)
                     .background(
                         LinearGradient(
                             colors: [
@@ -2764,21 +2767,25 @@ private struct GarageTempoActionBar: View {
             }
             .buttonStyle(.plain)
 
-            GarageTempoAuxiliaryButton(
-                title: "Stop",
-                systemImage: "stop.fill",
-                isEnabled: canStop,
-                hapticsEnabled: hapticsEnabled,
-                action: onStop
-            )
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
 
-            GarageTempoAuxiliaryButton(
-                title: "More",
-                systemImage: "ellipsis",
-                isEnabled: true,
-                hapticsEnabled: hapticsEnabled,
-                action: onMore
-            )
+                GarageTempoAuxiliaryButton(
+                    title: "Stop",
+                    systemImage: "stop.fill",
+                    isEnabled: canStop,
+                    hapticsEnabled: hapticsEnabled,
+                    action: onStop
+                )
+
+                GarageTempoAuxiliaryButton(
+                    title: "More",
+                    systemImage: "ellipsis",
+                    isEnabled: true,
+                    hapticsEnabled: hapticsEnabled,
+                    action: onMore
+                )
+            }
         }
     }
 }
@@ -2807,11 +2814,11 @@ private struct GarageTempoAuxiliaryButton: View {
                     .lineLimit(1)
             }
             .foregroundStyle(GarageProTheme.textPrimary.opacity(isEnabled ? 0.92 : 0.42))
-            .frame(width: 54, height: 56)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .background(GarageProTheme.insetSurface.opacity(0.68), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .frame(width: 76, height: 38)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .background(GarageProTheme.insetSurface.opacity(0.58), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
                     .stroke(GarageProTheme.border, lineWidth: 1)
             )
         }
