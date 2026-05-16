@@ -1842,10 +1842,14 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
 
     private var timer: Timer?
     private var cycleStartDate: Date?
+    private var preciseProgress: Double = 0
     private var pausedProgress: Double = 0
     private var targetCycles: Int?
     private let audioCuePlayer = GarageTempoAudioCuePlayer()
     private var didPlayTopCue = false
+    private var lastVisualProgressPublishDate: Date?
+
+    private let visualProgressPublishInterval: TimeInterval = 1.0 / 30.0
 
     var phaseLabel: String {
         switch state {
@@ -1863,10 +1867,12 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
     func start(configuration: GarageTempoConfiguration, targetCycles: Int?) {
         self.configuration = configuration
         self.targetCycles = targetCycles
+        preciseProgress = 0
         progress = 0
         pausedProgress = 0
         cycleCount = 0
         didPlayTopCue = false
+        lastVisualProgressPublishDate = nil
         state = .running
         cycleStartDate = .now
         playAudioCue(.start)
@@ -1885,7 +1891,7 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
 
     func pause() {
         guard state == .running else { return }
-        pausedProgress = progress
+        pausedProgress = preciseProgress
         state = .paused
         stopTimer()
         audioCuePlayer.stop()
@@ -1893,12 +1899,14 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
 
     func stop() {
         state = .ready
+        preciseProgress = 0
         progress = 0
         pausedProgress = 0
         cycleCount = 0
         cycleStartDate = nil
         targetCycles = nil
         didPlayTopCue = false
+        lastVisualProgressPublishDate = nil
         stopTimer()
         audioCuePlayer.stop()
     }
@@ -1908,7 +1916,7 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
     }
 
     func updateConfiguration(_ nextConfiguration: GarageTempoConfiguration) {
-        let currentProgress = progress
+        let currentProgress = preciseProgress
         configuration = nextConfiguration
 
         if nextConfiguration.audioEnabled == false {
@@ -1960,7 +1968,8 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
             triggerHaptic(.light)
 
             if let targetCycles, cycleCount >= targetCycles {
-                progress = 1
+                preciseProgress = 1
+                publishVisualProgress(1, at: now, force: true)
                 state = .complete
                 stopTimer()
                 return
@@ -1976,11 +1985,24 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
             playAudioCue(.top)
         }
 
-        progress = cycleElapsed / duration
+        let nextProgress = cycleElapsed / duration
+        preciseProgress = nextProgress
+        publishVisualProgress(nextProgress, at: now)
     }
 
     @objc private func timerDidFire(_ timer: Timer) {
         tick()
+    }
+
+    private func publishVisualProgress(_ nextProgress: Double, at now: Date, force: Bool = false) {
+        if force == false,
+           let lastVisualProgressPublishDate,
+           now.timeIntervalSince(lastVisualProgressPublishDate) < visualProgressPublishInterval {
+            return
+        }
+
+        progress = nextProgress
+        lastVisualProgressPublishDate = now
     }
 
     private func playStartCueIfRunning() {
@@ -2655,55 +2677,163 @@ private struct GarageTempoControlTray: View {
     let onStop: () -> Void
     let onMore: () -> Void
 
-    private var isRunning: Bool {
-        engineState == .running
-    }
-
     var body: some View {
-        VStack(spacing: 8) {
-            if engineState != .complete {
-                GarageTempoCompactControlStrip(
+        Group {
+            switch engineState {
+            case .ready:
+                GarageTempoReadyControls(
                     configuration: $configuration,
                     runMode: runMode,
                     targetCycles: $targetCycles,
                     hapticsEnabled: configuration.hapticsEnabled,
-                    onConfigurationChange: onConfigurationChange
+                    onConfigurationChange: onConfigurationChange,
+                    onPrimaryAction: onPrimaryAction,
+                    onMore: onMore
                 )
-                .opacity(isRunning ? 0.64 : 1)
-                .allowsHitTesting(isRunning == false)
+
+            case .running:
+                GarageTempoActiveControls(
+                    hapticsEnabled: configuration.hapticsEnabled,
+                    onPause: onPrimaryAction,
+                    onStop: onStop
+                )
+
+            case .paused:
+                GarageTempoPausedControls(
+                    configuration: $configuration,
+                    hapticsEnabled: configuration.hapticsEnabled,
+                    onConfigurationChange: onConfigurationChange,
+                    onResume: onPrimaryAction,
+                    onStop: onStop,
+                    onAdjust: onMore
+                )
+
+            case .complete:
+                GarageTempoCompleteControls(
+                    hapticsEnabled: configuration.hapticsEnabled,
+                    onStart: onPrimaryAction,
+                    onMore: onMore
+                )
             }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: engineState)
+    }
+}
+
+private struct GarageTempoReadyControls: View {
+    @Binding var configuration: GarageTempoConfiguration
+    let runMode: GarageTempoRunMode
+    @Binding var targetCycles: Int
+    let hapticsEnabled: Bool
+    let onConfigurationChange: (GarageTempoConfiguration) -> Void
+    let onPrimaryAction: () -> Void
+    let onMore: () -> Void
+
+    var body: some View {
+        VStack(spacing: 8) {
+            GarageTempoCompactControlStrip(
+                configuration: $configuration,
+                runMode: runMode,
+                targetCycles: $targetCycles,
+                hapticsEnabled: hapticsEnabled,
+                onConfigurationChange: onConfigurationChange
+            )
 
             GarageTempoActionBar(
-                primaryTitle: primaryTitle,
-                primaryIcon: primaryIcon,
-                isPrimaryActive: engineState == .ready || engineState == .complete || engineState == .paused,
-                canStop: engineState != .ready,
-                hapticsEnabled: configuration.hapticsEnabled,
+                primaryTitle: "Start",
+                primaryIcon: "play.fill",
+                isPrimaryActive: true,
+                showsStop: false,
+                showsMore: true,
+                hapticsEnabled: hapticsEnabled,
                 onPrimaryAction: onPrimaryAction,
-                onStop: onStop,
+                onStop: {},
                 onMore: onMore
             )
         }
     }
+}
 
-    private var primaryTitle: String {
-        switch engineState {
-        case .running:
-            return "Pause"
-        case .paused:
-            return "Resume"
-        case .ready, .complete:
-            return "Start"
+private struct GarageTempoActiveControls: View {
+    let hapticsEnabled: Bool
+    let onPause: () -> Void
+    let onStop: () -> Void
+
+    var body: some View {
+        GarageTempoActionBar(
+            primaryTitle: "Pause",
+            primaryIcon: "pause.fill",
+            isPrimaryActive: false,
+            stopTitle: "End Set",
+            showsStop: true,
+            showsMore: false,
+            hapticsEnabled: hapticsEnabled,
+            onPrimaryAction: onPause,
+            onStop: onStop,
+            onMore: {}
+        )
+    }
+}
+
+private struct GarageTempoPausedControls: View {
+    @Binding var configuration: GarageTempoConfiguration
+    let hapticsEnabled: Bool
+    let onConfigurationChange: (GarageTempoConfiguration) -> Void
+    let onResume: () -> Void
+    let onStop: () -> Void
+    let onAdjust: () -> Void
+
+    var body: some View {
+        VStack(spacing: 8) {
+            GarageTempoControlRail(
+                title: "BPM",
+                value: configuration.bpmText,
+                isEnabled: true,
+                hapticsEnabled: hapticsEnabled,
+                decrement: {
+                    configuration.beatsPerMinute = max(48, configuration.beatsPerMinute - 1)
+                    onConfigurationChange(configuration)
+                },
+                increment: {
+                    configuration.beatsPerMinute = min(96, configuration.beatsPerMinute + 1)
+                    onConfigurationChange(configuration)
+                }
+            )
+
+            GarageTempoActionBar(
+                primaryTitle: "Resume",
+                primaryIcon: "play.fill",
+                isPrimaryActive: true,
+                stopTitle: "End Set",
+                moreTitle: "Adjust",
+                showsStop: true,
+                showsMore: true,
+                hapticsEnabled: hapticsEnabled,
+                onPrimaryAction: onResume,
+                onStop: onStop,
+                onMore: onAdjust
+            )
         }
     }
+}
 
-    private var primaryIcon: String {
-        switch engineState {
-        case .running:
-            return "pause.fill"
-        case .paused, .ready, .complete:
-            return "play.fill"
-        }
+private struct GarageTempoCompleteControls: View {
+    let hapticsEnabled: Bool
+    let onStart: () -> Void
+    let onMore: () -> Void
+
+    var body: some View {
+        GarageTempoActionBar(
+            primaryTitle: "Start",
+            primaryIcon: "play.fill",
+            isPrimaryActive: true,
+            showsStop: false,
+            showsMore: true,
+            hapticsEnabled: hapticsEnabled,
+            onPrimaryAction: onStart,
+            onStop: {},
+            onMore: onMore
+        )
     }
 }
 
@@ -2824,7 +2954,11 @@ private struct GarageTempoActionBar: View {
     let primaryTitle: String
     let primaryIcon: String
     let isPrimaryActive: Bool
-    let canStop: Bool
+    var stopTitle = "Stop"
+    var moreTitle = "More"
+    var showsStop = true
+    var showsMore = true
+    var canStop = true
     let hapticsEnabled: Bool
     let onPrimaryAction: () -> Void
     let onStop: () -> Void
@@ -2867,21 +3001,25 @@ private struct GarageTempoActionBar: View {
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
 
-                GarageTempoAuxiliaryButton(
-                    title: "Stop",
-                    systemImage: "stop.fill",
-                    isEnabled: canStop,
-                    hapticsEnabled: hapticsEnabled,
-                    action: onStop
-                )
+                if showsStop {
+                    GarageTempoAuxiliaryButton(
+                        title: stopTitle,
+                        systemImage: "stop.fill",
+                        isEnabled: canStop,
+                        hapticsEnabled: hapticsEnabled,
+                        action: onStop
+                    )
+                }
 
-                GarageTempoAuxiliaryButton(
-                    title: "More",
-                    systemImage: "ellipsis",
-                    isEnabled: true,
-                    hapticsEnabled: hapticsEnabled,
-                    action: onMore
-                )
+                if showsMore {
+                    GarageTempoAuxiliaryButton(
+                        title: moreTitle,
+                        systemImage: "ellipsis",
+                        isEnabled: true,
+                        hapticsEnabled: hapticsEnabled,
+                        action: onMore
+                    )
+                }
             }
         }
     }
@@ -2909,9 +3047,11 @@ private struct GarageTempoAuxiliaryButton: View {
                 Text(title)
                     .font(.system(size: 9, weight: .black, design: .rounded))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.76)
             }
             .foregroundStyle(GarageProTheme.textPrimary.opacity(isEnabled ? 0.92 : 0.42))
-            .frame(width: 76, height: 38)
+            .frame(minWidth: 72, maxWidth: 96, minHeight: 38)
+            .padding(.horizontal, 2)
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
             .background(GarageProTheme.insetSurface.opacity(0.58), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
             .overlay(
