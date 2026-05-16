@@ -1930,6 +1930,10 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
         }
     }
 
+    func updateTargetCycles(_ nextTargetCycles: Int?) {
+        targetCycles = nextTargetCycles
+    }
+
     func triggerImpactPulse() {
         impactPulseID += 1
         playAudioCue(.impact)
@@ -2044,64 +2048,78 @@ struct GarageTempoBuilderView: View {
             GarageTempoCockpitBackground()
 
             GeometryReader { proxy in
-                let isActive = engine.state == .running
-                let isComplete = engine.state == .complete
                 let horizontalPadding: CGFloat = 12
                 let bottomPadding = max(proxy.safeAreaInsets.bottom - 12, 4)
-                let dialSize = min(
-                    proxy.size.width - horizontalPadding * 2,
-                    proxy.size.height * (isActive ? 0.60 : (isComplete ? 0.30 : 0.55))
-                )
 
-                VStack(spacing: isActive ? 7 : 9) {
-                    GarageTempoTopBar(
-                        profile: profile,
-                        hapticsEnabled: configuration.hapticsEnabled,
-                        onBack: {
-                            engine.stopForDisappear()
-                            dismiss()
-                        }
-                    )
-                    .frame(height: 44)
+                Group {
+                    switch engine.state {
+                    case .ready:
+                        GarageTempoReadyLayout(
+                            size: proxy.size,
+                            configuration: $configuration,
+                            runMode: runMode,
+                            targetCycles: $targetCycles,
+                            profile: profile,
+                            progress: engine.progress,
+                            phaseLabel: engine.phaseLabel,
+                            cycleCount: engine.cycleCount,
+                            targetCycleValue: targetCycleValue,
+                            hapticsEnabled: configuration.hapticsEnabled,
+                            onBack: closeBuilder,
+                            onConfigurationChange: engine.updateConfiguration,
+                            onStart: handlePrimaryAction,
+                            onMore: { showsMoreControls = true }
+                        )
 
-                    GarageTempoHeroReadout(
-                        configuration: configuration,
-                        runState: engine.state,
-                        phaseLabel: engine.phaseLabel,
-                        cycleCount: engine.cycleCount,
-                        targetCycles: targetCycleValue
-                    )
-                    .frame(height: isActive ? 86 : 96)
+                    case .running:
+                        GarageTempoActiveLayout(
+                            size: proxy.size,
+                            configuration: $configuration,
+                            runMode: runMode,
+                            targetCycles: $targetCycles,
+                            profile: profile,
+                            progress: engine.progress,
+                            phaseLabel: engine.phaseLabel,
+                            cycleCount: engine.cycleCount,
+                            targetCycleValue: targetCycleValue,
+                            impactPulseID: engine.impactPulseID,
+                            hapticsEnabled: configuration.hapticsEnabled,
+                            onBack: closeBuilder,
+                            onConfigurationChange: engine.updateConfiguration,
+                            onPause: handlePrimaryAction,
+                            onStop: resetSet
+                        )
 
-                    GarageTempoDialCard(
-                        configuration: configuration,
-                        progress: engine.progress,
-                        phaseLabel: engine.phaseLabel,
-                        runState: engine.state,
-                        cycleCount: engine.cycleCount,
-                        targetCycles: targetCycleValue,
-                        impactPulseID: engine.impactPulseID
-                    )
-                    .frame(width: dialSize, height: dialSize)
-                    .frame(maxWidth: .infinity)
+                    case .paused:
+                        GarageTempoPausedLayout(
+                            size: proxy.size,
+                            configuration: $configuration,
+                            runMode: runMode,
+                            targetCycles: $targetCycles,
+                            profile: profile,
+                            progress: engine.progress,
+                            phaseLabel: engine.phaseLabel,
+                            cycleCount: engine.cycleCount,
+                            targetCycleValue: targetCycleValue,
+                            impactPulseID: engine.impactPulseID,
+                            hapticsEnabled: configuration.hapticsEnabled,
+                            onBack: closeBuilder,
+                            onConfigurationChange: engine.updateConfiguration,
+                            onResume: handlePrimaryAction,
+                            onStop: resetSet,
+                            onAdjust: { showsMoreControls = true }
+                        )
 
-                    Spacer(minLength: isComplete ? 4 : 8)
-
-                    GarageTempoControlTray(
-                        configuration: $configuration,
-                        runMode: $runMode,
-                        targetCycles: $targetCycles,
-                        engineState: engine.state,
-                        onConfigurationChange: engine.updateConfiguration,
-                        onPrimaryAction: handlePrimaryAction,
-                        onStop: resetSet
-                    ) {
-                        showsMoreControls = true
-                    }
-                    .frame(maxHeight: isComplete ? 108 : 244)
-
-                    if isComplete {
-                        GarageTempoCompletionPanel(
+                    case .complete:
+                        GarageTempoCompleteLayout(
+                            size: proxy.size,
+                            configuration: configuration,
+                            profile: profile,
+                            progress: engine.progress,
+                            phaseLabel: engine.phaseLabel,
+                            cycleCount: engine.cycleCount,
+                            targetCycleValue: targetCycleValue,
+                            impactPulseID: engine.impactPulseID,
                             snapshot: completedSetSnapshot ?? GarageTempoSetSnapshot(
                                 repsCompleted: engine.cycleCount,
                                 beatsPerMinuteText: configuration.bpmText,
@@ -2109,15 +2127,19 @@ struct GarageTempoBuilderView: View {
                                 profileTitle: profile.title
                             ),
                             sessionReflection: $sessionReflection,
-                            carryForwardCue: $carryForwardCue
+                            carryForwardCue: $carryForwardCue,
+                            hapticsEnabled: configuration.hapticsEnabled,
+                            onBack: closeBuilder,
+                            onStart: handlePrimaryAction,
+                            onMore: { showsMoreControls = true }
                         )
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
                 .padding(.horizontal, horizontalPadding)
                 .padding(.top, 10)
                 .padding(.bottom, bottomPadding)
                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: engine.state)
             }
         }
         .sheet(isPresented: $showsMoreControls) {
@@ -2146,9 +2168,20 @@ struct GarageTempoBuilderView: View {
                 profileTitle: profile.title
             )
         }
+        .onChange(of: targetCycles) { _, _ in
+            engine.updateTargetCycles(targetCycleValue)
+        }
+        .onChange(of: runMode) { _, _ in
+            engine.updateTargetCycles(targetCycleValue)
+        }
         .navigationBarBackButtonHidden(true)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func closeBuilder() {
+        engine.stopForDisappear()
+        dismiss()
     }
 
     private func handlePrimaryAction() {
@@ -2180,6 +2213,457 @@ struct GarageTempoBuilderView: View {
         completedSetSnapshot = nil
     }
 
+}
+
+private struct GarageTempoReadyLayout: View {
+    let size: CGSize
+    @Binding var configuration: GarageTempoConfiguration
+    let runMode: GarageTempoRunMode
+    @Binding var targetCycles: Int
+    let profile: GarageTempoProfile
+    let progress: Double
+    let phaseLabel: String
+    let cycleCount: Int
+    let targetCycleValue: Int?
+    let hapticsEnabled: Bool
+    let onBack: () -> Void
+    let onConfigurationChange: (GarageTempoConfiguration) -> Void
+    let onStart: () -> Void
+    let onMore: () -> Void
+
+    private var dialSize: CGFloat {
+        min(size.width - 26, size.height * 0.36)
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            GarageTempoTopBar(profile: profile, hapticsEnabled: hapticsEnabled, onBack: onBack)
+                .frame(height: 44)
+
+            GarageTempoHeroReadout(
+                configuration: configuration,
+                runState: .ready,
+                phaseLabel: phaseLabel,
+                cycleCount: cycleCount,
+                targetCycles: targetCycleValue
+            )
+            .frame(height: 92)
+
+            GarageTempoDialCard(
+                configuration: configuration,
+                progress: progress,
+                phaseLabel: phaseLabel,
+                runState: .ready,
+                cycleCount: cycleCount,
+                targetCycles: targetCycleValue,
+                impactPulseID: 0
+            )
+            .frame(width: dialSize, height: dialSize)
+            .frame(maxWidth: .infinity)
+
+            Spacer(minLength: 4)
+
+            GarageTempoSetupPanel(
+                configuration: $configuration,
+                runMode: runMode,
+                targetCycles: $targetCycles,
+                hapticsEnabled: hapticsEnabled,
+                onConfigurationChange: onConfigurationChange
+            )
+
+            GarageTempoActionBar(
+                primaryTitle: "Start",
+                primaryIcon: "play.fill",
+                isPrimaryActive: true,
+                showsStop: false,
+                showsMore: true,
+                hapticsEnabled: hapticsEnabled,
+                onPrimaryAction: onStart,
+                onStop: {},
+                onMore: onMore
+            )
+        }
+    }
+}
+
+private struct GarageTempoActiveLayout: View {
+    let size: CGSize
+    @Binding var configuration: GarageTempoConfiguration
+    let runMode: GarageTempoRunMode
+    @Binding var targetCycles: Int
+    let profile: GarageTempoProfile
+    let progress: Double
+    let phaseLabel: String
+    let cycleCount: Int
+    let targetCycleValue: Int?
+    let impactPulseID: Int
+    let hapticsEnabled: Bool
+    let onBack: () -> Void
+    let onConfigurationChange: (GarageTempoConfiguration) -> Void
+    let onPause: () -> Void
+    let onStop: () -> Void
+
+    private var dialSize: CGFloat {
+        min(size.width - 14, size.height * 0.43)
+    }
+
+    var body: some View {
+        VStack(spacing: 9) {
+            GarageTempoTopBar(profile: profile, hapticsEnabled: hapticsEnabled, onBack: onBack)
+                .frame(height: 40)
+
+            GarageTempoExecutionReadout(
+                configuration: configuration,
+                runState: .running,
+                phaseLabel: phaseLabel,
+                cycleCount: cycleCount,
+                targetCycles: targetCycleValue,
+                isActive: true
+            )
+            .frame(height: 86)
+
+            GarageTempoDialCard(
+                configuration: configuration,
+                progress: progress,
+                phaseLabel: phaseLabel,
+                runState: .running,
+                cycleCount: cycleCount,
+                targetCycles: targetCycleValue,
+                impactPulseID: impactPulseID
+            )
+            .frame(width: dialSize, height: dialSize)
+            .frame(maxWidth: .infinity)
+
+            GarageTempoLiveTuneDock(
+                configuration: $configuration,
+                runMode: runMode,
+                targetCycles: $targetCycles,
+                hapticsEnabled: hapticsEnabled,
+                onConfigurationChange: onConfigurationChange
+            )
+
+            Spacer(minLength: 6)
+
+            GarageTempoActionBar(
+                primaryTitle: "Pause",
+                primaryIcon: "pause.fill",
+                isPrimaryActive: false,
+                stopTitle: "End Set",
+                showsStop: true,
+                showsMore: false,
+                hapticsEnabled: hapticsEnabled,
+                onPrimaryAction: onPause,
+                onStop: onStop,
+                onMore: {}
+            )
+        }
+    }
+}
+
+private struct GarageTempoPausedLayout: View {
+    let size: CGSize
+    @Binding var configuration: GarageTempoConfiguration
+    let runMode: GarageTempoRunMode
+    @Binding var targetCycles: Int
+    let profile: GarageTempoProfile
+    let progress: Double
+    let phaseLabel: String
+    let cycleCount: Int
+    let targetCycleValue: Int?
+    let impactPulseID: Int
+    let hapticsEnabled: Bool
+    let onBack: () -> Void
+    let onConfigurationChange: (GarageTempoConfiguration) -> Void
+    let onResume: () -> Void
+    let onStop: () -> Void
+    let onAdjust: () -> Void
+
+    private var dialSize: CGFloat {
+        min(size.width - 70, size.height * 0.25)
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            GarageTempoTopBar(profile: profile, hapticsEnabled: hapticsEnabled, onBack: onBack)
+                .frame(height: 44)
+
+            GarageTempoPausedStatus(
+                configuration: configuration,
+                phaseLabel: phaseLabel,
+                cycleCount: cycleCount,
+                targetCycles: targetCycleValue
+            )
+
+            GarageTempoDialCard(
+                configuration: configuration,
+                progress: progress,
+                phaseLabel: phaseLabel,
+                runState: .paused,
+                cycleCount: cycleCount,
+                targetCycles: targetCycleValue,
+                impactPulseID: impactPulseID
+            )
+            .frame(width: dialSize, height: dialSize)
+            .frame(maxWidth: .infinity)
+
+            GarageTempoSetupPanel(
+                configuration: $configuration,
+                runMode: runMode,
+                targetCycles: $targetCycles,
+                hapticsEnabled: hapticsEnabled,
+                onConfigurationChange: onConfigurationChange
+            )
+
+            GarageTempoActionBar(
+                primaryTitle: "Resume",
+                primaryIcon: "play.fill",
+                isPrimaryActive: true,
+                stopTitle: "End Set",
+                moreTitle: "Adjust Set",
+                showsStop: true,
+                showsMore: true,
+                hapticsEnabled: hapticsEnabled,
+                onPrimaryAction: onResume,
+                onStop: onStop,
+                onMore: onAdjust
+            )
+        }
+    }
+}
+
+private struct GarageTempoCompleteLayout: View {
+    let size: CGSize
+    let configuration: GarageTempoConfiguration
+    let profile: GarageTempoProfile
+    let progress: Double
+    let phaseLabel: String
+    let cycleCount: Int
+    let targetCycleValue: Int?
+    let impactPulseID: Int
+    let snapshot: GarageTempoSetSnapshot
+    @Binding var sessionReflection: String
+    @Binding var carryForwardCue: String
+    let hapticsEnabled: Bool
+    let onBack: () -> Void
+    let onStart: () -> Void
+    let onMore: () -> Void
+
+    private var dialSize: CGFloat {
+        min(size.width - 96, size.height * 0.24)
+    }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            GarageTempoTopBar(profile: profile, hapticsEnabled: hapticsEnabled, onBack: onBack)
+                .frame(height: 44)
+
+            ScrollView {
+                VStack(spacing: 10) {
+                    GarageTempoExecutionReadout(
+                        configuration: configuration,
+                        runState: .complete,
+                        phaseLabel: phaseLabel,
+                        cycleCount: cycleCount,
+                        targetCycles: targetCycleValue,
+                        isActive: false
+                    )
+
+                    GarageTempoDialCard(
+                        configuration: configuration,
+                        progress: progress,
+                        phaseLabel: phaseLabel,
+                        runState: .complete,
+                        cycleCount: cycleCount,
+                        targetCycles: targetCycleValue,
+                        impactPulseID: impactPulseID
+                    )
+                    .frame(width: dialSize, height: dialSize)
+                    .frame(maxWidth: .infinity)
+
+                    GarageTempoCompletionPanel(
+                        snapshot: snapshot,
+                        sessionReflection: $sessionReflection,
+                        carryForwardCue: $carryForwardCue
+                    )
+                }
+                .padding(.bottom, 4)
+            }
+            .scrollIndicators(.hidden)
+
+            GarageTempoActionBar(
+                primaryTitle: "Start",
+                primaryIcon: "play.fill",
+                isPrimaryActive: true,
+                showsStop: false,
+                showsMore: true,
+                hapticsEnabled: hapticsEnabled,
+                onPrimaryAction: onStart,
+                onStop: {},
+                onMore: onMore
+            )
+        }
+    }
+}
+
+private struct GarageTempoExecutionReadout: View {
+    let configuration: GarageTempoConfiguration
+    let runState: GarageTempoRunState
+    let phaseLabel: String
+    let cycleCount: Int
+    let targetCycles: Int?
+    let isActive: Bool
+
+    private var repText: String {
+        if let targetCycles {
+            return "\(cycleCount)/\(targetCycles)"
+        }
+
+        return "\(cycleCount)"
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .lastTextBaseline, spacing: 7) {
+                Text(configuration.bpmText)
+                    .font(.system(size: isActive ? 58 : 44, weight: .black, design: .rounded))
+                    .foregroundStyle(GarageProTheme.textPrimary)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+
+                Text("BPM")
+                    .font(.system(size: isActive ? 14 : 12, weight: .black, design: .rounded))
+                    .foregroundStyle(GaragePremiumPalette.gold)
+                    .padding(.bottom, isActive ? 9 : 7)
+            }
+            .layoutPriority(1)
+
+            VStack(spacing: 8) {
+                GarageTempoReadoutChip(title: targetCycles == nil ? "REPS" : "TARGET", value: repText)
+                GarageTempoReadoutChip(title: "PHASE", value: runState == .complete ? "Complete" : phaseLabel)
+            }
+            .frame(maxWidth: 156)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(GarageProTheme.insetSurface.opacity(isActive ? 0.38 : 0.54), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(isActive ? GaragePremiumPalette.gold.opacity(0.16) : GarageProTheme.border, lineWidth: 1)
+        )
+    }
+}
+
+private struct GarageTempoPausedBanner: View {
+    let configuration: GarageTempoConfiguration
+    let phaseLabel: String
+    let cycleCount: Int
+    let targetCycles: Int?
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Text("Paused")
+                .font(.system(size: 31, weight: .black, design: .rounded))
+                .foregroundStyle(GaragePremiumPalette.gold)
+                .lineLimit(1)
+
+            HStack(spacing: 8) {
+                GarageTempoReadoutChip(title: "BPM", value: configuration.bpmText)
+                GarageTempoReadoutChip(title: targetCycles == nil ? "REPS" : "TARGET", value: repText)
+                GarageTempoReadoutChip(title: "PHASE", value: phaseLabel)
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(GarageProTheme.insetSurface.opacity(0.62), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(GaragePremiumPalette.gold.opacity(0.18), lineWidth: 1)
+        )
+    }
+
+    private var repText: String {
+        if let targetCycles {
+            return "\(cycleCount)/\(targetCycles)"
+        }
+
+        return "\(cycleCount)"
+    }
+}
+
+private struct GarageTempoPausedStatus: View {
+    let configuration: GarageTempoConfiguration
+    let phaseLabel: String
+    let cycleCount: Int
+    let targetCycles: Int?
+
+    private var repText: String {
+        if let targetCycles {
+            return "\(cycleCount)/\(targetCycles)"
+        }
+
+        return "\(cycleCount)"
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                GarageTempoTrayLabel("Paused")
+
+                Text("Reset. Adjust. Resume.")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(GarageProTheme.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+
+            Spacer(minLength: 8)
+
+            HStack(spacing: 6) {
+                GarageTempoMicroReadout(title: "BPM", value: configuration.bpmText)
+                GarageTempoMicroReadout(title: targetCycles == nil ? "REPS" : "TARGET", value: repText)
+                GarageTempoMicroReadout(title: "PHASE", value: phaseLabel)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(GarageProTheme.insetSurface.opacity(0.46), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(GaragePremiumPalette.gold.opacity(0.16), lineWidth: 1)
+        )
+    }
+}
+
+private struct GarageTempoMicroReadout: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.system(size: 12, weight: .black, design: .rounded))
+                .foregroundStyle(GarageProTheme.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.68)
+
+            Text(title)
+                .font(.system(size: 8, weight: .black, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(0.8)
+                .foregroundStyle(GarageProTheme.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(width: 54, height: 34)
+        .background(GarageProTheme.insetSurface.opacity(0.62), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .stroke(GarageProTheme.border.opacity(0.64), lineWidth: 1)
+        )
+    }
 }
 
 private struct GarageTempoCockpitBackground: View {
@@ -2404,8 +2888,9 @@ private struct GarageTempoDial: View {
             let handAngle = angle(for: clampedProgress)
             let topAngle = angle(for: backswingRatio)
             let handPoint = point(center: center, radius: radius, angle: handAngle)
-            let startPoint = point(center: center, radius: radius, angle: angle(for: 0))
+            let addressPoint = point(center: center, radius: radius, angle: angle(for: 0))
             let topPoint = point(center: center, radius: radius, angle: topAngle)
+            let impactPoint = point(center: center, radius: radius, angle: angle(for: 0.985))
 
             ZStack {
                 Circle()
@@ -2425,8 +2910,8 @@ private struct GarageTempoDial: View {
                     .position(center)
                     .shadow(color: GarageProTheme.glow.opacity(0.18), radius: 28, x: 0, y: 18)
 
-                ForEach(0..<48, id: \.self) { index in
-                    let tickAngle = Angle.degrees(Double(index) * 7.5 - 90)
+                ForEach(0..<36, id: \.self) { index in
+                    let tickAngle = Angle.degrees(Double(index) * 10 - 90)
                     let tickOuter = point(center: center, radius: radius * 1.15, angle: tickAngle)
                     let tickInner = point(center: center, radius: radius * (index % 4 == 0 ? 1.08 : 1.11), angle: tickAngle)
 
@@ -2435,8 +2920,8 @@ private struct GarageTempoDial: View {
                         path.addLine(to: tickOuter)
                     }
                     .stroke(
-                        index % 4 == 0 ? GaragePremiumPalette.gold.opacity(0.34) : GaragePremiumPalette.mintText.opacity(0.18),
-                        style: StrokeStyle(lineWidth: index % 4 == 0 ? 1.4 : 0.8, lineCap: .round)
+                        index % 6 == 0 ? GaragePremiumPalette.gold.opacity(0.30) : GaragePremiumPalette.mintText.opacity(0.14),
+                        style: StrokeStyle(lineWidth: index % 6 == 0 ? 1.35 : 0.7, lineCap: .round)
                     )
                 }
 
@@ -2487,21 +2972,21 @@ private struct GarageTempoDial: View {
                     .frame(width: 18, height: 18)
                     .position(center)
 
-                GarageTempoLandmarkGate(progress: 0.018, color: GaragePremiumPalette.gold, lineWidth: 5, span: 0.042)
+                GarageTempoLandmarkGate(progress: 0.018, color: GaragePremiumPalette.gold, lineWidth: 4, span: 0.030)
+                    .frame(width: radius * 2.12, height: radius * 2.12)
+                    .position(center)
+
+                GarageTempoLandmarkGate(progress: backswingRatio, color: GaragePremiumPalette.gold.opacity(0.90), lineWidth: 5.4, span: 0.040)
                     .frame(width: radius * 2.16, height: radius * 2.16)
                     .position(center)
 
-                GarageTempoLandmarkGate(progress: backswingRatio, color: GaragePremiumPalette.gold.opacity(0.82), lineWidth: 3.5, span: 0.032)
-                    .frame(width: radius * 2.10, height: radius * 2.10)
+                GarageTempoLandmarkGate(progress: 0.985, color: GarageProTheme.accent, lineWidth: 8.5, span: 0.058)
+                    .frame(width: radius * 2.24, height: radius * 2.24)
                     .position(center)
 
-                GarageTempoLandmarkGate(progress: 0.975, color: GarageProTheme.accent, lineWidth: 6.5, span: 0.052)
-                    .frame(width: radius * 2.22, height: radius * 2.22)
-                    .position(center)
-
-                GarageTempoMarker(point: startPoint, title: "Start", role: .start, labelOffset: CGSize(width: -46, height: -34))
-                GarageTempoMarker(point: topPoint, title: "Top", role: .top, labelOffset: CGSize(width: 0, height: 32))
-                GarageTempoMarker(point: startPoint, title: "Impact", role: .impact, isPulsing: impactPulse, labelOffset: CGSize(width: 74, height: 28))
+                GarageTempoMarker(point: addressPoint, title: "Address", role: .address, labelOffset: CGSize(width: -54, height: -30))
+                GarageTempoMarker(point: topPoint, title: "Top", role: .top, labelOffset: CGSize(width: 0, height: 30))
+                GarageTempoMarker(point: impactPoint, title: "Impact", role: .impact, isPulsing: impactPulse, labelOffset: CGSize(width: 70, height: 22))
 
                 Circle()
                     .fill(GarageProTheme.textPrimary)
@@ -2548,13 +3033,13 @@ private struct GarageTempoLandmarkGate: View {
 }
 
 private enum GarageTempoMarkerRole: Equatable {
-    case start
+    case address
     case top
     case impact
 
     var color: Color {
         switch self {
-        case .start:
+        case .address:
             return GaragePremiumPalette.gold
         case .top:
             return GaragePremiumPalette.gold.opacity(0.82)
@@ -2565,32 +3050,32 @@ private enum GarageTempoMarkerRole: Equatable {
 
     var markerSize: CGFloat {
         switch self {
-        case .start:
-            return 20
+        case .address:
+            return 11
         case .top:
-            return 16
+            return 15
         case .impact:
-            return 24
+            return 23
         }
     }
 
     var haloSize: CGFloat {
         switch self {
-        case .start:
-            return 40
+        case .address:
+            return 24
         case .top:
-            return 28
+            return 32
         case .impact:
-            return 50
+            return 54
         }
     }
 
     var labelOpacity: Double {
         switch self {
-        case .start:
+        case .address:
             return 0.88
         case .top:
-            return 0.74
+            return 0.80
         case .impact:
             return 0.96
         }
@@ -2600,14 +3085,14 @@ private enum GarageTempoMarkerRole: Equatable {
 private struct GarageTempoMarker: View {
     let point: CGPoint
     let title: String
-    var role: GarageTempoMarkerRole = .start
+    var role: GarageTempoMarkerRole = .address
     var isPulsing = false
     var labelOffset = CGSize(width: 0, height: 22)
 
     var body: some View {
         ZStack {
             Circle()
-                .stroke(role.color.opacity(isPulsing ? 0.56 : 0.24), lineWidth: role == .impact ? 2.6 : 1.8)
+                .stroke(role.color.opacity(isPulsing ? 0.58 : (role == .address ? 0.18 : 0.28)), lineWidth: role == .impact ? 3 : 1.6)
                 .frame(
                     width: isPulsing ? role.haloSize + 20 : role.haloSize,
                     height: isPulsing ? role.haloSize + 20 : role.haloSize
@@ -2618,23 +3103,16 @@ private struct GarageTempoMarker: View {
             Circle()
                 .fill(role.color)
                 .frame(width: role.markerSize, height: role.markerSize)
-                .overlay {
-                    if role == .impact {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 9, weight: .black))
-                            .foregroundStyle(ModuleTheme.garageSurfaceDark)
-                    }
-                }
         }
         .overlay(alignment: .bottom) {
-            Text(title)
-                .font(.system(size: role == .impact ? 11 : 10, weight: .black, design: .rounded))
-                .textCase(.uppercase)
-                .tracking(role == .top ? 1.25 : 1.45)
-                .foregroundStyle(role == .impact ? GarageProTheme.accent.opacity(role.labelOpacity) : GarageProTheme.textPrimary.opacity(role.labelOpacity))
-                .fixedSize()
-                .offset(labelOffset)
-                .shadow(color: role.color.opacity(role == .impact ? 0.28 : 0.14), radius: 5, x: 0, y: 0)
+                Text(title)
+                    .font(.system(size: role == .impact ? 11 : 10, weight: .black, design: .rounded))
+                    .textCase(.uppercase)
+                    .tracking(role == .top ? 1.25 : 1.45)
+                    .foregroundStyle(role == .impact ? GarageProTheme.accent.opacity(role.labelOpacity) : GarageProTheme.textPrimary.opacity(role.labelOpacity))
+                    .fixedSize()
+                    .offset(labelOffset)
+                    .shadow(color: role.color.opacity(role == .impact ? 0.28 : 0.14), radius: 5, x: 0, y: 0)
         }
         .position(point)
     }
@@ -2663,6 +3141,232 @@ private struct GarageTempoLandmarkPill: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(isImpact ? GarageProTheme.accent.opacity(0.28) : GarageProTheme.border, lineWidth: 1)
         )
+    }
+}
+
+private struct GarageTempoSetupPanel: View {
+    @Binding var configuration: GarageTempoConfiguration
+    let runMode: GarageTempoRunMode
+    @Binding var targetCycles: Int
+    let hapticsEnabled: Bool
+    let onConfigurationChange: (GarageTempoConfiguration) -> Void
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                GarageTempoTuneCell(
+                    title: "BPM",
+                    value: configuration.bpmText,
+                    prominence: .strong,
+                    hapticsEnabled: hapticsEnabled,
+                    decrement: {
+                        configuration.beatsPerMinute = max(48, configuration.beatsPerMinute - 1)
+                        onConfigurationChange(configuration)
+                    },
+                    increment: {
+                        configuration.beatsPerMinute = min(96, configuration.beatsPerMinute + 1)
+                        onConfigurationChange(configuration)
+                    }
+                )
+
+                GarageTempoTuneCell(
+                    title: "Ratio",
+                    value: configuration.ratioText,
+                    hapticsEnabled: hapticsEnabled,
+                    decrement: {
+                        configuration.backswingRatio = max(0.55, configuration.backswingRatio - 0.01)
+                        onConfigurationChange(configuration)
+                    },
+                    increment: {
+                        configuration.backswingRatio = min(0.8, configuration.backswingRatio + 0.01)
+                        onConfigurationChange(configuration)
+                    }
+                )
+            }
+
+            GarageTempoTuneCell(
+                title: "Target",
+                value: runMode == .target ? "\(targetCycles)" : "Endless",
+                isEnabled: runMode == .target,
+                prominence: .wide,
+                hapticsEnabled: hapticsEnabled,
+                decrement: { targetCycles = max(3, targetCycles - 3) },
+                increment: { targetCycles = min(60, targetCycles + 3) }
+            )
+        }
+    }
+}
+
+private struct GarageTempoLiveTuneDock: View {
+    @Binding var configuration: GarageTempoConfiguration
+    let runMode: GarageTempoRunMode
+    @Binding var targetCycles: Int
+    let hapticsEnabled: Bool
+    let onConfigurationChange: (GarageTempoConfiguration) -> Void
+
+    var body: some View {
+        HStack(spacing: 7) {
+            GarageTempoTuneCell(
+                title: "BPM",
+                value: configuration.bpmText,
+                prominence: .compact,
+                hapticsEnabled: hapticsEnabled,
+                decrement: {
+                    configuration.beatsPerMinute = max(48, configuration.beatsPerMinute - 1)
+                    onConfigurationChange(configuration)
+                },
+                increment: {
+                    configuration.beatsPerMinute = min(96, configuration.beatsPerMinute + 1)
+                    onConfigurationChange(configuration)
+                }
+            )
+
+            GarageTempoTuneCell(
+                title: "Ratio",
+                value: configuration.ratioText,
+                prominence: .compact,
+                hapticsEnabled: hapticsEnabled,
+                decrement: {
+                    configuration.backswingRatio = max(0.55, configuration.backswingRatio - 0.01)
+                    onConfigurationChange(configuration)
+                },
+                increment: {
+                    configuration.backswingRatio = min(0.8, configuration.backswingRatio + 0.01)
+                    onConfigurationChange(configuration)
+                }
+            )
+
+            GarageTempoTuneCell(
+                title: "Target",
+                value: runMode == .target ? "\(targetCycles)" : "--",
+                isEnabled: runMode == .target,
+                prominence: .compact,
+                hapticsEnabled: hapticsEnabled,
+                decrement: { targetCycles = max(3, targetCycles - 3) },
+                increment: { targetCycles = min(60, targetCycles + 3) }
+            )
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(GarageProTheme.insetSurface.opacity(0.42), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(GaragePremiumPalette.gold.opacity(0.13), lineWidth: 1)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Live tune dock")
+    }
+}
+
+private enum GarageTempoTuneCellProminence {
+    case strong
+    case wide
+    case compact
+}
+
+private struct GarageTempoTuneCell: View {
+    let title: String
+    let value: String
+    var isEnabled = true
+    var prominence: GarageTempoTuneCellProminence = .wide
+    let hapticsEnabled: Bool
+    let decrement: () -> Void
+    let increment: () -> Void
+
+    private var valueFontSize: CGFloat {
+        switch prominence {
+        case .strong:
+            return 24
+        case .wide:
+            return 18
+        case .compact:
+            return 15
+        }
+    }
+
+    private var minHeight: CGFloat {
+        switch prominence {
+        case .strong:
+            return 66
+        case .wide:
+            return 50
+        case .compact:
+            return 54
+        }
+    }
+
+    private var cornerRadius: CGFloat {
+        prominence == .compact ? 16 : 18
+    }
+
+    var body: some View {
+        VStack(spacing: prominence == .compact ? 5 : 7) {
+            HStack(spacing: 4) {
+                Text(title)
+                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .textCase(.uppercase)
+                    .tracking(1)
+                    .foregroundStyle(GarageProTheme.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: prominence == .compact ? 3 : 6) {
+                GarageTempoIconButton(
+                    systemImage: "minus",
+                    size: prominence == .compact ? 28 : 32,
+                    isEnabled: isEnabled,
+                    hapticsEnabled: hapticsEnabled,
+                    action: decrement
+                )
+
+                Text(value)
+                    .font(.system(size: valueFontSize, weight: .black, design: .monospaced))
+                    .foregroundStyle(isEnabled ? GaragePremiumPalette.gold : GarageProTheme.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.58)
+                    .frame(maxWidth: .infinity)
+
+                GarageTempoIconButton(
+                    systemImage: "plus",
+                    size: prominence == .compact ? 28 : 32,
+                    isEnabled: isEnabled,
+                    hapticsEnabled: hapticsEnabled,
+                    action: increment
+                )
+            }
+        }
+        .padding(.horizontal, prominence == .compact ? 6 : 10)
+        .padding(.vertical, prominence == .compact ? 7 : 9)
+        .frame(maxWidth: .infinity, minHeight: minHeight)
+        .background {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(.ultraThinMaterial)
+
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(GarageProTheme.insetSurface.opacity(isEnabled ? 0.58 : 0.34))
+
+            LinearGradient(
+                colors: [
+                    GaragePremiumPalette.gold.opacity(isEnabled ? 0.08 : 0.03),
+                    GarageProTheme.accent.opacity(isEnabled ? 0.06 : 0.02),
+                    .clear
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .stroke(isEnabled ? GaragePremiumPalette.gold.opacity(0.15) : GarageProTheme.border.opacity(0.48), lineWidth: 1)
+        )
+        .opacity(isEnabled ? 1 : 0.58)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(title) \(value)")
     }
 }
 
@@ -2965,7 +3669,7 @@ private struct GarageTempoActionBar: View {
     let onMore: () -> Void
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 7) {
             Button {
                 if hapticsEnabled {
                     garageTriggerSelection()
@@ -2977,7 +3681,7 @@ private struct GarageTempoActionBar: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                     .foregroundStyle(ModuleTheme.garageSurfaceDark)
-                    .frame(maxWidth: .infinity, minHeight: 58)
+                    .frame(maxWidth: .infinity, minHeight: 62)
                     .background(
                         LinearGradient(
                             colors: [
@@ -3040,23 +3744,23 @@ private struct GarageTempoAuxiliaryButton: View {
             }
             action()
         } label: {
-            VStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 12, weight: .black))
+                    .font(.system(size: 10, weight: .black))
 
                 Text(title)
-                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .font(.system(size: 10, weight: .black, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.76)
             }
             .foregroundStyle(GarageProTheme.textPrimary.opacity(isEnabled ? 0.92 : 0.42))
-            .frame(minWidth: 72, maxWidth: 96, minHeight: 38)
-            .padding(.horizontal, 2)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-            .background(GarageProTheme.insetSurface.opacity(0.58), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .frame(minWidth: 76, minHeight: 32)
+            .padding(.horizontal, 8)
+            .background(.ultraThinMaterial, in: Capsule())
+            .background(GarageProTheme.insetSurface.opacity(0.46), in: Capsule())
             .overlay(
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .stroke(GarageProTheme.border, lineWidth: 1)
+                Capsule()
+                    .stroke(GarageProTheme.border.opacity(0.72), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
