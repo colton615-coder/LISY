@@ -214,7 +214,7 @@ private struct GarageTempoServicePage: View {
 
                     GarageEditorialFooter(
                         label: "Coaching Cue",
-                        text: "Let the beat shape the rehearsal. Keep the swing smooth before adding speed.",
+                        text: "Let the beat shape the rehearsal before adding speed.",
                         hint: "Start Tempo Builder",
                         systemImage: "metronome.fill"
                     )
