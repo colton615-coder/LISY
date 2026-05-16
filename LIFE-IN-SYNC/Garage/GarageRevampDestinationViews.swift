@@ -2076,7 +2076,7 @@ struct GarageTempoBuilderView: View {
                     ) {
                         showsMoreControls = true
                     }
-                    .frame(maxHeight: isComplete ? 108 : 174)
+                    .frame(maxHeight: isComplete ? 108 : 244)
 
                     if isComplete {
                         GarageTempoCompletionPanel(
@@ -2465,9 +2465,21 @@ private struct GarageTempoDial: View {
                     .frame(width: 18, height: 18)
                     .position(center)
 
-                GarageTempoMarker(point: startPoint, title: "Start", labelOffset: CGSize(width: -42, height: -26))
-                GarageTempoMarker(point: topPoint, title: "Top", labelOffset: CGSize(width: 0, height: 28))
-                GarageTempoMarker(point: startPoint, title: "Impact", isImpact: true, isPulsing: impactPulse, labelOffset: CGSize(width: 66, height: 24))
+                GarageTempoLandmarkGate(progress: 0.018, color: GaragePremiumPalette.gold, lineWidth: 5, span: 0.042)
+                    .frame(width: radius * 2.16, height: radius * 2.16)
+                    .position(center)
+
+                GarageTempoLandmarkGate(progress: backswingRatio, color: GaragePremiumPalette.gold.opacity(0.82), lineWidth: 3.5, span: 0.032)
+                    .frame(width: radius * 2.10, height: radius * 2.10)
+                    .position(center)
+
+                GarageTempoLandmarkGate(progress: 0.975, color: GarageProTheme.accent, lineWidth: 6.5, span: 0.052)
+                    .frame(width: radius * 2.22, height: radius * 2.22)
+                    .position(center)
+
+                GarageTempoMarker(point: startPoint, title: "Start", role: .start, labelOffset: CGSize(width: -46, height: -34))
+                GarageTempoMarker(point: topPoint, title: "Top", role: .top, labelOffset: CGSize(width: 0, height: 32))
+                GarageTempoMarker(point: startPoint, title: "Impact", role: .impact, isPulsing: impactPulse, labelOffset: CGSize(width: 74, height: 28))
 
                 Circle()
                     .fill(GarageProTheme.textPrimary)
@@ -2495,27 +2507,97 @@ private struct GarageTempoDial: View {
     }
 }
 
+private struct GarageTempoLandmarkGate: View {
+    let progress: Double
+    let color: Color
+    let lineWidth: CGFloat
+    let span: Double
+
+    var body: some View {
+        Circle()
+            .trim(from: max(progress - span / 2, 0), to: min(progress + span / 2, 1))
+            .stroke(
+                color.opacity(0.84),
+                style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+            )
+            .rotationEffect(.degrees(-90))
+            .shadow(color: color.opacity(0.32), radius: 8, x: 0, y: 0)
+    }
+}
+
+private enum GarageTempoMarkerRole: Equatable {
+    case start
+    case top
+    case impact
+
+    var color: Color {
+        switch self {
+        case .start:
+            return GaragePremiumPalette.gold
+        case .top:
+            return GaragePremiumPalette.gold.opacity(0.82)
+        case .impact:
+            return GarageProTheme.accent
+        }
+    }
+
+    var markerSize: CGFloat {
+        switch self {
+        case .start:
+            return 20
+        case .top:
+            return 16
+        case .impact:
+            return 24
+        }
+    }
+
+    var haloSize: CGFloat {
+        switch self {
+        case .start:
+            return 40
+        case .top:
+            return 28
+        case .impact:
+            return 50
+        }
+    }
+
+    var labelOpacity: Double {
+        switch self {
+        case .start:
+            return 0.88
+        case .top:
+            return 0.74
+        case .impact:
+            return 0.96
+        }
+    }
+}
+
 private struct GarageTempoMarker: View {
     let point: CGPoint
     let title: String
-    var isImpact = false
+    var role: GarageTempoMarkerRole = .start
     var isPulsing = false
     var labelOffset = CGSize(width: 0, height: 22)
 
     var body: some View {
         ZStack {
-            if isImpact {
-                Circle()
-                    .stroke(GarageProTheme.accent.opacity(isPulsing ? 0.48 : 0.18), lineWidth: 2)
-                    .frame(width: isPulsing ? 54 : 34, height: isPulsing ? 54 : 34)
-                    .animation(.spring(response: 0.24, dampingFraction: 0.68), value: isPulsing)
-            }
+            Circle()
+                .stroke(role.color.opacity(isPulsing ? 0.56 : 0.24), lineWidth: role == .impact ? 2.6 : 1.8)
+                .frame(
+                    width: isPulsing ? role.haloSize + 20 : role.haloSize,
+                    height: isPulsing ? role.haloSize + 20 : role.haloSize
+                )
+                .shadow(color: role.color.opacity(role == .impact ? 0.34 : 0.18), radius: role == .impact ? 10 : 6, x: 0, y: 0)
+                .animation(.spring(response: 0.24, dampingFraction: 0.68), value: isPulsing)
 
             Circle()
-                .fill(isImpact ? GarageProTheme.accent : GaragePremiumPalette.gold)
-                .frame(width: isImpact ? 20 : 16, height: isImpact ? 20 : 16)
+                .fill(role.color)
+                .frame(width: role.markerSize, height: role.markerSize)
                 .overlay {
-                    if isImpact {
+                    if role == .impact {
                         Image(systemName: "checkmark")
                             .font(.system(size: 9, weight: .black))
                             .foregroundStyle(ModuleTheme.garageSurfaceDark)
@@ -2524,12 +2606,13 @@ private struct GarageTempoMarker: View {
         }
         .overlay(alignment: .bottom) {
             Text(title)
-                .font(.system(size: 9, weight: .black, design: .rounded))
+                .font(.system(size: role == .impact ? 11 : 10, weight: .black, design: .rounded))
                 .textCase(.uppercase)
-                .tracking(1.2)
-                .foregroundStyle(GarageProTheme.textPrimary.opacity(0.72))
+                .tracking(role == .top ? 1.25 : 1.45)
+                .foregroundStyle(role == .impact ? GarageProTheme.accent.opacity(role.labelOpacity) : GarageProTheme.textPrimary.opacity(role.labelOpacity))
                 .fixedSize()
                 .offset(labelOffset)
+                .shadow(color: role.color.opacity(role == .impact ? 0.28 : 0.14), radius: 5, x: 0, y: 0)
         }
         .position(point)
     }
@@ -2632,8 +2715,8 @@ private struct GarageTempoCompactControlStrip: View {
     let onConfigurationChange: (GarageTempoConfiguration) -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            GarageTempoStripStepper(
+        VStack(spacing: 5) {
+            GarageTempoControlRail(
                 title: "BPM",
                 value: configuration.bpmText,
                 isEnabled: true,
@@ -2648,7 +2731,7 @@ private struct GarageTempoCompactControlStrip: View {
                 }
             )
 
-            GarageTempoStripStepper(
+            GarageTempoControlRail(
                 title: "RATIO",
                 value: configuration.ratioText,
                 isEnabled: true,
@@ -2663,7 +2746,7 @@ private struct GarageTempoCompactControlStrip: View {
                 }
             )
 
-            GarageTempoStripStepper(
+            GarageTempoControlRail(
                 title: "TARGET",
                 value: runMode == .target ? "\(targetCycles)" : "--",
                 isEnabled: runMode == .target,
@@ -2672,17 +2755,10 @@ private struct GarageTempoCompactControlStrip: View {
                 increment: { targetCycles = min(60, targetCycles + 3) }
             )
         }
-        .padding(7)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .background(GarageProTheme.insetSurface.opacity(0.56), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(GaragePremiumPalette.gold.opacity(0.16), lineWidth: 1)
-        )
     }
 }
 
-private struct GarageTempoStripStepper: View {
+private struct GarageTempoControlRail: View {
     let title: String
     let value: String
     let isEnabled: Bool
@@ -2691,35 +2767,56 @@ private struct GarageTempoStripStepper: View {
     let increment: () -> Void
 
     var body: some View {
-        HStack(spacing: 4) {
-            GarageTempoIconButton(systemImage: "minus", size: 26, isEnabled: isEnabled, hapticsEnabled: hapticsEnabled, action: decrement)
+        HStack(spacing: 10) {
+            Text(title)
+                .font(.system(size: 10, weight: .black, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(1.2)
+                .foregroundStyle(GarageProTheme.textSecondary)
+                .frame(width: 58, alignment: .leading)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
 
-            VStack(spacing: 2) {
-                Text(value)
-                    .font(.system(size: 13, weight: .black, design: .monospaced))
-                    .foregroundStyle(isEnabled ? GaragePremiumPalette.gold : GarageProTheme.textSecondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.62)
+            Spacer(minLength: 4)
 
-                Text(title)
-                    .font(.system(size: 8, weight: .black, design: .rounded))
-                    .textCase(.uppercase)
-                    .tracking(0.8)
-                    .foregroundStyle(GarageProTheme.textSecondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.68)
-            }
-            .frame(maxWidth: .infinity, minHeight: 34)
+            GarageTempoIconButton(systemImage: "minus", size: 30, isEnabled: isEnabled, hapticsEnabled: hapticsEnabled, action: decrement)
 
-            GarageTempoIconButton(systemImage: "plus", size: 26, isEnabled: isEnabled, hapticsEnabled: hapticsEnabled, action: increment)
+            Text(value)
+                .font(.system(size: 16, weight: .black, design: .monospaced))
+                .foregroundStyle(isEnabled ? GaragePremiumPalette.gold : GarageProTheme.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .frame(minWidth: 66)
+
+            GarageTempoIconButton(systemImage: "plus", size: 30, isEnabled: isEnabled, hapticsEnabled: hapticsEnabled, action: increment)
         }
-        .frame(maxWidth: .infinity, minHeight: 42)
-        .padding(.horizontal, 5)
-        .background(GarageProTheme.insetSurface.opacity(isEnabled ? 0.74 : 0.36), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .frame(maxWidth: .infinity, minHeight: 38)
+        .padding(.horizontal, 11)
+        .background {
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                .fill(.ultraThinMaterial)
+
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                .fill(GarageProTheme.insetSurface.opacity(isEnabled ? 0.66 : 0.36))
+
+            if isEnabled {
+                LinearGradient(
+                    colors: [
+                        GaragePremiumPalette.gold.opacity(0.10),
+                        GaragePremiumPalette.emerald.opacity(0.08),
+                        .clear
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+            }
+        }
         .overlay(
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .stroke(isEnabled ? GarageProTheme.border : GarageProTheme.border.opacity(0.5), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                .stroke(isEnabled ? GaragePremiumPalette.gold.opacity(0.16) : GarageProTheme.border.opacity(0.52), lineWidth: 1)
         )
+        .opacity(isEnabled ? 1 : 0.58)
     }
 }
 
