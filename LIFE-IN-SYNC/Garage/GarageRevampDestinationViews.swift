@@ -1710,9 +1710,14 @@ private struct GarageTempoConfiguration: Equatable {
 @MainActor
 private final class GarageTempoAudioCuePlayer {
     private let engine = AVAudioEngine()
-    private let player = AVAudioPlayerNode()
+    private let startPlayer = AVAudioPlayerNode()
+    private let topPlayer = AVAudioPlayerNode()
+    private let impactPlayer = AVAudioPlayerNode()
     private let sampleRate: Double = 44_100
     private var isPrepared = false
+    private var startBuffer: AVAudioPCMBuffer?
+    private var topBuffer: AVAudioPCMBuffer?
+    private var impactBuffer: AVAudioPCMBuffer?
 
     func startSession() {
         prepareIfNeeded()
@@ -1725,16 +1730,13 @@ private final class GarageTempoAudioCuePlayer {
             return
         }
 
-        let profile = toneProfile(for: cue)
-        guard let buffer = makeToneBuffer(
-            frequency: profile.frequency,
-            duration: profile.duration,
-            gain: profile.gain
-        ) else {
+        guard let buffer = buffer(for: cue) else {
             return
         }
 
-        player.scheduleBuffer(buffer, at: nil, options: .interrupts, completionHandler: nil)
+        let player = player(for: cue)
+        player.stop()
+        player.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
 
         if player.isPlaying == false {
             player.play()
@@ -1742,7 +1744,9 @@ private final class GarageTempoAudioCuePlayer {
     }
 
     func stop() {
-        player.stop()
+        startPlayer.stop()
+        topPlayer.stop()
+        impactPlayer.stop()
         engine.pause()
     }
 
@@ -1758,12 +1762,18 @@ private final class GarageTempoAudioCuePlayer {
         try? session.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
         try? session.setActive(true)
 
-        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)
-        engine.attach(player)
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else {
+            return
+        }
 
-        if let format {
+        [startPlayer, topPlayer, impactPlayer].forEach { player in
+            engine.attach(player)
             engine.connect(player, to: engine.mainMixerNode, format: format)
         }
+
+        startBuffer = makeToneBuffer(for: .start, format: format)
+        topBuffer = makeToneBuffer(for: .top, format: format)
+        impactBuffer = makeToneBuffer(for: .impact, format: format)
 
         try? engine.start()
         isPrepared = true
@@ -1780,11 +1790,33 @@ private final class GarageTempoAudioCuePlayer {
         }
     }
 
-    private func makeToneBuffer(frequency: Double, duration: Double, gain: Float) -> AVAudioPCMBuffer? {
-        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else {
-            return nil
+    private func player(for cue: GarageTempoCue) -> AVAudioPlayerNode {
+        switch cue {
+        case .start:
+            return startPlayer
+        case .top:
+            return topPlayer
+        case .impact:
+            return impactPlayer
         }
+    }
 
+    private func buffer(for cue: GarageTempoCue) -> AVAudioPCMBuffer? {
+        switch cue {
+        case .start:
+            return startBuffer
+        case .top:
+            return topBuffer
+        case .impact:
+            return impactBuffer
+        }
+    }
+
+    private func makeToneBuffer(for cue: GarageTempoCue, format: AVAudioFormat) -> AVAudioPCMBuffer? {
+        let profile = toneProfile(for: cue)
+        let frequency = profile.frequency
+        let duration = profile.duration
+        let gain = profile.gain
         let frameCount = AVAudioFrameCount(sampleRate * duration)
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount),
               let channel = buffer.floatChannelData?[0] else {
@@ -1796,7 +1828,9 @@ private final class GarageTempoAudioCuePlayer {
         for frame in 0..<Int(frameCount) {
             let position = Double(frame) / sampleRate
             let progress = Double(frame) / Double(max(Int(frameCount) - 1, 1))
-            let envelope = sin(progress * .pi)
+            let fadeIn = min(progress / 0.14, 1)
+            let fadeOut = min((1 - progress) / 0.22, 1)
+            let envelope = pow(min(fadeIn, fadeOut), 2)
             let wave = sin(2 * Double.pi * frequency * position)
             let sample = Float(wave) * Float(envelope) * gain
             channel[frame] = sample
@@ -1819,7 +1853,9 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
     private var preciseProgress: Double = 0
     private var pausedProgress: Double = 0
     private let audioCuePlayer = GarageTempoAudioCuePlayer()
+    private var didPlayStartCue = false
     private var didPlayTopCue = false
+    private var didPlayImpactCue = false
     private var lastVisualProgressPublishDate: Date?
 
     private let visualProgressPublishInterval: TimeInterval = 1.0 / 30.0
@@ -1841,11 +1877,14 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
         progress = 0
         pausedProgress = 0
         cycleCount = 0
-        didPlayTopCue = false
+        resetCueFlags()
         lastVisualProgressPublishDate = nil
         state = .running
         cycleStartDate = .now
-        playAudioCue(.start)
+        if configuration.audioEnabled {
+            audioCuePlayer.startSession()
+        }
+        fireStartCueIfNeeded()
         startTimer()
     }
 
@@ -1853,6 +1892,7 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
         guard state == .paused else { return }
         state = .running
         cycleStartDate = Date().addingTimeInterval(-pausedProgress * configuration.cycleDuration)
+        restoreCueFlagsForResume()
         if configuration.audioEnabled {
             audioCuePlayer.startSession()
         }
@@ -1874,7 +1914,7 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
         pausedProgress = 0
         cycleCount = 0
         cycleStartDate = nil
-        didPlayTopCue = false
+        resetCueFlags()
         lastVisualProgressPublishDate = nil
         stopTimer()
         audioCuePlayer.stop()
@@ -1890,6 +1930,8 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
 
         if nextConfiguration.audioEnabled == false {
             audioCuePlayer.stop()
+        } else if state == .running || state == .paused {
+            audioCuePlayer.startSession()
         }
 
         if state == .running {
@@ -1924,26 +1966,17 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
         let duration = max(configuration.cycleDuration, 0.1)
         let elapsedCycles = Int(elapsed / duration)
         let cycleElapsed = elapsed.truncatingRemainder(dividingBy: duration)
+        let nextProgress = cycleElapsed / duration
 
         if elapsedCycles > cycleCount {
+            fireImpactCueIfNeeded()
             cycleCount = elapsedCycles
-            didPlayTopCue = false
-            impactPulseID += 1
-            playAudioCue(.impact)
-            triggerHaptic(.light)
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
-                self?.playStartCueIfRunning()
-            }
+            resetCueFlags()
         }
 
-        if didPlayTopCue == false, cycleElapsed / duration >= configuration.backswingRatio {
-            didPlayTopCue = true
-            playAudioCue(.top)
-        }
-
-        let nextProgress = cycleElapsed / duration
         preciseProgress = nextProgress
+        fireStartCueIfNeeded()
+        fireTopCueIfNeeded(at: nextProgress)
         publishVisualProgress(nextProgress, at: now)
     }
 
@@ -1962,9 +1995,41 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
         lastVisualProgressPublishDate = now
     }
 
-    private func playStartCueIfRunning() {
-        guard state == .running else { return }
+    private func resetCueFlags() {
+        didPlayStartCue = false
+        didPlayTopCue = false
+        didPlayImpactCue = false
+    }
+
+    private func restoreCueFlagsForResume() {
+        didPlayStartCue = true
+        didPlayTopCue = pausedProgress >= configuration.backswingRatio
+        didPlayImpactCue = false
+    }
+
+    private func fireStartCueIfNeeded() {
+        guard state == .running, didPlayStartCue == false else { return }
+        didPlayStartCue = true
         playAudioCue(.start)
+    }
+
+    private func fireTopCueIfNeeded(at progress: Double) {
+        guard state == .running,
+              didPlayTopCue == false,
+              progress >= configuration.backswingRatio else {
+            return
+        }
+
+        didPlayTopCue = true
+        playAudioCue(.top)
+    }
+
+    private func fireImpactCueIfNeeded() {
+        guard state == .running, didPlayImpactCue == false else { return }
+        didPlayImpactCue = true
+        impactPulseID += 1
+        playAudioCue(.impact)
+        triggerHaptic(.light)
     }
 
     private func playAudioCue(_ cue: GarageTempoCue) {
