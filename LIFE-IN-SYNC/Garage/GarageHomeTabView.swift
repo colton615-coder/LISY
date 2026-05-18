@@ -97,7 +97,7 @@ struct GarageHomeTabView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
 
-                Text("Choose the work. Keep the session focused.")
+                Text("Command the practice. Pick the surface, then execute.")
                     .font(.callout.weight(.medium))
                     .foregroundStyle(GaragePremiumPalette.mintText)
                     .lineSpacing(2)
@@ -145,11 +145,11 @@ private enum GarageHomeService: String, CaseIterable, Identifiable {
     var pageHeight: CGFloat {
         switch self {
         case .drillPlans:
-            610
+            520
         case .tempoBuilder:
-            552
+            488
         case .journal:
-            560
+            440
         }
     }
 }
@@ -159,14 +159,15 @@ private struct GarageDrillPlansServicePage: View {
 
     var body: some View {
         GarageServiceCard(
-            label: "Practice",
+            label: "Command Surface",
             title: "Drill Plans",
-            subtitle: "Choose the surface, then start or create a repeatable routine.",
+            subtitle: "Choose the training lane. Garage keeps the session precise.",
+            tone: .command,
             artwork: GaragePracticeArtwork()
         ) {
             VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 12) {
-                    GarageSectionHeader(eyebrow: "Choose Surface")
+                VStack(alignment: .leading, spacing: 10) {
+                    GarageSectionHeader(eyebrow: "Select Training Lane")
 
                     VStack(spacing: 0) {
                         ForEach(PracticeEnvironment.allCases) { environment in
@@ -176,15 +177,6 @@ private struct GarageDrillPlansServicePage: View {
                         }
                     }
                 }
-
-                Spacer(minLength: 24)
-
-                GarageEditorialFooter(
-                    label: "Today's Focus",
-                    text: "Start with one clean rep. Pick the surface that matches today's work.",
-                    hint: "Select a surface to continue",
-                    systemImage: "scope"
-                )
             }
         }
     }
@@ -195,28 +187,22 @@ private struct GarageTempoServicePage: View {
 
     var body: some View {
         GarageServiceCard(
-            label: "Rhythm",
+            label: "Training Mode",
             title: "Tempo Builder",
-            subtitle: "Train swing rhythm and timing with a focused, standalone tool.",
+            subtitle: "A standalone timing instrument for rhythm, ratio, and repeatable pace.",
+            tone: .instrument,
             artwork: GarageRhythmArtwork()
         ) {
             VStack(alignment: .leading, spacing: 0) {
                 GarageTempoPreview()
 
-                Spacer(minLength: 24)
+                Spacer(minLength: 18)
 
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 12) {
                     GarageGoldButton(
                         title: "Start",
                         systemImage: "play.fill",
                         action: onStartTempoBuilder
-                    )
-
-                    GarageEditorialFooter(
-                        label: "Coaching Cue",
-                        text: "Let the beat shape the rehearsal before adding speed.",
-                        hint: "Start Tempo Builder",
-                        systemImage: "metronome.fill"
                     )
                 }
             }
@@ -230,28 +216,25 @@ private struct GarageJournalServicePage: View {
 
     var body: some View {
         GarageServiceCard(
-            label: "Memory",
+            label: "Memory Layer",
             title: "Journal",
-            subtitle: "Capture the cues, feels, and course lessons worth carrying forward.",
+            subtitle: "Keep the one cue worth carrying into the next session.",
+            tone: .quiet,
             artwork: GarageJournalArtwork()
         ) {
             VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 14) {
-                    GarageSectionHeader(eyebrow: "Quick Capture")
+                VStack(alignment: .leading, spacing: 12) {
+                    GarageSectionHeader(eyebrow: "Carry Forward")
 
-                    HStack(spacing: 12) {
-                        GarageCaptureButton(title: "Swing Feel", systemImage: "quote.opening", action: onNewJournalEntry)
-                        GarageCaptureButton(title: "Scorecard", systemImage: "chart.bar.fill", action: onNewJournalEntry)
-                        GarageCaptureButton(title: "Course Note", systemImage: "pencil.tip.crop.circle.fill", action: onNewJournalEntry)
-                    }
+                    GarageMemoryCuePanel(action: onNewJournalEntry)
                 }
 
-                Spacer(minLength: 24)
+                Spacer(minLength: 18)
 
                 VStack(alignment: .leading, spacing: 14) {
                     VStack(spacing: 0) {
                         GarageHubActionButton(
-                            title: "New Entry",
+                            title: "Capture Cue",
                             systemImage: "square.and.pencil",
                             isPrimary: true,
                             action: onNewJournalEntry
@@ -266,9 +249,9 @@ private struct GarageJournalServicePage: View {
                     }
 
                     GarageEditorialFooter(
-                        label: "Carry Forward",
-                        text: "Save the feel while it is fresh. One clear note is enough.",
-                        hint: "New Entry keeps today's cue alive",
+                        label: "Memory Rule",
+                        text: "One sharp cue beats a long recap.",
+                        hint: "Capture only what should return",
                         systemImage: "quote.opening"
                     )
                 }
@@ -277,17 +260,46 @@ private struct GarageJournalServicePage: View {
     }
 }
 
+private enum GarageServiceTone {
+    case command
+    case instrument
+    case quiet
+
+    var accentOpacity: Double {
+        switch self {
+        case .command:
+            0.34
+        case .instrument:
+            0.26
+        case .quiet:
+            0.14
+        }
+    }
+
+    var titleFont: Font {
+        switch self {
+        case .command:
+            .system(size: 32, weight: .black, design: .default)
+        case .instrument:
+            .system(size: 31, weight: .black, design: .default)
+        case .quiet:
+            .system(size: 28, weight: .bold, design: .default)
+        }
+    }
+}
+
 private struct GarageServiceCard<Artwork: View, Content: View>: View {
     let label: String
     let title: String
     let subtitle: String
+    var tone: GarageServiceTone = .command
     let artwork: Artwork
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text(label)
                         .font(.system(size: 11, weight: .bold))
                         .textCase(.uppercase)
@@ -295,22 +307,22 @@ private struct GarageServiceCard<Artwork: View, Content: View>: View {
                         .foregroundStyle(GaragePremiumPalette.gold)
 
                     Text(title)
-                        .font(.system(.largeTitle, design: .default).weight(.bold))
+                        .font(tone.titleFont)
                         .foregroundStyle(GarageProTheme.textPrimary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
 
                     Text(subtitle)
-                        .font(.body.weight(.medium))
+                        .font(.callout.weight(.medium))
                         .foregroundStyle(GaragePremiumPalette.mintText)
-                        .lineSpacing(4)
+                        .lineSpacing(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .layoutPriority(1)
 
                 artwork
-                    .frame(width: 104, height: 96)
+                    .frame(width: 88, height: 78)
                     .accessibilityHidden(true)
             }
 
@@ -327,14 +339,14 @@ private struct GarageServiceCard<Artwork: View, Content: View>: View {
         .background(alignment: .topTrailing) {
             LinearGradient(
                 colors: [
-                    GaragePremiumPalette.emerald.opacity(0.22),
+                    GaragePremiumPalette.emerald.opacity(tone.accentOpacity),
                     GaragePremiumPalette.emeraldDeep.opacity(0)
                 ],
                 startPoint: .topTrailing,
                 endPoint: .bottomLeading
             )
             .blur(radius: 22)
-            .frame(width: 170, height: 126)
+            .frame(width: 140, height: 106)
             .offset(x: 34, y: -22)
         }
     }
@@ -528,73 +540,83 @@ private struct GarageWaveLine: Shape {
 
 private struct GarageTempoPreview: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            GarageSectionHeader(eyebrow: "Current Tempo")
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 16) {
+                HStack(alignment: .lastTextBaseline, spacing: 8) {
+                    Text("72")
+                        .font(.system(size: 56, weight: .black, design: .rounded))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.84)
 
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(alignment: .center, spacing: 18) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text("72")
-                            .font(.system(size: 58, weight: .bold))
-                            .foregroundStyle(GarageProTheme.textPrimary)
-                            .lineLimit(1)
-
-                        Text("BPM")
-                            .font(.headline.weight(.semibold))
-                            .foregroundStyle(GaragePremiumPalette.gold)
-                    }
-                    .layoutPriority(1)
-
-                    GarageRhythmArtwork()
-                        .frame(maxWidth: .infinity, minHeight: 72)
-                        .accessibilityHidden(true)
+                    Text("BPM")
+                        .font(.system(size: 15, weight: .black, design: .rounded))
+                        .foregroundStyle(GaragePremiumPalette.gold)
+                        .padding(.bottom, 9)
                 }
+                .layoutPriority(1)
 
-                VStack(spacing: 10) {
-                    ForEach([0.78, 0.54, 0.38], id: \.self) { value in
-                        GeometryReader { proxy in
-                            ZStack(alignment: .leading) {
-                                Capsule()
-                                    .fill(GaragePremiumPalette.emerald.opacity(0.24))
+                GarageTempoMetricPill(value: "3:1", label: "Ratio")
+            }
 
-                                Capsule()
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [
-                                                GaragePremiumPalette.gold,
-                                                GaragePremiumPalette.gold.opacity(0.62)
-                                            ],
-                                            startPoint: .leading,
-                                            endPoint: .trailing
-                                        )
-                                    )
-                                    .frame(width: proxy.size.width * value)
-                            }
+            VStack(spacing: 9) {
+                ForEach([0.78, 0.54, 0.38], id: \.self) { value in
+                    GeometryReader { proxy in
+                        ZStack(alignment: .leading) {
+                            Capsule()
+                                .fill(GaragePremiumPalette.emerald.opacity(0.20))
+
+                            Capsule()
+                                .fill(GaragePremiumPalette.gold.opacity(0.82))
+                                .frame(width: proxy.size.width * value)
                         }
-                        .frame(height: 9)
                     }
+                    .frame(height: 7)
                 }
+            }
 
-                HStack(spacing: 10) {
-                    ForEach(["Full Swing", "Short Game", "Putting"], id: \.self) { chip in
-                        Text(chip)
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(chip == "Full Swing" ? GaragePremiumPalette.gold : GaragePremiumPalette.mintText)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.76)
-                            .padding(.horizontal, 13)
-                            .frame(minHeight: 42)
-                            .background(chip == "Full Swing" ? GaragePremiumPalette.gold.opacity(0.10) : GaragePremiumPalette.emeraldGlass.opacity(0.24), in: Capsule())
-                    }
+            HStack(spacing: 8) {
+                ForEach(["Full Swing", "Wedges", "Putting"], id: \.self) { chip in
+                    Text(chip)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(chip == "Full Swing" ? GaragePremiumPalette.gold : GaragePremiumPalette.mintText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.76)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 36)
+                        .background(chip == "Full Swing" ? GaragePremiumPalette.gold.opacity(0.10) : GaragePremiumPalette.emeraldGlass.opacity(0.20), in: Capsule())
                 }
             }
         }
     }
 }
 
-private struct GarageCaptureButton: View {
-    let title: String
-    let systemImage: String
+private struct GarageTempoMetricPill: View {
+    let value: String
+    let label: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(.system(size: 13, weight: .black, design: .rounded))
+                .foregroundStyle(GaragePremiumPalette.gold)
+                .lineLimit(1)
+
+            Text(label)
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(GaragePremiumPalette.mintText)
+                .textCase(.uppercase)
+                .tracking(1.2)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .frame(minHeight: 38, alignment: .leading)
+        .background(GaragePremiumPalette.emeraldGlass.opacity(0.26), in: Capsule())
+        .overlay(Capsule().stroke(GaragePremiumPalette.mintText.opacity(0.11), lineWidth: 1))
+    }
+}
+
+private struct GarageMemoryCuePanel: View {
     let action: () -> Void
 
     var body: some View {
@@ -602,29 +624,46 @@ private struct GarageCaptureButton: View {
             garageTriggerSelection()
             action()
         } label: {
-            VStack(spacing: 10) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(GaragePremiumPalette.gold)
-                    .frame(height: 28)
+            HStack(alignment: .center, spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(GaragePremiumPalette.gold.opacity(0.11))
+                        .frame(width: 42, height: 42)
 
-                Text(title)
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(GaragePremiumPalette.mintText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
+                    Image(systemName: "quote.opening")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(GaragePremiumPalette.gold)
+                }
+                .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("What lesson comes forward?")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
+
+                    Text("Capture one compact cue after the work.")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(GaragePremiumPalette.mintText)
+                        .lineLimit(2)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(GaragePremiumPalette.gold.opacity(0.74))
             }
-            .frame(maxWidth: .infinity, minHeight: 104)
-            .background(
-                Circle()
-                    .fill(GaragePremiumPalette.emeraldGlass.opacity(0.52))
-            )
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
+            .background(GaragePremiumPalette.emeraldGlass.opacity(0.24), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay(
-                Circle()
-                    .stroke(GaragePremiumPalette.mintText.opacity(0.18), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(GaragePremiumPalette.mintText.opacity(0.11), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Capture carry forward cue")
     }
 }
 
@@ -665,6 +704,24 @@ private struct GarageHubActionButton: View {
     }
 }
 
+private struct GarageTrainingLaneBadge: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: 10, weight: .black, design: .rounded))
+            .textCase(.uppercase)
+            .tracking(1.3)
+            .foregroundStyle(GaragePremiumPalette.gold)
+            .lineLimit(1)
+            .minimumScaleFactor(0.76)
+            .padding(.horizontal, 9)
+            .frame(minHeight: 24)
+            .background(GaragePremiumPalette.gold.opacity(0.10), in: Capsule())
+            .overlay(Capsule().stroke(GaragePremiumPalette.gold.opacity(0.16), lineWidth: 1))
+    }
+}
+
 private struct GaragePlatformCard: View {
     let environment: PracticeEnvironment
     let action: () -> Void
@@ -674,19 +731,23 @@ private struct GaragePlatformCard: View {
             garageTriggerSelection()
             action()
         } label: {
-            HStack(spacing: 16) {
+            HStack(spacing: 12) {
                 surfaceThumbnail
 
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(environment.displayName)
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(GarageProTheme.textPrimary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.82)
-                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(environment.displayName)
+                            .font(.headline.weight(.black))
+                            .foregroundStyle(GarageProTheme.textPrimary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        GarageTrainingLaneBadge(title: trainingIdentity)
+                    }
 
                     Text(summary)
-                        .font(.subheadline.weight(.medium))
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(GaragePremiumPalette.mintText)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
@@ -695,18 +756,18 @@ private struct GaragePlatformCard: View {
                 .layoutPriority(1)
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(GaragePremiumPalette.gold)
-                    .frame(width: 18)
+                    .font(.system(size: 14, weight: .black))
+                    .foregroundStyle(GaragePremiumPalette.gold.opacity(0.86))
+                    .frame(width: 30, height: 30)
             }
             .padding(.horizontal, 2)
-            .padding(.vertical, 13)
-            .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
+            .padding(.vertical, 11)
+            .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
             .background(
                 LinearGradient(
                     colors: [
                         GaragePremiumPalette.emeraldGlass.opacity(0.18),
-                        GaragePremiumPalette.emeraldDeep.opacity(0.02)
+                        GaragePremiumPalette.emeraldDeep.opacity(0.03)
                     ],
                     startPoint: .leading,
                     endPoint: .trailing
@@ -714,31 +775,45 @@ private struct GaragePlatformCard: View {
             )
             .overlay(alignment: .top) {
                 Rectangle()
-                    .fill(GaragePremiumPalette.mintText.opacity(0.10))
+                    .fill(GaragePremiumPalette.mintText.opacity(0.11))
                     .frame(height: 1)
             }
             .overlay(alignment: .bottom) {
                 Rectangle()
-                    .fill(GaragePremiumPalette.mintText.opacity(0.06))
+                    .fill(GaragePremiumPalette.mintText.opacity(0.07))
                     .frame(height: 1)
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("\(environment.displayName), \(trainingIdentity)")
+        .accessibilityValue(summary)
     }
 
     private var surfaceThumbnail: some View {
         ZStack {
             Capsule()
                 .fill(surfaceGradient)
-                .frame(width: 46, height: 46)
+                .frame(width: 42, height: 42)
+                .overlay(Capsule().stroke(GaragePremiumPalette.gold.opacity(0.18), lineWidth: 1))
 
             Image(systemName: environment.systemImage)
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(GaragePremiumPalette.gold)
         }
-        .frame(width: 46, height: 46)
+        .frame(width: 42, height: 42)
         .accessibilityHidden(true)
+    }
+
+    private var trainingIdentity: String {
+        switch environment {
+        case .net:
+            "Contact"
+        case .range:
+            "Flight"
+        case .puttingGreen:
+            "Face"
+        }
     }
 
     private var surfaceGradient: LinearGradient {
@@ -779,11 +854,11 @@ private struct GaragePlatformCard: View {
     private var summary: String {
         switch environment {
         case .net:
-            "Mechanics, contact, and tight-space reps."
+            "Tight feedback, start-line control, strike quality."
         case .range:
-            "Ball flight, targets, and club work."
+            "Target control, distance windows, trajectory proof."
         case .puttingGreen:
-            "Start line, pace, and green-reading feel."
+            "Start-line trust, pace discipline, repeatable roll."
         }
     }
 }
