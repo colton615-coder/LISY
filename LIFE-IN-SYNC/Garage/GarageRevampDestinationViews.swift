@@ -1595,6 +1595,26 @@ private enum GarageTempoRunState: Equatable {
     }
 }
 
+private enum GarageTempoLoopPhase: Equatable {
+    case setupWait
+    case backswing
+    case downswing
+    case reset
+
+    var label: String {
+        switch self {
+        case .setupWait:
+            return "Setup"
+        case .backswing:
+            return "Backswing"
+        case .downswing:
+            return "Downswing"
+        case .reset:
+            return "Reset"
+        }
+    }
+}
+
 private enum GarageTempoProfile: String, CaseIterable, Identifiable {
     case fullSwing
     case shortGame
@@ -1613,14 +1633,14 @@ private enum GarageTempoProfile: String, CaseIterable, Identifiable {
         }
     }
 
-    var tempoDefaults: (beatsPerMinute: Double, backswingRatio: Double) {
+    var tempoDefaults: (beatsPerMinute: Double, setupDelay: Double) {
         switch self {
         case .fullSwing:
-            return (beatsPerMinute: 72, backswingRatio: 0.70)
+            return (beatsPerMinute: 72, setupDelay: 5)
         case .shortGame:
-            return (beatsPerMinute: 66, backswingRatio: 0.68)
+            return (beatsPerMinute: 66, setupDelay: 4)
         case .putting:
-            return (beatsPerMinute: 76, backswingRatio: 0.62)
+            return (beatsPerMinute: 78, setupDelay: 3)
         }
     }
 }
@@ -1633,16 +1653,32 @@ private enum GarageTempoCue {
 
 private struct GarageTempoConfiguration: Equatable {
     var beatsPerMinute: Double = 72
-    var backswingRatio: Double = 0.7
+    var setupDelay: Double = 5
     var audioEnabled = true
     var hapticsEnabled = true
 
-    var downswingRatio: Double {
-        1 - backswingRatio
+    var backswingRatio: Double {
+        0.75
     }
 
-    var cycleDuration: TimeInterval {
-        120 / beatsPerMinute
+    var downswingRatio: Double {
+        0.25
+    }
+
+    var swingDuration: TimeInterval {
+        (60 / beatsPerMinute) * 4
+    }
+
+    var backswingDuration: TimeInterval {
+        swingDuration * backswingRatio
+    }
+
+    var downswingDuration: TimeInterval {
+        swingDuration * downswingRatio
+    }
+
+    var loopDuration: TimeInterval {
+        setupDelay + swingDuration
     }
 
     var bpmText: String {
@@ -1650,7 +1686,11 @@ private struct GarageTempoConfiguration: Equatable {
     }
 
     var ratioText: String {
-        "\(Int((backswingRatio * 100).rounded())) / \(Int((downswingRatio * 100).rounded()))"
+        "3:1"
+    }
+
+    var setupDelayText: String {
+        "\(Int(setupDelay.rounded()))s"
     }
 
     var cueSummaryText: String {
@@ -1807,11 +1847,13 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
     @Published private(set) var cycleCount = 0
     @Published private(set) var impactPulseID = 0
     @Published private(set) var configuration = GarageTempoConfiguration()
+    @Published private(set) var loopPhase: GarageTempoLoopPhase = .setupWait
 
     private var timer: Timer?
-    private var cycleStartDate: Date?
+    private var loopStartDate: Date?
     private var preciseProgress: Double = 0
-    private var pausedProgress: Double = 0
+    private var preciseLoopProgress: TimeInterval = 0
+    private var pausedLoopProgress: TimeInterval = 0
     private let audioCuePlayer = GarageTempoAudioCuePlayer()
     private var didPlayStartCue = false
     private var didPlayTopCue = false
@@ -1823,35 +1865,36 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
     var phaseLabel: String {
         switch state {
         case .ready:
-            return "Takeaway"
+            return "Setup"
         case .paused:
             return "Paused"
         case .running:
-            return progress < configuration.backswingRatio ? "Load" : "Release"
+            return loopPhase.label
         }
     }
 
     func start(configuration: GarageTempoConfiguration) {
         self.configuration = configuration
         preciseProgress = 0
+        preciseLoopProgress = 0
         progress = 0
-        pausedProgress = 0
+        pausedLoopProgress = 0
         cycleCount = 0
+        loopPhase = .setupWait
         resetCueFlags()
         lastVisualProgressPublishDate = nil
         state = .running
-        cycleStartDate = .now
+        loopStartDate = .now
         if configuration.audioEnabled {
             audioCuePlayer.startSession()
         }
-        fireStartCueIfNeeded()
         startTimer()
     }
 
     func resume() {
         guard state == .paused else { return }
         state = .running
-        cycleStartDate = Date().addingTimeInterval(-pausedProgress * configuration.cycleDuration)
+        loopStartDate = Date().addingTimeInterval(-pausedLoopProgress)
         restoreCueFlagsForResume()
         if configuration.audioEnabled {
             audioCuePlayer.startSession()
@@ -1861,7 +1904,7 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
 
     func pause() {
         guard state == .running else { return }
-        pausedProgress = preciseProgress
+        pausedLoopProgress = preciseLoopProgress
         state = .paused
         stopTimer()
         audioCuePlayer.stop()
@@ -1870,10 +1913,12 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
     func stop() {
         state = .ready
         preciseProgress = 0
+        preciseLoopProgress = 0
         progress = 0
-        pausedProgress = 0
+        pausedLoopProgress = 0
         cycleCount = 0
-        cycleStartDate = nil
+        loopPhase = .setupWait
+        loopStartDate = nil
         resetCueFlags()
         lastVisualProgressPublishDate = nil
         stopTimer()
@@ -1885,7 +1930,8 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
     }
 
     func updateConfiguration(_ nextConfiguration: GarageTempoConfiguration) {
-        let currentProgress = preciseProgress
+        let currentLoopProgress = preciseLoopProgress
+        let normalizedLoopProgress = configuration.loopDuration > 0 ? currentLoopProgress / configuration.loopDuration : 0
         configuration = nextConfiguration
 
         if nextConfiguration.audioEnabled == false {
@@ -1895,9 +1941,14 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
         }
 
         if state == .running {
-            cycleStartDate = Date().addingTimeInterval(-currentProgress * nextConfiguration.cycleDuration)
+            let nextLoopProgress = normalizedLoopProgress * nextConfiguration.loopDuration
+            preciseLoopProgress = min(nextLoopProgress, nextConfiguration.loopDuration)
+            loopStartDate = Date().addingTimeInterval(-preciseLoopProgress)
+            restoreCueFlagsForCurrentPhase()
         } else if state == .paused {
-            pausedProgress = currentProgress
+            pausedLoopProgress = min(normalizedLoopProgress * nextConfiguration.loopDuration, nextConfiguration.loopDuration)
+            preciseLoopProgress = pausedLoopProgress
+            restoreCueFlagsForCurrentPhase()
         }
     }
 
@@ -1920,13 +1971,14 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
     }
 
     private func tick(now: Date = .now) {
-        guard state == .running, let cycleStartDate else { return }
+        guard state == .running, let loopStartDate else { return }
 
-        let elapsed = now.timeIntervalSince(cycleStartDate)
-        let duration = max(configuration.cycleDuration, 0.1)
+        let elapsed = now.timeIntervalSince(loopStartDate)
+        let duration = max(configuration.loopDuration, 0.1)
         let elapsedCycles = Int(elapsed / duration)
         let cycleElapsed = elapsed.truncatingRemainder(dividingBy: duration)
-        let nextProgress = cycleElapsed / duration
+        let nextPhase = phase(for: cycleElapsed)
+        let nextProgress = swingProgress(for: cycleElapsed)
 
         if elapsedCycles > cycleCount {
             fireImpactCueIfNeeded()
@@ -1934,9 +1986,12 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
             resetCueFlags()
         }
 
+        preciseLoopProgress = cycleElapsed
         preciseProgress = nextProgress
-        fireStartCueIfNeeded()
-        fireTopCueIfNeeded(at: nextProgress)
+        loopPhase = nextPhase
+        fireStartCueIfNeeded(phase: nextPhase)
+        fireTopCueIfNeeded(phase: nextPhase, progress: nextProgress)
+        fireImpactCueIfNeeded(phase: nextPhase, progress: nextProgress)
         publishVisualProgress(nextProgress, at: now)
     }
 
@@ -1962,19 +2017,31 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
     }
 
     private func restoreCueFlagsForResume() {
-        didPlayStartCue = true
-        didPlayTopCue = pausedProgress >= configuration.backswingRatio
+        restoreCueFlagsForCurrentPhase()
+    }
+
+    private func restoreCueFlagsForCurrentPhase() {
+        let phase = phase(for: preciseLoopProgress)
+        let currentProgress = swingProgress(for: preciseLoopProgress)
+        loopPhase = phase
+        preciseProgress = currentProgress
+        progress = currentProgress
+        didPlayStartCue = phase != .setupWait
+        didPlayTopCue = currentProgress >= configuration.backswingRatio
         didPlayImpactCue = false
     }
 
-    private func fireStartCueIfNeeded() {
-        guard state == .running, didPlayStartCue == false else { return }
+    private func fireStartCueIfNeeded(phase: GarageTempoLoopPhase) {
+        guard state == .running,
+              phase != .setupWait,
+              didPlayStartCue == false else { return }
         didPlayStartCue = true
         playAudioCue(.start)
     }
 
-    private func fireTopCueIfNeeded(at progress: Double) {
+    private func fireTopCueIfNeeded(phase: GarageTempoLoopPhase, progress: Double) {
         guard state == .running,
+              phase == .downswing,
               didPlayTopCue == false,
               progress >= configuration.backswingRatio else {
             return
@@ -1984,12 +2051,42 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
         playAudioCue(.top)
     }
 
-    private func fireImpactCueIfNeeded() {
+    private func fireImpactCueIfNeeded(phase: GarageTempoLoopPhase? = nil, progress: Double = 1) {
+        if let phase, phase != .reset, progress < 0.995 {
+            return
+        }
+
         guard state == .running, didPlayImpactCue == false else { return }
         didPlayImpactCue = true
         impactPulseID += 1
         playAudioCue(.impact)
         triggerHaptic(.light)
+    }
+
+    private func phase(for loopElapsed: TimeInterval) -> GarageTempoLoopPhase {
+        if loopElapsed < configuration.setupDelay {
+            return .setupWait
+        }
+
+        let swingElapsed = loopElapsed - configuration.setupDelay
+        if swingElapsed < configuration.backswingDuration {
+            return .backswing
+        }
+
+        if swingElapsed < configuration.swingDuration {
+            return .downswing
+        }
+
+        return .reset
+    }
+
+    private func swingProgress(for loopElapsed: TimeInterval) -> Double {
+        guard loopElapsed >= configuration.setupDelay else {
+            return 0
+        }
+
+        let swingElapsed = min(max(loopElapsed - configuration.setupDelay, 0), configuration.swingDuration)
+        return min(max(swingElapsed / configuration.swingDuration, 0), 1)
     }
 
     private func playAudioCue(_ cue: GarageTempoCue) {
@@ -2886,22 +2983,22 @@ private struct GarageTempoSetupPanel: View {
                         onConfigurationChange(configuration)
                     }
                 ),
-                bounds: 48...96,
+                bounds: 60...90,
                 step: 1
             )
 
             GarageTempoSliderControlCard(
-                title: "Ratio",
-                valueText: configuration.ratioText,
+                title: "Setup",
+                valueText: configuration.setupDelayText,
                 value: Binding(
-                    get: { configuration.backswingRatio },
+                    get: { configuration.setupDelay },
                     set: { nextValue in
-                        configuration.backswingRatio = nextValue
+                        configuration.setupDelay = nextValue.rounded()
                         onConfigurationChange(configuration)
                     }
                 ),
-                bounds: 0.55...0.8,
-                step: 0.01
+                bounds: 3...10,
+                step: 1
             )
 
             GarageTempoProfileUtilityCard(
@@ -2932,22 +3029,22 @@ private struct GarageTempoLiveTuneDock: View {
                         onConfigurationChange(configuration)
                     }
                 ),
-                bounds: 48...96,
+                bounds: 60...90,
                 step: 1
             )
 
             GarageTempoCompactSliderCard(
-                title: "Ratio",
-                value: configuration.ratioText,
+                title: "Setup",
+                value: configuration.setupDelayText,
                 sliderValue: Binding(
-                    get: { configuration.backswingRatio },
+                    get: { configuration.setupDelay },
                     set: { nextValue in
-                        configuration.backswingRatio = nextValue
+                        configuration.setupDelay = nextValue.rounded()
                         onConfigurationChange(configuration)
                     }
                 ),
-                bounds: 0.55...0.8,
-                step: 0.01
+                bounds: 3...10,
+                step: 1
             )
 
             GarageTempoProfileDockCard(
@@ -3096,7 +3193,7 @@ private struct GarageTempoProfileUtilityCard: View {
         profile = profiles[nextIndex]
         let defaults = profile.tempoDefaults
         configuration.beatsPerMinute = defaults.beatsPerMinute
-        configuration.backswingRatio = defaults.backswingRatio
+        configuration.setupDelay = defaults.setupDelay
         onConfigurationChange(configuration)
     }
 }
@@ -3154,7 +3251,7 @@ private struct GarageTempoProfileDockCard: View {
         profile = profiles[nextIndex]
         let defaults = profile.tempoDefaults
         configuration.beatsPerMinute = defaults.beatsPerMinute
-        configuration.backswingRatio = defaults.backswingRatio
+        configuration.setupDelay = defaults.setupDelay
         onConfigurationChange(configuration)
     }
 }
@@ -3377,7 +3474,7 @@ private struct GarageTempoMoreControlsSheet: View {
                                         profile = option
                                         let defaults = option.tempoDefaults
                                         configuration.beatsPerMinute = defaults.beatsPerMinute
-                                        configuration.backswingRatio = defaults.backswingRatio
+                                        configuration.setupDelay = defaults.setupDelay
                                         onConfigurationChange(configuration)
                                     }
                                 }
@@ -3419,23 +3516,23 @@ private struct GarageTempoMoreControlsSheet: View {
                                     onConfigurationChange(configuration)
                                 }
                             ),
-                            bounds: 48...96,
+                            bounds: 60...90,
                             step: 1
                         )
 
                         GarageTempoSliderRow(
-                            title: "Advanced Ratio",
-                            valueText: configuration.ratioText,
-                            rangeText: "Load / release balance",
+                            title: "Setup Wait",
+                            valueText: configuration.setupDelayText,
+                            rangeText: "Silent address reset",
                             value: Binding(
-                                get: { configuration.backswingRatio },
+                                get: { configuration.setupDelay },
                                 set: { nextValue in
-                                    configuration.backswingRatio = nextValue
+                                    configuration.setupDelay = nextValue.rounded()
                                     onConfigurationChange(configuration)
                                 }
                             ),
-                            bounds: 0.55...0.8,
-                            step: 0.01
+                            bounds: 3...10,
+                            step: 1
                         )
                     }
 
@@ -3581,7 +3678,7 @@ private struct GarageTempoFoundationCard: View {
                         .foregroundStyle(GarageProTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("\(configuration.bpmText) BPM - \(configuration.ratioText) load/release")
+                    Text("\(configuration.bpmText) BPM - \(configuration.setupDelayText) setup - \(configuration.ratioText) tempo")
                         .font(.caption.weight(.black))
                         .foregroundStyle(GaragePremiumPalette.gold)
                 }
