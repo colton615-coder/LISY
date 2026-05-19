@@ -2757,7 +2757,9 @@ private struct GarageTempoJArcInstrument: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let rect = proxy.frame(in: .local).insetBy(dx: proxy.size.width * 0.14, dy: proxy.size.height * 0.13)
+            let rect = proxy.frame(in: .local).insetBy(dx: proxy.size.width * 0.13, dy: proxy.size.height * 0.13)
+            let swingPath = jArcPath(in: rect)
+            let activePath = progressPath(to: displayedPathProgress, in: rect)
             let addressPoint = point(at: 0, in: rect)
             let topPoint = point(at: 1, in: rect)
             let dotPoint = point(at: displayedPathProgress, in: rect)
@@ -2783,58 +2785,137 @@ private struct GarageTempoJArcInstrument: View {
                     .padding(3)
                     .shadow(color: GarageProTheme.glow.opacity(0.18), radius: 28, x: 0, y: 18)
 
-                jArcPath(in: rect)
-                    .stroke(GaragePremiumPalette.mintText.opacity(0.15), style: StrokeStyle(lineWidth: 17, lineCap: .round, lineJoin: .round))
+                swingPath
+                    .stroke(Color.black.opacity(0.34), style: StrokeStyle(lineWidth: 24, lineCap: .round, lineJoin: .round))
+                    .blur(radius: 1.1)
+                    .offset(y: 1.4)
 
-                progressPath(to: displayedPathProgress, in: rect)
+                swingPath
                     .stroke(
                         LinearGradient(
                             colors: [
-                                GaragePremiumPalette.gold.opacity(isRunning ? 0.92 : 0.62),
-                                GarageProTheme.accent.opacity(isRunning ? 0.82 : 0.42)
+                                GarageProTheme.textPrimary.opacity(0.18),
+                                GaragePremiumPalette.mintText.opacity(0.12)
                             ],
-                            startPoint: .bottom,
+                            startPoint: .bottomLeading,
+                            endPoint: .topTrailing
+                        ),
+                        style: StrokeStyle(lineWidth: 18, lineCap: .round, lineJoin: .round)
+                    )
+
+                swingPath
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                GarageProTheme.textPrimary.opacity(0.09),
+                                GaragePremiumPalette.mintText.opacity(0.06)
+                            ],
+                            startPoint: .bottomLeading,
                             endPoint: .topTrailing
                         ),
                         style: StrokeStyle(lineWidth: 11, lineCap: .round, lineJoin: .round)
                     )
-                    .shadow(color: GaragePremiumPalette.gold.opacity(isRunning ? 0.28 : 0.10), radius: 14, x: 0, y: 0)
+
+                activePath
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                GaragePremiumPalette.gold.opacity(isRunning ? 0.95 : 0.64),
+                                GarageProTheme.accent.opacity(isRunning ? 0.92 : 0.48)
+                            ],
+                            startPoint: .bottom,
+                            endPoint: .topTrailing
+                        ),
+                        style: StrokeStyle(lineWidth: 12, lineCap: .round, lineJoin: .round)
+                    )
+                    .shadow(color: GaragePremiumPalette.gold.opacity(isRunning ? 0.34 : 0.16), radius: 14, x: 0, y: 0)
+
+                activePath
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                GaragePremiumPalette.gold.opacity(isRunning ? 0.54 : 0.20),
+                                GaragePremiumPalette.gold.opacity(0.12)
+                            ],
+                            startPoint: .bottomLeading,
+                            endPoint: .top
+                        ),
+                        style: StrokeStyle(lineWidth: 20, lineCap: .round, lineJoin: .round)
+                    )
+                    .blur(radius: 6)
+                    .blendMode(.screen)
+                    .opacity(isRunning ? 0.86 : 0.52)
 
                 GarageTempoJArcMarker(point: addressPoint, title: "Address", role: .address, labelOffset: CGSize(width: -8, height: 34))
-                GarageTempoJArcMarker(point: topPoint, title: "Top", role: .top, labelOffset: CGSize(width: -28, height: -30))
-                GarageTempoJArcMarker(point: addressPoint, title: "Impact", role: .impact, isPulsing: impactPulse, labelOffset: CGSize(width: 64, height: 2))
+                GarageTempoJArcMarker(point: topPoint, title: "Top", role: .top, labelOffset: CGSize(width: -24, height: -34))
+                GarageTempoJArcMarker(point: addressPoint, title: "Impact", role: .impact, isPulsing: impactPulse, labelOffset: CGSize(width: 62, height: 4))
+
+                GarageTempoImpactGate(
+                    point: addressPoint,
+                    isRunning: isRunning,
+                    isPulsing: impactPulse
+                )
 
                 Circle()
-                    .fill(GarageProTheme.textPrimary)
-                    .frame(width: 24, height: 24)
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                GarageProTheme.textPrimary,
+                                GaragePremiumPalette.mintText.opacity(0.80)
+                            ],
+                            center: .center,
+                            startRadius: 1,
+                            endRadius: 14
+                        )
+                    )
+                    .frame(width: 26, height: 26)
                     .overlay(
                         Circle()
-                            .stroke(GarageProTheme.accent.opacity(0.78), lineWidth: 5)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        GaragePremiumPalette.gold.opacity(0.96),
+                                        GarageProTheme.accent.opacity(0.82)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 5
+                            )
                     )
-                    .shadow(color: GarageProTheme.glow.opacity(isRunning ? 0.38 : 0.18), radius: 12, x: 0, y: 0)
+                    .overlay(
+                        Circle()
+                            .stroke(GarageProTheme.textPrimary.opacity(isRunning ? 0.64 : 0.38), lineWidth: 1.5)
+                            .padding(2.5)
+                    )
+                    .shadow(color: GaragePremiumPalette.gold.opacity(isRunning ? 0.46 : 0.22), radius: 12, x: 0, y: 0)
+                    .shadow(color: GarageProTheme.glow.opacity(isRunning ? 0.34 : 0.18), radius: 8, x: 0, y: 0)
+                    .scaleEffect(impactPulse ? 1.09 : 1)
                     .position(dotPoint)
+                    .animation(reduceMotion ? nil : .spring(response: 0.22, dampingFraction: 0.78), value: impactPulse)
                     .animation(reduceMotion ? nil : .linear(duration: 1.0 / 30.0), value: displayedPathProgress)
 
                 VStack(spacing: 1) {
                     Text(bpmText)
-                        .font(.system(size: 18, weight: .black, design: .rounded))
+                        .font(.system(size: 16, weight: .black, design: .rounded))
                         .foregroundStyle(GarageProTheme.textPrimary)
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
 
                     Text("BPM")
-                        .font(.system(size: 7, weight: .black, design: .rounded))
-                        .tracking(1.1)
+                        .font(.system(size: 6, weight: .black, design: .rounded))
+                        .tracking(0.8)
                         .foregroundStyle(GaragePremiumPalette.gold.opacity(0.84))
                 }
-                .frame(width: 58, height: 42)
-                .background(GarageProTheme.insetSurface.opacity(0.46), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                .frame(width: 54, height: 40)
+                .background(GarageProTheme.insetSurface.opacity(0.50), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 15, style: .continuous)
-                        .stroke(GaragePremiumPalette.gold.opacity(0.12), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(GaragePremiumPalette.gold.opacity(0.18), lineWidth: 1)
                 )
-                .position(x: rect.minX + 30, y: rect.minY + 22)
+                .shadow(color: Color.black.opacity(0.24), radius: 8, x: 0, y: 4)
+                .position(x: rect.minX + 34, y: rect.minY + 24)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -2844,33 +2925,21 @@ private struct GarageTempoJArcInstrument: View {
         Path { path in
             path.move(to: point(at: 0, in: rect))
             path.addCurve(
-                to: point(at: 0.46, in: rect),
-                control1: CGPoint(x: rect.minX + rect.width * 0.26, y: rect.maxY + rect.height * 0.05),
-                control2: CGPoint(x: rect.minX + rect.width * 0.04, y: rect.maxY - rect.height * 0.17)
+                to: point(at: 0.48, in: rect),
+                control1: CGPoint(x: rect.midX - rect.width * 0.32, y: rect.maxY + rect.height * 0.08),
+                control2: CGPoint(x: rect.minX - rect.width * 0.02, y: rect.maxY - rect.height * 0.20)
             )
             path.addCurve(
                 to: point(at: 1, in: rect),
-                control1: CGPoint(x: rect.minX + rect.width * 0.36, y: rect.minY + rect.height * 0.42),
-                control2: CGPoint(x: rect.minX + rect.width * 0.70, y: rect.minY + rect.height * 0.12)
+                control1: CGPoint(x: rect.minX + rect.width * 0.30, y: rect.minY + rect.height * 0.44),
+                control2: CGPoint(x: rect.minX + rect.width * 0.72, y: rect.minY + rect.height * 0.10)
             )
         }
     }
 
     private func progressPath(to progress: CGFloat, in rect: CGRect) -> Path {
         let clamped = min(max(progress, 0), 1)
-        return Path { path in
-            path.move(to: point(at: 0, in: rect))
-
-            guard clamped > 0 else { return }
-
-            for index in 1...48 {
-                let segmentProgress = min(CGFloat(index) / 48, clamped)
-                path.addLine(to: point(at: segmentProgress, in: rect))
-                if segmentProgress >= clamped {
-                    break
-                }
-            }
-        }
+        return jArcPath(in: rect).trimmedPath(from: 0, to: clamped)
     }
 
     private func point(at progress: CGFloat, in rect: CGRect) -> CGPoint {
@@ -2879,20 +2948,20 @@ private struct GarageTempoJArcInstrument: View {
             let local = clamped / 0.46
             return cubicPoint(
                 t: local,
-                start: CGPoint(x: rect.midX, y: rect.maxY - rect.height * 0.16),
-                control1: CGPoint(x: rect.minX + rect.width * 0.26, y: rect.maxY + rect.height * 0.05),
-                control2: CGPoint(x: rect.minX + rect.width * 0.04, y: rect.maxY - rect.height * 0.17),
-                end: CGPoint(x: rect.minX + rect.width * 0.30, y: rect.midY + rect.height * 0.08)
+                start: CGPoint(x: rect.midX, y: rect.maxY - rect.height * 0.12),
+                control1: CGPoint(x: rect.midX - rect.width * 0.32, y: rect.maxY + rect.height * 0.08),
+                control2: CGPoint(x: rect.minX - rect.width * 0.02, y: rect.maxY - rect.height * 0.20),
+                end: CGPoint(x: rect.minX + rect.width * 0.28, y: rect.midY + rect.height * 0.12)
             )
         }
 
         let local = (clamped - 0.46) / 0.54
         return cubicPoint(
             t: local,
-            start: CGPoint(x: rect.minX + rect.width * 0.30, y: rect.midY + rect.height * 0.08),
-            control1: CGPoint(x: rect.minX + rect.width * 0.36, y: rect.minY + rect.height * 0.42),
-            control2: CGPoint(x: rect.minX + rect.width * 0.70, y: rect.minY + rect.height * 0.12),
-            end: CGPoint(x: rect.maxX - rect.width * 0.08, y: rect.minY + rect.height * 0.08)
+            start: CGPoint(x: rect.minX + rect.width * 0.28, y: rect.midY + rect.height * 0.12),
+            control1: CGPoint(x: rect.minX + rect.width * 0.30, y: rect.minY + rect.height * 0.44),
+            control2: CGPoint(x: rect.minX + rect.width * 0.72, y: rect.minY + rect.height * 0.10),
+            end: CGPoint(x: rect.maxX - rect.width * 0.06, y: rect.minY + rect.height * 0.08)
         )
     }
 
@@ -2907,6 +2976,32 @@ private struct GarageTempoJArcInstrument: View {
             + 3 * inverse * pow(t, 2) * control2.y
             + pow(t, 3) * end.y
         return CGPoint(x: x, y: y)
+    }
+}
+
+private struct GarageTempoImpactGate: View {
+    let point: CGPoint
+    let isRunning: Bool
+    let isPulsing: Bool
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(GaragePremiumPalette.gold.opacity(isRunning ? 0.36 : 0.22), lineWidth: 7)
+                .frame(width: 70, height: 70)
+                .blur(radius: 0.8)
+
+            Circle()
+                .stroke(GarageProTheme.accent.opacity(isPulsing ? 0.84 : 0.54), lineWidth: isPulsing ? 3.4 : 2.6)
+                .frame(width: isPulsing ? 78 : 68, height: isPulsing ? 78 : 68)
+                .shadow(color: GarageProTheme.accent.opacity(isPulsing ? 0.52 : 0.24), radius: isPulsing ? 14 : 8, x: 0, y: 0)
+                .animation(.spring(response: 0.24, dampingFraction: 0.72), value: isPulsing)
+
+            Circle()
+                .stroke(GaragePremiumPalette.gold.opacity(0.28), lineWidth: 1)
+                .frame(width: 54, height: 54)
+        }
+        .position(point)
     }
 }
 
