@@ -2125,6 +2125,7 @@ struct GarageTempoBuilderView: View {
                             configuration: $configuration,
                             profile: $profile,
                             progress: engine.progress,
+                            loopPhase: engine.loopPhase,
                             phaseLabel: engine.phaseLabel,
                             cycleCount: engine.cycleCount,
                             hapticsEnabled: configuration.hapticsEnabled,
@@ -2140,6 +2141,7 @@ struct GarageTempoBuilderView: View {
                             configuration: $configuration,
                             profile: $profile,
                             progress: engine.progress,
+                            loopPhase: engine.loopPhase,
                             phaseLabel: engine.phaseLabel,
                             cycleCount: engine.cycleCount,
                             impactPulseID: engine.impactPulseID,
@@ -2156,6 +2158,7 @@ struct GarageTempoBuilderView: View {
                             configuration: $configuration,
                             profile: $profile,
                             progress: engine.progress,
+                            loopPhase: engine.loopPhase,
                             phaseLabel: engine.phaseLabel,
                             cycleCount: engine.cycleCount,
                             impactPulseID: engine.impactPulseID,
@@ -2226,6 +2229,7 @@ private struct GarageTempoReadyLayout: View {
     @Binding var configuration: GarageTempoConfiguration
     @Binding var profile: GarageTempoProfile
     let progress: Double
+    let loopPhase: GarageTempoLoopPhase
     let phaseLabel: String
     let cycleCount: Int
     let hapticsEnabled: Bool
@@ -2254,6 +2258,7 @@ private struct GarageTempoReadyLayout: View {
             GarageTempoDialCard(
                 configuration: configuration,
                 progress: progress,
+                loopPhase: loopPhase,
                 phaseLabel: phaseLabel,
                 runState: .ready,
                 cycleCount: cycleCount,
@@ -2291,6 +2296,7 @@ private struct GarageTempoActiveLayout: View {
     @Binding var configuration: GarageTempoConfiguration
     @Binding var profile: GarageTempoProfile
     let progress: Double
+    let loopPhase: GarageTempoLoopPhase
     let phaseLabel: String
     let cycleCount: Int
     let impactPulseID: Int
@@ -2321,6 +2327,7 @@ private struct GarageTempoActiveLayout: View {
             GarageTempoDialCard(
                 configuration: configuration,
                 progress: progress,
+                loopPhase: loopPhase,
                 phaseLabel: phaseLabel,
                 runState: .running,
                 cycleCount: cycleCount,
@@ -2359,6 +2366,7 @@ private struct GarageTempoPausedLayout: View {
     @Binding var configuration: GarageTempoConfiguration
     @Binding var profile: GarageTempoProfile
     let progress: Double
+    let loopPhase: GarageTempoLoopPhase
     let phaseLabel: String
     let cycleCount: Int
     let impactPulseID: Int
@@ -2387,6 +2395,7 @@ private struct GarageTempoPausedLayout: View {
             GarageTempoDialCard(
                 configuration: configuration,
                 progress: progress,
+                loopPhase: loopPhase,
                 phaseLabel: phaseLabel,
                 runState: .paused,
                 cycleCount: cycleCount,
@@ -2662,6 +2671,7 @@ private struct GarageTempoDialCard: View {
 
     let configuration: GarageTempoConfiguration
     let progress: Double
+    let loopPhase: GarageTempoLoopPhase
     let phaseLabel: String
     let runState: GarageTempoRunState
     let cycleCount: Int
@@ -2670,23 +2680,25 @@ private struct GarageTempoDialCard: View {
     @State private var impactPulse = false
 
     var body: some View {
-        GarageTempoDial(
+        GarageTempoJArcInstrument(
             bpmText: configuration.bpmText,
             progress: progress,
-            backswingRatio: configuration.backswingRatio,
+            loopPhase: loopPhase,
+            isRunning: runState == .running,
+            reduceMotion: reduceMotion,
             impactPulse: impactPulse && reduceMotion == false
         )
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Tempo dial")
+        .accessibilityLabel("Tempo J arc")
         .accessibilityValue("\(phaseLabel), \(configuration.ratioText) ratio, \(cycleCount) cycles")
         .padding(2)
         .background(
-            Circle()
+            RoundedRectangle(cornerRadius: 34, style: .continuous)
                 .fill(.ultraThinMaterial)
                 .opacity(runState == .running ? 0.58 : 0.34)
         )
         .overlay(
-            Circle()
+            RoundedRectangle(cornerRadius: 34, style: .continuous)
                 .stroke(runState == .running ? GaragePremiumPalette.gold.opacity(0.22) : GarageProTheme.border, lineWidth: 1)
         )
         .shadow(color: GaragePremiumPalette.gold.opacity(runState == .running ? 0.18 : 0.08), radius: 28, x: 0, y: 18)
@@ -2702,162 +2714,237 @@ private struct GarageTempoDialCard: View {
     }
 }
 
-private struct GarageTempoDial: View {
+private struct GarageTempoJArcInstrument: View {
     let bpmText: String
     let progress: Double
-    let backswingRatio: Double
+    let loopPhase: GarageTempoLoopPhase
+    let isRunning: Bool
+    let reduceMotion: Bool
     let impactPulse: Bool
 
     private var clampedProgress: Double {
         min(max(progress, 0), 1)
     }
 
+    private var pathProgress: CGFloat {
+        switch loopPhase {
+        case .setupWait, .reset:
+            return 0
+        case .backswing:
+            return CGFloat(min(max(clampedProgress / 0.75, 0), 1))
+        case .downswing:
+            let downswingProgress = min(max((clampedProgress - 0.75) / 0.25, 0), 1)
+            return CGFloat(1 - downswingProgress)
+        }
+    }
+
+    private var displayedPathProgress: CGFloat {
+        guard reduceMotion else { return pathProgress }
+
+        switch loopPhase {
+        case .setupWait, .reset:
+            return 0
+        case .backswing:
+            return 1
+        case .downswing:
+            return 0
+        }
+    }
+
     var body: some View {
         GeometryReader { proxy in
-            let size = min(proxy.size.width, proxy.size.height)
-            let center = CGPoint(x: proxy.size.width / 2, y: proxy.size.height / 2)
-            let radius = size * 0.39
-            let handAngle = angle(for: clampedProgress)
-            let topAngle = angle(for: backswingRatio)
-            let handPoint = point(center: center, radius: radius, angle: handAngle)
-            let addressPoint = point(center: center, radius: radius, angle: angle(for: 0))
-            let topPoint = point(center: center, radius: radius, angle: topAngle)
-            let impactPoint = point(center: center, radius: radius, angle: angle(for: 0.985))
+            let rect = proxy.frame(in: .local).insetBy(dx: proxy.size.width * 0.10, dy: proxy.size.height * 0.08)
+            let addressPoint = point(at: 0, in: rect)
+            let topPoint = point(at: 1, in: rect)
+            let dotPoint = point(at: displayedPathProgress, in: rect)
 
             ZStack {
-                Circle()
+                RoundedRectangle(cornerRadius: 32, style: .continuous)
                     .fill(
                         RadialGradient(
                             colors: [
                                 GarageProTheme.accent.opacity(0.22),
-                                GaragePremiumPalette.emerald.opacity(0.20),
+                                GaragePremiumPalette.emerald.opacity(0.18),
                                 GarageProTheme.insetSurface.opacity(0.92)
                             ],
                             center: .center,
                             startRadius: 8,
-                            endRadius: radius * 1.6
+                            endRadius: min(proxy.size.width, proxy.size.height) * 0.82
                         )
                     )
-                    .frame(width: size * 0.88, height: size * 0.88)
-                    .position(center)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 32, style: .continuous)
+                            .stroke(GaragePremiumPalette.mintText.opacity(0.07), lineWidth: 1)
+                    )
+                    .padding(3)
                     .shadow(color: GarageProTheme.glow.opacity(0.18), radius: 28, x: 0, y: 18)
 
-                ForEach(0..<36, id: \.self) { index in
-                    let tickAngle = Angle.degrees(Double(index) * 10 - 90)
-                    let tickOuter = point(center: center, radius: radius * 1.15, angle: tickAngle)
-                    let tickInner = point(center: center, radius: radius * (index % 4 == 0 ? 1.08 : 1.11), angle: tickAngle)
+                jArcPath(in: rect)
+                    .stroke(GaragePremiumPalette.mintText.opacity(0.16), style: StrokeStyle(lineWidth: 18, lineCap: .round, lineJoin: .round))
 
-                    Path { path in
-                        path.move(to: tickInner)
-                        path.addLine(to: tickOuter)
-                    }
+                progressPath(to: displayedPathProgress, in: rect)
                     .stroke(
-                        index % 6 == 0 ? GaragePremiumPalette.gold.opacity(0.30) : GaragePremiumPalette.mintText.opacity(0.14),
-                        style: StrokeStyle(lineWidth: index % 6 == 0 ? 1.35 : 0.7, lineCap: .round)
+                        LinearGradient(
+                            colors: [
+                                GaragePremiumPalette.gold.opacity(isRunning ? 0.92 : 0.62),
+                                GarageProTheme.accent.opacity(isRunning ? 0.82 : 0.42)
+                            ],
+                            startPoint: .bottom,
+                            endPoint: .topTrailing
+                        ),
+                        style: StrokeStyle(lineWidth: 12, lineCap: .round, lineJoin: .round)
                     )
+                    .shadow(color: GaragePremiumPalette.gold.opacity(isRunning ? 0.28 : 0.10), radius: 14, x: 0, y: 0)
+
+                ForEach([CGFloat(0.25), CGFloat(0.50), CGFloat(0.75)], id: \.self) { markerProgress in
+                    let markerPoint = point(at: markerProgress, in: rect)
+                    Circle()
+                        .fill(GaragePremiumPalette.gold.opacity(0.74))
+                        .frame(width: markerProgress == 0.75 ? 8 : 6, height: markerProgress == 0.75 ? 8 : 6)
+                        .position(markerPoint)
                 }
 
-                Circle()
-                    .stroke(GaragePremiumPalette.mintText.opacity(0.12), lineWidth: 18)
-                    .frame(width: radius * 2, height: radius * 2)
-                    .position(center)
-
-                Circle()
-                    .trim(from: 0, to: backswingRatio)
-                    .stroke(
-                        GaragePremiumPalette.gold.opacity(0.86),
-                        style: StrokeStyle(lineWidth: 13, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
-                    .frame(width: radius * 2, height: radius * 2)
-                    .position(center)
-
-                Circle()
-                    .trim(from: backswingRatio, to: 1)
-                    .stroke(
-                        GarageProTheme.accent.opacity(0.88),
-                        style: StrokeStyle(lineWidth: 13, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
-                    .frame(width: radius * 2, height: radius * 2)
-                    .position(center)
-
-                Path { path in
-                    path.move(to: center)
-                    path.addLine(to: handPoint)
-                }
-                .stroke(
-                    LinearGradient(
-                        colors: [
-                            GarageProTheme.textPrimary.opacity(0.96),
-                            GarageProTheme.accent.opacity(0.72)
-                        ],
-                        startPoint: .center,
-                        endPoint: .top
-                    ),
-                    style: StrokeStyle(lineWidth: 7, lineCap: .round)
-                )
-                .shadow(color: GarageProTheme.glow.opacity(0.36), radius: 14, x: 0, y: 0)
+                GarageTempoJArcMarker(point: addressPoint, title: "Address", role: .address, labelOffset: CGSize(width: -40, height: -26))
+                GarageTempoJArcMarker(point: topPoint, title: "Top", role: .top, labelOffset: CGSize(width: -8, height: 28))
+                GarageTempoJArcMarker(point: addressPoint, title: "Impact", role: .impact, isPulsing: impactPulse, labelOffset: CGSize(width: 54, height: 24))
 
                 Circle()
                     .fill(GarageProTheme.textPrimary)
-                    .frame(width: 18, height: 18)
-                    .position(center)
+                    .frame(width: 24, height: 24)
+                    .overlay(
+                        Circle()
+                            .stroke(GarageProTheme.accent.opacity(0.78), lineWidth: 5)
+                    )
+                    .shadow(color: GarageProTheme.glow.opacity(isRunning ? 0.38 : 0.18), radius: 12, x: 0, y: 0)
+                    .position(dotPoint)
+                    .animation(reduceMotion ? nil : .linear(duration: 1.0 / 30.0), value: displayedPathProgress)
 
-                VStack(spacing: 0) {
+                VStack(spacing: 1) {
                     Text(bpmText)
-                        .font(.system(size: size * 0.18, weight: .black, design: .rounded))
+                        .font(.system(size: max(min(proxy.size.width, proxy.size.height) * 0.17, 54), weight: .black, design: .rounded))
                         .foregroundStyle(GarageProTheme.textPrimary)
                         .monospacedDigit()
                         .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                        .minimumScaleFactor(0.66)
 
                     Text("BPM")
-                        .font(.system(size: max(size * 0.032, 9), weight: .black, design: .rounded))
-                        .tracking(1.4)
+                        .font(.system(size: 10, weight: .black, design: .rounded))
+                        .tracking(1.6)
                         .foregroundStyle(GaragePremiumPalette.gold)
                 }
-                .position(center)
-
-                GarageTempoLandmarkGate(progress: 0.018, color: GaragePremiumPalette.gold, lineWidth: 4, span: 0.030)
-                    .frame(width: radius * 2.12, height: radius * 2.12)
-                    .position(center)
-
-                GarageTempoLandmarkGate(progress: backswingRatio, color: GaragePremiumPalette.gold.opacity(0.90), lineWidth: 5.4, span: 0.040)
-                    .frame(width: radius * 2.16, height: radius * 2.16)
-                    .position(center)
-
-                GarageTempoLandmarkGate(progress: 0.985, color: GarageProTheme.accent, lineWidth: 8.5, span: 0.058)
-                    .frame(width: radius * 2.24, height: radius * 2.24)
-                    .position(center)
-
-                GarageTempoMarker(point: addressPoint, title: "Address", role: .address, labelOffset: CGSize(width: -54, height: -30))
-                GarageTempoMarker(point: topPoint, title: "Top", role: .top, labelOffset: CGSize(width: 0, height: 30))
-                GarageTempoMarker(point: impactPoint, title: "Impact", role: .impact, isPulsing: impactPulse, labelOffset: CGSize(width: 70, height: 22))
-
-                Circle()
-                    .fill(GarageProTheme.textPrimary)
-                    .frame(width: 20, height: 20)
-                    .overlay(
-                        Circle()
-                            .stroke(GarageProTheme.accent.opacity(0.72), lineWidth: 4)
-                    )
-                    .position(handPoint)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(GarageProTheme.insetSurface.opacity(0.62), in: Capsule())
+                .overlay(Capsule().stroke(GaragePremiumPalette.gold.opacity(0.14), lineWidth: 1))
+                .position(x: rect.midX - rect.width * 0.20, y: rect.midY + rect.height * 0.03)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
-    private func angle(for progress: Double) -> Angle {
-        .degrees(-90 + progress * 360)
+    private func jArcPath(in rect: CGRect) -> Path {
+        Path { path in
+            path.move(to: point(at: 0, in: rect))
+            path.addCurve(
+                to: point(at: 0.46, in: rect),
+                control1: CGPoint(x: rect.minX + rect.width * 0.26, y: rect.maxY + rect.height * 0.05),
+                control2: CGPoint(x: rect.minX + rect.width * 0.04, y: rect.maxY - rect.height * 0.17)
+            )
+            path.addCurve(
+                to: point(at: 1, in: rect),
+                control1: CGPoint(x: rect.minX + rect.width * 0.36, y: rect.minY + rect.height * 0.42),
+                control2: CGPoint(x: rect.minX + rect.width * 0.70, y: rect.minY + rect.height * 0.12)
+            )
+        }
     }
 
-    private func point(center: CGPoint, radius: CGFloat, angle: Angle) -> CGPoint {
-        let radians = CGFloat(angle.radians)
-        return CGPoint(
-            x: center.x + cos(radians) * radius,
-            y: center.y + sin(radians) * radius
+    private func progressPath(to progress: CGFloat, in rect: CGRect) -> Path {
+        let clamped = min(max(progress, 0), 1)
+        return Path { path in
+            path.move(to: point(at: 0, in: rect))
+
+            guard clamped > 0 else { return }
+
+            for index in 1...48 {
+                let segmentProgress = min(CGFloat(index) / 48, clamped)
+                path.addLine(to: point(at: segmentProgress, in: rect))
+                if segmentProgress >= clamped {
+                    break
+                }
+            }
+        }
+    }
+
+    private func point(at progress: CGFloat, in rect: CGRect) -> CGPoint {
+        let clamped = min(max(progress, 0), 1)
+        if clamped <= 0.46 {
+            let local = clamped / 0.46
+            return cubicPoint(
+                t: local,
+                start: CGPoint(x: rect.midX, y: rect.maxY - rect.height * 0.16),
+                control1: CGPoint(x: rect.minX + rect.width * 0.26, y: rect.maxY + rect.height * 0.05),
+                control2: CGPoint(x: rect.minX + rect.width * 0.04, y: rect.maxY - rect.height * 0.17),
+                end: CGPoint(x: rect.minX + rect.width * 0.30, y: rect.midY + rect.height * 0.08)
+            )
+        }
+
+        let local = (clamped - 0.46) / 0.54
+        return cubicPoint(
+            t: local,
+            start: CGPoint(x: rect.minX + rect.width * 0.30, y: rect.midY + rect.height * 0.08),
+            control1: CGPoint(x: rect.minX + rect.width * 0.36, y: rect.minY + rect.height * 0.42),
+            control2: CGPoint(x: rect.minX + rect.width * 0.70, y: rect.minY + rect.height * 0.12),
+            end: CGPoint(x: rect.maxX - rect.width * 0.08, y: rect.minY + rect.height * 0.08)
         )
+    }
+
+    private func cubicPoint(t: CGFloat, start: CGPoint, control1: CGPoint, control2: CGPoint, end: CGPoint) -> CGPoint {
+        let inverse = 1 - t
+        let x = pow(inverse, 3) * start.x
+            + 3 * pow(inverse, 2) * t * control1.x
+            + 3 * inverse * pow(t, 2) * control2.x
+            + pow(t, 3) * end.x
+        let y = pow(inverse, 3) * start.y
+            + 3 * pow(inverse, 2) * t * control1.y
+            + 3 * inverse * pow(t, 2) * control2.y
+            + pow(t, 3) * end.y
+        return CGPoint(x: x, y: y)
+    }
+}
+
+private struct GarageTempoJArcMarker: View {
+    let point: CGPoint
+    let title: String
+    var role: GarageTempoMarkerRole = .address
+    var isPulsing = false
+    var labelOffset = CGSize(width: 0, height: 22)
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(role.color.opacity(isPulsing ? 0.58 : (role == .address ? 0.20 : 0.30)), lineWidth: role == .impact ? 3 : 1.6)
+                .frame(
+                    width: isPulsing ? role.haloSize + 18 : role.haloSize,
+                    height: isPulsing ? role.haloSize + 18 : role.haloSize
+                )
+                .shadow(color: role.color.opacity(role == .impact ? 0.32 : 0.16), radius: role == .impact ? 10 : 6, x: 0, y: 0)
+                .animation(.spring(response: 0.24, dampingFraction: 0.68), value: isPulsing)
+
+            Circle()
+                .fill(role.color)
+                .frame(width: role.markerSize, height: role.markerSize)
+        }
+        .overlay(alignment: .bottom) {
+            Text(title)
+                .font(.system(size: role == .impact ? 11 : 10, weight: .black, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(role == .top ? 1.25 : 1.45)
+                .foregroundStyle(role == .impact ? GarageProTheme.accent.opacity(role.labelOpacity) : GarageProTheme.textPrimary.opacity(role.labelOpacity))
+                .fixedSize()
+                .offset(labelOffset)
+                .shadow(color: role.color.opacity(role == .impact ? 0.28 : 0.14), radius: 5, x: 0, y: 0)
+        }
+        .position(point)
     }
 }
 
