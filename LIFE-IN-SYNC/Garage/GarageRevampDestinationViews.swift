@@ -2239,7 +2239,7 @@ private struct GarageTempoReadyLayout: View {
     let onMore: () -> Void
 
     private var dialSize: CGFloat {
-        min(size.width - 56, size.height * 0.30)
+        garageTempoInstrumentSize(for: size)
     }
 
     var body: some View {
@@ -2307,7 +2307,7 @@ private struct GarageTempoActiveLayout: View {
     let onStop: () -> Void
 
     private var dialSize: CGFloat {
-        min(size.width - 14, size.height * 0.43)
+        garageTempoInstrumentSize(for: size)
     }
 
     var body: some View {
@@ -2378,7 +2378,7 @@ private struct GarageTempoPausedLayout: View {
     let onAdjust: () -> Void
 
     private var dialSize: CGFloat {
-        min(size.width - 70, size.height * 0.25)
+        garageTempoInstrumentSize(for: size)
     }
 
     var body: some View {
@@ -2426,6 +2426,10 @@ private struct GarageTempoPausedLayout: View {
             )
         }
     }
+}
+
+private func garageTempoInstrumentSize(for size: CGSize) -> CGFloat {
+    min(size.width - 24, size.height * 0.39)
 }
 
 private struct GarageTempoExecutionReadout: View {
@@ -2753,7 +2757,7 @@ private struct GarageTempoJArcInstrument: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let rect = proxy.frame(in: .local).insetBy(dx: proxy.size.width * 0.10, dy: proxy.size.height * 0.08)
+            let rect = proxy.frame(in: .local).insetBy(dx: proxy.size.width * 0.14, dy: proxy.size.height * 0.13)
             let addressPoint = point(at: 0, in: rect)
             let topPoint = point(at: 1, in: rect)
             let dotPoint = point(at: displayedPathProgress, in: rect)
@@ -2780,7 +2784,7 @@ private struct GarageTempoJArcInstrument: View {
                     .shadow(color: GarageProTheme.glow.opacity(0.18), radius: 28, x: 0, y: 18)
 
                 jArcPath(in: rect)
-                    .stroke(GaragePremiumPalette.mintText.opacity(0.16), style: StrokeStyle(lineWidth: 18, lineCap: .round, lineJoin: .round))
+                    .stroke(GaragePremiumPalette.mintText.opacity(0.15), style: StrokeStyle(lineWidth: 17, lineCap: .round, lineJoin: .round))
 
                 progressPath(to: displayedPathProgress, in: rect)
                     .stroke(
@@ -2792,21 +2796,13 @@ private struct GarageTempoJArcInstrument: View {
                             startPoint: .bottom,
                             endPoint: .topTrailing
                         ),
-                        style: StrokeStyle(lineWidth: 12, lineCap: .round, lineJoin: .round)
+                        style: StrokeStyle(lineWidth: 11, lineCap: .round, lineJoin: .round)
                     )
                     .shadow(color: GaragePremiumPalette.gold.opacity(isRunning ? 0.28 : 0.10), radius: 14, x: 0, y: 0)
 
-                ForEach([CGFloat(0.25), CGFloat(0.50), CGFloat(0.75)], id: \.self) { markerProgress in
-                    let markerPoint = point(at: markerProgress, in: rect)
-                    Circle()
-                        .fill(GaragePremiumPalette.gold.opacity(0.74))
-                        .frame(width: markerProgress == 0.75 ? 8 : 6, height: markerProgress == 0.75 ? 8 : 6)
-                        .position(markerPoint)
-                }
-
-                GarageTempoJArcMarker(point: addressPoint, title: "Address", role: .address, labelOffset: CGSize(width: -40, height: -26))
-                GarageTempoJArcMarker(point: topPoint, title: "Top", role: .top, labelOffset: CGSize(width: -8, height: 28))
-                GarageTempoJArcMarker(point: addressPoint, title: "Impact", role: .impact, isPulsing: impactPulse, labelOffset: CGSize(width: 54, height: 24))
+                GarageTempoJArcMarker(point: addressPoint, title: "Address", role: .address, labelOffset: CGSize(width: -8, height: 34))
+                GarageTempoJArcMarker(point: topPoint, title: "Top", role: .top, labelOffset: CGSize(width: -28, height: -30))
+                GarageTempoJArcMarker(point: addressPoint, title: "Impact", role: .impact, isPulsing: impactPulse, labelOffset: CGSize(width: 64, height: 2))
 
                 Circle()
                     .fill(GarageProTheme.textPrimary)
@@ -2821,22 +2817,24 @@ private struct GarageTempoJArcInstrument: View {
 
                 VStack(spacing: 1) {
                     Text(bpmText)
-                        .font(.system(size: max(min(proxy.size.width, proxy.size.height) * 0.17, 54), weight: .black, design: .rounded))
+                        .font(.system(size: 18, weight: .black, design: .rounded))
                         .foregroundStyle(GarageProTheme.textPrimary)
                         .monospacedDigit()
                         .lineLimit(1)
-                        .minimumScaleFactor(0.66)
+                        .minimumScaleFactor(0.78)
 
                     Text("BPM")
-                        .font(.system(size: 10, weight: .black, design: .rounded))
-                        .tracking(1.6)
-                        .foregroundStyle(GaragePremiumPalette.gold)
+                        .font(.system(size: 7, weight: .black, design: .rounded))
+                        .tracking(1.1)
+                        .foregroundStyle(GaragePremiumPalette.gold.opacity(0.84))
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(GarageProTheme.insetSurface.opacity(0.62), in: Capsule())
-                .overlay(Capsule().stroke(GaragePremiumPalette.gold.opacity(0.14), lineWidth: 1))
-                .position(x: rect.midX - rect.width * 0.20, y: rect.midY + rect.height * 0.03)
+                .frame(width: 58, height: 42)
+                .background(GarageProTheme.insetSurface.opacity(0.46), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .stroke(GaragePremiumPalette.gold.opacity(0.12), lineWidth: 1)
+                )
+                .position(x: rect.minX + 30, y: rect.minY + 22)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -2934,7 +2932,7 @@ private struct GarageTempoJArcMarker: View {
                 .fill(role.color)
                 .frame(width: role.markerSize, height: role.markerSize)
         }
-        .overlay(alignment: .bottom) {
+        .overlay {
             Text(title)
                 .font(.system(size: role == .impact ? 11 : 10, weight: .black, design: .rounded))
                 .textCase(.uppercase)
