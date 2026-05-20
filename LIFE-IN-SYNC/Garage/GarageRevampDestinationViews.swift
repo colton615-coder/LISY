@@ -1655,7 +1655,7 @@ private struct GarageTempoConfiguration: Equatable {
     var beatsPerMinute: Double = 72
     var setupDelay: Double = 5
     var audioEnabled = true
-    var hapticsEnabled = true
+    var hapticsEnabled = false
 
     var backswingRatio: Double {
         0.75
@@ -1694,173 +1694,253 @@ private struct GarageTempoConfiguration: Equatable {
     }
 
     var cueSummaryText: String {
-        switch (audioEnabled, hapticsEnabled) {
-        case (true, true):
-            return "Audio + haptics"
-        case (true, false):
+        switch audioEnabled {
+        case true:
             return "Audio only"
-        case (false, true):
-            return "Haptics only"
-        case (false, false):
+        case false:
             return "Silent cues"
         }
     }
 }
 
+private struct GarageTempoAudioEvent {
+    let frequency: Double
+    let frameTime: AVAudioFramePosition
+    let isAnchor: Bool
+}
+
+private struct GarageTempoToneVoice {
+    let frequency: Double
+    let startFrame: AVAudioFramePosition
+    let durationFrames: AVAudioFramePosition
+    let gain: Float
+}
+
+private final class GarageTempoToneRenderState {
+    private let lock = NSLock()
+    private var scheduledEvents: [GarageTempoAudioEvent] = []
+    private var activeVoices: [GarageTempoToneVoice] = []
+    private var latestFrame: AVAudioFramePosition = 0
+    private let sampleRate: Double
+
+    init(sampleRate: Double) {
+        self.sampleRate = sampleRate
+    }
+
+    func scheduleTone(frequency: Double, at frame: AVAudioFramePosition, isAnchor: Bool) {
+        lock.lock()
+        scheduledEvents.append(GarageTempoAudioEvent(frequency: frequency, frameTime: frame, isAnchor: isAnchor))
+        scheduledEvents.sort { $0.frameTime < $1.frameTime }
+        lock.unlock()
+    }
+
+    func reset() {
+        lock.lock()
+        scheduledEvents.removeAll()
+        activeVoices.removeAll()
+        lock.unlock()
+    }
+
+    func currentFrame() -> AVAudioFramePosition {
+        lock.lock()
+        let frame = latestFrame
+        lock.unlock()
+        return frame
+    }
+
+    func render(timestamp: UnsafePointer<AudioTimeStamp>, frameCount: AVAudioFrameCount, audioBufferList: UnsafeMutablePointer<AudioBufferList>) -> OSStatus {
+        let abl = UnsafeMutableAudioBufferListPointer(audioBufferList)
+        let startFrame = AVAudioFramePosition(timestamp.pointee.mSampleTime)
+        let outputCount = Int(frameCount)
+
+        lock.lock()
+        latestFrame = startFrame + AVAudioFramePosition(frameCount)
+        var events = scheduledEvents
+        var voices = activeVoices
+        lock.unlock()
+
+        for buffer in abl {
+            guard let data = buffer.mData?.assumingMemoryBound(to: Float.self) else { continue }
+            for frameOffset in 0..<outputCount {
+                let absoluteFrame = startFrame + AVAudioFramePosition(frameOffset)
+
+                while let nextEvent = events.first, nextEvent.frameTime <= absoluteFrame {
+                    let duration = AVAudioFramePosition(sampleRate * (nextEvent.isAnchor ? 0.18 : 0.14))
+                    voices.append(
+                        GarageTempoToneVoice(
+                            frequency: nextEvent.frequency,
+                            startFrame: nextEvent.frameTime,
+                            durationFrames: duration,
+                            gain: nextEvent.isAnchor ? 0.26 : 0.34
+                        )
+                    )
+                    events.removeFirst()
+                }
+
+                var mixedSample: Float = 0
+                for voice in voices {
+                    let voiceFrame = absoluteFrame - voice.startFrame
+                    guard voiceFrame >= 0, voiceFrame < voice.durationFrames else { continue }
+
+                    let progress = Double(voiceFrame) / Double(max(voice.durationFrames, 1))
+                    let attack = min(progress / 0.035, 1)
+                    let envelope = pow(attack, 2) * exp(-5.0 * progress)
+                    let sampleTime = Double(voiceFrame) / sampleRate
+                    let wave = sin(2.0 * Double.pi * voice.frequency * sampleTime)
+                    mixedSample += Float(wave * envelope) * voice.gain
+                }
+
+                data[frameOffset] = max(min(mixedSample, 0.82), -0.82)
+            }
+        }
+
+        voices.removeAll { voice in
+            startFrame + AVAudioFramePosition(frameCount) > voice.startFrame + voice.durationFrames
+        }
+
+        lock.lock()
+        scheduledEvents = events
+        activeVoices = voices
+        lock.unlock()
+
+        return noErr
+    }
+}
+
+private final class GarageTempoToneSynthesizer {
+    let sourceNode: AVAudioSourceNode
+    private let renderState: GarageTempoToneRenderState
+
+    init(sampleRate: Double) {
+        let renderState = GarageTempoToneRenderState(sampleRate: sampleRate)
+        self.renderState = renderState
+        self.sourceNode = AVAudioSourceNode { _, timestamp, frameCount, audioBufferList in
+            renderState.render(timestamp: timestamp, frameCount: frameCount, audioBufferList: audioBufferList)
+        }
+    }
+
+    func scheduleTone(frequency: Double, at frame: AVAudioFramePosition, isAnchor: Bool) {
+        renderState.scheduleTone(frequency: frequency, at: frame, isAnchor: isAnchor)
+    }
+
+    func reset() {
+        renderState.reset()
+    }
+
+    func currentFrame() -> AVAudioFramePosition {
+        renderState.currentFrame()
+    }
+}
+
 @MainActor
-private final class GarageTempoAudioCuePlayer {
-    private let engine = AVAudioEngine()
-    private let startPlayer = AVAudioPlayerNode()
-    private let topPlayer = AVAudioPlayerNode()
-    private let impactPlayer = AVAudioPlayerNode()
+private final class GarageTempoAudioClock {
+    private let audioEngine = AVAudioEngine()
     private let sampleRate: Double = 44_100
+    private let synthesizer: GarageTempoToneSynthesizer
     private var isPrepared = false
-    private var startBuffer: AVAudioPCMBuffer?
-    private var topBuffer: AVAudioPCMBuffer?
-    private var impactBuffer: AVAudioPCMBuffer?
+    private var sequenceBaseFrame: AVAudioFramePosition = 0
+
+    init() {
+        synthesizer = GarageTempoToneSynthesizer(sampleRate: sampleRate)
+    }
 
     func startSession() {
         prepareIfNeeded()
     }
 
-    func play(_ cue: GarageTempoCue) {
-        prepareIfNeeded()
-
-        guard engine.isRunning else {
-            return
-        }
-
-        guard let buffer = buffer(for: cue) else {
-            return
-        }
-
-        let player = player(for: cue)
-        player.stop()
-        player.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
-
-        if player.isPlaying == false {
-            player.play()
-        }
+    func stop() {
+        synthesizer.reset()
+        audioEngine.pause()
     }
 
-    func stop() {
-        startPlayer.stop()
-        topPlayer.stop()
-        impactPlayer.stop()
-        engine.pause()
+    func resetEvents() {
+        synthesizer.reset()
+        sequenceBaseFrame = max(synthesizer.currentFrame(), 0) + frames(for: 0.08)
+    }
+
+    func scheduleCycle(configuration: GarageTempoConfiguration, cycleIndex: Int) {
+        prepareIfNeeded()
+        guard configuration.audioEnabled else { return }
+
+        let cycleStartFrame = anchorFrame(forCycle: cycleIndex, configuration: configuration)
+        let addressFrame = cycleStartFrame + frames(for: configuration.setupDelay)
+        let topFrame = addressFrame + frames(for: configuration.backswingDuration)
+        let impactFrame = topFrame + frames(for: configuration.downswingDuration)
+
+        synthesizer.scheduleTone(frequency: toneProfile(for: .start).frequency, at: addressFrame, isAnchor: true)
+        synthesizer.scheduleTone(frequency: toneProfile(for: .top).frequency, at: topFrame, isAnchor: false)
+        synthesizer.scheduleTone(frequency: toneProfile(for: .impact).frequency, at: impactFrame, isAnchor: false)
+    }
+
+    func playImmediate(_ cue: GarageTempoCue) {
+        prepareIfNeeded()
+        let frame = max(synthesizer.currentFrame(), 0) + frames(for: 0.03)
+        let profile = toneProfile(for: cue)
+        synthesizer.scheduleTone(frequency: profile.frequency, at: frame, isAnchor: cue == .start)
     }
 
     private func prepareIfNeeded() {
         guard isPrepared == false else {
-            if engine.isRunning == false {
-                try? engine.start()
+            if audioEngine.isRunning == false {
+                try? audioEngine.start()
             }
             return
         }
 
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
+        try? session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
         try? session.setActive(true)
 
         guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else {
             return
         }
 
-        [startPlayer, topPlayer, impactPlayer].forEach { player in
-            engine.attach(player)
-            engine.connect(player, to: engine.mainMixerNode, format: format)
-        }
-
-        startBuffer = makeToneBuffer(for: .start, format: format)
-        topBuffer = makeToneBuffer(for: .top, format: format)
-        impactBuffer = makeToneBuffer(for: .impact, format: format)
-
-        try? engine.start()
+        audioEngine.attach(synthesizer.sourceNode)
+        audioEngine.connect(synthesizer.sourceNode, to: audioEngine.mainMixerNode, format: format)
+        try? audioEngine.start()
         isPrepared = true
+    }
+
+    private func anchorFrame(forCycle cycleIndex: Int, configuration: GarageTempoConfiguration) -> AVAudioFramePosition {
+        sequenceBaseFrame + frames(for: configuration.loopDuration * Double(cycleIndex))
+    }
+
+    private func frames(for interval: TimeInterval) -> AVAudioFramePosition {
+        AVAudioFramePosition((interval * sampleRate).rounded())
     }
 
     private func toneProfile(for cue: GarageTempoCue) -> (frequency: Double, duration: Double, gain: Float) {
         switch cue {
         case .start:
-            return (frequency: 392, duration: 0.075, gain: 0.28)
+            return (frequency: 392.00, duration: 0.18, gain: 0.26)
         case .top:
-            return (frequency: 587.33, duration: 0.065, gain: 0.34)
+            return (frequency: 587.33, duration: 0.14, gain: 0.34)
         case .impact:
-            return (frequency: 880, duration: 0.09, gain: 0.48)
+            return (frequency: 880.00, duration: 0.14, gain: 0.38)
         }
-    }
-
-    private func player(for cue: GarageTempoCue) -> AVAudioPlayerNode {
-        switch cue {
-        case .start:
-            return startPlayer
-        case .top:
-            return topPlayer
-        case .impact:
-            return impactPlayer
-        }
-    }
-
-    private func buffer(for cue: GarageTempoCue) -> AVAudioPCMBuffer? {
-        switch cue {
-        case .start:
-            return startBuffer
-        case .top:
-            return topBuffer
-        case .impact:
-            return impactBuffer
-        }
-    }
-
-    private func makeToneBuffer(for cue: GarageTempoCue, format: AVAudioFormat) -> AVAudioPCMBuffer? {
-        let profile = toneProfile(for: cue)
-        let frequency = profile.frequency
-        let duration = profile.duration
-        let gain = profile.gain
-        let frameCount = AVAudioFrameCount(sampleRate * duration)
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount),
-              let channel = buffer.floatChannelData?[0] else {
-            return nil
-        }
-
-        buffer.frameLength = frameCount
-
-        for frame in 0..<Int(frameCount) {
-            let position = Double(frame) / sampleRate
-            let progress = Double(frame) / Double(max(Int(frameCount) - 1, 1))
-            let fadeIn = min(progress / 0.14, 1)
-            let fadeOut = min((1 - progress) / 0.22, 1)
-            let envelope = pow(min(fadeIn, fadeOut), 2)
-            let wave = sin(2 * Double.pi * frequency * position)
-            let sample = Float(wave) * Float(envelope) * gain
-            channel[frame] = sample
-        }
-
-        return buffer
     }
 }
 
 @MainActor
 private final class GarageTempoEngine: NSObject, ObservableObject {
     @Published private(set) var state: GarageTempoRunState = .ready
-    @Published private(set) var progress: Double = 0
     @Published private(set) var cycleCount = 0
     @Published private(set) var impactPulseID = 0
     @Published private(set) var configuration = GarageTempoConfiguration()
     @Published private(set) var loopPhase: GarageTempoLoopPhase = .setupWait
 
-    private var timer: Timer?
+    private var visualTicker: DispatchSourceTimer?
     private var loopStartDate: Date?
     private var preciseProgress: Double = 0
     private var preciseLoopProgress: TimeInterval = 0
     private var pausedLoopProgress: TimeInterval = 0
-    private let audioCuePlayer = GarageTempoAudioCuePlayer()
+    private let audioClock = GarageTempoAudioClock()
     private var didPlayStartCue = false
     private var didPlayTopCue = false
     private var didPlayImpactCue = false
-    private var lastVisualProgressPublishDate: Date?
-
-    private let visualProgressPublishInterval: TimeInterval = 1.0 / 30.0
+    private var nextScheduledCycleIndex = 0
+    private var audioCycleBaseIndex = 0
+    private let scheduledCycleLookahead = 10
 
     var phaseLabel: String {
         switch state {
@@ -1874,21 +1954,24 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
     }
 
     func start(configuration: GarageTempoConfiguration) {
-        self.configuration = configuration
+        var nextConfiguration = configuration
+        nextConfiguration.hapticsEnabled = false
+        self.configuration = nextConfiguration
         preciseProgress = 0
         preciseLoopProgress = 0
-        progress = 0
         pausedLoopProgress = 0
         cycleCount = 0
         loopPhase = .setupWait
         resetCueFlags()
-        lastVisualProgressPublishDate = nil
         state = .running
         loopStartDate = .now
-        if configuration.audioEnabled {
-            audioCuePlayer.startSession()
+        if nextConfiguration.audioEnabled {
+            audioClock.startSession()
+            audioClock.resetEvents()
+            audioCycleBaseIndex = cycleCount
+            scheduleAudioCycles(startingAt: 0)
         }
-        startTimer()
+        startVisualTicker()
     }
 
     func resume() {
@@ -1897,32 +1980,36 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
         loopStartDate = Date().addingTimeInterval(-pausedLoopProgress)
         restoreCueFlagsForResume()
         if configuration.audioEnabled {
-            audioCuePlayer.startSession()
+            audioClock.startSession()
+            audioClock.resetEvents()
+            audioCycleBaseIndex = cycleCount
+            let resumeCycle = cycleCount
+            scheduleAudioCycles(startingAt: resumeCycle)
         }
-        startTimer()
+        startVisualTicker()
     }
 
     func pause() {
         guard state == .running else { return }
         pausedLoopProgress = preciseLoopProgress
         state = .paused
-        stopTimer()
-        audioCuePlayer.stop()
+        stopVisualTicker()
+        audioClock.stop()
     }
 
     func stop() {
         state = .ready
         preciseProgress = 0
         preciseLoopProgress = 0
-        progress = 0
         pausedLoopProgress = 0
         cycleCount = 0
         loopPhase = .setupWait
         loopStartDate = nil
         resetCueFlags()
-        lastVisualProgressPublishDate = nil
-        stopTimer()
-        audioCuePlayer.stop()
+        nextScheduledCycleIndex = 0
+        audioCycleBaseIndex = 0
+        stopVisualTicker()
+        audioClock.stop()
     }
 
     func stopForDisappear() {
@@ -1932,21 +2019,26 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
     func updateConfiguration(_ nextConfiguration: GarageTempoConfiguration) {
         let currentLoopProgress = preciseLoopProgress
         let normalizedLoopProgress = configuration.loopDuration > 0 ? currentLoopProgress / configuration.loopDuration : 0
-        configuration = nextConfiguration
+        var sanitizedConfiguration = nextConfiguration
+        sanitizedConfiguration.hapticsEnabled = false
+        configuration = sanitizedConfiguration
 
-        if nextConfiguration.audioEnabled == false {
-            audioCuePlayer.stop()
+        if sanitizedConfiguration.audioEnabled == false {
+            audioClock.stop()
         } else if state == .running || state == .paused {
-            audioCuePlayer.startSession()
+            audioClock.startSession()
+            audioClock.resetEvents()
+            audioCycleBaseIndex = cycleCount
+            scheduleAudioCycles(startingAt: cycleCount)
         }
 
         if state == .running {
-            let nextLoopProgress = normalizedLoopProgress * nextConfiguration.loopDuration
-            preciseLoopProgress = min(nextLoopProgress, nextConfiguration.loopDuration)
+            let nextLoopProgress = normalizedLoopProgress * sanitizedConfiguration.loopDuration
+            preciseLoopProgress = min(nextLoopProgress, sanitizedConfiguration.loopDuration)
             loopStartDate = Date().addingTimeInterval(-preciseLoopProgress)
             restoreCueFlagsForCurrentPhase()
         } else if state == .paused {
-            pausedLoopProgress = min(normalizedLoopProgress * nextConfiguration.loopDuration, nextConfiguration.loopDuration)
+            pausedLoopProgress = min(normalizedLoopProgress * sanitizedConfiguration.loopDuration, sanitizedConfiguration.loopDuration)
             preciseLoopProgress = pausedLoopProgress
             restoreCueFlagsForCurrentPhase()
         }
@@ -1955,19 +2047,30 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
     func triggerImpactPulse() {
         impactPulseID += 1
         playAudioCue(.impact)
-        triggerHaptic(.medium)
     }
 
-    private func startTimer() {
-        stopTimer()
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
-            self?.timerDidFire(timer)
+    func visualProgress(at date: Date) -> Double {
+        guard state != .ready else { return 0 }
+        let elapsed = visualLoopProgress(at: date)
+        return swingProgress(for: elapsed)
+    }
+
+    private func startVisualTicker() {
+        stopVisualTicker()
+        let ticker = DispatchSource.makeTimerSource(queue: .main)
+        ticker.schedule(deadline: .now(), repeating: .milliseconds(33), leeway: .milliseconds(6))
+        ticker.setEventHandler { [weak self] in
+            Task { @MainActor in
+                self?.tick()
+            }
         }
+        visualTicker = ticker
+        ticker.resume()
     }
 
-    private func stopTimer() {
-        timer?.invalidate()
-        timer = nil
+    private func stopVisualTicker() {
+        visualTicker?.cancel()
+        visualTicker = nil
     }
 
     private func tick(now: Date = .now) {
@@ -1981,33 +2084,16 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
         let nextProgress = swingProgress(for: cycleElapsed)
 
         if elapsedCycles > cycleCount {
-            fireImpactCueIfNeeded()
             cycleCount = elapsedCycles
             resetCueFlags()
+            impactPulseID += 1
         }
 
         preciseLoopProgress = cycleElapsed
         preciseProgress = nextProgress
         loopPhase = nextPhase
-        fireStartCueIfNeeded(phase: nextPhase)
-        fireTopCueIfNeeded(phase: nextPhase, progress: nextProgress)
-        fireImpactCueIfNeeded(phase: nextPhase, progress: nextProgress)
-        publishVisualProgress(nextProgress, at: now)
-    }
-
-    private func timerDidFire(_ timer: Timer) {
-        tick()
-    }
-
-    private func publishVisualProgress(_ nextProgress: Double, at now: Date, force: Bool = false) {
-        if force == false,
-           let lastVisualProgressPublishDate,
-           now.timeIntervalSince(lastVisualProgressPublishDate) < visualProgressPublishInterval {
-            return
-        }
-
-        progress = nextProgress
-        lastVisualProgressPublishDate = now
+        updateCueFlagsForVisualState(phase: nextPhase, progress: nextProgress)
+        scheduleMoreAudioCyclesIfNeeded()
     }
 
     private func resetCueFlags() {
@@ -2025,42 +2111,23 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
         let currentProgress = swingProgress(for: preciseLoopProgress)
         loopPhase = phase
         preciseProgress = currentProgress
-        progress = currentProgress
         didPlayStartCue = phase != .setupWait
         didPlayTopCue = currentProgress >= configuration.backswingRatio
         didPlayImpactCue = false
     }
 
-    private func fireStartCueIfNeeded(phase: GarageTempoLoopPhase) {
-        guard state == .running,
-              phase != .setupWait,
-              didPlayStartCue == false else { return }
-        didPlayStartCue = true
-        playAudioCue(.start)
-    }
-
-    private func fireTopCueIfNeeded(phase: GarageTempoLoopPhase, progress: Double) {
-        guard state == .running,
-              phase == .downswing,
-              didPlayTopCue == false,
-              progress >= configuration.backswingRatio else {
-            return
+    private func updateCueFlagsForVisualState(phase: GarageTempoLoopPhase, progress: Double) {
+        if phase != .setupWait {
+            didPlayStartCue = true
         }
 
-        didPlayTopCue = true
-        playAudioCue(.top)
-    }
-
-    private func fireImpactCueIfNeeded(phase: GarageTempoLoopPhase? = nil, progress: Double = 1) {
-        if let phase, phase != .reset, progress < 0.995 {
-            return
+        if phase == .downswing, progress >= configuration.backswingRatio {
+            didPlayTopCue = true
         }
 
-        guard state == .running, didPlayImpactCue == false else { return }
-        didPlayImpactCue = true
-        impactPulseID += 1
-        playAudioCue(.impact)
-        triggerHaptic(.light)
+        if phase == .reset || progress >= 0.995 {
+            didPlayImpactCue = true
+        }
     }
 
     private func phase(for loopElapsed: TimeInterval) -> GarageTempoLoopPhase {
@@ -2089,15 +2156,42 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
         return min(max(swingElapsed / configuration.swingDuration, 0), 1)
     }
 
-    private func playAudioCue(_ cue: GarageTempoCue) {
-        guard configuration.audioEnabled else { return }
-        audioCuePlayer.startSession()
-        audioCuePlayer.play(cue)
+    private func visualLoopProgress(at date: Date) -> TimeInterval {
+        switch state {
+        case .ready:
+            return 0
+        case .paused:
+            return pausedLoopProgress
+        case .running:
+            guard let loopStartDate else { return 0 }
+            let elapsed = date.timeIntervalSince(loopStartDate)
+            let duration = max(configuration.loopDuration, 0.1)
+            return elapsed.truncatingRemainder(dividingBy: duration)
+        }
     }
 
-    private func triggerHaptic(_ weight: GarageImpactWeight) {
-        guard configuration.hapticsEnabled else { return }
-        garageTriggerImpact(weight)
+    private func scheduleAudioCycles(startingAt cycleIndex: Int) {
+        nextScheduledCycleIndex = max(cycleIndex, 0)
+        for _ in 0..<scheduledCycleLookahead {
+            audioClock.scheduleCycle(configuration: configuration, cycleIndex: nextScheduledCycleIndex - audioCycleBaseIndex)
+            nextScheduledCycleIndex += 1
+        }
+    }
+
+    private func scheduleMoreAudioCyclesIfNeeded() {
+        guard configuration.audioEnabled,
+              nextScheduledCycleIndex - cycleCount <= 4 else { return }
+
+        for _ in 0..<scheduledCycleLookahead {
+            audioClock.scheduleCycle(configuration: configuration, cycleIndex: nextScheduledCycleIndex - audioCycleBaseIndex)
+            nextScheduledCycleIndex += 1
+        }
+    }
+
+    private func playAudioCue(_ cue: GarageTempoCue) {
+        guard configuration.audioEnabled else { return }
+        audioClock.startSession()
+        audioClock.playImmediate(cue)
     }
 }
 
@@ -2117,58 +2211,62 @@ struct GarageTempoBuilderView: View {
                 let horizontalPadding: CGFloat = 12
                 let bottomPadding = max(proxy.safeAreaInsets.bottom - 12, 4)
 
-                Group {
-                    switch engine.state {
-                    case .ready:
-                        GarageTempoReadyLayout(
-                            size: proxy.size,
-                            configuration: $configuration,
-                            profile: $profile,
-                            progress: engine.progress,
-                            loopPhase: engine.loopPhase,
-                            phaseLabel: engine.phaseLabel,
-                            cycleCount: engine.cycleCount,
-                            hapticsEnabled: configuration.hapticsEnabled,
-                            onBack: closeBuilder,
-                            onConfigurationChange: engine.updateConfiguration,
-                            onStart: handlePrimaryAction,
-                            onMore: { showsMoreControls = true }
-                        )
+                TimelineView(.animation) { timeline in
+                    let visualProgress = engine.visualProgress(at: timeline.date)
 
-                    case .running:
-                        GarageTempoActiveLayout(
-                            size: proxy.size,
-                            configuration: $configuration,
-                            profile: $profile,
-                            progress: engine.progress,
-                            loopPhase: engine.loopPhase,
-                            phaseLabel: engine.phaseLabel,
-                            cycleCount: engine.cycleCount,
-                            impactPulseID: engine.impactPulseID,
-                            hapticsEnabled: configuration.hapticsEnabled,
-                            onBack: closeBuilder,
-                            onConfigurationChange: engine.updateConfiguration,
-                            onPause: handlePrimaryAction,
-                            onStop: resetSet
-                        )
+                    Group {
+                        switch engine.state {
+                        case .ready:
+                            GarageTempoReadyLayout(
+                                size: proxy.size,
+                                configuration: $configuration,
+                                profile: $profile,
+                                progress: visualProgress,
+                                loopPhase: engine.loopPhase,
+                                phaseLabel: engine.phaseLabel,
+                                cycleCount: engine.cycleCount,
+                                hapticsEnabled: configuration.hapticsEnabled,
+                                onBack: closeBuilder,
+                                onConfigurationChange: engine.updateConfiguration,
+                                onStart: handlePrimaryAction,
+                                onMore: { showsMoreControls = true }
+                            )
 
-                    case .paused:
-                        GarageTempoPausedLayout(
-                            size: proxy.size,
-                            configuration: $configuration,
-                            profile: $profile,
-                            progress: engine.progress,
-                            loopPhase: engine.loopPhase,
-                            phaseLabel: engine.phaseLabel,
-                            cycleCount: engine.cycleCount,
-                            impactPulseID: engine.impactPulseID,
-                            hapticsEnabled: configuration.hapticsEnabled,
-                            onBack: closeBuilder,
-                            onConfigurationChange: engine.updateConfiguration,
-                            onResume: handlePrimaryAction,
-                            onStop: resetSet,
-                            onAdjust: { showsMoreControls = true }
-                        )
+                        case .running:
+                            GarageTempoActiveLayout(
+                                size: proxy.size,
+                                configuration: $configuration,
+                                profile: $profile,
+                                progress: visualProgress,
+                                loopPhase: engine.loopPhase,
+                                phaseLabel: engine.phaseLabel,
+                                cycleCount: engine.cycleCount,
+                                impactPulseID: engine.impactPulseID,
+                                hapticsEnabled: configuration.hapticsEnabled,
+                                onBack: closeBuilder,
+                                onConfigurationChange: engine.updateConfiguration,
+                                onPause: handlePrimaryAction,
+                                onStop: resetSet
+                            )
+
+                        case .paused:
+                            GarageTempoPausedLayout(
+                                size: proxy.size,
+                                configuration: $configuration,
+                                profile: $profile,
+                                progress: visualProgress,
+                                loopPhase: engine.loopPhase,
+                                phaseLabel: engine.phaseLabel,
+                                cycleCount: engine.cycleCount,
+                                impactPulseID: engine.impactPulseID,
+                                hapticsEnabled: configuration.hapticsEnabled,
+                                onBack: closeBuilder,
+                                onConfigurationChange: engine.updateConfiguration,
+                                onResume: handlePrimaryAction,
+                                onStop: resetSet,
+                                onAdjust: { showsMoreControls = true }
+                            )
+                        }
                     }
                 }
                 .padding(.horizontal, horizontalPadding)
@@ -2735,10 +2833,11 @@ private struct GarageTempoJArcInstrument: View {
         case .setupWait, .reset:
             return 0
         case .backswing:
-            return CGFloat(min(max(clampedProgress / 0.75, 0), 1))
+            let backswingProgress = min(max(clampedProgress / 0.75, 0), 1)
+            return CGFloat(pow(backswingProgress, 2.5))
         case .downswing:
             let downswingProgress = min(max((clampedProgress - 0.75) / 0.25, 0), 1)
-            return CGFloat(1 - downswingProgress)
+            return CGFloat(1 - pow(downswingProgress, 0.55))
         }
     }
 
@@ -2923,16 +3022,11 @@ private struct GarageTempoJArcInstrument: View {
 
     private func jArcPath(in rect: CGRect) -> Path {
         Path { path in
-            path.move(to: point(at: 0, in: rect))
+            path.move(to: CGPoint(x: rect.midX, y: rect.maxY))
             path.addCurve(
-                to: point(at: 0.48, in: rect),
-                control1: CGPoint(x: rect.midX - rect.width * 0.32, y: rect.maxY + rect.height * 0.08),
-                control2: CGPoint(x: rect.minX - rect.width * 0.02, y: rect.maxY - rect.height * 0.20)
-            )
-            path.addCurve(
-                to: point(at: 1, in: rect),
-                control1: CGPoint(x: rect.minX + rect.width * 0.30, y: rect.minY + rect.height * 0.44),
-                control2: CGPoint(x: rect.minX + rect.width * 0.72, y: rect.minY + rect.height * 0.10)
+                to: CGPoint(x: rect.minX + rect.width * 0.10, y: rect.minY + rect.height * 0.15),
+                control1: CGPoint(x: rect.minX - rect.width * 0.10, y: rect.maxY),
+                control2: CGPoint(x: rect.minX, y: rect.minY + rect.height * 0.40)
             )
         }
     }
@@ -2944,24 +3038,12 @@ private struct GarageTempoJArcInstrument: View {
 
     private func point(at progress: CGFloat, in rect: CGRect) -> CGPoint {
         let clamped = min(max(progress, 0), 1)
-        if clamped <= 0.46 {
-            let local = clamped / 0.46
-            return cubicPoint(
-                t: local,
-                start: CGPoint(x: rect.midX, y: rect.maxY - rect.height * 0.12),
-                control1: CGPoint(x: rect.midX - rect.width * 0.32, y: rect.maxY + rect.height * 0.08),
-                control2: CGPoint(x: rect.minX - rect.width * 0.02, y: rect.maxY - rect.height * 0.20),
-                end: CGPoint(x: rect.minX + rect.width * 0.28, y: rect.midY + rect.height * 0.12)
-            )
-        }
-
-        let local = (clamped - 0.46) / 0.54
         return cubicPoint(
-            t: local,
-            start: CGPoint(x: rect.minX + rect.width * 0.28, y: rect.midY + rect.height * 0.12),
-            control1: CGPoint(x: rect.minX + rect.width * 0.30, y: rect.minY + rect.height * 0.44),
-            control2: CGPoint(x: rect.minX + rect.width * 0.72, y: rect.minY + rect.height * 0.10),
-            end: CGPoint(x: rect.maxX - rect.width * 0.06, y: rect.minY + rect.height * 0.08)
+            t: clamped,
+            start: CGPoint(x: rect.midX, y: rect.maxY),
+            control1: CGPoint(x: rect.minX - rect.width * 0.10, y: rect.maxY),
+            control2: CGPoint(x: rect.minX, y: rect.minY + rect.height * 0.40),
+            end: CGPoint(x: rect.minX + rect.width * 0.10, y: rect.minY + rect.height * 0.15)
         )
     }
 
@@ -3667,21 +3749,17 @@ private struct GarageTempoMoreControlsSheet: View {
                             get: { configuration.audioEnabled },
                             set: { isEnabled in
                                 configuration.audioEnabled = isEnabled
+                                configuration.hapticsEnabled = false
                                 onConfigurationChange(configuration)
                             }
                         ))
                             .font(.headline.weight(.bold))
                             .foregroundStyle(GarageProTheme.textPrimary)
 
-                        Toggle("Haptics", isOn: Binding(
-                            get: { configuration.hapticsEnabled },
-                            set: { isEnabled in
-                                configuration.hapticsEnabled = isEnabled
-                                onConfigurationChange(configuration)
-                            }
-                        ))
-                            .font(.headline.weight(.bold))
-                            .foregroundStyle(GarageProTheme.textPrimary)
+                        Text("AirPods-first harmonic sine tones. Haptics stay off for clean tempo feedback.")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(GarageProTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
                     GarageProCard(cornerRadius: 22, padding: 14) {
