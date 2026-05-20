@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import Combine
+import QuartzCore
 import SwiftUI
 
 private enum GarageTempoRunState: Equatable {
@@ -353,19 +354,16 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
     @Published private(set) var impactPulseID = 0
     @Published private(set) var configuration = GarageTempoConfiguration()
     @Published private(set) var loopPhase: GarageTempoLoopPhase = .setupWait
+    @Published private(set) var swingProgress: Double = 0
 
-    private var visualTicker: DispatchSourceTimer?
-    private var loopStartDate: Date?
-    private var preciseProgress: Double = 0
+    private var displayLink: CADisplayLink?
+    private var loopStartMediaTime: CFTimeInterval = 0
     private var preciseLoopProgress: TimeInterval = 0
     private var pausedLoopProgress: TimeInterval = 0
     private let audioClock = GarageTempoAudioClock()
     private var didPlayStartCue = false
     private var didPlayTopCue = false
     private var didPlayImpactCue = false
-    private var nextScheduledCycleIndex = 0
-    private var audioCycleBaseIndex = 0
-    private let scheduledCycleLookahead = 10
 
     var phaseLabel: String {
         switch state {
@@ -382,58 +380,48 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
         var nextConfiguration = configuration
         nextConfiguration.hapticsEnabled = false
         self.configuration = nextConfiguration
-        preciseProgress = 0
+        swingProgress = 0
         preciseLoopProgress = 0
         pausedLoopProgress = 0
         cycleCount = 0
-        loopPhase = .setupWait
+        loopPhase = .backswing
         resetCueFlags()
         state = .running
-        loopStartDate = .now
+        loopStartMediaTime = CACurrentMediaTime()
         if nextConfiguration.audioEnabled {
             audioClock.startSession()
             audioClock.resetEvents()
-            audioCycleBaseIndex = cycleCount
-            scheduleAudioCycles(startingAt: 0)
+            playAudioCue(.start)
+            didPlayStartCue = true
         }
-        startVisualTicker()
+        startDisplayLink()
     }
 
     func resume() {
         guard state == .paused else { return }
         state = .running
-        loopStartDate = Date().addingTimeInterval(-pausedLoopProgress)
+        loopStartMediaTime = CACurrentMediaTime() - pausedLoopProgress
         restoreCueFlagsForResume()
-        if configuration.audioEnabled {
-            audioClock.startSession()
-            audioClock.resetEvents()
-            audioCycleBaseIndex = cycleCount
-            let resumeCycle = cycleCount
-            scheduleAudioCycles(startingAt: resumeCycle)
-        }
-        startVisualTicker()
+        startDisplayLink()
     }
 
     func pause() {
         guard state == .running else { return }
         pausedLoopProgress = preciseLoopProgress
         state = .paused
-        stopVisualTicker()
-        audioClock.stop()
+        stopDisplayLink()
     }
 
     func stop() {
         state = .ready
-        preciseProgress = 0
+        swingProgress = 0
         preciseLoopProgress = 0
         pausedLoopProgress = 0
         cycleCount = 0
         loopPhase = .setupWait
-        loopStartDate = nil
+        loopStartMediaTime = 0
         resetCueFlags()
-        nextScheduledCycleIndex = 0
-        audioCycleBaseIndex = 0
-        stopVisualTicker()
+        stopDisplayLink()
         audioClock.stop()
     }
 
@@ -453,17 +441,15 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
         } else if state == .running || state == .paused {
             audioClock.startSession()
             audioClock.resetEvents()
-            audioCycleBaseIndex = cycleCount
-            scheduleAudioCycles(startingAt: cycleCount)
         }
 
         if state == .running {
-            let nextLoopProgress = normalizedLoopProgress * sanitizedConfiguration.loopDuration
-            preciseLoopProgress = min(nextLoopProgress, sanitizedConfiguration.loopDuration)
-            loopStartDate = Date().addingTimeInterval(-preciseLoopProgress)
+            let nextLoopProgress = normalizedLoopProgress * sanitizedConfiguration.swingDuration
+            preciseLoopProgress = min(nextLoopProgress, sanitizedConfiguration.swingDuration)
+            loopStartMediaTime = CACurrentMediaTime() - preciseLoopProgress
             restoreCueFlagsForCurrentPhase()
         } else if state == .paused {
-            pausedLoopProgress = min(normalizedLoopProgress * sanitizedConfiguration.loopDuration, sanitizedConfiguration.loopDuration)
+            pausedLoopProgress = min(normalizedLoopProgress * sanitizedConfiguration.swingDuration, sanitizedConfiguration.swingDuration)
             preciseLoopProgress = pausedLoopProgress
             restoreCueFlagsForCurrentPhase()
         }
@@ -474,51 +460,39 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
         playAudioCue(.impact)
     }
 
-    func visualProgress(at date: Date) -> Double {
-        guard state != .ready else { return 0 }
-        let elapsed = visualLoopProgress(at: date)
-        return swingProgress(for: elapsed)
+    private func startDisplayLink() {
+        stopDisplayLink()
+        let displayLink = CADisplayLink(target: self, selector: #selector(updateFrame(_:)))
+        displayLink.add(to: .main, forMode: .common)
+        self.displayLink = displayLink
     }
 
-    private func startVisualTicker() {
-        stopVisualTicker()
-        let ticker = DispatchSource.makeTimerSource(queue: .main)
-        ticker.schedule(deadline: .now(), repeating: .milliseconds(33), leeway: .milliseconds(6))
-        ticker.setEventHandler { [weak self] in
-            Task { @MainActor in
-                self?.tick()
-            }
-        }
-        visualTicker = ticker
-        ticker.resume()
+    private func stopDisplayLink() {
+        displayLink?.invalidate()
+        displayLink = nil
     }
 
-    private func stopVisualTicker() {
-        visualTicker?.cancel()
-        visualTicker = nil
-    }
+    @objc private func updateFrame(_ link: CADisplayLink) {
+        guard state == .running else { return }
 
-    private func tick(now: Date = .now) {
-        guard state == .running, let loopStartDate else { return }
-
-        let elapsed = now.timeIntervalSince(loopStartDate)
-        let duration = max(configuration.loopDuration, 0.1)
+        let elapsed = CACurrentMediaTime() - loopStartMediaTime
+        let duration = max(configuration.swingDuration, 0.1)
         let elapsedCycles = Int(elapsed / duration)
         let cycleElapsed = elapsed.truncatingRemainder(dividingBy: duration)
         let nextPhase = phase(for: cycleElapsed)
-        let nextProgress = swingProgress(for: cycleElapsed)
+        let nextProgress = pathProgress(for: cycleElapsed)
 
         if elapsedCycles > cycleCount {
             cycleCount = elapsedCycles
             resetCueFlags()
-            impactPulseID += 1
+            didPlayStartCue = true
+            playAudioCue(.start)
         }
 
         preciseLoopProgress = cycleElapsed
-        preciseProgress = nextProgress
+        swingProgress = nextProgress
         loopPhase = nextPhase
-        updateCueFlagsForVisualState(phase: nextPhase, progress: nextProgress)
-        scheduleMoreAudioCyclesIfNeeded()
+        updateCueFlagsForDisplayLink(phase: nextPhase, elapsed: cycleElapsed)
     }
 
     private func resetCueFlags() {
@@ -533,84 +507,53 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
 
     private func restoreCueFlagsForCurrentPhase() {
         let phase = phase(for: preciseLoopProgress)
-        let currentProgress = swingProgress(for: preciseLoopProgress)
+        let currentProgress = pathProgress(for: preciseLoopProgress)
         loopPhase = phase
-        preciseProgress = currentProgress
-        didPlayStartCue = phase != .setupWait
-        didPlayTopCue = currentProgress >= configuration.backswingRatio
+        swingProgress = currentProgress
+        didPlayStartCue = state == .running || state == .paused
+        didPlayTopCue = phase == .downswing
         didPlayImpactCue = false
     }
 
-    private func updateCueFlagsForVisualState(phase: GarageTempoLoopPhase, progress: Double) {
-        if phase != .setupWait {
+    private func updateCueFlagsForDisplayLink(phase: GarageTempoLoopPhase, elapsed: TimeInterval) {
+        if didPlayStartCue == false {
+            playAudioCue(.start)
             didPlayStartCue = true
         }
 
-        if phase == .downswing, progress >= configuration.backswingRatio {
+        if phase == .downswing, didPlayTopCue == false {
+            playAudioCue(.top)
             didPlayTopCue = true
         }
 
-        if phase == .reset || progress >= 0.995 {
+        if elapsed >= configuration.swingDuration * 0.98, didPlayImpactCue == false {
+            playAudioCue(.impact)
             didPlayImpactCue = true
+            impactPulseID += 1
         }
     }
 
     private func phase(for loopElapsed: TimeInterval) -> GarageTempoLoopPhase {
-        if loopElapsed < configuration.setupDelay {
-            return .setupWait
-        }
-
-        let swingElapsed = loopElapsed - configuration.setupDelay
-        if swingElapsed < configuration.backswingDuration {
+        if loopElapsed < configuration.backswingDuration {
             return .backswing
         }
 
-        if swingElapsed < configuration.swingDuration {
+        if loopElapsed < configuration.swingDuration {
             return .downswing
         }
 
         return .reset
     }
 
-    private func swingProgress(for loopElapsed: TimeInterval) -> Double {
-        guard loopElapsed >= configuration.setupDelay else {
-            return 0
+    private func pathProgress(for loopElapsed: TimeInterval) -> Double {
+        let rawProgress = min(max(loopElapsed / max(configuration.swingDuration, 0.1), 0), 1)
+
+        if rawProgress <= configuration.backswingRatio {
+            return rawProgress / configuration.backswingRatio
         }
 
-        let swingElapsed = min(max(loopElapsed - configuration.setupDelay, 0), configuration.swingDuration)
-        return min(max(swingElapsed / configuration.swingDuration, 0), 1)
-    }
-
-    private func visualLoopProgress(at date: Date) -> TimeInterval {
-        switch state {
-        case .ready:
-            return 0
-        case .paused:
-            return pausedLoopProgress
-        case .running:
-            guard let loopStartDate else { return 0 }
-            let elapsed = date.timeIntervalSince(loopStartDate)
-            let duration = max(configuration.loopDuration, 0.1)
-            return elapsed.truncatingRemainder(dividingBy: duration)
-        }
-    }
-
-    private func scheduleAudioCycles(startingAt cycleIndex: Int) {
-        nextScheduledCycleIndex = max(cycleIndex, 0)
-        for _ in 0..<scheduledCycleLookahead {
-            audioClock.scheduleCycle(configuration: configuration, cycleIndex: nextScheduledCycleIndex - audioCycleBaseIndex)
-            nextScheduledCycleIndex += 1
-        }
-    }
-
-    private func scheduleMoreAudioCyclesIfNeeded() {
-        guard configuration.audioEnabled,
-              nextScheduledCycleIndex - cycleCount <= 4 else { return }
-
-        for _ in 0..<scheduledCycleLookahead {
-            audioClock.scheduleCycle(configuration: configuration, cycleIndex: nextScheduledCycleIndex - audioCycleBaseIndex)
-            nextScheduledCycleIndex += 1
-        }
+        let downswingElapsed = rawProgress - configuration.backswingRatio
+        return 1 - (downswingElapsed / max(configuration.downswingRatio, 0.01))
     }
 
     private func playAudioCue(_ cue: GarageTempoCue) {
@@ -636,62 +579,58 @@ struct GarageTempoBuilderView: View {
                 let horizontalPadding: CGFloat = 12
                 let bottomPadding = max(proxy.safeAreaInsets.bottom - 12, 4)
 
-                TimelineView(.animation) { timeline in
-                    let visualProgress = engine.visualProgress(at: timeline.date)
+                Group {
+                    switch engine.state {
+                    case .ready:
+                        GarageTempoReadyLayout(
+                            size: proxy.size,
+                            configuration: $configuration,
+                            profile: $profile,
+                            progress: engine.swingProgress,
+                            loopPhase: engine.loopPhase,
+                            phaseLabel: engine.phaseLabel,
+                            cycleCount: engine.cycleCount,
+                            hapticsEnabled: configuration.hapticsEnabled,
+                            onBack: closeBuilder,
+                            onConfigurationChange: engine.updateConfiguration,
+                            onStart: handlePrimaryAction,
+                            onMore: { showsMoreControls = true }
+                        )
 
-                    Group {
-                        switch engine.state {
-                        case .ready:
-                            GarageTempoReadyLayout(
-                                size: proxy.size,
-                                configuration: $configuration,
-                                profile: $profile,
-                                progress: visualProgress,
-                                loopPhase: engine.loopPhase,
-                                phaseLabel: engine.phaseLabel,
-                                cycleCount: engine.cycleCount,
-                                hapticsEnabled: configuration.hapticsEnabled,
-                                onBack: closeBuilder,
-                                onConfigurationChange: engine.updateConfiguration,
-                                onStart: handlePrimaryAction,
-                                onMore: { showsMoreControls = true }
-                            )
+                    case .running:
+                        GarageTempoActiveLayout(
+                            size: proxy.size,
+                            configuration: $configuration,
+                            profile: $profile,
+                            progress: engine.swingProgress,
+                            loopPhase: engine.loopPhase,
+                            phaseLabel: engine.phaseLabel,
+                            cycleCount: engine.cycleCount,
+                            impactPulseID: engine.impactPulseID,
+                            hapticsEnabled: configuration.hapticsEnabled,
+                            onBack: closeBuilder,
+                            onConfigurationChange: engine.updateConfiguration,
+                            onPause: handlePrimaryAction,
+                            onStop: resetSet
+                        )
 
-                        case .running:
-                            GarageTempoActiveLayout(
-                                size: proxy.size,
-                                configuration: $configuration,
-                                profile: $profile,
-                                progress: visualProgress,
-                                loopPhase: engine.loopPhase,
-                                phaseLabel: engine.phaseLabel,
-                                cycleCount: engine.cycleCount,
-                                impactPulseID: engine.impactPulseID,
-                                hapticsEnabled: configuration.hapticsEnabled,
-                                onBack: closeBuilder,
-                                onConfigurationChange: engine.updateConfiguration,
-                                onPause: handlePrimaryAction,
-                                onStop: resetSet
-                            )
-
-                        case .paused:
-                            GarageTempoPausedLayout(
-                                size: proxy.size,
-                                configuration: $configuration,
-                                profile: $profile,
-                                progress: visualProgress,
-                                loopPhase: engine.loopPhase,
-                                phaseLabel: engine.phaseLabel,
-                                cycleCount: engine.cycleCount,
-                                impactPulseID: engine.impactPulseID,
-                                hapticsEnabled: configuration.hapticsEnabled,
-                                onBack: closeBuilder,
-                                onConfigurationChange: engine.updateConfiguration,
-                                onResume: handlePrimaryAction,
-                                onStop: resetSet,
-                                onAdjust: { showsMoreControls = true }
-                            )
-                        }
+                    case .paused:
+                        GarageTempoPausedLayout(
+                            size: proxy.size,
+                            configuration: $configuration,
+                            profile: $profile,
+                            progress: engine.swingProgress,
+                            loopPhase: engine.loopPhase,
+                            phaseLabel: engine.phaseLabel,
+                            cycleCount: engine.cycleCount,
+                            impactPulseID: engine.impactPulseID,
+                            hapticsEnabled: configuration.hapticsEnabled,
+                            onBack: closeBuilder,
+                            onConfigurationChange: engine.updateConfiguration,
+                            onResume: handlePrimaryAction,
+                            onStop: resetSet,
+                            onAdjust: { showsMoreControls = true }
+                        )
                     }
                 }
                 .padding(.horizontal, horizontalPadding)
@@ -1253,21 +1192,8 @@ private struct GarageTempoJArcInstrument: View {
         min(max(progress, 0), 1)
     }
 
-    private var pathProgress: CGFloat {
-        switch loopPhase {
-        case .setupWait, .reset:
-            return 0
-        case .backswing:
-            let backswingProgress = min(max(clampedProgress / 0.75, 0), 1)
-            return CGFloat(pow(backswingProgress, 2.5))
-        case .downswing:
-            let downswingProgress = min(max((clampedProgress - 0.75) / 0.25, 0), 1)
-            return CGFloat(1 - pow(downswingProgress, 0.55))
-        }
-    }
-
     private var displayedPathProgress: CGFloat {
-        guard reduceMotion else { return pathProgress }
+        guard reduceMotion else { return CGFloat(clampedProgress) }
 
         switch loopPhase {
         case .setupWait, .reset:
@@ -1449,9 +1375,9 @@ private struct GarageTempoJArcInstrument: View {
         Path { path in
             path.move(to: CGPoint(x: rect.midX, y: rect.maxY))
             path.addCurve(
-                to: CGPoint(x: rect.minX + rect.width * 0.10, y: rect.minY + rect.height * 0.15),
-                control1: CGPoint(x: rect.minX - rect.width * 0.10, y: rect.maxY),
-                control2: CGPoint(x: rect.minX, y: rect.minY + rect.height * 0.40)
+                to: CGPoint(x: rect.minX + rect.width * 0.65, y: rect.minY + rect.height * 0.10),
+                control1: CGPoint(x: rect.maxX, y: rect.maxY),
+                control2: CGPoint(x: rect.minX + rect.width * 0.90, y: rect.minY + rect.height * 0.20)
             )
         }
     }
@@ -1466,9 +1392,9 @@ private struct GarageTempoJArcInstrument: View {
         return cubicPoint(
             t: clamped,
             start: CGPoint(x: rect.midX, y: rect.maxY),
-            control1: CGPoint(x: rect.minX - rect.width * 0.10, y: rect.maxY),
-            control2: CGPoint(x: rect.minX, y: rect.minY + rect.height * 0.40),
-            end: CGPoint(x: rect.minX + rect.width * 0.10, y: rect.minY + rect.height * 0.15)
+            control1: CGPoint(x: rect.maxX, y: rect.maxY),
+            control2: CGPoint(x: rect.minX + rect.width * 0.90, y: rect.minY + rect.height * 0.20),
+            end: CGPoint(x: rect.minX + rect.width * 0.65, y: rect.minY + rect.height * 0.10)
         )
     }
 
