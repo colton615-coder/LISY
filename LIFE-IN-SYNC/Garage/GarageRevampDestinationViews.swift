@@ -703,6 +703,8 @@ private struct GarageManualPlanDrill: Identifiable, Hashable {
 
     private static func systemImage(for drill: GarageDrill) -> String {
         switch drill.libraryCategory {
+        case .ballStriking:
+            return "target"
         case .contact:
             return "scope"
         case .delivery:
@@ -713,6 +715,10 @@ private struct GarageManualPlanDrill: Identifiable, Hashable {
             return "viewfinder"
         case .tempo:
             return "metronome.fill"
+        case .sequencing:
+            return "point.3.connected.trianglepath.dotted"
+        case .path:
+            return "arrow.triangle.turn.up.right.diamond"
         case .distanceControl:
             return "arrow.left.and.right"
         case .pressure:

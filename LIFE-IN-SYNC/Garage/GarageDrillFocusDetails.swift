@@ -708,11 +708,11 @@ enum GarageDrillFocusDetails {
         case .rotation:
             return ["Crowded", "Deep turn", "Balanced", "Early lift"]
         case .ballStriking:
-            <#code#>
+            return ["Thin", "Fat", "Clean", "Centered", "Rushed"]
         case .sequencing:
-            <#code#>
+            return ["Early arms", "Late turn", "Synced", "Rushed"]
         case .path:
-            <#code#>
+            return ["Inside", "Outside", "Clean gate", "Steered"]
         }
     }
 
