@@ -80,6 +80,7 @@ private enum GarageTempoCue {
 private struct GarageTempoConfiguration: Equatable {
     var beatsPerMinute: Double = 72
     var setupDelay: Double = 5
+    var targetCycles: Int = 3
     var audioEnabled = true
     var hapticsEnabled = false
 
@@ -717,6 +718,19 @@ private struct GarageTempoReadyLayout: View {
             )
             .frame(height: 76)
 
+            GarageTempoCyclePresetSelector(
+                targetCycles: Binding(
+                    get: { configuration.targetCycles },
+                    set: { nextValue in
+                        guard nextValue != configuration.targetCycles else { return }
+                        configuration.targetCycles = nextValue
+                        onConfigurationChange(configuration)
+                    }
+                ),
+                isLocked: false,
+                hapticsEnabled: hapticsEnabled
+            )
+
             GarageTempoDialCard(
                 configuration: configuration,
                 progress: progress,
@@ -801,6 +815,7 @@ private struct GarageTempoActiveLayout: View {
             GarageTempoLiveTuneDock(
                 configuration: $configuration,
                 profile: $profile,
+                isLocked: true,
                 hapticsEnabled: hapticsEnabled,
                 onConfigurationChange: onConfigurationChange
             )
@@ -852,6 +867,19 @@ private struct GarageTempoPausedLayout: View {
                 configuration: configuration,
                 phaseLabel: phaseLabel,
                 cycleCount: cycleCount
+            )
+
+            GarageTempoCyclePresetSelector(
+                targetCycles: Binding(
+                    get: { configuration.targetCycles },
+                    set: { nextValue in
+                        guard nextValue != configuration.targetCycles else { return }
+                        configuration.targetCycles = nextValue
+                        onConfigurationChange(configuration)
+                    }
+                ),
+                isLocked: false,
+                hapticsEnabled: hapticsEnabled
             )
 
             GarageTempoDialCard(
@@ -1132,6 +1160,91 @@ private struct GarageTempoReadoutChip: View {
     }
 }
 
+private struct GarageTempoCyclePresetSelector: View {
+    @Binding var targetCycles: Int
+    let isLocked: Bool
+    let hapticsEnabled: Bool
+
+    private let options = [2, 3, 4]
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(options, id: \.self) { option in
+                Button {
+                    guard isLocked == false else { return }
+                    if hapticsEnabled {
+                        garageTriggerSelection()
+                    }
+                    targetCycles = option
+                } label: {
+                    GarageTempoCyclePresetButtonLabel(
+                        count: option,
+                        isSelected: targetCycles == option,
+                        isLocked: isLocked
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(isLocked)
+                .accessibilityLabel("\(option) cycle target")
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(GarageProTheme.insetSurface.opacity(0.34), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(GaragePremiumPalette.gold.opacity(0.12), lineWidth: 1)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Cycle target")
+    }
+}
+
+private struct GarageTempoCyclePresetButtonLabel: View {
+    let count: Int
+    let isSelected: Bool
+    let isLocked: Bool
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text("\(count)")
+                .font(.system(size: 16, weight: .black, design: .rounded))
+                .monospacedDigit()
+
+            Text("Cycles")
+                .font(.system(size: 8, weight: .black, design: .rounded))
+                .textCase(.uppercase)
+                .tracking(0.8)
+        }
+        .foregroundStyle(isSelected ? ModuleTheme.garageSurfaceDark : GarageProTheme.textPrimary)
+        .frame(maxWidth: .infinity, minHeight: 38)
+        .background {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .fill(GarageProTheme.insetSurface.opacity(0.68))
+
+            if isSelected {
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                GaragePremiumPalette.gold,
+                                GarageProTheme.accent.opacity(0.72)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(isSelected ? Color.white.opacity(0.22) : GarageProTheme.border.opacity(0.72), lineWidth: 1)
+        )
+        .opacity(isLocked ? 0.5 : 1)
+    }
+}
+
 private struct GarageTempoDialCard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -1296,9 +1409,9 @@ private struct GarageTempoJArcInstrument: View {
                     .blendMode(.screen)
                     .opacity(isRunning ? 0.86 : 0.52)
 
-                GarageTempoJArcMarker(point: addressPoint, title: "Address", role: .address, labelOffset: CGSize(width: -8, height: 34))
+                GarageTempoJArcMarker(point: addressPoint, title: "Address", role: .address, labelOffset: CGSize(width: -64, height: 24))
                 GarageTempoJArcMarker(point: topPoint, title: "Top", role: .top, labelOffset: CGSize(width: -24, height: -34))
-                GarageTempoJArcMarker(point: addressPoint, title: "Impact", role: .impact, isPulsing: impactPulse, labelOffset: CGSize(width: 62, height: 4))
+                GarageTempoJArcMarker(point: addressPoint, title: "Impact", role: .impact, isPulsing: impactPulse, labelOffset: CGSize(width: 76, height: -18))
 
                 GarageTempoImpactGate(
                     point: addressPoint,
@@ -1627,6 +1740,7 @@ private struct GarageTempoSetupPanel: View {
 private struct GarageTempoLiveTuneDock: View {
     @Binding var configuration: GarageTempoConfiguration
     @Binding var profile: GarageTempoProfile
+    let isLocked: Bool
     let hapticsEnabled: Bool
     let onConfigurationChange: (GarageTempoConfiguration) -> Void
 
@@ -1645,6 +1759,8 @@ private struct GarageTempoLiveTuneDock: View {
                 bounds: 60...90,
                 step: 1
             )
+            .disabled(isLocked)
+            .opacity(isLocked ? 0.5 : 1)
 
             GarageTempoCompactSliderCard(
                 title: "Setup",
@@ -1659,6 +1775,8 @@ private struct GarageTempoLiveTuneDock: View {
                 bounds: 3...10,
                 step: 1
             )
+            .disabled(isLocked)
+            .opacity(isLocked ? 0.5 : 1)
 
             GarageTempoProfileDockCard(
                 profile: $profile,
@@ -1666,6 +1784,8 @@ private struct GarageTempoLiveTuneDock: View {
                 hapticsEnabled: hapticsEnabled,
                 onConfigurationChange: onConfigurationChange
             )
+            .disabled(isLocked)
+            .opacity(isLocked ? 0.5 : 1)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 8)
