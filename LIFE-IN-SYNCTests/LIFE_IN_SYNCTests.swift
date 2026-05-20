@@ -48,14 +48,14 @@ struct LIFE_IN_SYNCTests {
     }
 
     @Test func garageCanonicalDrillBuildsDefaultPrescriptionWithoutMutatingCatalogTruth() async throws {
-        let drill = try #require(DrillVault.drill(for: "r13"))
-        let practiceDrill = drill.makeGeneratedPracticeTemplateDrill(seedKey: "test:r13")
+        let drill = try #require(DrillVault.drill(for: "N-06"))
+        let practiceDrill = drill.makeGeneratedPracticeTemplateDrill(seedKey: "test:N-06")
         let prescription = GarageDrillCatalog.defaultPrescription(for: practiceDrill)
 
-        #expect(prescription.selectedClub == drill.clubRange.displayName)
-        #expect(prescription.mode == .goal)
-        #expect(prescription.targetCount == 3)
-        #expect(prescription.goalText.contains("3 wedge carry numbers"))
+        #expect(prescription.selectedClub == practiceDrill.targetClub)
+        #expect(prescription.mode == .reps)
+        #expect(prescription.targetCount == drill.defaultRepCount)
+        #expect(prescription.goalText.contains("\(drill.defaultRepCount)"))
     }
 
     @Test func garageCustomDrillFallsBackToTransientPrescriptionLayer() async throws {
@@ -84,8 +84,8 @@ struct LIFE_IN_SYNCTests {
     }
 
     @Test func garageFocusRoomContentUsesPrescriptionGoalAndCompactExecutionFields() async throws {
-        let drill = try #require(DrillVault.drill(for: "r15"))
-        let practiceDrill = drill.makeGeneratedPracticeTemplateDrill(seedKey: "test:r15")
+        let drill = try #require(DrillVault.drill(for: "N-10"))
+        let practiceDrill = drill.makeGeneratedPracticeTemplateDrill(seedKey: "test:N-10")
         let base = GarageDrillCatalog.defaultPrescription(for: practiceDrill)
         let prescription = GarageDrillPrescription(
             drillID: practiceDrill.id,
@@ -118,10 +118,10 @@ struct LIFE_IN_SYNCTests {
 
     @Test func garageGeneratedPlanKeepsPrescriptionSidecarSeparateFromDrillDefinitions() async throws {
         let plan = GarageLocalCoachPlanner.generatePlan(
-            for: .range,
+            for: .net,
             recentRecords: [],
             desiredDurationMinutes: 24,
-            desiredDrillCount: 3
+            desiredDrillCount: 4
         )
         let session = plan.makeActivePracticeSession()
 
@@ -130,6 +130,52 @@ struct LIFE_IN_SYNCTests {
         #expect(session.drills.count == plan.drills.count)
         #expect(session.drills.allSatisfy { session.prescriptionsByDrillID[$0.id] != nil })
         #expect(plan.drills.map(\.title) == session.drills.map(\.title))
+    }
+
+    @Test func garageNetNoHistoryGenerationUsesBalancedDietFallback() async throws {
+        let plan = GarageLocalCoachPlanner.generatePlan(for: .net, recentRecords: [])
+        let generatedIDs = plan.drills.compactMap { DrillVault.canonicalDrill(for: $0)?.id }
+
+        #expect(generatedIDs == ["N-01", "N-06", "N-02", "N-10"])
+    }
+
+    @Test func garageGeneratedNetPlanUsesOnlyAuthoritativeRoster() async throws {
+        let plan = GarageLocalCoachPlanner.generatePlan(for: .net, recentRecords: [])
+        let rosterTitles = Set(DrillVault.drills(in: .net).map(\.title))
+
+        #expect(plan.drills.isEmpty == false)
+        #expect(plan.drills.allSatisfy { rosterTitles.contains($0.title) })
+        #expect(plan.drills.allSatisfy { DrillVault.canonicalDrill(for: $0) != nil })
+    }
+
+    @Test func garageLowFeelSuccessHistoryPrioritizesSameNetDrill() async throws {
+        let weakRecord = PracticeSessionRecord(
+            date: .now,
+            templateName: "Net Weakness Sample",
+            environment: PracticeEnvironment.net.rawValue,
+            completedDrills: 1,
+            totalDrills: 1,
+            drillResults: [
+                DrillResult(
+                    name: "Split-Grip Handle Control Drill",
+                    successfulReps: 5,
+                    totalReps: 10
+                )
+            ]
+        )
+        let plan = GarageLocalCoachPlanner.generatePlan(for: .net, recentRecords: [weakRecord])
+        let generatedIDs = plan.drills.compactMap { DrillVault.canonicalDrill(for: $0)?.id }
+
+        #expect(generatedIDs.first == "N-03")
+    }
+
+    @Test func garageRangeGenerationDoesNotInventDrillsWhenRosterIsEmpty() async throws {
+        let plan = GarageLocalCoachPlanner.generatePlan(for: .range, recentRecords: [])
+
+        #expect(DrillVault.drills(in: .range).isEmpty)
+        #expect(plan.drills.isEmpty)
+        #expect(plan.prescriptionsByDrillID.isEmpty)
+        #expect(plan.canStart == false)
     }
 
     // Stale course-mapping coverage references removed production types; quarantined until the Garage course-mapping feature is restored.

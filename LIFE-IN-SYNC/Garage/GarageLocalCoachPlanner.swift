@@ -87,6 +87,7 @@ enum GarageLocalCoachPlanner {
         desiredDurationMinutes: Int? = nil,
         desiredDrillCount: Int? = nil
     ) -> GarageGeneratedPracticePlan {
+        let authoritativeRoster = DrillVault.drills(in: environment)
         let environmentRecords = recentRecords
             .filter { $0.environment == environment.rawValue }
             .sorted { $0.date > $1.date }
@@ -116,7 +117,14 @@ enum GarageLocalCoachPlanner {
                 adaptiveRecommendations: adaptiveRecommendations
             )
         )
-        let plannedDrills = selection.selectedDrills.enumerated().map { offset, selectedDrill in
+        let selectedDrills = gatekeeperSelectedDrills(
+            from: selection,
+            authoritativeRoster: authoritativeRoster,
+            environment: environment,
+            environmentRecords: environmentRecords,
+            desiredDrillCount: desiredDrillCount
+        )
+        let plannedDrills = selectedDrills.enumerated().map { offset, selectedDrill in
             let templateDrill = selectedDrill.drill.makeGeneratedPracticeTemplateDrill(
                 seedKey: "local-plan:\(environment.rawValue):\(offset):\(selectedDrill.drill.id)",
                 prescribedRepCount: selectedDrill.prescribedRepCount
@@ -129,7 +137,7 @@ enum GarageLocalCoachPlanner {
                 drillID: templateDrill.id,
                 selectedClub: selectedDrill.drill.clubRange.displayName,
                 mode: basePrescription.mode,
-                durationSeconds: desiredDurationMinutes.flatMap { selection.selectedDrills.isEmpty ? nil : max(Int((Double($0) / Double(selection.selectedDrills.count) * 60.0).rounded()), 60) } ?? basePrescription.durationSeconds,
+                durationSeconds: desiredDurationMinutes.flatMap { selectedDrills.isEmpty ? nil : max(Int((Double($0) / Double(selectedDrills.count) * 60.0).rounded()), 60) } ?? basePrescription.durationSeconds,
                 targetCount: selectedDrill.prescribedRepCount,
                 goalText: basePrescription.goalText,
                 intensity: basePrescription.intensity,
@@ -166,6 +174,163 @@ enum GarageLocalCoachPlanner {
             prescriptionsByDrillID: prescriptionsByDrillID,
             plannedDurationMinutes: selection.estimatedDurationMinutes,
             coachRead: coachRead
+        )
+    }
+
+    private static let balancedNetFallbackIDs = ["N-01", "N-06", "N-02", "N-10"]
+    private static let lowFeelSuccessThreshold = 0.6
+    private static let recentHistoryLimit = 10
+
+    private static func gatekeeperSelectedDrills(
+        from selection: GaragePracticePlanSelection,
+        authoritativeRoster: [GarageDrill],
+        environment: PracticeEnvironment,
+        environmentRecords: [PracticeSessionRecord],
+        desiredDrillCount: Int?
+    ) -> [GarageSelectedPracticeDrill] {
+        guard authoritativeRoster.isEmpty == false else {
+            return []
+        }
+
+        let rosterIDs = Set(authoritativeRoster.map(\.id))
+        let rosterByID = Dictionary(uniqueKeysWithValues: authoritativeRoster.map { ($0.id, $0) })
+        let validSelectedDrills = selection.selectedDrills.filter { rosterIDs.contains($0.drill.id) }
+        let fallbackTargetCount = min(balancedNetFallbackIDs.count, authoritativeRoster.count)
+        let targetCount = min(
+            max(desiredDrillCount ?? max(validSelectedDrills.count, fallbackTargetCount), 1),
+            authoritativeRoster.count
+        )
+
+        guard environment == .net else {
+            return validSelectedDrills
+        }
+
+        if environmentRecords.isEmpty {
+            return balancedNetFallbackDrills(from: rosterByID)
+        }
+
+        var selectedDrills: [GarageSelectedPracticeDrill] = []
+        var selectedIDs = Set<String>()
+
+        for drill in lowFeelSuccessPriorityDrills(
+            from: environmentRecords,
+            authoritativeRoster: authoritativeRoster
+        ) {
+            guard selectedDrills.count < targetCount else {
+                break
+            }
+
+            guard selectedIDs.insert(drill.id).inserted else {
+                continue
+            }
+
+            if let existingSelection = validSelectedDrills.first(where: { $0.drill.id == drill.id }) {
+                selectedDrills.append(existingSelection)
+            } else {
+                selectedDrills.append(selectedPracticeDrill(for: drill))
+            }
+        }
+
+        for selectedDrill in validSelectedDrills where selectedIDs.insert(selectedDrill.drill.id).inserted {
+            guard selectedDrills.count < targetCount else {
+                break
+            }
+
+            selectedDrills.append(selectedDrill)
+        }
+
+        if selectedDrills.isEmpty {
+            return balancedNetFallbackDrills(from: rosterByID)
+        }
+
+        for fallbackDrillID in balancedNetFallbackIDs where selectedIDs.insert(fallbackDrillID).inserted {
+            guard selectedDrills.count < targetCount,
+                  let fallbackDrill = rosterByID[fallbackDrillID] else {
+                continue
+            }
+
+            selectedDrills.append(selectedPracticeDrill(for: fallbackDrill))
+        }
+
+        return selectedDrills
+    }
+
+    private static func balancedNetFallbackDrills(
+        from rosterByID: [String: GarageDrill]
+    ) -> [GarageSelectedPracticeDrill] {
+        balancedNetFallbackIDs.compactMap { drillID in
+            rosterByID[drillID].map { selectedPracticeDrill(for: $0) }
+        }
+    }
+
+    private static func lowFeelSuccessPriorityDrills(
+        from records: [PracticeSessionRecord],
+        authoritativeRoster: [GarageDrill]
+    ) -> [GarageDrill] {
+        let rosterIDs = Set(authoritativeRoster.map(\.id))
+        let firstRosterDrillByCategory = Dictionary(
+            authoritativeRoster.map { (DrillVault.metadata(for: $0).primaryCategory, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        var buckets: [String: GarageFeelSuccessBucket] = [:]
+
+        for record in records.prefix(recentHistoryLimit) {
+            for result in record.drillResults where result.totalReps > 0 {
+                guard let drill = gatekeeperDrill(
+                    for: result,
+                    rosterIDs: rosterIDs,
+                    firstRosterDrillByCategory: firstRosterDrillByCategory
+                ) else {
+                    continue
+                }
+
+                buckets[drill.id, default: GarageFeelSuccessBucket(drill: drill)].record(result)
+            }
+        }
+
+        return buckets.values
+            .filter { $0.successRatio < lowFeelSuccessThreshold }
+            .sorted { lhs, rhs in
+                if lhs.successRatio == rhs.successRatio {
+                    return lhs.totalReps > rhs.totalReps
+                }
+
+                return lhs.successRatio < rhs.successRatio
+            }
+            .map(\.drill)
+    }
+
+    private static func gatekeeperDrill(
+        for result: DrillResult,
+        rosterIDs: Set<String>,
+        firstRosterDrillByCategory: [GarageDrillLibraryCategory: GarageDrill]
+    ) -> GarageDrill? {
+        if let drill = DrillVault.canonicalDrill(for: result.name) {
+            if rosterIDs.contains(drill.id) {
+                return drill
+            }
+
+            let metadata = DrillVault.metadata(for: drill)
+            if let categoryEquivalent = firstRosterDrillByCategory[metadata.primaryCategory] {
+                return categoryEquivalent
+            }
+        }
+
+        if let snapshot = result.garageMetadataSnapshot {
+            return firstRosterDrillByCategory[snapshot.primaryCategory]
+        }
+
+        return nil
+    }
+
+    private static func selectedPracticeDrill(for drill: GarageDrill) -> GarageSelectedPracticeDrill {
+        let metadata = DrillVault.metadata(for: drill)
+
+        return GarageSelectedPracticeDrill(
+            drill: drill,
+            metadata: metadata,
+            prescribedRepCount: min(max(drill.defaultRepCount, metadata.minReps), metadata.maxReps),
+            selectionScore: 0
         )
     }
 
@@ -227,6 +392,25 @@ enum GarageLocalCoachPlanner {
         }
 
         return "\(adaptivePrefix) No clear carry-forward cue was saved. Use this session to create one reliable note for the next practice."
+    }
+}
+
+private struct GarageFeelSuccessBucket {
+    let drill: GarageDrill
+    private(set) var successfulReps: Int = 0
+    private(set) var totalReps: Int = 0
+
+    var successRatio: Double {
+        guard totalReps > 0 else {
+            return 1
+        }
+
+        return Double(successfulReps) / Double(totalReps)
+    }
+
+    mutating func record(_ result: DrillResult) {
+        successfulReps += result.successfulReps
+        totalReps += result.totalReps
     }
 }
 

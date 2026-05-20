@@ -43,11 +43,17 @@ struct GarageView: View {
                                 garageTriggerSelection()
                                 path.append(.buildRoutine(environment))
                             },
+                            onOpenCatalog: {
+                                garageTriggerSelection()
+                                path.append(.drillCatalog(environment))
+                            },
                             onReviewManualSelection: { reviewPlan in
                                 garageTriggerSelection()
                                 path.append(.routineReview(reviewPlan))
                             }
                         )
+                    case let .drillCatalog(environment):
+                        GarageDrillCatalogView(environment: environment)
                     case let .savedRoutines(environment):
                         GarageSavedRoutinesView(
                             environment: environment,
@@ -86,11 +92,6 @@ struct GarageView: View {
                         GarageJournalArchiveView()
                     case .vault:
                         GarageSkillVaultView()
-                    case .drillLibrary:
-                        GarageDrillLibraryView { session in
-                            garageTriggerSelection()
-                            path.append(.activeSession(session))
-                        }
                     case let .routineReview(reviewPlan):
                         GarageRoutineReviewView(reviewPlan: reviewPlan) { reviewedPlan in
                             garageTriggerSelection()
@@ -111,7 +112,6 @@ struct GarageView: View {
                             session: session,
                             onEndSession: {
                                 path.removeAll()
-                                path.append(.vault)
                             }
                         )
                     case let .sessionRecord(record):
@@ -131,11 +131,11 @@ private enum GarageNavigationDestination: Hashable {
     case savedRoutines(PracticeEnvironment)
     case generateRoutine(PracticeEnvironment)
     case buildRoutine(PracticeEnvironment)
+    case drillCatalog(PracticeEnvironment)
     case tempoBuilder
     case journalNewEntry
     case journalArchive
     case vault
-    case drillLibrary
     case routineReview(GarageRoutineReviewPlan)
     case coachPlan(GarageGeneratedPracticePlan)
     case diagnostic(PracticeEnvironment?)

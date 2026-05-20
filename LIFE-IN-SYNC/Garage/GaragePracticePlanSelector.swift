@@ -101,6 +101,10 @@ enum GaragePracticePlanSelector {
             + GarageAdaptiveRecommendationEngine.validationErrors()
 
         for environment in PracticeEnvironment.allCases {
+            guard DrillVault.drills(in: environment).isEmpty == false else {
+                continue
+            }
+
             let selection = selectPlan(for: GaragePracticePlanInput(environment: environment))
             if selection.selectedDrills.isEmpty {
                 errors.append("Selector returned no fallback drills for \(environment.displayName).")

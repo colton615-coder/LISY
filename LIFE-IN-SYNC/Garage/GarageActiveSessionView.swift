@@ -286,6 +286,7 @@ struct GarageActiveSessionView: View {
             drillID: currentEntry.drill.id,
             title: currentEntry.drill.title,
             mode: payload.mode,
+            baseRepCount: max(session.prescription(for: currentEntry.drill.id).projectedAttemptCount, 1),
             elapsedSeconds: payload.elapsedSeconds,
             durationSeconds: payload.durationSeconds,
             targetMetric: currentDrillPresentation?.content.targetMetric ?? "Complete the timed block."
@@ -314,7 +315,8 @@ struct GarageActiveSessionView: View {
             indexAfter: nextUnresolvedDrillIndex(after: indexBefore) ?? indexBefore,
             completedCountBefore: completedCountBefore,
             completedCountAfter: session.completedDrillCount,
-            totalReps: 1
+            successfulReps: review.successfulReps(totalReps: pendingReview.baseRepCount),
+            totalReps: pendingReview.baseRepCount
         )
 
         self.pendingDrillReview = nil
@@ -415,6 +417,7 @@ struct GarageActiveSessionView: View {
             indexAfter: indexAfter,
             completedCountBefore: completedCountBefore,
             completedCountAfter: session.completedDrillCount,
+            successfulReps: outcome == .completedTarget ? 1 : 0,
             totalReps: outcome == .skipped ? 0 : 1
         )
         resolver = nil
@@ -444,6 +447,7 @@ struct GarageActiveSessionView: View {
         indexAfter: Int,
         completedCountBefore: Int,
         completedCountAfter: Int,
+        successfulReps: Int,
         totalReps: Int
     ) {
         #if DEBUG
@@ -453,7 +457,7 @@ struct GarageActiveSessionView: View {
 
         let result = DrillResult(
             name: drillTitle,
-            successfulReps: outcome == .completedTarget ? 1 : 0,
+            successfulReps: successfulReps,
             totalReps: totalReps,
             outcome: outcome
         )
@@ -554,6 +558,7 @@ private struct GaragePendingDrillReview: Hashable {
     let drillID: UUID
     let title: String
     let mode: GarageDrillFocusMode
+    let baseRepCount: Int
     let elapsedSeconds: Int
     let durationSeconds: Int
     let targetMetric: String
@@ -562,7 +567,7 @@ private struct GaragePendingDrillReview: Hashable {
 private struct GaragePostDrillReviewDraft: Hashable {
     let mode: GarageDrillFocusMode
     var outcome: GarageDrillOutcome
-    var confidenceRating: Int
+    var feelSuccessScore: Int
     var targetReached: Bool
     var pressurePassed: Bool
     var note: String
@@ -570,36 +575,32 @@ private struct GaragePostDrillReviewDraft: Hashable {
     init(
         mode: GarageDrillFocusMode,
         outcome: GarageDrillOutcome = .completedTarget,
-        confidenceRating: Int = 3,
+        feelSuccessScore: Int? = nil,
         targetReached: Bool = false,
         pressurePassed: Bool = false,
         note: String = ""
     ) {
         self.mode = mode
         self.outcome = outcome
-        self.confidenceRating = confidenceRating
+        self.feelSuccessScore = min(max(feelSuccessScore ?? Self.defaultFeelSuccessScore(for: outcome), 0), 100)
         self.targetReached = targetReached
         self.pressurePassed = pressurePassed
         self.note = note
     }
 
     var isComplete: Bool {
-        (1...5).contains(confidenceRating)
+        (0...100).contains(feelSuccessScore)
     }
 
-    var successfulUnits: Int {
+    func successfulReps(totalReps: Int) -> Int {
         guard outcome != .skipped else {
             return 0
         }
 
-        switch mode {
-        case .process:
-            return outcome == .completedTarget && confidenceRating >= 3 ? 1 : 0
-        case .target:
-            return outcome == .completedTarget && targetReached ? 1 : 0
-        case .pressureTest:
-            return outcome == .completedTarget && pressurePassed ? 1 : 0
-        }
+        let clampedTotal = max(totalReps, 0)
+        let clampedScore = min(max(feelSuccessScore, 0), 100)
+        let rawSuccessfulReps = Double(clampedTotal) * Double(clampedScore) / 100
+        return min(max(Int(rawSuccessfulReps.rounded()), 0), clampedTotal)
     }
 
     var outcomeSummary: String {
@@ -607,13 +608,19 @@ private struct GaragePostDrillReviewDraft: Hashable {
             return outcome.displayTitle
         }
 
-        switch mode {
-        case .process:
-            return "Quality \(confidenceRating)/5"
-        case .target:
-            return "\(targetReached ? "Target reached" : "Target close") - Confidence \(confidenceRating)/5"
-        case .pressureTest:
-            return "\(pressurePassed ? "Passed" : "Failed") - Confidence \(confidenceRating)/5"
+        return "Feel Success \(feelSuccessScore)%"
+    }
+
+    private static func defaultFeelSuccessScore(for outcome: GarageDrillOutcome) -> Int {
+        switch outcome {
+        case .completedTarget:
+            return 80
+        case .completedEarly:
+            return 70
+        case .partial:
+            return 50
+        case .skipped:
+            return 0
         }
     }
 }
@@ -809,43 +816,41 @@ private struct GaragePostDrillReviewView: View {
             )
 
             GarageTelemetrySurface(isActive: true) {
-                GarageFocusLabel("Block Outcome")
+                GarageFocusLabel("Feel Success Score")
 
-                Text(pendingReview.targetMetric)
+                Text("What percentage of reps produced the intended feel?")
                     .font(.headline.weight(.bold))
                     .foregroundStyle(GarageProTheme.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                modeSpecificControls
-            }
+                Text("If 8 out of 10 reps produced the intended feel, enter 80%.")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(GarageProTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            GarageTelemetrySurface(isActive: true) {
-                GarageFocusLabel("Quality / Confidence")
+                HStack(alignment: .lastTextBaseline, spacing: 8) {
+                    Text("\(review.feelSuccessScore)")
+                        .font(.system(size: 48, weight: .black, design: .rounded))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+                        .monospacedDigit()
 
-                HStack(spacing: 8) {
-                    ForEach(1...5, id: \.self) { value in
-                        Button {
-                            garageTriggerSelection()
-                            review.confidenceRating = value
-                        } label: {
-                            Text("\(value)")
-                                .font(.system(size: 18, weight: .black, design: .rounded))
-                                .foregroundStyle(review.confidenceRating == value ? ModuleTheme.garageCanvas : GarageProTheme.textPrimary)
-                                .frame(maxWidth: .infinity, minHeight: 48)
-                                .background(
-                                    review.confidenceRating == value
-                                    ? GarageProTheme.accent
-                                    : GarageProTheme.insetSurface,
-                                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                        .stroke(GarageProTheme.border, lineWidth: 1)
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
+                    Text("%")
+                        .font(.system(size: 20, weight: .black, design: .rounded))
+                        .foregroundStyle(GarageProTheme.accent)
+                        .padding(.bottom, 7)
                 }
+
+                Slider(
+                    value: Binding(
+                        get: { Double(review.feelSuccessScore) },
+                        set: { review.feelSuccessScore = min(max(Int($0.rounded()), 0), 100) }
+                    ),
+                    in: 0...100,
+                    step: 1
+                )
+                .tint(GarageProTheme.accent)
+                .accessibilityLabel("Feel Success Score")
+                .accessibilityValue("\(review.feelSuccessScore) percent")
 
                 TextField("Optional note from the block", text: $review.note, axis: .vertical)
                     .lineLimit(2...4)
@@ -875,56 +880,6 @@ private struct GaragePostDrillReviewView: View {
                         onContinue(review)
                     }
                 }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var modeSpecificControls: some View {
-        switch pendingReview.mode {
-        case .process:
-            GaragePostDrillOutcomeButton(
-                title: "Process block completed",
-                subtitle: "Quality rating is the main review signal.",
-                systemImage: "checkmark.seal.fill",
-                isSelected: true,
-                action: {}
-            )
-        case .target:
-            HStack(spacing: 10) {
-                GaragePostDrillOutcomeButton(
-                    title: "Reached",
-                    subtitle: "Target felt achieved.",
-                    systemImage: "scope",
-                    isSelected: review.targetReached,
-                    action: { review.targetReached = true }
-                )
-
-                GaragePostDrillOutcomeButton(
-                    title: "Close",
-                    subtitle: "Useful miss or near target.",
-                    systemImage: "circle.dashed",
-                    isSelected: review.targetReached == false,
-                    action: { review.targetReached = false }
-                )
-            }
-        case .pressureTest:
-            HStack(spacing: 10) {
-                GaragePostDrillOutcomeButton(
-                    title: "Pass",
-                    subtitle: "Pressure standard held.",
-                    systemImage: "checkmark.seal.fill",
-                    isSelected: review.pressurePassed,
-                    action: { review.pressurePassed = true }
-                )
-
-                GaragePostDrillOutcomeButton(
-                    title: "Fail",
-                    subtitle: "Standard broke under pressure.",
-                    systemImage: "xmark.seal.fill",
-                    isSelected: review.pressurePassed == false,
-                    action: { review.pressurePassed = false }
-                )
             }
         }
     }
@@ -1777,7 +1732,7 @@ private struct GarageSessionSummaryDraft: Identifiable {
             let review = reviewByDrillID[entry.drill.id] ?? GaragePostDrillReviewDraft(mode: content.mode)
             let totalReps = max(prescription.projectedAttemptCount, 1)
             let outcome = entry.progress.resolvedOutcome ?? review.outcome
-            let successfulReps = entry.progress.isCompletedTarget ? review.successfulUnits : 0
+            let successfulReps = review.successfulReps(totalReps: totalReps)
 
             return GarageSessionDrillResultDraft(
                 id: entry.drill.id,
