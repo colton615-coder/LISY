@@ -565,7 +565,7 @@ private final class GarageTempoEngine: NSObject, ObservableObject {
 }
 
 @MainActor
-struct GarageTempoBuilderView: View {
+struct GarageTempoBuilderLegacyView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var engine = GarageTempoEngine()
     @State private var configuration = GarageTempoConfiguration()
