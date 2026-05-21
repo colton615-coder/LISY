@@ -4,6 +4,9 @@ import SwiftUI
 struct EngineRoomSettingsView: View {
     @Binding var recipe: ElasticSlingshotRecipe
     @Binding var soundProfile: ElasticSlingshotSoundProfile
+    let beatsPerMinute: Double
+
+    @StateObject private var previewEngine = ElasticSlingshotAudioEngine()
 
     private let neonGreen = Color(red: 0, green: 1, blue: 0.67)
     private let deepGreen = Color(red: 0.02, green: 0.04, blue: 0.024)
@@ -28,6 +31,9 @@ struct EngineRoomSettingsView: View {
                 .padding(.top, 24)
                 .padding(.bottom, 32)
             }
+        }
+        .onDisappear {
+            previewEngine.stop()
         }
     }
 
@@ -136,7 +142,11 @@ struct EngineRoomSettingsView: View {
 
     private var testToneButton: some View {
         Button {
-            print("Test Tones: recipe=\(recipe.displayText), delay=\(recipe.restInterval), soundProfile=\(soundProfile.rawValue)")
+            previewEngine.playOneCycle(
+                beatsPerMinute: beatsPerMinute,
+                recipe: recipe,
+                soundProfile: soundProfile
+            )
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "waveform")
@@ -262,5 +272,5 @@ private struct EngineRoomBackground: View {
     @Previewable @State var recipe = ElasticSlingshotRecipe()
     @Previewable @State var soundProfile = ElasticSlingshotSoundProfile.analogBand
 
-    EngineRoomSettingsView(recipe: $recipe, soundProfile: $soundProfile)
+    EngineRoomSettingsView(recipe: $recipe, soundProfile: $soundProfile, beatsPerMinute: 72)
 }

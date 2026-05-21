@@ -24,7 +24,7 @@ struct GarageTempoBuilderView: View {
                 HorizonVaultDialView(beatsPerMinute: $beatsPerMinute)
                     .frame(height: 196)
                     .onChange(of: beatsPerMinute) { _, newValue in
-                        audioEngine.update(beatsPerMinute: newValue, recipe: recipe)
+                        audioEngine.update(beatsPerMinute: newValue, recipe: recipe, soundProfile: soundProfile)
                     }
 
                 Spacer(minLength: 26)
@@ -41,12 +41,13 @@ struct GarageTempoBuilderView: View {
         .sheet(isPresented: $showsEngineRoom) {
             EngineRoomSettingsView(
                 recipe: $recipe,
-                soundProfile: $soundProfile
+                soundProfile: $soundProfile,
+                beatsPerMinute: beatsPerMinute
             )
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
             .onDisappear {
-                audioEngine.update(beatsPerMinute: beatsPerMinute, recipe: recipe)
+                audioEngine.update(beatsPerMinute: beatsPerMinute, recipe: recipe, soundProfile: soundProfile)
             }
         }
         .onDisappear {
@@ -62,7 +63,7 @@ struct GarageTempoBuilderView: View {
 
         switch audioEngine.playbackState {
         case .stopped:
-            audioEngine.start(beatsPerMinute: beatsPerMinute, recipe: recipe)
+            audioEngine.start(beatsPerMinute: beatsPerMinute, recipe: recipe, soundProfile: soundProfile)
         case .playing:
             audioEngine.stop()
         }
