@@ -90,6 +90,52 @@ enum ElasticSlingshotPlaybackState: Equatable {
     case playing
 }
 
+enum ElasticSlingshotSoundProfile: String, CaseIterable, Identifiable {
+    case analogBand
+    case pureSynth
+    case ratchet
+    case whip
+    case percussive
+    case sonar
+    case elastic
+    case tensionSnap
+    case ping
+    case drip
+    case clack
+    case swoosh
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .analogBand:
+            return "Analog Band"
+        case .pureSynth:
+            return "Pure Synth"
+        case .ratchet:
+            return "Ratchet"
+        case .whip:
+            return "Whip"
+        case .percussive:
+            return "Percussive"
+        case .sonar:
+            return "Sonar"
+        case .elastic:
+            return "Elastic"
+        case .tensionSnap:
+            return "Tension Snap"
+        case .ping:
+            return "Ping"
+        case .drip:
+            return "Drip"
+        case .clack:
+            return "Clack"
+        case .swoosh:
+            return "Swoosh"
+        }
+    }
+}
+
 private struct ElasticSlingshotRenderConfiguration {
     var beatsPerMinute: Double
     var recipe: ElasticSlingshotRecipe

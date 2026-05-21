@@ -6,6 +6,7 @@ struct GarageTempoBuilderView: View {
     @StateObject private var audioEngine = ElasticSlingshotAudioEngine()
     @State private var beatsPerMinute: Double = 72
     @State private var recipe = ElasticSlingshotRecipe()
+    @State private var soundProfile: ElasticSlingshotSoundProfile = .analogBand
     @State private var showsEngineRoom = false
 
     var body: some View {
@@ -38,12 +39,11 @@ struct GarageTempoBuilderView: View {
             .padding(.top, 10)
         }
         .sheet(isPresented: $showsEngineRoom) {
-            GarageElasticSlingshotEngineRoom(
+            EngineRoomSettingsView(
                 recipe: $recipe,
-                beatsPerMinute: beatsPerMinute,
-                isLocked: audioEngine.playbackState == .playing
+                soundProfile: $soundProfile
             )
-            .presentationDetents([.height(460), .medium])
+            .presentationDetents([.large])
             .presentationDragIndicator(.visible)
             .onDisappear {
                 audioEngine.update(beatsPerMinute: beatsPerMinute, recipe: recipe)
@@ -253,102 +253,6 @@ private struct GarageHorizonVaultPlayToggle: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(isPlaying ? "Stop tempo loop" : "Play tempo loop")
-    }
-}
-
-private struct GarageElasticSlingshotEngineRoom: View {
-    @Binding var recipe: ElasticSlingshotRecipe
-    let beatsPerMinute: Double
-    let isLocked: Bool
-
-    var body: some View {
-        ZStack {
-            GarageHorizonVaultBackground()
-
-            VStack(alignment: .leading, spacing: 22) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Engine Room")
-                        .font(.system(size: 24, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
-
-                    Text("Recipe split stays locked while the master BPM scales total duration.")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.58))
-                }
-
-                VStack(spacing: 18) {
-                    GarageRecipeSlider(
-                        title: "Takeaway",
-                        value: recipe.takeawayPercent,
-                        duration: recipe.takeawayDuration(for: beatsPerMinute),
-                        tint: Color(red: 0, green: 1, blue: 0.67),
-                        isLocked: isLocked
-                    ) { nextValue in
-                        recipe.rebalance(changedPhase: .takeaway, value: nextValue)
-                    }
-
-                    GarageRecipeSlider(
-                        title: "Pause",
-                        value: recipe.pausePercent,
-                        duration: recipe.pauseDuration(for: beatsPerMinute),
-                        tint: Color(red: 1, green: 0.93, blue: 0.1),
-                        isLocked: isLocked
-                    ) { nextValue in
-                        recipe.rebalance(changedPhase: .pause, value: nextValue)
-                    }
-
-                    GarageRecipeSlider(
-                        title: "Downswing",
-                        value: recipe.downswingPercent,
-                        duration: recipe.downswingDuration(for: beatsPerMinute),
-                        tint: Color(red: 0.53, green: 0.9, blue: 1),
-                        isLocked: isLocked
-                    ) { nextValue in
-                        recipe.rebalance(changedPhase: .downswing, value: nextValue)
-                    }
-                }
-
-                Spacer(minLength: 0)
-            }
-            .padding(22)
-        }
-    }
-}
-
-private struct GarageRecipeSlider: View {
-    let title: String
-    let value: Double
-    let duration: TimeInterval
-    let tint: Color
-    let isLocked: Bool
-    let onChange: (Double) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack {
-                Text(title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
-
-                Spacer()
-
-                Text("\(Int(value.rounded()))%  \(duration, specifier: "%.2f")s")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(tint)
-            }
-
-            Slider(
-                value: Binding(
-                    get: { value },
-                    set: onChange
-                ),
-                in: 0...100
-            )
-            .tint(tint)
-            .disabled(isLocked)
-            .opacity(isLocked ? 0.45 : 1)
-        }
     }
 }
 
