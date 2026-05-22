@@ -19,11 +19,11 @@ struct EngineRoomSettingsView: View {
                 VStack(alignment: .leading, spacing: 22) {
                     header
 
-                    ratioMatrix
+                    ratioTuner
 
                     soundLibrary
 
-                    loopDelayControl
+                    breakBetweenSwingsControl
 
                     testToneButton
                 }
@@ -54,7 +54,7 @@ struct EngineRoomSettingsView: View {
 
                 Spacer()
 
-                Text("\(Int(totalPercent.rounded()))%")
+                Text(recipe.displayText)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(.white.opacity(0.82))
@@ -72,33 +72,33 @@ struct EngineRoomSettingsView: View {
         }
     }
 
-    private var ratioMatrix: some View {
+    private var ratioTuner: some View {
         EngineRoomPanel {
             VStack(alignment: .leading, spacing: 18) {
-                EngineRoomSectionHeader(title: "Ratio % Matrix", value: recipe.displayText)
+                EngineRoomSectionHeader(title: "Ratio Tuner", value: recipe.displayText)
 
-                RatioSliderRow(
-                    title: "Takeback",
-                    value: recipe.takeawayPercent,
-                    tint: neonGreen
-                ) { nextValue in
-                    recipe.rebalance(changedPhase: .takeaway, value: nextValue.rounded())
-                }
-
-                RatioSliderRow(
-                    title: "Pause",
-                    value: recipe.pausePercent,
-                    tint: Color(red: 1, green: 0.93, blue: 0.1)
-                ) { nextValue in
-                    recipe.rebalance(changedPhase: .pause, value: nextValue.rounded())
-                }
-
-                RatioSliderRow(
-                    title: "Downswing",
-                    value: recipe.downswingPercent,
-                    tint: Color(red: 0.53, green: 0.9, blue: 1)
-                ) { nextValue in
-                    recipe.rebalance(changedPhase: .downswing, value: nextValue.rounded())
+                HStack(spacing: 8) {
+                    ForEach(ElasticSlingshotTempoRatio.allCases) { ratio in
+                        Button {
+                            recipe.tempoRatio = ratio
+                        } label: {
+                            Text(ratio.title)
+                                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(recipe.tempoRatio == ratio ? deepGreen : .white.opacity(0.84))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 44)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .fill(recipe.tempoRatio == ratio ? neonGreen : Color.white.opacity(0.055))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .stroke(recipe.tempoRatio == ratio ? neonGreen.opacity(0.72) : Color.white.opacity(0.09), lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
         }
@@ -109,33 +109,71 @@ struct EngineRoomSettingsView: View {
             VStack(alignment: .leading, spacing: 14) {
                 EngineRoomSectionHeader(title: "Sound Profile", value: soundProfile.title)
 
-                Picker("Sound Profile", selection: $soundProfile) {
+                VStack(spacing: 8) {
                     ForEach(ElasticSlingshotSoundProfile.allCases) { profile in
-                        Text(profile.title).tag(profile)
+                        Button {
+                            soundProfile = profile
+                            previewEngine.playOneCycle(
+                                beatsPerMinute: beatsPerMinute,
+                                recipe: recipe,
+                                soundProfile: profile
+                            )
+                        } label: {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(profile.title)
+                                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(.white)
+
+                                    Text(profile.description)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(.white.opacity(0.58))
+                                }
+
+                                Spacer()
+
+                                Circle()
+                                    .fill(soundProfile == profile ? neonGreen : Color.white.opacity(0.18))
+                                    .frame(width: 10, height: 10)
+                            }
+                            .padding(.horizontal, 14)
+                            .frame(height: 58)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(soundProfile == profile ? neonGreen.opacity(0.12) : Color.white.opacity(0.045))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .stroke(soundProfile == profile ? neonGreen.opacity(0.36) : Color.white.opacity(0.08), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .pickerStyle(.wheel)
-                .frame(height: 128)
-                .clipped()
-                .tint(neonGreen)
             }
         }
     }
 
-    private var loopDelayControl: some View {
+    private var breakBetweenSwingsControl: some View {
         EngineRoomPanel {
-            VStack(alignment: .leading, spacing: 14) {
-                EngineRoomSectionHeader(title: "Loop Delay", value: loopDelayText)
+            VStack(alignment: .leading, spacing: 16) {
+                EngineRoomSectionHeader(title: "Break Between Swings", value: breakBetweenSwingsText)
 
-                Slider(
-                    value: Binding(
-                        get: { recipe.restInterval },
-                        set: { recipe.restInterval = min(max($0, 1), 10) }
-                    ),
-                    in: 1...10,
-                    step: 0.5
-                )
-                .tint(neonGreen)
+                HStack(spacing: 12) {
+                    EngineRoomStepButton(systemImage: "minus") {
+                        recipe.restInterval = max(recipe.restInterval - 1, 2)
+                    }
+
+                    Text(breakBetweenSwingsText)
+                        .font(.system(size: 30, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+
+                    EngineRoomStepButton(systemImage: "plus") {
+                        recipe.restInterval = min(recipe.restInterval + 1, 8)
+                    }
+                }
             }
         }
     }
@@ -168,46 +206,31 @@ struct EngineRoomSettingsView: View {
         .accessibilityLabel("Test Tones")
     }
 
-    private var totalPercent: Double {
-        recipe.takeawayPercent + recipe.pausePercent + recipe.downswingPercent
-    }
-
-    private var loopDelayText: String {
-        String(format: "%.1fs", recipe.restInterval)
+    private var breakBetweenSwingsText: String {
+        "\(Int(recipe.restInterval.rounded()))s"
     }
 }
 
-private struct RatioSliderRow: View {
-    let title: String
-    let value: Double
-    let tint: Color
-    let onChange: (Double) -> Void
+private struct EngineRoomStepButton: View {
+    let systemImage: String
+    let action: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack {
-                Text(title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
-
-                Spacer()
-
-                Text("\(Int(value.rounded()))%")
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(tint)
-            }
-
-            Slider(
-                value: Binding(
-                    get: { value },
-                    set: onChange
-                ),
-                in: 0...100,
-                step: 1
-            )
-            .tint(tint)
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 50, height: 46)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color.white.opacity(0.07))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                )
         }
+        .buttonStyle(.plain)
     }
 }
 
@@ -270,7 +293,7 @@ private struct EngineRoomBackground: View {
 
 #Preview("Engine Room Settings") {
     @Previewable @State var recipe = ElasticSlingshotRecipe()
-    @Previewable @State var soundProfile = ElasticSlingshotSoundProfile.analogBand
+    @Previewable @State var soundProfile = ElasticSlingshotSoundProfile.power
 
-    EngineRoomSettingsView(recipe: $recipe, soundProfile: $soundProfile, beatsPerMinute: 72)
+    EngineRoomSettingsView(recipe: $recipe, soundProfile: $soundProfile, beatsPerMinute: 75)
 }

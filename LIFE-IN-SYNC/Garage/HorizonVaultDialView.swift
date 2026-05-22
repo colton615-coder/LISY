@@ -4,9 +4,9 @@ import SwiftUI
 struct GarageTempoBuilderView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var audioEngine = ElasticSlingshotAudioEngine()
-    @State private var beatsPerMinute: Double = 72
+    @State private var beatsPerMinute: Double = 75
     @State private var recipe = ElasticSlingshotRecipe()
-    @State private var soundProfile: ElasticSlingshotSoundProfile = .analogBand
+    @State private var soundProfile: ElasticSlingshotSoundProfile = .power
     @State private var showsEngineRoom = false
 
     var body: some View {
@@ -59,8 +59,6 @@ struct GarageTempoBuilderView: View {
     }
 
     private func togglePlayback() {
-        garageTriggerImpact(.medium)
-
         switch audioEngine.playbackState {
         case .stopped:
             audioEngine.start(beatsPerMinute: beatsPerMinute, recipe: recipe, soundProfile: soundProfile)
@@ -79,8 +77,8 @@ struct HorizonVaultDialView: View {
     @Binding var beatsPerMinute: Double
     @State private var dragStartBPM: Double?
 
-    private let minimumBPM = 40.0
-    private let maximumBPM = 140.0
+    private let minimumBPM = 50.0
+    private let maximumBPM = 90.0
     private let pointsPerBeat: CGFloat = 11
     private let neonGreen = Color(red: 0, green: 1, blue: 0.67)
     private let neonYellow = Color(red: 1, green: 0.93, blue: 0.1)

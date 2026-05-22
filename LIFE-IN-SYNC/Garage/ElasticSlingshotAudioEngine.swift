@@ -3,25 +3,23 @@ import Combine
 import Foundation
 
 struct ElasticSlingshotRecipe: Equatable {
-    var takeawayPercent: Double = 70
-    var pausePercent: Double = 10
-    var downswingPercent: Double = 20
-    var restInterval: TimeInterval = 1.15
+    var tempoRatio: ElasticSlingshotTempoRatio = .tour
+    var restInterval: TimeInterval = 5
 
     var normalizedTakeaway: Double {
-        normalizedPhaseValues.takeaway
+        tempoRatio.phaseFractions.takeaway
     }
 
     var normalizedPause: Double {
-        normalizedPhaseValues.pause
+        tempoRatio.phaseFractions.pause
     }
 
     var normalizedDownswing: Double {
-        normalizedPhaseValues.downswing
+        tempoRatio.phaseFractions.downswing
     }
 
     var displayText: String {
-        "\(Int(takeawayPercent.rounded())) / \(Int(pausePercent.rounded())) / \(Int(downswingPercent.rounded()))"
+        tempoRatio.title
     }
 
     func swingDuration(for beatsPerMinute: Double) -> TimeInterval {
@@ -43,46 +41,44 @@ struct ElasticSlingshotRecipe: Equatable {
     func loopDuration(for beatsPerMinute: Double) -> TimeInterval {
         swingDuration(for: beatsPerMinute) + restInterval
     }
+}
 
-    mutating func rebalance(changedPhase: ElasticSlingshotRecipePhase, value: Double) {
-        let clampedValue = min(max(value, 0), 100)
-        let remaining = 100 - clampedValue
+enum ElasticSlingshotTempoRatio: String, CaseIterable, Identifiable {
+    case punchy
+    case tour
+    case smooth
 
-        switch changedPhase {
-        case .takeaway:
-            let otherTotal = max(pausePercent + downswingPercent, 1)
-            takeawayPercent = clampedValue
-            pausePercent = remaining * pausePercent / otherTotal
-            downswingPercent = remaining * downswingPercent / otherTotal
-        case .pause:
-            let otherTotal = max(takeawayPercent + downswingPercent, 1)
-            pausePercent = clampedValue
-            takeawayPercent = remaining * takeawayPercent / otherTotal
-            downswingPercent = remaining * downswingPercent / otherTotal
-        case .downswing:
-            let otherTotal = max(takeawayPercent + pausePercent, 1)
-            downswingPercent = clampedValue
-            takeawayPercent = remaining * takeawayPercent / otherTotal
-            pausePercent = remaining * pausePercent / otherTotal
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .punchy:
+            return "2.5:1"
+        case .tour:
+            return "3:1"
+        case .smooth:
+            return "4:1"
         }
     }
 
-    private var normalizedPhaseValues: (takeaway: Double, pause: Double, downswing: Double) {
-        let total = max(takeawayPercent + pausePercent + downswingPercent, 1)
-        return (
-            takeaway: takeawayPercent / total,
-            pause: pausePercent / total,
-            downswing: downswingPercent / total
-        )
+    private var numericRatio: Double {
+        switch self {
+        case .punchy:
+            return 2.5
+        case .tour:
+            return 3.0
+        case .smooth:
+            return 4.0
+        }
     }
-}
 
-enum ElasticSlingshotRecipePhase: String, CaseIterable, Identifiable {
-    case takeaway = "Takeaway"
-    case pause = "Pause"
-    case downswing = "Downswing"
-
-    var id: String { rawValue }
+    var phaseFractions: (takeaway: Double, pause: Double, downswing: Double) {
+        let pause = 0.08
+        let movingShare = 1 - pause
+        let downswing = movingShare / (numericRatio + 1)
+        let takeaway = downswing * numericRatio
+        return (takeaway: takeaway, pause: pause, downswing: downswing)
+    }
 }
 
 enum ElasticSlingshotPlaybackState: Equatable {
@@ -91,47 +87,36 @@ enum ElasticSlingshotPlaybackState: Equatable {
 }
 
 enum ElasticSlingshotSoundProfile: String, CaseIterable, Identifiable {
-    case analogBand
-    case pureSynth
-    case ratchet
-    case whip
-    case percussive
-    case sonar
-    case elastic
-    case tensionSnap
-    case ping
-    case drip
-    case clack
-    case swoosh
+    case power
+    case precision
+    case flow
+    case modern
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .analogBand:
-            return "Analog Band"
-        case .pureSynth:
-            return "Pure Synth"
-        case .ratchet:
-            return "Ratchet"
-        case .whip:
-            return "Whip"
-        case .percussive:
-            return "Percussive"
-        case .sonar:
-            return "Sonar"
-        case .elastic:
-            return "Elastic"
-        case .tensionSnap:
-            return "Tension Snap"
-        case .ping:
-            return "Ping"
-        case .drip:
-            return "Drip"
-        case .clack:
-            return "Clack"
-        case .swoosh:
-            return "Swoosh"
+        case .power:
+            return "Power"
+        case .precision:
+            return "Precision"
+        case .flow:
+            return "Flow"
+        case .modern:
+            return "Modern"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .power:
+            return "Heavy snap release"
+        case .precision:
+            return "Clean measured cues"
+        case .flow:
+            return "Smooth tempo wave"
+        case .modern:
+            return "Bright synthetic pulse"
         }
     }
 }
@@ -230,9 +215,9 @@ private final class ElasticSlingshotRenderState {
     private let lock = NSLock()
     private let sampleRate: Double
     private var configuration = ElasticSlingshotRenderConfiguration(
-        beatsPerMinute: 72,
+        beatsPerMinute: 75,
         recipe: ElasticSlingshotRecipe(),
-        soundProfile: .analogBand,
+        soundProfile: .power,
         baseFrame: 0,
         mode: .continuous,
         isPlaying: false,
@@ -368,9 +353,9 @@ private final class ElasticSlingshotRenderState {
         let progress = min(max(progress, 0), 1)
 
         switch profile {
-        case .analogBand, .ratchet, .elastic, .tensionSnap, .clack, .swoosh:
+        case .power, .flow:
             return analogBandTakeback(progress: progress, drive: drive(for: profile))
-        case .pureSynth, .whip, .percussive, .sonar, .ping, .drip:
+        case .precision, .modern:
             return pureSynthTakeback(progress: progress, brightness: brightness(for: profile))
         }
     }
@@ -379,9 +364,9 @@ private final class ElasticSlingshotRenderState {
         let progress = min(max(progress, 0), 1)
 
         switch profile {
-        case .analogBand, .ratchet, .elastic, .tensionSnap, .clack, .swoosh:
+        case .power, .flow:
             return analogBandDownswing(progress: progress, drive: drive(for: profile))
-        case .pureSynth, .whip, .percussive, .sonar, .ping, .drip:
+        case .precision, .modern:
             return pureSynthDownswing(progress: progress, brightness: brightness(for: profile))
         }
     }
@@ -444,39 +429,23 @@ private final class ElasticSlingshotRenderState {
 
     private func drive(for profile: ElasticSlingshotSoundProfile) -> Double {
         switch profile {
-        case .analogBand:
-            return 1
-        case .ratchet:
-            return 1.35
-        case .elastic:
-            return 0.92
-        case .tensionSnap:
+        case .power:
             return 1.48
-        case .clack:
-            return 1.22
-        case .swoosh:
+        case .flow:
             return 0.82
-        default:
-            return 1
+        case .precision, .modern:
+            return 1.0
         }
     }
 
     private func brightness(for profile: ElasticSlingshotSoundProfile) -> Double {
         switch profile {
-        case .pureSynth:
-            return 1
-        case .whip:
-            return 1.28
-        case .percussive:
+        case .precision:
             return 0.78
-        case .sonar:
-            return 0.62
-        case .ping:
-            return 1.48
-        case .drip:
-            return 0.54
-        default:
-            return 1
+        case .modern:
+            return 1.28
+        case .power, .flow:
+            return 1.0
         }
     }
 
