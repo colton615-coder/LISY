@@ -8,6 +8,8 @@ struct GarageTempoBuilderView: View {
     @State private var recipe = ElasticSlingshotRecipe()
     @State private var soundProfile: ElasticSlingshotSoundProfile = .power
     @State private var showsEngineRoom = false
+    @State private var showsSwingCapture = false
+    @State private var lastSwingCaptureURL: URL?
 
     var body: some View {
         ZStack {
@@ -16,6 +18,7 @@ struct GarageTempoBuilderView: View {
             VStack(spacing: 0) {
                 GarageHorizonVaultTopBar(
                     onBack: close,
+                    onCapture: { showsSwingCapture = true },
                     onSettings: { showsEngineRoom = true }
                 )
 
@@ -48,6 +51,14 @@ struct GarageTempoBuilderView: View {
             .presentationDragIndicator(.visible)
             .onDisappear {
                 audioEngine.update(beatsPerMinute: beatsPerMinute, recipe: recipe, soundProfile: soundProfile)
+            }
+        }
+        .fullScreenCover(isPresented: $showsSwingCapture) {
+            SwingCaptureView { url in
+                lastSwingCaptureURL = url
+                showsSwingCapture = false
+            } onCancel: {
+                showsSwingCapture = false
             }
         }
         .onDisappear {
@@ -207,6 +218,7 @@ private struct GarageHorizonVaultBackground: View {
 
 private struct GarageHorizonVaultTopBar: View {
     let onBack: () -> Void
+    let onCapture: () -> Void
     let onSettings: () -> Void
 
     var body: some View {
@@ -222,10 +234,19 @@ private struct GarageHorizonVaultTopBar: View {
 
             Spacer()
 
+            Button(action: onCapture) {
+                Image(systemName: "camera.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.white.opacity(0.86))
+            .accessibilityLabel("Record swing")
+
             Button(action: onSettings) {
                 Image(systemName: "gearshape.fill")
                     .font(.system(size: 16, weight: .semibold))
-                    .frame(width: 40, height: 40)
+                    .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
             .foregroundStyle(.white.opacity(0.86))

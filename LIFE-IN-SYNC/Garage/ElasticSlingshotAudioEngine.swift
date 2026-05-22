@@ -523,7 +523,8 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
         }
 
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+        // Swing Capture records with the microphone; keep this category compatible with capture so the tempo engine keeps playing.
+        try? session.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers, .defaultToSpeaker])
         try? session.setActive(true)
 
         guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else {
