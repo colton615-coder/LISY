@@ -3,6 +3,8 @@ import Combine
 import Foundation
 
 private let elasticSlingshotStopFadeDuration: TimeInterval = 0.09
+private let elasticSlingshotImpactDuration: TimeInterval = 0.04
+private let elasticSlingshotToneReleaseFrames: AVAudioFramePosition = 2
 
 struct ElasticSlingshotRecipe: Equatable {
     var tempoRatio: ElasticSlingshotTempoRatio = .tour
@@ -130,8 +132,9 @@ private enum ElasticSlingshotPlaybackMode {
 
 private enum ElasticSlingshotPhase {
     case takeback(progress: Double)
-    case pause(progress: Double)
-    case downswing(progress: Double)
+    case pause(releaseGain: Double)
+    case downswing
+    case impact(progress: Double)
     case loopDelay
     case finished
 }
@@ -326,10 +329,12 @@ private final class ElasticSlingshotRenderState {
         switch phase(for: relativeFrame, configuration: configuration) {
         case let .takeback(progress):
             rawSample = takebackSample(progress: progress, profile: configuration.soundProfile)
-        case let .pause(progress):
-            rawSample = pauseSample(progress: progress, profile: configuration.soundProfile)
-        case let .downswing(progress):
-            rawSample = downswingSample(progress: progress, profile: configuration.soundProfile)
+        case let .pause(releaseGain):
+            rawSample = pauseSample(releaseGain: releaseGain, profile: configuration.soundProfile)
+        case .downswing:
+            rawSample = 0
+        case let .impact(progress):
+            rawSample = impactSample(progress: progress, profile: configuration.soundProfile)
         case .loopDelay, .finished:
             rawSample = 0
         }
@@ -338,39 +343,43 @@ private final class ElasticSlingshotRenderState {
     }
 
     private func phase(for relativeFrame: AVAudioFramePosition, configuration: ElasticSlingshotRenderConfiguration) -> ElasticSlingshotPhase {
-        let elapsed = Double(relativeFrame) / sampleRate
-        let totalDuration = max(configuration.totalDuration, 0.05)
-        let loopDuration = max(configuration.loopDuration, totalDuration)
+        let totalFrames = max(frames(for: configuration.totalDuration), 1)
+        let loopFrames = max(frames(for: configuration.loopDuration), totalFrames)
+        let impactDurationFrames = max(frames(for: elasticSlingshotImpactDuration), 1)
 
-        if configuration.mode == .oneCycle, elapsed >= totalDuration {
+        if configuration.mode == .oneCycle, relativeFrame >= totalFrames + impactDurationFrames {
             return .finished
         }
 
-        let loopElapsed: TimeInterval
+        let cycleFrame: AVAudioFramePosition
         switch configuration.mode {
         case .continuous:
-            loopElapsed = elapsed.truncatingRemainder(dividingBy: loopDuration)
+            cycleFrame = relativeFrame % loopFrames
         case .oneCycle:
-            loopElapsed = elapsed
+            cycleFrame = relativeFrame
         }
 
-        let takebackDuration = max(configuration.takebackDuration, 0.001)
-        let pauseDuration = max(configuration.pauseDuration, 0)
-        let downswingDuration = max(configuration.downswingDuration, 0.001)
-        let takebackEnd = takebackDuration
-        let pauseEnd = takebackEnd + pauseDuration
-        let downswingEnd = pauseEnd + downswingDuration
+        let takebackFrames = max(frames(for: configuration.takebackDuration), 1)
+        let pauseFrames = max(frames(for: configuration.pauseDuration), 0)
+        let pauseEndFrame = takebackFrames + pauseFrames
 
-        if loopElapsed < takebackEnd {
-            return .takeback(progress: loopElapsed / takebackDuration)
+        if cycleFrame < takebackFrames {
+            return .takeback(progress: Double(cycleFrame) / Double(takebackFrames))
         }
 
-        if loopElapsed < pauseEnd {
-            return .pause(progress: pauseDuration > 0 ? (loopElapsed - takebackEnd) / pauseDuration : 1)
+        if cycleFrame < pauseEndFrame {
+            let framesUntilDownswing = pauseEndFrame - cycleFrame
+            let releaseProgress = min(Double(framesUntilDownswing) / Double(max(elasticSlingshotToneReleaseFrames, 1)), 1)
+            return .pause(releaseGain: releaseProgress)
         }
 
-        if loopElapsed < downswingEnd {
-            return .downswing(progress: (loopElapsed - pauseEnd) / downswingDuration)
+        if cycleFrame < totalFrames {
+            return .downswing
+        }
+
+        if cycleFrame < totalFrames + impactDurationFrames {
+            let impactFrame = cycleFrame - totalFrames
+            return .impact(progress: Double(impactFrame) / Double(impactDurationFrames))
         }
 
         return .loopDelay
@@ -397,38 +406,39 @@ private final class ElasticSlingshotRenderState {
         }
     }
 
-    private func pauseSample(progress: Double, profile: ElasticSlingshotSoundProfile) -> Double {
-        let progress = min(max(progress, 0), 1)
-        let frequency = pitchFrequency(for: .pause(progress: progress))
-        let modulation = 1 + (0.025 * sin(2 * Double.pi * progress))
-
+    private func pauseSample(releaseGain: Double, profile: ElasticSlingshotSoundProfile) -> Double {
+        let releaseGain = min(max(releaseGain, 0), 1)
+        let frequency = pitchFrequency(for: .pause(releaseGain: releaseGain))
         switch profile {
         case .power, .flow:
             return analogBandTone(
-                frequency: frequency * modulation,
-                envelope: 0.92,
+                frequency: frequency,
+                envelope: 0.92 * releaseGain,
                 drive: drive(for: profile),
-                noiseAmount: 0.01
+                noiseAmount: 0
             )
         case .precision, .modern:
             return pureSynthTone(
-                frequency: frequency * modulation,
-                envelope: 0.88,
+                frequency: frequency,
+                envelope: 0.88 * releaseGain,
                 brightness: brightness(for: profile),
-                shimmer: 0.22
+                shimmer: 0.16
             )
         }
     }
 
-    private func downswingSample(progress: Double, profile: ElasticSlingshotSoundProfile) -> Double {
+    private func impactSample(progress: Double, profile: ElasticSlingshotSoundProfile) -> Double {
         let progress = min(max(progress, 0), 1)
+        let snapFrequency = impactFrequency(for: profile)
+        let snapPhase = voiceState.advanceOscillator(frequency: snapFrequency, sampleRate: sampleRate)
+        let tickPhase = voiceState.advanceSecondary(frequency: snapFrequency * 1.74, sampleRate: sampleRate)
+        let noise = voiceState.nextNoiseSample()
+        let envelope = exp(-11.5 * progress)
+        let needle = sin(snapPhase) * 0.52
+        let glass = sin(tickPhase) * 0.22
+        let burst = noise * 0.62
 
-        switch profile {
-        case .power, .flow:
-            return analogBandDownswingTrack(progress: progress, drive: drive(for: profile))
-        case .precision, .modern:
-            return pureSynthDownswingTrack(progress: progress, brightness: brightness(for: profile))
-        }
+        return tanh((needle + glass + burst) * drive(for: profile)) * envelope
     }
 
     private func analogBandTone(frequency: Double, envelope: Double, drive: Double, noiseAmount: Double) -> Double {
@@ -441,23 +451,6 @@ private final class ElasticSlingshotRenderState {
         return tanh((saw + sub + grit) * drive) * 0.24 * envelope
     }
 
-    private func analogBandDownswingTrack(progress: Double, drive: Double) -> Double {
-        let frequency = pitchFrequency(for: .downswing(progress: progress))
-        let tone = analogBandTone(
-            frequency: frequency,
-            envelope: downswingToneEnvelope(progress: progress),
-            drive: drive,
-            noiseAmount: 0.012 + (0.018 * progress)
-        )
-        let noise = voiceState.nextNoiseSample()
-        let snapEnvelope = impactEnvelope(progress: progress, width: 0.028)
-        let thudPhase = voiceState.advanceSecondary(frequency: 72, sampleRate: sampleRate)
-        let click = noise * snapEnvelope * 0.54 * drive
-        let thud = sin(thudPhase) * snapEnvelope * 0.34
-
-        return tanh(tone + click + thud)
-    }
-
     private func pureSynthTone(frequency: Double, envelope: Double, brightness: Double, shimmer: Double) -> Double {
         let adjustedFrequency = max(frequency * brightness, 90)
         let phase = voiceState.advanceOscillator(frequency: adjustedFrequency, sampleRate: sampleRate)
@@ -467,33 +460,13 @@ private final class ElasticSlingshotRenderState {
         return tone * envelope * 0.24
     }
 
-    private func pureSynthDownswingTrack(progress: Double, brightness: Double) -> Double {
-        let frequency = pitchFrequency(for: .downswing(progress: progress))
-        let tone = pureSynthTone(
-            frequency: frequency,
-            envelope: downswingToneEnvelope(progress: progress),
-            brightness: brightness,
-            shimmer: 0.2
-        )
-        let snapEnvelope = impactEnvelope(progress: progress, width: 0.022)
-        let noiseSnap = voiceState.nextNoiseSample() * snapEnvelope * 0.2
-        let impact = sin(voiceState.advanceSecondary(frequency: 92, sampleRate: sampleRate)) * snapEnvelope * 0.38
-
-        return tone + noiseSnap + impact
-    }
-
     private func pitchFrequency(for phase: ElasticSlingshotPhase) -> Double {
         switch phase {
         case let .takeback(progress):
             return exponentialRamp(from: 220, to: 880, progress: pow(min(max(progress, 0), 1), 1.08))
         case .pause:
             return 880
-        case let .downswing(progress):
-            let progress = min(max(progress, 0), 1)
-            let drop = exponentialRamp(from: 880, to: 330, progress: pow(progress, 0.58))
-            let impactSpike = 520 * impactEnvelope(progress: progress, width: 0.045)
-            return drop + impactSpike
-        case .loopDelay, .finished:
+        case .downswing, .impact, .loopDelay, .finished:
             return 0
         }
     }
@@ -505,16 +478,6 @@ private final class ElasticSlingshotRenderState {
 
     private func attackEnvelope(progress: Double, attack: Double) -> Double {
         min(progress / max(attack, 0.001), 1)
-    }
-
-    private func downswingToneEnvelope(progress: Double) -> Double {
-        let progress = min(max(progress, 0), 1)
-        return 0.9 + (0.1 * progress)
-    }
-
-    private func impactEnvelope(progress: Double, width: Double) -> Double {
-        let distance = 1 - min(max(progress, 0), 1)
-        return exp(-pow(distance / max(width, 0.001), 2))
     }
 
     private func playbackEnvelope(at frame: AVAudioFramePosition, configuration: ElasticSlingshotRenderConfiguration) -> Double {
@@ -552,6 +515,19 @@ private final class ElasticSlingshotRenderState {
             return 1.28
         case .power, .flow:
             return 1.0
+        }
+    }
+
+    private func impactFrequency(for profile: ElasticSlingshotSoundProfile) -> Double {
+        switch profile {
+        case .power:
+            return 1_280
+        case .precision:
+            return 1_520
+        case .flow:
+            return 1_180
+        case .modern:
+            return 1_760
         }
     }
 
