@@ -7,6 +7,8 @@ struct GarageTempoBuilderView: View {
     @State private var beatsPerMinute: Double = 75
     @State private var recipe = ElasticSlingshotRecipe()
     @State private var soundProfile: ElasticSlingshotSoundProfile = .power
+    @State private var impactTone = ToneLibrary.defaultImpactTone
+    @State private var impactModifier: ShapeModifier = .raw
     @State private var showsEngineRoom = false
     @State private var showsSwingCapture = false
     @State private var lastSwingCaptureURL: URL?
@@ -27,7 +29,7 @@ struct GarageTempoBuilderView: View {
                 HorizonVaultDialView(beatsPerMinute: $beatsPerMinute)
                     .frame(height: 196)
                     .onChange(of: beatsPerMinute) { _, newValue in
-                        audioEngine.update(beatsPerMinute: newValue, recipe: recipe, soundProfile: soundProfile)
+                        updateAudioEngine(beatsPerMinute: newValue)
                     }
 
                 Spacer(minLength: 26)
@@ -45,19 +47,27 @@ struct GarageTempoBuilderView: View {
             EngineRoomSettingsView(
                 recipe: $recipe,
                 soundProfile: $soundProfile,
+                impactTone: $impactTone,
+                impactModifier: $impactModifier,
                 beatsPerMinute: beatsPerMinute
             )
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
             .onDisappear {
-                audioEngine.update(beatsPerMinute: beatsPerMinute, recipe: recipe, soundProfile: soundProfile)
+                updateAudioEngine()
             }
         }
-        .onChange(of: recipe) { _, newValue in
-            audioEngine.update(beatsPerMinute: beatsPerMinute, recipe: newValue, soundProfile: soundProfile)
+        .onChange(of: recipe) { _, _ in
+            updateAudioEngine()
         }
-        .onChange(of: soundProfile) { _, newValue in
-            audioEngine.update(beatsPerMinute: beatsPerMinute, recipe: recipe, soundProfile: newValue)
+        .onChange(of: soundProfile) { _, _ in
+            updateAudioEngine()
+        }
+        .onChange(of: impactTone) { _, _ in
+            updateAudioEngine()
+        }
+        .onChange(of: impactModifier) { _, _ in
+            updateAudioEngine()
         }
         .fullScreenCover(isPresented: $showsSwingCapture) {
             SwingCaptureView { url in
@@ -78,10 +88,26 @@ struct GarageTempoBuilderView: View {
     private func togglePlayback() {
         switch audioEngine.playbackState {
         case .stopped:
-            audioEngine.start(beatsPerMinute: beatsPerMinute, recipe: recipe, soundProfile: soundProfile)
+            audioEngine.start(
+                beatsPerMinute: beatsPerMinute,
+                recipe: recipe,
+                soundProfile: soundProfile,
+                impactTone: impactTone,
+                impactModifier: impactModifier
+            )
         case .playing:
             audioEngine.stop()
         }
+    }
+
+    private func updateAudioEngine(beatsPerMinute updatedBeatsPerMinute: Double? = nil) {
+        audioEngine.update(
+            beatsPerMinute: updatedBeatsPerMinute ?? beatsPerMinute,
+            recipe: recipe,
+            soundProfile: soundProfile,
+            impactTone: impactTone,
+            impactModifier: impactModifier
+        )
     }
 
     private func close() {
