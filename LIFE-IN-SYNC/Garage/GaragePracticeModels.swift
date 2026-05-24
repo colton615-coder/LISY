@@ -43,9 +43,9 @@ enum PracticeEnvironment: String, CaseIterable, Codable, Identifiable, Hashable 
 }
 
 enum ToneCategory: String, CaseIterable, Identifiable {
-    case traditional = "Traditional"
-    case electronic = "Electronic Synths"
-    case novelty = "Novelty & Fun"
+    case traditional = "Acoustic Impacts"
+    case electronic = "Electronic Impacts"
+    case novelty = "Soft Accents"
 
     var id: String { rawValue }
 }
@@ -68,27 +68,14 @@ enum ShapeModifier: String, CaseIterable, Identifiable {
 
 struct ToneLibrary {
     static let profiles: [ToneProfile] = [
-        ToneProfile(id: "woodblock", name: "High Woodblock", category: .traditional, assetName: "perc_woodblock"),
-        ToneProfile(id: "snare_rim", name: "Snare Rim Click", category: .traditional, assetName: "perc_rimshot"),
-        ToneProfile(id: "cowbell", name: "Classic Cowbell", category: .traditional, assetName: "perc_cowbell"),
-        ToneProfile(id: "shaker", name: "Studio Shaker", category: .traditional, assetName: "perc_shaker"),
-        ToneProfile(id: "ping", name: "Studio Bell Ping", category: .traditional, assetName: "perc_ping"),
-        ToneProfile(id: "hihat", name: "Crisp Hi-Hat", category: .traditional, assetName: "perc_hihat"),
-        ToneProfile(id: "clave", name: "Wooden Clave", category: .traditional, assetName: "perc_clave"),
-        ToneProfile(id: "sine_808", name: "Sub-Synth 808", category: .electronic, assetName: "synth_sine808"),
-        ToneProfile(id: "square_lead", name: "Retro Chiptune", category: .electronic, assetName: "synth_square"),
-        ToneProfile(id: "fm_tine", name: "Electric Tine", category: .electronic, assetName: "synth_fmtine"),
-        ToneProfile(id: "saw_stab", name: "Cyber Stab", category: .electronic, assetName: "synth_sawstab"),
-        ToneProfile(id: "laser", name: "Sci-Fi Laser", category: .electronic, assetName: "synth_laser"),
-        ToneProfile(id: "pulse", name: "Modular Pulse", category: .electronic, assetName: "synth_pulse"),
-        ToneProfile(id: "kazoo", name: "Buzzing Kazoo", category: .novelty, assetName: "fun_kazoo"),
-        ToneProfile(id: "balloon_pop", name: "Balloon Pop", category: .novelty, assetName: "fun_balloon"),
-        ToneProfile(id: "rubber_duck", name: "Squeaky Duck", category: .novelty, assetName: "fun_duck"),
-        ToneProfile(id: "golf_click", name: "Ball Impact Click", category: .novelty, assetName: "fun_golfclick"),
-        ToneProfile(id: "spring", name: "Cartoon Spring", category: .novelty, assetName: "fun_spring"),
-        ToneProfile(id: "whistle", name: "Referee Whistle", category: .novelty, assetName: "fun_whistle"),
-        ToneProfile(id: "cork_pop", name: "Champagne Pop", category: .novelty, assetName: "fun_cork"),
-        ToneProfile(id: "bell_ring", name: "Desk Bell Ring", category: .novelty, assetName: "fun_deskbell")
+        ToneProfile(id: "golf_click", name: "Clean Impact Click", category: .traditional, assetName: "fun_golfclick"),
+        ToneProfile(id: "woodblock", name: "Muted Wood Knock", category: .traditional, assetName: "perc_woodblock"),
+        ToneProfile(id: "hihat", name: "Bright Tick", category: .traditional, assetName: "perc_hihat"),
+        ToneProfile(id: "sine_808", name: "Deep Thump", category: .electronic, assetName: "synth_sine808"),
+        ToneProfile(id: "saw_stab", name: "Low Punch", category: .electronic, assetName: "synth_sawstab"),
+        ToneProfile(id: "pulse", name: "Digital Pulse", category: .electronic, assetName: "synth_pulse"),
+        ToneProfile(id: "ping", name: "Glass Tap", category: .novelty, assetName: "perc_ping"),
+        ToneProfile(id: "bell_ring", name: "Soft Bell", category: .novelty, assetName: "fun_deskbell")
     ]
 
     static let defaultImpactTone = ToneLibrary.profiles.first { $0.id == "golf_click" } ?? ToneLibrary.profiles[0]

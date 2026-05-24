@@ -610,11 +610,13 @@ private final class ElasticSlingshotRenderState {
         let body = sin(tickPhase) * parameters.bodyMix
         let burst = noise * parameters.noiseAmount
         let tremolo = 1 - parameters.tremoloDepth + (parameters.tremoloDepth * abs(sin(tickPhase * 0.5)))
-        return tanh((primary + body + burst) * parameters.drive) * parameters.gain * tremolo * impactEnvelope(
+        let shapedSample = tanh((primary + body + burst) * parameters.drive) * parameters.gain * tremolo * impactEnvelope(
             progress: progress,
             modifier: modifier,
             toneDecayRate: parameters.decayRate
         )
+
+        return impactSoftLimit(shapedSample * impactModifierGain(for: modifier))
     }
 
     private func analogBandTone(frequency: Double, envelope: Double, drive: Double, noiseAmount: Double) -> Double {
@@ -717,49 +719,23 @@ private final class ElasticSlingshotRenderState {
     private func impactParameters(for tone: ToneProfile) -> ElasticSlingshotImpactToneParameters {
         switch tone.id {
         case "woodblock":
-            return ElasticSlingshotImpactToneParameters(frequency: 1_060, secondaryMultiplier: 2.75, noiseAmount: 0.12, drive: 1.70, gain: 1.00, decayRate: 18.0, primaryMix: 0.86, secondaryMix: 0.44, bodyMix: 0.06, waveform: .click)
-        case "snare_rim":
-            return ElasticSlingshotImpactToneParameters(frequency: 2_150, secondaryMultiplier: 3.40, noiseAmount: 0.95, drive: 1.90, gain: 0.96, decayRate: 24.0, primaryMix: 0.48, secondaryMix: 0.24, bodyMix: 0.04, waveform: .noise)
-        case "cowbell":
-            return ElasticSlingshotImpactToneParameters(frequency: 620, secondaryMultiplier: 1.43, noiseAmount: 0.02, drive: 1.38, gain: 1.00, decayRate: 7.0, primaryMix: 0.84, secondaryMix: 0.52, bodyMix: 0.28, waveform: .sine)
-        case "shaker":
-            return ElasticSlingshotImpactToneParameters(frequency: 3_600, secondaryMultiplier: 5.20, noiseAmount: 1.40, drive: 0.90, gain: 0.88, decayRate: 11.5, tremoloDepth: 0.54, primaryMix: 1.00, secondaryMix: 0.04, bodyMix: 0.02, waveform: .noise)
+            return ElasticSlingshotImpactToneParameters(frequency: 820, secondaryMultiplier: 1.82, noiseAmount: 0.04, drive: 1.22, gain: 0.72, decayRate: 18.5, primaryMix: 0.72, secondaryMix: 0.18, bodyMix: 0.18, waveform: .click)
         case "ping":
-            return ElasticSlingshotImpactToneParameters(frequency: 2_720, secondaryMultiplier: 2.00, noiseAmount: 0.00, drive: 0.92, gain: 0.92, decayRate: 4.6, primaryMix: 0.88, secondaryMix: 0.34, bodyMix: 0.22, waveform: .sine)
+            return ElasticSlingshotImpactToneParameters(frequency: 2_480, secondaryMultiplier: 1.92, noiseAmount: 0.00, drive: 0.82, gain: 0.58, decayRate: 9.5, primaryMix: 0.68, secondaryMix: 0.20, bodyMix: 0.08, waveform: .sine)
         case "hihat":
-            return ElasticSlingshotImpactToneParameters(frequency: 5_800, secondaryMultiplier: 1.90, noiseAmount: 1.65, drive: 1.18, gain: 0.82, decayRate: 32.0, primaryMix: 1.08, secondaryMix: 0.02, bodyMix: 0.01, waveform: .noise)
-        case "clave":
-            return ElasticSlingshotImpactToneParameters(frequency: 1_480, secondaryMultiplier: 2.18, noiseAmount: 0.08, drive: 1.62, gain: 0.98, decayRate: 16.0, primaryMix: 0.76, secondaryMix: 0.58, bodyMix: 0.08, waveform: .click)
+            return ElasticSlingshotImpactToneParameters(frequency: 4_200, secondaryMultiplier: 1.58, noiseAmount: 0.48, drive: 0.92, gain: 0.46, decayRate: 38.0, primaryMix: 0.60, secondaryMix: 0.04, bodyMix: 0.00, waveform: .noise)
         case "sine_808":
-            return ElasticSlingshotImpactToneParameters(frequency: 74, secondaryMultiplier: 2.00, noiseAmount: 0.01, drive: 2.35, gain: 1.00, decayRate: 3.6, bend: -0.22, primaryMix: 1.15, secondaryMix: 0.00, bodyMix: 0.34, waveform: .sine)
-        case "square_lead":
-            return ElasticSlingshotImpactToneParameters(frequency: 1_320, secondaryMultiplier: 2.00, noiseAmount: 0.02, drive: 1.28, gain: 0.88, decayRate: 8.5, primaryMix: 0.92, secondaryMix: 0.00, bodyMix: 0.12, waveform: .square)
-        case "fm_tine":
-            return ElasticSlingshotImpactToneParameters(frequency: 1_940, secondaryMultiplier: 3.77, noiseAmount: 0.00, drive: 1.05, gain: 0.90, decayRate: 5.6, primaryMix: 0.68, secondaryMix: 0.60, bodyMix: 0.42, waveform: .sine)
+            return ElasticSlingshotImpactToneParameters(frequency: 118, secondaryMultiplier: 2.02, noiseAmount: 0.00, drive: 1.55, gain: 0.58, decayRate: 7.0, bend: -0.10, primaryMix: 0.86, secondaryMix: 0.00, bodyMix: 0.22, waveform: .sine)
         case "saw_stab":
-            return ElasticSlingshotImpactToneParameters(frequency: 510, secondaryMultiplier: 1.25, noiseAmount: 0.26, drive: 2.05, gain: 0.96, decayRate: 6.8, bend: 0.12, primaryMix: 1.00, secondaryMix: 0.18, bodyMix: 0.20, waveform: .square)
-        case "laser":
-            return ElasticSlingshotImpactToneParameters(frequency: 1_120, secondaryMultiplier: 1.06, noiseAmount: 0.02, drive: 1.12, gain: 0.88, decayRate: 6.2, bend: 1.35, primaryMix: 0.95, secondaryMix: 0.08, bodyMix: 0.12, waveform: .sine)
+            return ElasticSlingshotImpactToneParameters(frequency: 360, secondaryMultiplier: 1.46, noiseAmount: 0.10, drive: 1.48, gain: 0.62, decayRate: 12.0, bend: 0.05, primaryMix: 0.76, secondaryMix: 0.10, bodyMix: 0.26, waveform: .square)
         case "pulse":
-            return ElasticSlingshotImpactToneParameters(frequency: 420, secondaryMultiplier: 4.00, noiseAmount: 0.08, drive: 1.52, gain: 0.92, decayRate: 10.0, tremoloDepth: 0.72, primaryMix: 0.88, secondaryMix: 0.00, bodyMix: 0.28, waveform: .square)
-        case "kazoo":
-            return ElasticSlingshotImpactToneParameters(frequency: 370, secondaryMultiplier: 1.72, noiseAmount: 0.46, drive: 2.20, gain: 0.90, decayRate: 5.2, bend: -0.12, primaryMix: 0.94, secondaryMix: 0.40, bodyMix: 0.36, waveform: .square)
-        case "balloon_pop":
-            return ElasticSlingshotImpactToneParameters(frequency: 140, secondaryMultiplier: 2.40, noiseAmount: 1.55, drive: 1.80, gain: 1.00, decayRate: 22.0, bend: -0.75, primaryMix: 1.18, secondaryMix: 0.12, bodyMix: 0.00, waveform: .noise)
-        case "rubber_duck":
-            return ElasticSlingshotImpactToneParameters(frequency: 780, secondaryMultiplier: 1.09, noiseAmount: 0.10, drive: 2.10, gain: 0.92, decayRate: 4.4, bend: 0.58, primaryMix: 0.98, secondaryMix: 0.20, bodyMix: 0.18, waveform: .square)
+            return ElasticSlingshotImpactToneParameters(frequency: 520, secondaryMultiplier: 2.96, noiseAmount: 0.03, drive: 1.20, gain: 0.58, decayRate: 16.0, tremoloDepth: 0.18, primaryMix: 0.70, secondaryMix: 0.08, bodyMix: 0.16, waveform: .square)
         case "golf_click":
-            return ElasticSlingshotImpactToneParameters(frequency: 1_620, secondaryMultiplier: 2.32, noiseAmount: 0.62, drive: 1.58, gain: 0.98, decayRate: 20.0, primaryMix: 0.74, secondaryMix: 0.32, bodyMix: 0.05, waveform: .click)
-        case "spring":
-            return ElasticSlingshotImpactToneParameters(frequency: 360, secondaryMultiplier: 3.60, noiseAmount: 0.02, drive: 1.22, gain: 0.90, decayRate: 3.8, bend: 0.82, tremoloDepth: 0.62, primaryMix: 0.86, secondaryMix: 0.48, bodyMix: 0.44, waveform: .sine)
-        case "whistle":
-            return ElasticSlingshotImpactToneParameters(frequency: 3_400, secondaryMultiplier: 1.01, noiseAmount: 0.00, drive: 0.82, gain: 0.80, decayRate: 4.2, primaryMix: 1.00, secondaryMix: 0.00, bodyMix: 0.02, waveform: .sine)
-        case "cork_pop":
-            return ElasticSlingshotImpactToneParameters(frequency: 240, secondaryMultiplier: 1.66, noiseAmount: 1.18, drive: 1.96, gain: 0.98, decayRate: 14.0, bend: -0.36, primaryMix: 1.05, secondaryMix: 0.24, bodyMix: 0.18, waveform: .noise)
+            return ElasticSlingshotImpactToneParameters(frequency: 1_620, secondaryMultiplier: 2.42, noiseAmount: 0.20, drive: 1.32, gain: 0.68, decayRate: 25.0, primaryMix: 0.76, secondaryMix: 0.24, bodyMix: 0.04, waveform: .click)
         case "bell_ring":
-            return ElasticSlingshotImpactToneParameters(frequency: 1_980, secondaryMultiplier: 2.98, noiseAmount: 0.00, drive: 1.02, gain: 0.92, decayRate: 3.2, primaryMix: 0.72, secondaryMix: 0.70, bodyMix: 0.50, waveform: .sine)
+            return ElasticSlingshotImpactToneParameters(frequency: 1_780, secondaryMultiplier: 2.26, noiseAmount: 0.00, drive: 0.76, gain: 0.54, decayRate: 8.2, primaryMix: 0.56, secondaryMix: 0.28, bodyMix: 0.12, waveform: .sine)
         default:
-            return ElasticSlingshotImpactToneParameters(frequency: 1_620, secondaryMultiplier: 2.32, noiseAmount: 0.62, drive: 1.58, gain: 0.98, decayRate: 20.0, primaryMix: 0.74, secondaryMix: 0.32, bodyMix: 0.05, waveform: .click)
+            return ElasticSlingshotImpactToneParameters(frequency: 1_620, secondaryMultiplier: 2.42, noiseAmount: 0.20, drive: 1.32, gain: 0.68, decayRate: 25.0, primaryMix: 0.76, secondaryMix: 0.24, bodyMix: 0.04, waveform: .click)
         }
     }
 
@@ -769,12 +745,32 @@ private final class ElasticSlingshotRenderState {
         case .raw:
             return exp(-toneDecayRate * progress)
         case .snappy:
-            return exp(-(toneDecayRate * 2.05) * progress)
+            return exp(-(toneDecayRate * 2.35) * progress)
         case .lingering:
-            return exp(-(toneDecayRate * 0.42) * progress)
+            let close = 1 - (smoothstep(max((progress - 0.88) / 0.12, 0)) * 0.42)
+            return exp(-(toneDecayRate * 0.58) * progress) * close
         case .reversed:
-            return pow(progress, 0.42) * exp(-(toneDecayRate * 0.24) * max(progress - 0.72, 0))
+            let rise = smoothstep(min(progress / 0.62, 1))
+            let close = 1 - smoothstep(max((progress - 0.72) / 0.28, 0))
+            return rise * close * exp(-(toneDecayRate * 0.16) * progress)
         }
+    }
+
+    private func impactModifierGain(for modifier: ShapeModifier) -> Double {
+        switch modifier {
+        case .raw:
+            return 0.92
+        case .snappy:
+            return 0.98
+        case .lingering:
+            return 0.76
+        case .reversed:
+            return 0.84
+        }
+    }
+
+    private func impactSoftLimit(_ sample: Double) -> Double {
+        tanh(sample * 1.45) / 1.45
     }
 
     private func clear(data: UnsafeMutablePointer<Float>, frameCount: Int) {
