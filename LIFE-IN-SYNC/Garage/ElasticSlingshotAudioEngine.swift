@@ -27,7 +27,7 @@ struct ElasticSlingshotRecipe: Equatable {
     }
 
     func swingDuration(for beatsPerMinute: Double) -> TimeInterval {
-        (60 / max(beatsPerMinute, 1)) * 4
+        (60 / max(beatsPerMinute, 1)) * tempoRatio.totalBeatCount
     }
 
     func takeawayDuration(for beatsPerMinute: Double) -> TimeInterval {
@@ -65,7 +65,7 @@ enum ElasticSlingshotTempoRatio: String, CaseIterable, Identifiable {
         }
     }
 
-    private var numericRatio: Double {
+    var backswingBeatCount: Double {
         switch self {
         case .punchy:
             return 2.5
@@ -76,12 +76,24 @@ enum ElasticSlingshotTempoRatio: String, CaseIterable, Identifiable {
         }
     }
 
+    var pauseBeatCount: Double {
+        0.15
+    }
+
+    var downswingBeatCount: Double {
+        1
+    }
+
+    var totalBeatCount: Double {
+        backswingBeatCount + pauseBeatCount + downswingBeatCount
+    }
+
     var phaseFractions: (takeaway: Double, pause: Double, downswing: Double) {
-        let pause = 0.08
-        let movingShare = 1 - pause
-        let downswing = movingShare / (numericRatio + 1)
-        let takeaway = downswing * numericRatio
-        return (takeaway: takeaway, pause: pause, downswing: downswing)
+        (
+            takeaway: backswingBeatCount / totalBeatCount,
+            pause: pauseBeatCount / totalBeatCount,
+            downswing: downswingBeatCount / totalBeatCount
+        )
     }
 }
 
@@ -389,19 +401,29 @@ private final class ElasticSlingshotRenderState {
         let progress = min(max(progress, 0), 1)
 
         switch profile {
-        case .power, .flow:
+        case .power:
             return analogBandTone(
                 frequency: pitchFrequency(for: .takeback(progress: progress)),
                 envelope: attackEnvelope(progress: progress, attack: 0.035),
                 drive: drive(for: profile),
-                noiseAmount: 0.018 * progress
+                noiseAmount: 0.032 * progress
             )
-        case .precision, .modern:
+        case .precision:
             return pureSynthTone(
                 frequency: pitchFrequency(for: .takeback(progress: progress)),
-                envelope: attackEnvelope(progress: progress, attack: 0.025),
+                envelope: attackEnvelope(progress: progress, attack: 0.018),
                 brightness: brightness(for: profile),
-                shimmer: 0.16
+                shimmer: 0.035
+            )
+        case .flow:
+            return flowWaveTone(
+                frequency: pitchFrequency(for: .takeback(progress: progress)) * 0.72,
+                envelope: attackEnvelope(progress: progress, attack: 0.08) * 0.82
+            )
+        case .modern:
+            return modernPulseTone(
+                frequency: pitchFrequency(for: .takeback(progress: progress)) * 1.18,
+                envelope: attackEnvelope(progress: progress, attack: 0.012)
             )
         }
     }
@@ -410,19 +432,29 @@ private final class ElasticSlingshotRenderState {
         let releaseGain = min(max(releaseGain, 0), 1)
         let frequency = pitchFrequency(for: .pause(releaseGain: releaseGain))
         switch profile {
-        case .power, .flow:
+        case .power:
             return analogBandTone(
                 frequency: frequency,
                 envelope: 0.92 * releaseGain,
                 drive: drive(for: profile),
                 noiseAmount: 0
             )
-        case .precision, .modern:
+        case .precision:
             return pureSynthTone(
                 frequency: frequency,
                 envelope: 0.88 * releaseGain,
                 brightness: brightness(for: profile),
-                shimmer: 0.16
+                shimmer: 0.035
+            )
+        case .flow:
+            return flowWaveTone(
+                frequency: frequency * 0.72,
+                envelope: 0.68 * releaseGain
+            )
+        case .modern:
+            return modernPulseTone(
+                frequency: frequency * 1.18,
+                envelope: 0.82 * releaseGain
             )
         }
     }
@@ -433,12 +465,29 @@ private final class ElasticSlingshotRenderState {
         let snapPhase = voiceState.advanceOscillator(frequency: snapFrequency, sampleRate: sampleRate)
         let tickPhase = voiceState.advanceSecondary(frequency: snapFrequency * 1.74, sampleRate: sampleRate)
         let noise = voiceState.nextNoiseSample()
-        let envelope = exp(-11.5 * progress)
-        let needle = sin(snapPhase) * 0.52
-        let glass = sin(tickPhase) * 0.22
-        let burst = noise * 0.62
-
-        return tanh((needle + glass + burst) * drive(for: profile)) * envelope
+        switch profile {
+        case .power:
+            let envelope = exp(-10.2 * progress)
+            let needle = sin(snapPhase) * 0.56
+            let glass = sin(tickPhase) * 0.16
+            let burst = noise * 0.78
+            return tanh((needle + glass + burst) * drive(for: profile)) * envelope
+        case .precision:
+            let envelope = exp(-16.0 * progress)
+            let needle = sin(snapPhase) * 0.64
+            let glass = sin(tickPhase) * 0.18
+            return tanh((needle + glass) * 1.08) * envelope
+        case .flow:
+            let envelope = exp(-7.8 * progress)
+            let round = sin(snapPhase) * 0.42
+            let body = sin(tickPhase * 0.5) * 0.18
+            return tanh(round + body + noise * 0.18) * envelope
+        case .modern:
+            let envelope = exp(-12.8 * progress)
+            let pulse = sin(snapPhase) >= 0 ? 0.54 : -0.54
+            let glass = sin(tickPhase * 2.18) * 0.30
+            return tanh((pulse + glass + noise * 0.24) * 1.16) * envelope
+        }
     }
 
     private func analogBandTone(frequency: Double, envelope: Double, drive: Double, noiseAmount: Double) -> Double {
@@ -458,6 +507,26 @@ private final class ElasticSlingshotRenderState {
         let tone = sin(phase) * 0.72 + sin(shimmerPhase) * shimmer
 
         return tone * envelope * 0.24
+    }
+
+    private func flowWaveTone(frequency: Double, envelope: Double) -> Double {
+        let adjustedFrequency = max(frequency, 70)
+        let phase = voiceState.advanceOscillator(frequency: adjustedFrequency, sampleRate: sampleRate)
+        let secondaryPhase = voiceState.advanceSecondary(frequency: adjustedFrequency * 1.5, sampleRate: sampleRate)
+        let rounded = sin(phase) * 0.62
+        let air = sin(secondaryPhase) * 0.10
+
+        return tanh(rounded + air) * envelope * 0.22
+    }
+
+    private func modernPulseTone(frequency: Double, envelope: Double) -> Double {
+        let adjustedFrequency = max(frequency, 120)
+        let phase = voiceState.advanceOscillator(frequency: adjustedFrequency, sampleRate: sampleRate)
+        let secondaryPhase = voiceState.advanceSecondary(frequency: adjustedFrequency * 2.62, sampleRate: sampleRate)
+        let pulse = sin(phase) >= 0 ? 0.68 : -0.68
+        let edge = sin(secondaryPhase) * 0.18
+
+        return tanh(pulse + edge) * envelope * 0.20
     }
 
     private func pitchFrequency(for phase: ElasticSlingshotPhase) -> Double {

@@ -80,7 +80,14 @@ struct EngineRoomSettingsView: View {
                 HStack(spacing: 8) {
                     ForEach(ElasticSlingshotTempoRatio.allCases) { ratio in
                         Button {
-                            recipe.tempoRatio = ratio
+                            var updatedRecipe = recipe
+                            updatedRecipe.tempoRatio = ratio
+                            recipe = updatedRecipe
+                            previewEngine.playOneCycle(
+                                beatsPerMinute: beatsPerMinute,
+                                recipe: updatedRecipe,
+                                soundProfile: soundProfile
+                            )
                         } label: {
                             Text(ratio.title)
                                 .font(.system(size: 16, weight: .semibold, design: .rounded))
@@ -161,7 +168,9 @@ struct EngineRoomSettingsView: View {
 
                 HStack(spacing: 12) {
                     EngineRoomStepButton(systemImage: "minus") {
-                        recipe.restInterval = max(recipe.restInterval - 1, 2)
+                        var updatedRecipe = recipe
+                        updatedRecipe.restInterval = max(updatedRecipe.restInterval - 1, 2)
+                        recipe = updatedRecipe
                     }
 
                     Text(breakBetweenSwingsText)
@@ -171,7 +180,9 @@ struct EngineRoomSettingsView: View {
                         .frame(maxWidth: .infinity)
 
                     EngineRoomStepButton(systemImage: "plus") {
-                        recipe.restInterval = min(recipe.restInterval + 1, 8)
+                        var updatedRecipe = recipe
+                        updatedRecipe.restInterval = min(updatedRecipe.restInterval + 1, 8)
+                        recipe = updatedRecipe
                     }
                 }
             }

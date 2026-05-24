@@ -53,6 +53,12 @@ struct GarageTempoBuilderView: View {
                 audioEngine.update(beatsPerMinute: beatsPerMinute, recipe: recipe, soundProfile: soundProfile)
             }
         }
+        .onChange(of: recipe) { _, newValue in
+            audioEngine.update(beatsPerMinute: beatsPerMinute, recipe: newValue, soundProfile: soundProfile)
+        }
+        .onChange(of: soundProfile) { _, newValue in
+            audioEngine.update(beatsPerMinute: beatsPerMinute, recipe: recipe, soundProfile: newValue)
+        }
         .fullScreenCover(isPresented: $showsSwingCapture) {
             SwingCaptureView { url in
                 lastSwingCaptureURL = url
