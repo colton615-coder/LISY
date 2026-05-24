@@ -3,7 +3,7 @@ import Combine
 import Foundation
 
 private let elasticSlingshotStopFadeDuration: TimeInterval = 0.09
-private let elasticSlingshotImpactDuration: TimeInterval = 0.04
+private let elasticSlingshotImpactDuration: TimeInterval = 0.08
 private let elasticSlingshotToneReleaseFrames: AVAudioFramePosition = 2
 
 struct ElasticSlingshotRecipe: Equatable {
@@ -140,6 +140,18 @@ enum ElasticSlingshotSoundProfile: String, CaseIterable, Identifiable {
 private enum ElasticSlingshotPlaybackMode {
     case continuous
     case oneCycle
+    case impactPreview
+
+    var debugName: String {
+        switch self {
+        case .continuous:
+            return "continuous"
+        case .oneCycle:
+            return "oneCycle"
+        case .impactPreview:
+            return "impactPreview"
+        }
+    }
 }
 
 private enum ElasticSlingshotPhase {
@@ -155,6 +167,8 @@ private struct ElasticSlingshotRenderConfiguration {
     var beatsPerMinute: Double
     var recipe: ElasticSlingshotRecipe
     var soundProfile: ElasticSlingshotSoundProfile
+    var impactTone: ToneProfile
+    var impactModifier: ShapeModifier
     var baseFrame: AVAudioFramePosition
     var mode: ElasticSlingshotPlaybackMode
     var isPlaying: Bool
@@ -182,7 +196,7 @@ private struct ElasticSlingshotRenderConfiguration {
         switch mode {
         case .continuous:
             return totalDuration + recipe.restInterval
-        case .oneCycle:
+        case .oneCycle, .impactPreview:
             return totalDuration
         }
     }
@@ -192,6 +206,7 @@ private struct ElasticSlingshotVoiceState {
     var oscillatorPhase = 0.0
     var secondaryPhase = 0.0
     var lastRelativeFrame: AVAudioFramePosition = -1
+    var lastImpactDebugLogKey = ""
     var noiseSeed: UInt64 = 0x9E37_79B9_7F4A_7C15
 
     mutating func resetIfNeeded(relativeFrame: AVAudioFramePosition) {
@@ -202,6 +217,7 @@ private struct ElasticSlingshotVoiceState {
 
         oscillatorPhase = 0
         secondaryPhase = 0
+        lastImpactDebugLogKey = ""
         lastRelativeFrame = relativeFrame
     }
 
@@ -230,6 +246,56 @@ private struct ElasticSlingshotVoiceState {
     }
 }
 
+private struct ElasticSlingshotImpactToneParameters {
+    let frequency: Double
+    let secondaryMultiplier: Double
+    let noiseAmount: Double
+    let drive: Double
+    let gain: Double
+    let decayRate: Double
+    let bend: Double
+    let tremoloDepth: Double
+    let primaryMix: Double
+    let secondaryMix: Double
+    let bodyMix: Double
+    let waveform: ElasticSlingshotImpactWaveform
+
+    init(
+        frequency: Double,
+        secondaryMultiplier: Double,
+        noiseAmount: Double,
+        drive: Double,
+        gain: Double,
+        decayRate: Double = 10.2,
+        bend: Double = 0,
+        tremoloDepth: Double = 0,
+        primaryMix: Double = 0.62,
+        secondaryMix: Double = 0.24,
+        bodyMix: Double = 0.16,
+        waveform: ElasticSlingshotImpactWaveform
+    ) {
+        self.frequency = frequency
+        self.secondaryMultiplier = secondaryMultiplier
+        self.noiseAmount = noiseAmount
+        self.drive = drive
+        self.gain = gain
+        self.decayRate = decayRate
+        self.bend = bend
+        self.tremoloDepth = tremoloDepth
+        self.primaryMix = primaryMix
+        self.secondaryMix = secondaryMix
+        self.bodyMix = bodyMix
+        self.waveform = waveform
+    }
+}
+
+private enum ElasticSlingshotImpactWaveform {
+    case sine
+    case square
+    case click
+    case noise
+}
+
 private final class ElasticSlingshotRenderState {
     private let lock = NSLock()
     private let sampleRate: Double
@@ -237,6 +303,8 @@ private final class ElasticSlingshotRenderState {
         beatsPerMinute: 75,
         recipe: ElasticSlingshotRecipe(),
         soundProfile: .power,
+        impactTone: ToneLibrary.defaultImpactTone,
+        impactModifier: .raw,
         baseFrame: 0,
         mode: .continuous,
         isPlaying: false,
@@ -252,20 +320,37 @@ private final class ElasticSlingshotRenderState {
         self.sampleRate = sampleRate
     }
 
-    func update(beatsPerMinute: Double, recipe: ElasticSlingshotRecipe, soundProfile: ElasticSlingshotSoundProfile) {
+    func update(
+        beatsPerMinute: Double,
+        recipe: ElasticSlingshotRecipe,
+        soundProfile: ElasticSlingshotSoundProfile,
+        impactTone: ToneProfile,
+        impactModifier: ShapeModifier
+    ) {
         lock.lock()
         configuration.beatsPerMinute = beatsPerMinute
         configuration.recipe = recipe
         configuration.soundProfile = soundProfile
+        configuration.impactTone = impactTone
+        configuration.impactModifier = impactModifier
         lock.unlock()
     }
 
-    func start(beatsPerMinute: Double, recipe: ElasticSlingshotRecipe, soundProfile: ElasticSlingshotSoundProfile, mode: ElasticSlingshotPlaybackMode) {
+    func start(
+        beatsPerMinute: Double,
+        recipe: ElasticSlingshotRecipe,
+        soundProfile: ElasticSlingshotSoundProfile,
+        impactTone: ToneProfile,
+        impactModifier: ShapeModifier,
+        mode: ElasticSlingshotPlaybackMode
+    ) {
         lock.lock()
         configuration = ElasticSlingshotRenderConfiguration(
             beatsPerMinute: beatsPerMinute,
             recipe: recipe,
             soundProfile: soundProfile,
+            impactTone: impactTone,
+            impactModifier: impactModifier,
             baseFrame: max(latestFrame, 0),
             mode: mode,
             isPlaying: true,
@@ -346,7 +431,12 @@ private final class ElasticSlingshotRenderState {
         case .downswing:
             rawSample = 0
         case let .impact(progress):
-            rawSample = impactSample(progress: progress, profile: configuration.soundProfile)
+            debugLogImpactIfNeeded(at: relativeFrame, configuration: configuration)
+            rawSample = impactSample(
+                progress: progress,
+                tone: configuration.impactTone,
+                modifier: configuration.impactModifier
+            )
         case .loopDelay, .finished:
             rawSample = 0
         }
@@ -359,6 +449,14 @@ private final class ElasticSlingshotRenderState {
         let loopFrames = max(frames(for: configuration.loopDuration), totalFrames)
         let impactDurationFrames = max(frames(for: elasticSlingshotImpactDuration), 1)
 
+        if configuration.mode == .impactPreview {
+            guard relativeFrame < impactDurationFrames else {
+                return .finished
+            }
+
+            return .impact(progress: Double(relativeFrame) / Double(impactDurationFrames))
+        }
+
         if configuration.mode == .oneCycle, relativeFrame >= totalFrames + impactDurationFrames {
             return .finished
         }
@@ -367,7 +465,7 @@ private final class ElasticSlingshotRenderState {
         switch configuration.mode {
         case .continuous:
             cycleFrame = relativeFrame % loopFrames
-        case .oneCycle:
+        case .oneCycle, .impactPreview:
             cycleFrame = relativeFrame
         }
 
@@ -395,6 +493,33 @@ private final class ElasticSlingshotRenderState {
         }
 
         return .loopDelay
+    }
+
+    private func debugLogImpactIfNeeded(
+        at relativeFrame: AVAudioFramePosition,
+        configuration: ElasticSlingshotRenderConfiguration
+    ) {
+        let impactDurationFrames = max(frames(for: elasticSlingshotImpactDuration), 1)
+        let loopFrames = max(frames(for: configuration.loopDuration), impactDurationFrames)
+        let cycleIndex: AVAudioFramePosition
+
+        switch configuration.mode {
+        case .continuous:
+            cycleIndex = relativeFrame / loopFrames
+        case .oneCycle, .impactPreview:
+            cycleIndex = 0
+        }
+
+        let key = [
+            "\(configuration.resetToken)",
+            "\(cycleIndex)",
+            configuration.impactTone.id,
+            configuration.impactModifier.rawValue
+        ].joined(separator: ":")
+
+        guard voiceState.lastImpactDebugLogKey != key else { return }
+        voiceState.lastImpactDebugLogKey = key
+        print("[ToneVault] impact synthesis tone=\(configuration.impactTone.id) asset=\(configuration.impactTone.assetName) modifier=\(configuration.impactModifier.rawValue) mode=\(configuration.mode.debugName)")
     }
 
     private func takebackSample(progress: Double, profile: ElasticSlingshotSoundProfile) -> Double {
@@ -459,35 +584,37 @@ private final class ElasticSlingshotRenderState {
         }
     }
 
-    private func impactSample(progress: Double, profile: ElasticSlingshotSoundProfile) -> Double {
+    private func impactSample(progress: Double, tone: ToneProfile, modifier: ShapeModifier) -> Double {
         let progress = min(max(progress, 0), 1)
-        let snapFrequency = impactFrequency(for: profile)
-        let snapPhase = voiceState.advanceOscillator(frequency: snapFrequency, sampleRate: sampleRate)
-        let tickPhase = voiceState.advanceSecondary(frequency: snapFrequency * 1.74, sampleRate: sampleRate)
+        let parameters = impactParameters(for: tone)
+        let bentFrequency = max(parameters.frequency * pow(2, parameters.bend * (1 - progress)), 40)
+        let snapPhase = voiceState.advanceOscillator(frequency: bentFrequency, sampleRate: sampleRate)
+        let tickPhase = voiceState.advanceSecondary(
+            frequency: bentFrequency * parameters.secondaryMultiplier,
+            sampleRate: sampleRate
+        )
         let noise = voiceState.nextNoiseSample()
-        switch profile {
-        case .power:
-            let envelope = exp(-10.2 * progress)
-            let needle = sin(snapPhase) * 0.56
-            let glass = sin(tickPhase) * 0.16
-            let burst = noise * 0.78
-            return tanh((needle + glass + burst) * drive(for: profile)) * envelope
-        case .precision:
-            let envelope = exp(-16.0 * progress)
-            let needle = sin(snapPhase) * 0.64
-            let glass = sin(tickPhase) * 0.18
-            return tanh((needle + glass) * 1.08) * envelope
-        case .flow:
-            let envelope = exp(-7.8 * progress)
-            let round = sin(snapPhase) * 0.42
-            let body = sin(tickPhase * 0.5) * 0.18
-            return tanh(round + body + noise * 0.18) * envelope
-        case .modern:
-            let envelope = exp(-12.8 * progress)
-            let pulse = sin(snapPhase) >= 0 ? 0.54 : -0.54
-            let glass = sin(tickPhase * 2.18) * 0.30
-            return tanh((pulse + glass + noise * 0.24) * 1.16) * envelope
+
+        let primary: Double
+        switch parameters.waveform {
+        case .sine:
+            primary = sin(snapPhase) * parameters.primaryMix
+        case .square:
+            primary = (sin(snapPhase) >= 0 ? parameters.primaryMix : -parameters.primaryMix)
+        case .click:
+            primary = sin(snapPhase) * parameters.primaryMix + sin(tickPhase) * parameters.secondaryMix
+        case .noise:
+            primary = noise * parameters.primaryMix + sin(snapPhase) * parameters.secondaryMix
         }
+
+        let body = sin(tickPhase) * parameters.bodyMix
+        let burst = noise * parameters.noiseAmount
+        let tremolo = 1 - parameters.tremoloDepth + (parameters.tremoloDepth * abs(sin(tickPhase * 0.5)))
+        return tanh((primary + body + burst) * parameters.drive) * parameters.gain * tremolo * impactEnvelope(
+            progress: progress,
+            modifier: modifier,
+            toneDecayRate: parameters.decayRate
+        )
     }
 
     private func analogBandTone(frequency: Double, envelope: Double, drive: Double, noiseAmount: Double) -> Double {
@@ -587,16 +714,66 @@ private final class ElasticSlingshotRenderState {
         }
     }
 
-    private func impactFrequency(for profile: ElasticSlingshotSoundProfile) -> Double {
-        switch profile {
-        case .power:
-            return 1_280
-        case .precision:
-            return 1_520
-        case .flow:
-            return 1_180
-        case .modern:
-            return 1_760
+    private func impactParameters(for tone: ToneProfile) -> ElasticSlingshotImpactToneParameters {
+        switch tone.id {
+        case "woodblock":
+            return ElasticSlingshotImpactToneParameters(frequency: 1_060, secondaryMultiplier: 2.75, noiseAmount: 0.12, drive: 1.70, gain: 1.00, decayRate: 18.0, primaryMix: 0.86, secondaryMix: 0.44, bodyMix: 0.06, waveform: .click)
+        case "snare_rim":
+            return ElasticSlingshotImpactToneParameters(frequency: 2_150, secondaryMultiplier: 3.40, noiseAmount: 0.95, drive: 1.90, gain: 0.96, decayRate: 24.0, primaryMix: 0.48, secondaryMix: 0.24, bodyMix: 0.04, waveform: .noise)
+        case "cowbell":
+            return ElasticSlingshotImpactToneParameters(frequency: 620, secondaryMultiplier: 1.43, noiseAmount: 0.02, drive: 1.38, gain: 1.00, decayRate: 7.0, primaryMix: 0.84, secondaryMix: 0.52, bodyMix: 0.28, waveform: .sine)
+        case "shaker":
+            return ElasticSlingshotImpactToneParameters(frequency: 3_600, secondaryMultiplier: 5.20, noiseAmount: 1.40, drive: 0.90, gain: 0.88, decayRate: 11.5, tremoloDepth: 0.54, primaryMix: 1.00, secondaryMix: 0.04, bodyMix: 0.02, waveform: .noise)
+        case "ping":
+            return ElasticSlingshotImpactToneParameters(frequency: 2_720, secondaryMultiplier: 2.00, noiseAmount: 0.00, drive: 0.92, gain: 0.92, decayRate: 4.6, primaryMix: 0.88, secondaryMix: 0.34, bodyMix: 0.22, waveform: .sine)
+        case "hihat":
+            return ElasticSlingshotImpactToneParameters(frequency: 5_800, secondaryMultiplier: 1.90, noiseAmount: 1.65, drive: 1.18, gain: 0.82, decayRate: 32.0, primaryMix: 1.08, secondaryMix: 0.02, bodyMix: 0.01, waveform: .noise)
+        case "clave":
+            return ElasticSlingshotImpactToneParameters(frequency: 1_480, secondaryMultiplier: 2.18, noiseAmount: 0.08, drive: 1.62, gain: 0.98, decayRate: 16.0, primaryMix: 0.76, secondaryMix: 0.58, bodyMix: 0.08, waveform: .click)
+        case "sine_808":
+            return ElasticSlingshotImpactToneParameters(frequency: 74, secondaryMultiplier: 2.00, noiseAmount: 0.01, drive: 2.35, gain: 1.00, decayRate: 3.6, bend: -0.22, primaryMix: 1.15, secondaryMix: 0.00, bodyMix: 0.34, waveform: .sine)
+        case "square_lead":
+            return ElasticSlingshotImpactToneParameters(frequency: 1_320, secondaryMultiplier: 2.00, noiseAmount: 0.02, drive: 1.28, gain: 0.88, decayRate: 8.5, primaryMix: 0.92, secondaryMix: 0.00, bodyMix: 0.12, waveform: .square)
+        case "fm_tine":
+            return ElasticSlingshotImpactToneParameters(frequency: 1_940, secondaryMultiplier: 3.77, noiseAmount: 0.00, drive: 1.05, gain: 0.90, decayRate: 5.6, primaryMix: 0.68, secondaryMix: 0.60, bodyMix: 0.42, waveform: .sine)
+        case "saw_stab":
+            return ElasticSlingshotImpactToneParameters(frequency: 510, secondaryMultiplier: 1.25, noiseAmount: 0.26, drive: 2.05, gain: 0.96, decayRate: 6.8, bend: 0.12, primaryMix: 1.00, secondaryMix: 0.18, bodyMix: 0.20, waveform: .square)
+        case "laser":
+            return ElasticSlingshotImpactToneParameters(frequency: 1_120, secondaryMultiplier: 1.06, noiseAmount: 0.02, drive: 1.12, gain: 0.88, decayRate: 6.2, bend: 1.35, primaryMix: 0.95, secondaryMix: 0.08, bodyMix: 0.12, waveform: .sine)
+        case "pulse":
+            return ElasticSlingshotImpactToneParameters(frequency: 420, secondaryMultiplier: 4.00, noiseAmount: 0.08, drive: 1.52, gain: 0.92, decayRate: 10.0, tremoloDepth: 0.72, primaryMix: 0.88, secondaryMix: 0.00, bodyMix: 0.28, waveform: .square)
+        case "kazoo":
+            return ElasticSlingshotImpactToneParameters(frequency: 370, secondaryMultiplier: 1.72, noiseAmount: 0.46, drive: 2.20, gain: 0.90, decayRate: 5.2, bend: -0.12, primaryMix: 0.94, secondaryMix: 0.40, bodyMix: 0.36, waveform: .square)
+        case "balloon_pop":
+            return ElasticSlingshotImpactToneParameters(frequency: 140, secondaryMultiplier: 2.40, noiseAmount: 1.55, drive: 1.80, gain: 1.00, decayRate: 22.0, bend: -0.75, primaryMix: 1.18, secondaryMix: 0.12, bodyMix: 0.00, waveform: .noise)
+        case "rubber_duck":
+            return ElasticSlingshotImpactToneParameters(frequency: 780, secondaryMultiplier: 1.09, noiseAmount: 0.10, drive: 2.10, gain: 0.92, decayRate: 4.4, bend: 0.58, primaryMix: 0.98, secondaryMix: 0.20, bodyMix: 0.18, waveform: .square)
+        case "golf_click":
+            return ElasticSlingshotImpactToneParameters(frequency: 1_620, secondaryMultiplier: 2.32, noiseAmount: 0.62, drive: 1.58, gain: 0.98, decayRate: 20.0, primaryMix: 0.74, secondaryMix: 0.32, bodyMix: 0.05, waveform: .click)
+        case "spring":
+            return ElasticSlingshotImpactToneParameters(frequency: 360, secondaryMultiplier: 3.60, noiseAmount: 0.02, drive: 1.22, gain: 0.90, decayRate: 3.8, bend: 0.82, tremoloDepth: 0.62, primaryMix: 0.86, secondaryMix: 0.48, bodyMix: 0.44, waveform: .sine)
+        case "whistle":
+            return ElasticSlingshotImpactToneParameters(frequency: 3_400, secondaryMultiplier: 1.01, noiseAmount: 0.00, drive: 0.82, gain: 0.80, decayRate: 4.2, primaryMix: 1.00, secondaryMix: 0.00, bodyMix: 0.02, waveform: .sine)
+        case "cork_pop":
+            return ElasticSlingshotImpactToneParameters(frequency: 240, secondaryMultiplier: 1.66, noiseAmount: 1.18, drive: 1.96, gain: 0.98, decayRate: 14.0, bend: -0.36, primaryMix: 1.05, secondaryMix: 0.24, bodyMix: 0.18, waveform: .noise)
+        case "bell_ring":
+            return ElasticSlingshotImpactToneParameters(frequency: 1_980, secondaryMultiplier: 2.98, noiseAmount: 0.00, drive: 1.02, gain: 0.92, decayRate: 3.2, primaryMix: 0.72, secondaryMix: 0.70, bodyMix: 0.50, waveform: .sine)
+        default:
+            return ElasticSlingshotImpactToneParameters(frequency: 1_620, secondaryMultiplier: 2.32, noiseAmount: 0.62, drive: 1.58, gain: 0.98, decayRate: 20.0, primaryMix: 0.74, secondaryMix: 0.32, bodyMix: 0.05, waveform: .click)
+        }
+    }
+
+    private func impactEnvelope(progress: Double, modifier: ShapeModifier, toneDecayRate: Double) -> Double {
+        let progress = min(max(progress, 0), 1)
+        switch modifier {
+        case .raw:
+            return exp(-toneDecayRate * progress)
+        case .snappy:
+            return exp(-(toneDecayRate * 2.05) * progress)
+        case .lingering:
+            return exp(-(toneDecayRate * 0.42) * progress)
+        case .reversed:
+            return pow(progress, 0.42) * exp(-(toneDecayRate * 0.24) * max(progress - 0.72, 0))
         }
     }
 
@@ -631,30 +808,59 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
         }
     }
 
-    func start(beatsPerMinute: Double, recipe: ElasticSlingshotRecipe, soundProfile: ElasticSlingshotSoundProfile) {
+    func start(
+        beatsPerMinute: Double,
+        recipe: ElasticSlingshotRecipe,
+        soundProfile: ElasticSlingshotSoundProfile,
+        impactTone: ToneProfile,
+        impactModifier: ShapeModifier
+    ) {
         previewStopTask?.cancel()
         previewStopTask = nil
         fadeStopTask?.cancel()
         fadeStopTask = nil
         prepareIfNeeded()
-        renderState.start(beatsPerMinute: beatsPerMinute, recipe: recipe, soundProfile: soundProfile, mode: .continuous)
+        renderState.start(
+            beatsPerMinute: beatsPerMinute,
+            recipe: recipe,
+            soundProfile: soundProfile,
+            impactTone: impactTone,
+            impactModifier: impactModifier,
+            mode: .continuous
+        )
         playbackState = .playing
     }
 
-    func playOneCycle(beatsPerMinute: Double, recipe: ElasticSlingshotRecipe, soundProfile: ElasticSlingshotSoundProfile) {
+    func playOneCycle(
+        beatsPerMinute: Double,
+        recipe: ElasticSlingshotRecipe,
+        soundProfile: ElasticSlingshotSoundProfile,
+        impactTone: ToneProfile,
+        impactModifier: ShapeModifier
+    ) {
         previewStopTask?.cancel()
+        previewStopTask = nil
         fadeStopTask?.cancel()
         fadeStopTask = nil
         prepareIfNeeded()
-        renderState.start(beatsPerMinute: beatsPerMinute, recipe: recipe, soundProfile: soundProfile, mode: .oneCycle)
+        renderState.silence()
+        print("[ToneVault] preview tap tone=\(impactTone.id) asset=\(impactTone.assetName) modifier=\(impactModifier.rawValue)")
+        renderState.start(
+            beatsPerMinute: beatsPerMinute,
+            recipe: recipe,
+            soundProfile: soundProfile,
+            impactTone: impactTone,
+            impactModifier: impactModifier,
+            mode: .impactPreview
+        )
         playbackState = .playing
 
-        let previewDuration = recipe.swingDuration(for: beatsPerMinute) + 0.08
+        let previewDuration = elasticSlingshotImpactDuration + 0.04
         previewStopTask = Task { [weak self] in
             let nanoseconds = UInt64(max(previewDuration, 0.1) * 1_000_000_000)
             try? await Task.sleep(nanoseconds: nanoseconds)
             guard Task.isCancelled == false else { return }
-            await self?.stop()
+            await self?.finishImpactPreview()
         }
     }
 
@@ -679,8 +885,27 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
         fadeStopTask = nil
     }
 
-    func update(beatsPerMinute: Double, recipe: ElasticSlingshotRecipe, soundProfile: ElasticSlingshotSoundProfile) {
-        renderState.update(beatsPerMinute: beatsPerMinute, recipe: recipe, soundProfile: soundProfile)
+    private func finishImpactPreview() {
+        renderState.silence()
+        audioEngine.pause()
+        previewStopTask = nil
+        playbackState = .stopped
+    }
+
+    func update(
+        beatsPerMinute: Double,
+        recipe: ElasticSlingshotRecipe,
+        soundProfile: ElasticSlingshotSoundProfile,
+        impactTone: ToneProfile,
+        impactModifier: ShapeModifier
+    ) {
+        renderState.update(
+            beatsPerMinute: beatsPerMinute,
+            recipe: recipe,
+            soundProfile: soundProfile,
+            impactTone: impactTone,
+            impactModifier: impactModifier
+        )
     }
 
     private func prepareIfNeeded() {
