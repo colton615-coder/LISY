@@ -149,6 +149,7 @@ Owns:
 - deterministic 2D swing analysis
 - manual review and checkpoint review
 - overlays, notes, coaching presentation, and review history
+- environment-first practice planning, active practice execution, journal memory, and Tempo Builder rhythm rehearsal
 
 Does not own:
 - generic media library
@@ -156,7 +157,7 @@ Does not own:
 - unsupported biomechanics certainty
 
 Current supported depth:
-- baseline module depth with deeper Phase 2-ready analysis and review systems
+- baseline module depth with deeper Phase 2-ready analysis, review, and practice execution systems
 
 Must not imply:
 - unsupported 3D certainty
@@ -260,7 +261,7 @@ Must not imply:
 Temporary runtime state examples:
 - Iron Temple workout session
 - Habit Stack focused timer session
-- Garage analysis session and review session
+- Garage analysis session, review session, active practice session, and Tempo Builder rhythm session
 - Capital Core audit flow state
 
 ## 8. Persistence architecture

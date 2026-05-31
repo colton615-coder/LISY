@@ -33,12 +33,16 @@ Current execution plans only. This folder should be absent or empty when there i
 ### `docs/operations/`
 Runbooks and environment workflows used as needed.
 
+### `docs/superpowers/specs/`
+Approved or in-review feature design specs for focused implementation passes.
+
 ### `docs/archive/`
 Historical, non-authoritative reference material.
 
 ## Authoring Discipline
 - Put source-of-truth material in `docs/canonical/` only when it is intended to be authoritative.
 - Put durable technical guidance in `docs/architecture/`.
+- Put feature-specific design contracts in `docs/superpowers/specs/` unless they need canonical authority.
 - Keep `docs/plans/active/` small and current.
 - Move completed or stale plans to `docs/archive/`.
 - Add a clear warning banner to every archive doc.

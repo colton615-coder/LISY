@@ -12,7 +12,7 @@
 - The app has one shared shell, one dashboard home, one module menu, and eight modules.
 - Dashboard summarizes and routes; modules own their real workflows.
 - AI is optional, advisory, and never allowed to silently write user data.
-- Garage is measured-analysis-first: deterministic on-device 2D analysis, then optional coaching interpretation.
+- Garage is measured-analysis-first for swing review and practice-first for execution tools: deterministic on-device 2D analysis, optional coaching interpretation, and focused local practice services.
 - Flagship surfaces should feel dark, tactile, and premium, not like default system scaffolding.
 - If a lower-priority doc implies web, cloud-first, or unsupported biomechanics certainty, ignore it.
 
@@ -137,6 +137,7 @@ Owns:
 - deterministic on-device 2D analysis outputs
 - checkpoint review, overlays, notes, and history
 - coaching feedback grounded in measured findings
+- environment-first practice planning, active sessions, journal memory, and Tempo Builder rhythm rehearsal
 
 Does not own:
 - generic media library scope
@@ -144,7 +145,7 @@ Does not own:
 - unsupported biomechanics certainty
 
 Current supported depth:
-- baseline v1 depth with deeper Phase 2-ready analysis and review systems
+- baseline v1 depth with deeper Phase 2-ready analysis, review, and practice execution systems
 
 Must not imply:
 - guaranteed real-time coaching

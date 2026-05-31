@@ -4,8 +4,6 @@ import SwiftUI
 struct EngineRoomSettingsView: View {
     @Binding var recipe: ElasticSlingshotRecipe
     @Binding var soundProfile: ElasticSlingshotSoundProfile
-    @Binding var impactTone: ToneProfile
-    @Binding var impactModifier: ShapeModifier
     let beatsPerMinute: Double
 
     @StateObject private var previewEngine = ElasticSlingshotAudioEngine()
@@ -23,13 +21,11 @@ struct EngineRoomSettingsView: View {
 
                     ratioTuner
 
-                    loadProfileSelector
-
-                    toneVault
+                    soundSkinSelector
 
                     breakBetweenSwingsControl
 
-                    testToneButton
+                    previewSelectedSkinButton
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 24)
@@ -87,13 +83,6 @@ struct EngineRoomSettingsView: View {
                             var updatedRecipe = recipe
                             updatedRecipe.tempoRatio = ratio
                             recipe = updatedRecipe
-                            previewEngine.playOneCycle(
-                                beatsPerMinute: beatsPerMinute,
-                                recipe: updatedRecipe,
-                                soundProfile: soundProfile,
-                                impactTone: impactTone,
-                                impactModifier: impactModifier
-                            )
                         } label: {
                             Text(ratio.title)
                                 .font(.system(size: 16, weight: .semibold, design: .rounded))
@@ -117,22 +106,15 @@ struct EngineRoomSettingsView: View {
         }
     }
 
-    private var loadProfileSelector: some View {
+    private var soundSkinSelector: some View {
         EngineRoomPanel {
             VStack(alignment: .leading, spacing: 14) {
-                EngineRoomSectionHeader(title: "Load Profile", value: soundProfile.title)
+                EngineRoomSectionHeader(title: "Sound Skin", value: soundProfile.title)
 
                 VStack(spacing: 8) {
                     ForEach(ElasticSlingshotSoundProfile.allCases) { profile in
                         Button {
                             soundProfile = profile
-                            previewEngine.playOneCycle(
-                                beatsPerMinute: beatsPerMinute,
-                                recipe: recipe,
-                                soundProfile: profile,
-                                impactTone: impactTone,
-                                impactModifier: impactModifier
-                            )
                         } label: {
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 3) {
@@ -171,106 +153,6 @@ struct EngineRoomSettingsView: View {
         }
     }
 
-    private var toneVault: some View {
-        EngineRoomPanel {
-            VStack(alignment: .leading, spacing: 18) {
-                EngineRoomSectionHeader(title: "Tone Vault", value: impactTone.name)
-
-                ForEach(ToneCategory.allCases) { category in
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(category.rawValue)
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.58))
-                            .tracking(0.7)
-
-                        LazyVGrid(
-                            columns: [
-                                GridItem(.adaptive(minimum: 132), spacing: 8)
-                            ],
-                            alignment: .leading,
-                            spacing: 8
-                        ) {
-                            ForEach(ToneLibrary.profiles(in: category)) { tone in
-                                toneProfileButton(tone)
-                            }
-                        }
-                    }
-                }
-
-                shapeModifierSelector
-            }
-        }
-    }
-
-    private var shapeModifierSelector: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            EngineRoomSectionHeader(title: "Shape", value: impactModifier.rawValue)
-
-            HStack(spacing: 8) {
-                ForEach(ShapeModifier.allCases) { modifier in
-                    Button {
-                        impactModifier = modifier
-                        previewImpactTone(modifier: modifier)
-                    } label: {
-                        Text(modifier.shortTitle)
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.82)
-                            .foregroundStyle(impactModifier == modifier ? deepGreen : .white.opacity(0.78))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 44)
-                            .background(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .fill(impactModifier == modifier ? neonGreen : Color.white.opacity(0.055))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .stroke(impactModifier == modifier ? neonGreen.opacity(0.72) : Color.white.opacity(0.09), lineWidth: 1)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(modifier.rawValue)
-                    .accessibilityValue(impactModifier == modifier ? "Selected" : "Not selected")
-                }
-            }
-        }
-    }
-
-    private func toneProfileButton(_ tone: ToneProfile) -> some View {
-        let isSelected = impactTone == tone
-
-        return Button {
-            impactTone = tone
-            previewImpactTone(tone: tone)
-        } label: {
-            HStack(spacing: 9) {
-                Circle()
-                    .fill(isSelected ? neonGreen : Color.white.opacity(0.16))
-                    .frame(width: 8, height: 8)
-
-                Text(tone.name)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.82)
-                    .foregroundStyle(.white.opacity(isSelected ? 0.96 : 0.74))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.horizontal, 10)
-            .frame(minHeight: 48)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(isSelected ? neonGreen.opacity(0.12) : Color.white.opacity(0.045))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(isSelected ? neonGreen.opacity(0.38) : Color.white.opacity(0.08), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(tone.name)
-        .accessibilityValue(isSelected ? "Selected" : "Not selected")
-    }
-
     private var breakBetweenSwingsControl: some View {
         EngineRoomPanel {
             VStack(alignment: .leading, spacing: 16) {
@@ -299,21 +181,19 @@ struct EngineRoomSettingsView: View {
         }
     }
 
-    private var testToneButton: some View {
+    private var previewSelectedSkinButton: some View {
         Button {
             previewEngine.playOneCycle(
                 beatsPerMinute: beatsPerMinute,
                 recipe: recipe,
-                soundProfile: soundProfile,
-                impactTone: impactTone,
-                impactModifier: impactModifier
+                soundProfile: soundProfile
             )
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "waveform")
                     .font(.system(size: 18, weight: .bold))
 
-                Text("Test Tones")
+                Text("Preview \(soundProfile.title)")
                     .font(.system(size: 17, weight: .semibold, design: .rounded))
             }
             .foregroundStyle(deepGreen)
@@ -326,40 +206,13 @@ struct EngineRoomSettingsView: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Test Tones")
+        .accessibilityLabel("Preview selected sound skin")
     }
 
     private var breakBetweenSwingsText: String {
         "\(Int(recipe.restInterval.rounded()))s"
     }
 
-    private func previewImpactTone(
-        tone: ToneProfile? = nil,
-        modifier: ShapeModifier? = nil
-    ) {
-        previewEngine.playOneCycle(
-            beatsPerMinute: beatsPerMinute,
-            recipe: recipe,
-            soundProfile: soundProfile,
-            impactTone: tone ?? impactTone,
-            impactModifier: modifier ?? impactModifier
-        )
-    }
-}
-
-private extension ShapeModifier {
-    var shortTitle: String {
-        switch self {
-        case .raw:
-            return "Raw"
-        case .snappy:
-            return "Snap"
-        case .lingering:
-            return "Sustain"
-        case .reversed:
-            return "Reverse"
-        }
-    }
 }
 
 private struct EngineRoomStepButton: View {
@@ -444,15 +297,11 @@ private struct EngineRoomBackground: View {
 
 #Preview("Engine Room Settings") {
     @Previewable @State var recipe = ElasticSlingshotRecipe()
-    @Previewable @State var soundProfile = ElasticSlingshotSoundProfile.power
-    @Previewable @State var impactTone = ToneLibrary.defaultImpactTone
-    @Previewable @State var impactModifier = ShapeModifier.raw
+    @Previewable @State var soundProfile = ElasticSlingshotSoundProfile.elastic
 
     EngineRoomSettingsView(
         recipe: $recipe,
         soundProfile: $soundProfile,
-        impactTone: $impactTone,
-        impactModifier: $impactModifier,
         beatsPerMinute: 75
     )
 }

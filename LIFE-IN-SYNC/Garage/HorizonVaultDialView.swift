@@ -6,9 +6,7 @@ struct GarageTempoBuilderView: View {
     @StateObject private var audioEngine = ElasticSlingshotAudioEngine()
     @State private var beatsPerMinute: Double = 75
     @State private var recipe = ElasticSlingshotRecipe()
-    @State private var soundProfile: ElasticSlingshotSoundProfile = .power
-    @State private var impactTone = ToneLibrary.defaultImpactTone
-    @State private var impactModifier: ShapeModifier = .raw
+    @State private var soundProfile: ElasticSlingshotSoundProfile = .elastic
     @State private var showsEngineRoom = false
     @State private var showsSwingCapture = false
     @State private var lastSwingCaptureURL: URL?
@@ -47,8 +45,6 @@ struct GarageTempoBuilderView: View {
             EngineRoomSettingsView(
                 recipe: $recipe,
                 soundProfile: $soundProfile,
-                impactTone: $impactTone,
-                impactModifier: $impactModifier,
                 beatsPerMinute: beatsPerMinute
             )
             .presentationDetents([.large])
@@ -61,12 +57,6 @@ struct GarageTempoBuilderView: View {
             updateAudioEngine()
         }
         .onChange(of: soundProfile) { _, _ in
-            updateAudioEngine()
-        }
-        .onChange(of: impactTone) { _, _ in
-            updateAudioEngine()
-        }
-        .onChange(of: impactModifier) { _, _ in
             updateAudioEngine()
         }
         .fullScreenCover(isPresented: $showsSwingCapture) {
@@ -91,9 +81,7 @@ struct GarageTempoBuilderView: View {
             audioEngine.start(
                 beatsPerMinute: beatsPerMinute,
                 recipe: recipe,
-                soundProfile: soundProfile,
-                impactTone: impactTone,
-                impactModifier: impactModifier
+                soundProfile: soundProfile
             )
         case .playing:
             audioEngine.stop()
@@ -104,9 +92,7 @@ struct GarageTempoBuilderView: View {
         audioEngine.update(
             beatsPerMinute: updatedBeatsPerMinute ?? beatsPerMinute,
             recipe: recipe,
-            soundProfile: soundProfile,
-            impactTone: impactTone,
-            impactModifier: impactModifier
+            soundProfile: soundProfile
         )
     }
 
