@@ -29,7 +29,7 @@ struct ElasticSlingshotRecipe: Equatable {
     }
 
     var displayText: String {
-        tempoRatio.title
+        tempoRatio.displayTitle
     }
 
     func swingDuration(for beatsPerMinute: Double) -> TimeInterval {
@@ -76,6 +76,32 @@ enum ElasticSlingshotTempoRatio: String, CaseIterable, Identifiable {
         case .smooth:
             return "4:1"
         }
+    }
+
+    var displayTitle: String {
+        switch self {
+        case .punchy:
+            return "Athletic"
+        case .tour:
+            return "Balanced"
+        case .smooth:
+            return "Stretched"
+        }
+    }
+
+    var feelLine: String {
+        switch self {
+        case .punchy:
+            return "Quicker load. Crisp release."
+        case .tour:
+            return "Classic load. Clean transition."
+        case .smooth:
+            return "Longer load. More patience at the top."
+        }
+    }
+
+    var detailText: String {
+        "\(title) swing shape"
     }
 
     var backswingBeatCount: Double {

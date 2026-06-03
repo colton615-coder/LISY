@@ -19,7 +19,7 @@ struct EngineRoomSettingsView: View {
                 VStack(alignment: .leading, spacing: 22) {
                     header
 
-                    ratioTuner
+                    swingShapeTuner
 
                     soundSkinSelector
 
@@ -48,7 +48,7 @@ struct EngineRoomSettingsView: View {
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(neonGreen)
 
-                Text("Linked recipe")
+                Text("Instrument setup")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(neonGreen)
 
@@ -72,10 +72,10 @@ struct EngineRoomSettingsView: View {
         }
     }
 
-    private var ratioTuner: some View {
+    private var swingShapeTuner: some View {
         EngineRoomPanel {
             VStack(alignment: .leading, spacing: 18) {
-                EngineRoomSectionHeader(title: "Ratio Tuner", value: recipe.displayText)
+                EngineRoomSectionHeader(title: "Swing Shape", value: recipe.displayText)
 
                 HStack(spacing: 8) {
                     ForEach(ElasticSlingshotTempoRatio.allCases) { ratio in
@@ -84,12 +84,22 @@ struct EngineRoomSettingsView: View {
                             updatedRecipe.tempoRatio = ratio
                             recipe = updatedRecipe
                         } label: {
-                            Text(ratio.title)
-                                .font(.system(size: 16, weight: .semibold, design: .rounded))
-                                .monospacedDigit()
-                                .foregroundStyle(recipe.tempoRatio == ratio ? deepGreen : .white.opacity(0.84))
+                            VStack(spacing: 3) {
+                                Text(ratio.displayTitle)
+                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(recipe.tempoRatio == ratio ? deepGreen : .white.opacity(0.88))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.72)
+
+                                Text(ratio.detailText)
+                                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                                    .monospacedDigit()
+                                    .foregroundStyle(recipe.tempoRatio == ratio ? deepGreen.opacity(0.72) : .white.opacity(0.46))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.70)
+                            }
                                 .frame(maxWidth: .infinity)
-                                .frame(height: 44)
+                                .frame(height: 54)
                                 .background(
                                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                                         .fill(recipe.tempoRatio == ratio ? neonGreen : Color.white.opacity(0.055))
@@ -100,6 +110,8 @@ struct EngineRoomSettingsView: View {
                                 )
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel(ratio.displayTitle)
+                        .accessibilityHint(ratio.feelLine)
                     }
                 }
             }

@@ -40,11 +40,11 @@ struct GarageSlowTempoLogic: Equatable {
     }
 
     var tempoTitle: String {
-        "\(Int(anchorBPM.rounded())) BPM Swing Tempo"
+        "\(Int(anchorBPM.rounded())) BPM anchor"
     }
 
     var trainingMapText: String {
-        "Start → Top / Transition → Impact"
+        "Start → Load → Impact"
     }
 
     var subdivisionText: String {
@@ -65,7 +65,7 @@ struct GarageSlowTempoLogic: Equatable {
             ),
             GarageSlowTempoLandmark(
                 beat: 2,
-                title: "Top / Transition",
+                title: "Load",
                 cue: "Feel the top.",
                 isTransition: true
             ),
@@ -78,7 +78,7 @@ struct GarageSlowTempoLogic: Equatable {
         ]
     }
 
-    func visualState(elapsedTime: TimeInterval, isPlaying: Bool) -> GarageSlowTempoVisualState {
+    func visualState(elapsedTime: TimeInterval, isPlaying: Bool, recipe: ElasticSlingshotRecipe) -> GarageSlowTempoVisualState {
         guard isPlaying else {
             return GarageSlowTempoVisualState(
                 elapsedInCycle: 0,
@@ -92,33 +92,54 @@ struct GarageSlowTempoLogic: Equatable {
             )
         }
 
-        let cycleDuration = max(swingDuration, 0.1)
+        let swingDuration = max(recipe.swingDuration(for: anchorBPM), 0.1)
+        let cycleDuration = max(recipe.loopDuration(for: anchorBPM), swingDuration)
         let elapsedInCycle = elapsedTime.truncatingRemainder(dividingBy: cycleDuration)
+        let impactWindow = min(max(recipe.restInterval * 0.18, 0.14), 0.26)
+        let impactEndTimestamp = min(swingDuration + impactWindow, cycleDuration)
         let activeBeat: Int
         let nextIndex: Int
+        let phaseLabel: String
+        let phaseCue: String
+        let isResting: Bool
 
-        if elapsedInCycle < topTimestamp {
+        if elapsedInCycle < recipe.takeawayDuration(for: anchorBPM) {
             activeBeat = 1
             nextIndex = 1
-        } else if elapsedInCycle < impactTimestamp {
+            phaseLabel = landmarks[0].title
+            phaseCue = landmarks[0].cue
+            isResting = false
+        } else if elapsedInCycle < swingDuration {
             activeBeat = 2
             nextIndex = 2
+            phaseLabel = landmarks[1].title
+            phaseCue = recipe.tempoRatio.feelLine
+            isResting = false
+        } else if elapsedInCycle < impactEndTimestamp {
+            activeBeat = 3
+            nextIndex = 0
+            phaseLabel = landmarks[2].title
+            phaseCue = landmarks[2].cue
+            isResting = false
         } else {
             activeBeat = 3
             nextIndex = 0
+            phaseLabel = "Reset"
+            phaseCue = "Let it settle."
+            isResting = true
         }
 
         let activeLandmark = landmarks[max(min(activeBeat - 1, landmarks.count - 1), 0)]
 
         return GarageSlowTempoVisualState(
             elapsedInCycle: elapsedInCycle,
-            cycleProgress: min(max(elapsedInCycle / cycleDuration, 0), 1),
+            cycleProgress: min(max(elapsedInCycle / swingDuration, 0), 1),
             activeBeat: activeBeat,
             activeLandmark: activeLandmark,
             nextLandmark: landmarks[nextIndex],
-            phaseLabel: activeLandmark.title,
-            phaseCue: activeLandmark.cue,
-            isResting: false
+            phaseLabel: phaseLabel,
+            phaseCue: phaseCue,
+            isResting: isResting
         )
     }
 }

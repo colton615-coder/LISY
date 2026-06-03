@@ -32,6 +32,7 @@ struct GarageTempoBuilderView: View {
 
                 GarageTempoBuilderHeader(
                     logic: slowTempoLogic,
+                    recipe: recipe,
                     isPlaying: isPlaying,
                     soundProfile: soundProfile
                 )
@@ -40,10 +41,11 @@ struct GarageTempoBuilderView: View {
 
                 TimelineView(.animation(minimumInterval: reduceMotion ? 0.25 : 1 / 30, paused: isPlaying == false)) { timeline in
                     let elapsedTime = playbackStartDate.map { timeline.date.timeIntervalSince($0) } ?? 0
-                    let visualState = slowTempoLogic.visualState(elapsedTime: elapsedTime, isPlaying: isPlaying)
+                    let visualState = slowTempoLogic.visualState(elapsedTime: elapsedTime, isPlaying: isPlaying, recipe: recipe)
 
                     GarageTempoCockpitInstrument(
                         logic: slowTempoLogic,
+                        recipe: recipe,
                         visualState: visualState,
                         isPlaying: isPlaying,
                         reduceMotion: reduceMotion
@@ -144,6 +146,7 @@ struct GarageTempoBuilderView: View {
 
 private struct GarageTempoBuilderHeader: View {
     let logic: GarageSlowTempoLogic
+    let recipe: ElasticSlingshotRecipe
     let isPlaying: Bool
     let soundProfile: ElasticSlingshotSoundProfile
 
@@ -153,14 +156,13 @@ private struct GarageTempoBuilderHeader: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 7) {
-                Text(logic.tempoTitle)
+                Text("\(recipe.displayText) Swing Shape")
                     .font(.system(size: 27, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
-                    .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.74)
 
-                Text(logic.trainingMapText)
+                Text("\(logic.tempoTitle) • \(logic.trainingMapText)")
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.70))
                     .lineLimit(1)
@@ -196,6 +198,7 @@ private struct GarageTempoBuilderHeader: View {
 
 private struct GarageTempoCockpitInstrument: View {
     let logic: GarageSlowTempoLogic
+    let recipe: ElasticSlingshotRecipe
     let visualState: GarageSlowTempoVisualState
     let isPlaying: Bool
     let reduceMotion: Bool
@@ -252,7 +255,7 @@ private struct GarageTempoCockpitInstrument: View {
                 ForEach(logic.landmarks) { landmark in
                     GarageTempoOrbitLandmark(
                         landmark: landmark,
-                        isActive: visualState.activeBeat == landmark.beat && isPlaying,
+                        isActive: visualState.activeBeat == landmark.beat && isPlaying && visualState.isResting == false,
                         isPlaying: isPlaying
                     )
                     .position(position(for: landmark.beat, center: center, radius: (ringSize / 2) - 20))
@@ -260,6 +263,7 @@ private struct GarageTempoCockpitInstrument: View {
 
                 GarageTempoCenterReadout(
                     logic: logic,
+                    recipe: recipe,
                     visualState: visualState,
                     isPlaying: isPlaying
                 )
@@ -268,7 +272,7 @@ private struct GarageTempoCockpitInstrument: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .scaleEffect(isPlaying && reduceMotion == false ? 1.01 : 1)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(logic.tempoTitle). \(visualState.phaseLabel). \(isPlaying ? visualState.phaseCue : logic.primaryCue)")
+            .accessibilityLabel("\(recipe.displayText) swing shape. \(logic.tempoTitle). \(visualState.phaseLabel). \(isPlaying ? visualState.phaseCue : logic.primaryCue)")
         }
         .frame(maxWidth: .infinity)
         .frame(height: 360)
@@ -295,6 +299,7 @@ private struct GarageTempoCockpitInstrument: View {
 
 private struct GarageTempoCenterReadout: View {
     let logic: GarageSlowTempoLogic
+    let recipe: ElasticSlingshotRecipe
     let visualState: GarageSlowTempoVisualState
     let isPlaying: Bool
 
@@ -303,13 +308,14 @@ private struct GarageTempoCenterReadout: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            Text("\(Int(logic.anchorBPM.rounded()))")
-                .font(.system(size: 76, weight: .semibold, design: .rounded))
-                .monospacedDigit()
+            Text(isPlaying ? visualState.phaseLabel.uppercased() : recipe.displayText.uppercased())
+                .font(.system(size: isPlaying ? 44 : 38, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
                 .shadow(color: neonGreen.opacity(0.16), radius: 16, x: 0, y: 8)
+                .lineLimit(1)
+                .minimumScaleFactor(0.58)
 
-            Text(visualState.phaseLabel.uppercased())
+            Text(isPlaying ? phaseCaption : logic.trainingMapText.uppercased())
                 .font(.system(size: 13, weight: .black, design: .rounded))
                 .tracking(1.3)
                 .foregroundStyle(visualState.activeLandmark.isTransition ? neonYellow : neonGreen)
@@ -332,6 +338,10 @@ private struct GarageTempoCenterReadout: View {
                 .padding(.top, 2)
         }
     }
+
+    private var phaseCaption: String {
+        visualState.isResting ? "RESET" : "PHASE \(visualState.activeBeat)"
+    }
 }
 
 private struct GarageTempoOrbitLandmark: View {
@@ -348,17 +358,17 @@ private struct GarageTempoOrbitLandmark: View {
             ZStack {
                 Circle()
                     .fill(fillColor)
-                    .frame(width: isActive || landmark.isTransition ? 56 : 48, height: isActive || landmark.isTransition ? 56 : 48)
+                    .frame(width: isActive ? 56 : 48, height: isActive ? 56 : 48)
                     .shadow(color: activeColor.opacity(isActive ? 0.40 : 0.16), radius: isActive ? 20 : 10, x: 0, y: 8)
 
                 Circle()
                     .stroke(activeColor.opacity(isActive ? 0.95 : 0.38), lineWidth: isActive ? 2 : 1)
-                    .frame(width: isActive || landmark.isTransition ? 56 : 48, height: isActive || landmark.isTransition ? 56 : 48)
+                    .frame(width: isActive ? 56 : 48, height: isActive ? 56 : 48)
 
                 Text("\(landmark.beat)")
                     .font(.system(size: isActive ? 22 : 18, weight: .black, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(isActive || landmark.isTransition ? deepGreen : .white)
+                    .foregroundStyle(isActive ? deepGreen : .white)
             }
 
             Text(landmark.title)
@@ -379,7 +389,7 @@ private struct GarageTempoOrbitLandmark: View {
     }
 
     private var fillColor: Color {
-        if isActive || landmark.isTransition {
+        if isActive {
             return activeColor
         }
 
@@ -427,8 +437,10 @@ private struct GarageTempoBuilderControlDeck: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            GarageTempoIconButton(systemImage: "minus") {
-                beatsPerMinute = max(beatsPerMinute - 1, minimumBPM)
+            if isPlaying == false {
+                GarageTempoIconButton(systemImage: "minus") {
+                    beatsPerMinute = max(beatsPerMinute - 1, minimumBPM)
+                }
             }
 
             Button(action: onPlayToggle) {
@@ -451,8 +463,10 @@ private struct GarageTempoBuilderControlDeck: View {
             .buttonStyle(.plain)
             .accessibilityLabel(isPlaying ? "Stop tempo loop" : "Start tempo loop")
 
-            GarageTempoIconButton(systemImage: "plus") {
-                beatsPerMinute = min(beatsPerMinute + 1, maximumBPM)
+            if isPlaying == false {
+                GarageTempoIconButton(systemImage: "plus") {
+                    beatsPerMinute = min(beatsPerMinute + 1, maximumBPM)
+                }
             }
         }
         .overlay(alignment: .topTrailing) {
@@ -516,7 +530,7 @@ private struct GarageTempoMicroMap: View {
 
                     Text(landmark.title)
                         .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.58))
+                        .foregroundStyle(.white.opacity(0.46))
                         .lineLimit(1)
                         .minimumScaleFactor(0.68)
                 }
@@ -524,7 +538,7 @@ private struct GarageTempoMicroMap: View {
 
                 if landmark.id != logic.landmarks.last?.id {
                     Rectangle()
-                        .fill(Color.white.opacity(0.14))
+                        .fill(Color.white.opacity(0.09))
                         .frame(width: 1, height: 12)
                 }
             }
@@ -533,10 +547,10 @@ private struct GarageTempoMicroMap: View {
         .padding(.vertical, 10)
         .background(
             Capsule()
-                .fill(Color.white.opacity(0.035))
+                .fill(Color.white.opacity(0.024))
                 .overlay(
                     Capsule()
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        .stroke(Color.white.opacity(0.055), lineWidth: 1)
                 )
         )
         .accessibilityElement(children: .combine)
