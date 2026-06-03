@@ -1,0 +1,72 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/Garage/GarageDiagnosticView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Prescription",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 129
+        }
+      },
+      {
+        "comment": "",
+        "key": "Back One Step",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 138
+        }
+      },
+      {
+        "comment": "",
+        "key": "Prescribed Drill",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 347
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ • %@",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 358
+        }
+      },
+      {
+        "comment": "",
+        "key": "The Feeling",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 372
+        }
+      },
+      {
+        "comment": "",
+        "key": "Execution",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 395
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 403
+        }
+      },
+      {
+        "comment": "",
+        "key": "Start Rehearsal",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 421
+        }
+      }
+    ]
+  },
+  "version": 1
+}

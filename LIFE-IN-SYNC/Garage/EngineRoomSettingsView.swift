@@ -4,7 +4,9 @@ import SwiftUI
 struct EngineRoomSettingsView: View {
     @Binding var recipe: ElasticSlingshotRecipe
     @Binding var soundProfile: ElasticSlingshotSoundProfile
+    @Binding var instrumentMode: GarageTempoInstrumentMode
     let beatsPerMinute: Double
+    let allowsInstrumentChange: Bool
 
     @StateObject private var previewEngine = ElasticSlingshotAudioEngine()
 
@@ -19,7 +21,7 @@ struct EngineRoomSettingsView: View {
                 VStack(alignment: .leading, spacing: 22) {
                     header
 
-                    swingShapeTuner
+                    instrumentModeControl
 
                     soundSkinSelector
 
@@ -31,6 +33,14 @@ struct EngineRoomSettingsView: View {
                 .padding(.top, 24)
                 .padding(.bottom, 32)
             }
+        }
+        .onAppear {
+            setDefaultSoundForMode()
+            recipe.tempoRatio = .tour
+        }
+        .onChange(of: instrumentMode) { _, _ in
+            setDefaultSoundForMode()
+            recipe.tempoRatio = .tour
         }
         .onDisappear {
             previewEngine.stop()
@@ -54,7 +64,7 @@ struct EngineRoomSettingsView: View {
 
                 Spacer()
 
-                Text(recipe.displayText)
+                Text(instrumentMode.title)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(.white.opacity(0.82))
@@ -72,29 +82,28 @@ struct EngineRoomSettingsView: View {
         }
     }
 
-    private var swingShapeTuner: some View {
+    private var instrumentModeControl: some View {
         EngineRoomPanel {
             VStack(alignment: .leading, spacing: 18) {
-                EngineRoomSectionHeader(title: "Swing Shape", value: recipe.displayText)
+                EngineRoomSectionHeader(title: "Instrument", value: instrumentMode.title)
 
                 HStack(spacing: 8) {
-                    ForEach(ElasticSlingshotTempoRatio.allCases) { ratio in
+                    ForEach(GarageTempoInstrumentMode.allCases) { mode in
                         Button {
-                            var updatedRecipe = recipe
-                            updatedRecipe.tempoRatio = ratio
-                            recipe = updatedRecipe
+                            guard allowsInstrumentChange else { return }
+                            instrumentMode = mode
                         } label: {
                             VStack(spacing: 3) {
-                                Text(ratio.displayTitle)
+                                Text(mode.title)
                                     .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(recipe.tempoRatio == ratio ? deepGreen : .white.opacity(0.88))
+                                    .foregroundStyle(instrumentMode == mode ? deepGreen : .white.opacity(0.88))
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.72)
 
-                                Text(ratio.detailText)
+                                Text(mode.shortTitle)
                                     .font(.system(size: 10, weight: .bold, design: .rounded))
                                     .monospacedDigit()
-                                    .foregroundStyle(recipe.tempoRatio == ratio ? deepGreen.opacity(0.72) : .white.opacity(0.46))
+                                    .foregroundStyle(instrumentMode == mode ? deepGreen.opacity(0.72) : .white.opacity(0.46))
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.70)
                             }
@@ -102,17 +111,24 @@ struct EngineRoomSettingsView: View {
                                 .frame(height: 54)
                                 .background(
                                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .fill(recipe.tempoRatio == ratio ? neonGreen : Color.white.opacity(0.055))
+                                        .fill(instrumentMode == mode ? neonGreen : Color.white.opacity(0.055))
                                 )
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .stroke(recipe.tempoRatio == ratio ? neonGreen.opacity(0.72) : Color.white.opacity(0.09), lineWidth: 1)
+                                        .stroke(instrumentMode == mode ? neonGreen.opacity(0.72) : Color.white.opacity(0.09), lineWidth: 1)
                                 )
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(ratio.displayTitle)
-                        .accessibilityHint(ratio.feelLine)
+                        .disabled(allowsInstrumentChange == false)
+                        .accessibilityLabel(mode.title)
+                        .accessibilityHint(mode.subtitle)
                     }
+                }
+
+                if allowsInstrumentChange == false {
+                    Text("Stop playback to switch instruments.")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.46))
                 }
             }
         }
@@ -121,20 +137,20 @@ struct EngineRoomSettingsView: View {
     private var soundSkinSelector: some View {
         EngineRoomPanel {
             VStack(alignment: .leading, spacing: 14) {
-                EngineRoomSectionHeader(title: "Sound Skin", value: soundProfile.title)
+                EngineRoomSectionHeader(title: instrumentMode == .metronome ? "Click Voice" : "Build Voice", value: soundProfile.title)
 
                 VStack(spacing: 8) {
-                    ForEach(ElasticSlingshotSoundProfile.allCases) { profile in
+                    ForEach(soundChoices) { choice in
                         Button {
-                            soundProfile = profile
+                            soundProfile = choice.profile
                         } label: {
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(profile.title)
+                                    Text(choice.title)
                                         .font(.system(size: 16, weight: .semibold, design: .rounded))
                                         .foregroundStyle(.white)
 
-                                    Text(profile.description)
+                                    Text(choice.description)
                                         .font(.system(size: 12, weight: .medium))
                                         .foregroundStyle(.white.opacity(0.58))
                                 }
@@ -142,23 +158,23 @@ struct EngineRoomSettingsView: View {
                                 Spacer()
 
                                 Circle()
-                                    .fill(soundProfile == profile ? neonGreen : Color.white.opacity(0.18))
+                                    .fill(soundProfile == choice.profile ? neonGreen : Color.white.opacity(0.18))
                                     .frame(width: 10, height: 10)
                             }
                             .padding(.horizontal, 14)
                             .frame(height: 58)
                             .background(
                                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .fill(soundProfile == profile ? neonGreen.opacity(0.12) : Color.white.opacity(0.045))
+                                    .fill(soundProfile == choice.profile ? neonGreen.opacity(0.12) : Color.white.opacity(0.045))
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .stroke(soundProfile == profile ? neonGreen.opacity(0.36) : Color.white.opacity(0.08), lineWidth: 1)
+                                    .stroke(soundProfile == choice.profile ? neonGreen.opacity(0.36) : Color.white.opacity(0.08), lineWidth: 1)
                             )
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(profile.title)
-                        .accessibilityValue(soundProfile == profile ? "Selected" : "Not selected")
+                        .accessibilityLabel(choice.title)
+                        .accessibilityValue(soundProfile == choice.profile ? "Selected" : "Not selected")
                     }
                 }
             }
@@ -198,14 +214,15 @@ struct EngineRoomSettingsView: View {
             previewEngine.playOneCycle(
                 beatsPerMinute: beatsPerMinute,
                 recipe: recipe,
-                soundProfile: soundProfile
+                soundProfile: soundProfile,
+                instrumentMode: instrumentMode
             )
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "waveform")
                     .font(.system(size: 18, weight: .bold))
 
-                Text("Preview \(soundProfile.title)")
+                Text("Preview \(instrumentMode.title)")
                     .font(.system(size: 17, weight: .semibold, design: .rounded))
             }
             .foregroundStyle(deepGreen)
@@ -225,6 +242,43 @@ struct EngineRoomSettingsView: View {
         "\(Int(recipe.restInterval.rounded()))s"
     }
 
+    private var soundChoices: [EngineRoomSoundChoice] {
+        switch instrumentMode {
+        case .metronome:
+            return [
+                EngineRoomSoundChoice(profile: .elastic, title: "Medium Wood", description: "Warm strict click with practice-room weight."),
+                EngineRoomSoundChoice(profile: .pulse, title: "Clean Digital", description: "Crisp exact click with less body.")
+            ]
+        case .build:
+            return [
+                EngineRoomSoundChoice(profile: .elastic, title: "Pressure Swell", description: "Controlled rise, smooth power, precise strike."),
+                EngineRoomSoundChoice(profile: .rubber, title: "Elastic Tension", description: "Tactile resistance without toy energy."),
+                EngineRoomSoundChoice(profile: .airframe, title: "Air Build", description: "Subtle lift, clean shape, lighter snap."),
+                EngineRoomSoundChoice(profile: .gravity, title: "Low Charge", description: "Deeper build with restrained power.")
+            ]
+        }
+    }
+
+    private func setDefaultSoundForMode() {
+        switch instrumentMode {
+        case .metronome:
+            if soundProfile != .elastic && soundProfile != .pulse {
+                soundProfile = .elastic
+            }
+        case .build:
+            if soundProfile == .pulse || soundProfile == .glass || soundProfile == .reed || soundProfile == .storm {
+                soundProfile = .elastic
+            }
+        }
+    }
+
+}
+
+private struct EngineRoomSoundChoice: Identifiable {
+    var id: ElasticSlingshotSoundProfile { profile }
+    let profile: ElasticSlingshotSoundProfile
+    let title: String
+    let description: String
 }
 
 private struct EngineRoomStepButton: View {
@@ -310,10 +364,13 @@ private struct EngineRoomBackground: View {
 #Preview("Engine Room Settings") {
     @Previewable @State var recipe = ElasticSlingshotRecipe()
     @Previewable @State var soundProfile = ElasticSlingshotSoundProfile.elastic
+    @Previewable @State var instrumentMode = GarageTempoInstrumentMode.build
 
     EngineRoomSettingsView(
         recipe: $recipe,
         soundProfile: $soundProfile,
-        beatsPerMinute: 75
+        instrumentMode: $instrumentMode,
+        beatsPerMinute: 75,
+        allowsInstrumentChange: true
     )
 }

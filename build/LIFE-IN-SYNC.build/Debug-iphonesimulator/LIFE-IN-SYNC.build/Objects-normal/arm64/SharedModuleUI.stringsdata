@@ -1,0 +1,40 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/SharedModuleUI.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Garage",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 630
+        }
+      },
+      {
+        "comment": "",
+        "key": "GARAGE",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 636
+        }
+      },
+      {
+        "comment": "",
+        "key": "CT",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 660
+        }
+      },
+      {
+        "comment": "",
+        "key": "Current Focus",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 838
+        }
+      }
+    ]
+  },
+  "version": 1
+}

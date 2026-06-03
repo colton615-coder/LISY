@@ -1,0 +1,88 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/Garage/GarageCoachingDashboardView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Finish another coached session in this routine to draw the efficacy trend.",
+        "location": {
+          "startingColumn": 14,
+          "startingLine": 193
+        }
+      },
+      {
+        "comment": "",
+        "key": "EFFICACY TRENDS",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 93
+        }
+      },
+      {
+        "comment": "",
+        "key": "Average Baseline",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 143
+        }
+      },
+      {
+        "comment": "",
+        "key": "Date",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 128
+        }
+      },
+      {
+        "comment": "",
+        "key": "Coaching Efficacy",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 129
+        }
+      },
+      {
+        "comment": "",
+        "key": "Date",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 136
+        }
+      },
+      {
+        "comment": "",
+        "key": "Coaching Efficacy",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 137
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld%%",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 166
+        }
+      },
+      {
+        "comment": "",
+        "key": "TIP OF THE DAY",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 225
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ • %@ coaching efficacy",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 236
+        }
+      }
+    ]
+  },
+  "version": 1
+}

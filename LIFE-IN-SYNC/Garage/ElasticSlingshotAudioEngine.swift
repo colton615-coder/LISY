@@ -152,6 +152,40 @@ enum ElasticSlingshotPlaybackState: Equatable {
     case playing
 }
 
+enum GarageTempoInstrumentMode: String, CaseIterable, Identifiable {
+    case metronome
+    case build
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .metronome:
+            return "Metronome"
+        case .build:
+            return "Build"
+        }
+    }
+
+    var shortTitle: String {
+        switch self {
+        case .metronome:
+            return "Click"
+        case .build:
+            return "Pressure"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .metronome:
+            return "Strict wood/digital count"
+        case .build:
+            return "Continuous pressure trainer"
+        }
+    }
+}
+
 enum ElasticSlingshotSoundProfile: String, CaseIterable, Identifiable {
     case elastic
     case storm
@@ -234,6 +268,7 @@ private struct ElasticSlingshotRenderConfiguration {
     var beatsPerMinute: Double
     var recipe: ElasticSlingshotRecipe
     var soundProfile: ElasticSlingshotSoundProfile
+    var instrumentMode: GarageTempoInstrumentMode
     var baseFrame: AVAudioFramePosition
     var mode: ElasticSlingshotPlaybackMode
     var isPlaying: Bool
@@ -372,6 +407,7 @@ private final class ElasticSlingshotRenderState {
         beatsPerMinute: 75,
         recipe: ElasticSlingshotRecipe(),
         soundProfile: .elastic,
+        instrumentMode: .build,
         baseFrame: 0,
         mode: .continuous,
         isPlaying: false,
@@ -390,12 +426,14 @@ private final class ElasticSlingshotRenderState {
     func update(
         beatsPerMinute: Double,
         recipe: ElasticSlingshotRecipe,
-        soundProfile: ElasticSlingshotSoundProfile
+        soundProfile: ElasticSlingshotSoundProfile,
+        instrumentMode: GarageTempoInstrumentMode
     ) {
         lock.lock()
         configuration.beatsPerMinute = beatsPerMinute
         configuration.recipe = recipe
         configuration.soundProfile = soundProfile
+        configuration.instrumentMode = instrumentMode
         lock.unlock()
     }
 
@@ -403,6 +441,7 @@ private final class ElasticSlingshotRenderState {
         beatsPerMinute: Double,
         recipe: ElasticSlingshotRecipe,
         soundProfile: ElasticSlingshotSoundProfile,
+        instrumentMode: GarageTempoInstrumentMode,
         mode: ElasticSlingshotPlaybackMode
     ) {
         lock.lock()
@@ -410,6 +449,7 @@ private final class ElasticSlingshotRenderState {
             beatsPerMinute: beatsPerMinute,
             recipe: recipe,
             soundProfile: soundProfile,
+            instrumentMode: instrumentMode,
             baseFrame: max(latestFrame, 0),
             mode: mode,
             isPlaying: true,
@@ -484,15 +524,17 @@ private final class ElasticSlingshotRenderState {
         let rawSample: Double
         switch phase(for: relativeFrame, configuration: configuration) {
         case let .takeback(progress):
-            rawSample = takebackSample(progress: progress, profile: configuration.soundProfile)
+            rawSample = configuration.instrumentMode == .metronome ? 0 : takebackSample(progress: progress, profile: configuration.soundProfile)
         case let .pause(releaseGain):
-            rawSample = pauseSample(releaseGain: releaseGain, profile: configuration.soundProfile)
+            rawSample = configuration.instrumentMode == .metronome ? 0 : pauseSample(releaseGain: releaseGain, profile: configuration.soundProfile)
         case let .downswing(progress):
-            rawSample = downswingTrailSample(progress: progress, profile: configuration.soundProfile)
+            rawSample = configuration.instrumentMode == .metronome ? 0 : downswingTrailSample(progress: progress, profile: configuration.soundProfile)
         case let .impact(progress):
             debugLogImpactIfNeeded(at: relativeFrame, configuration: configuration)
-            rawSample = impactSample(progress: progress, profile: configuration.soundProfile)
-        case .loopDelay, .finished:
+            rawSample = configuration.instrumentMode == .metronome ? 0 : impactSample(progress: progress, profile: configuration.soundProfile)
+        case .loopDelay:
+            rawSample = configuration.instrumentMode == .build ? buildResetPulseBed(at: relativeFrame, configuration: configuration) : 0
+        case .finished:
             rawSample = 0
         }
 
@@ -560,6 +602,10 @@ private final class ElasticSlingshotRenderState {
             cycleFrame = relativeFrame
         }
 
+        if configuration.instrumentMode == .metronome {
+            return metronomeGuideSample(cycleFrame: cycleFrame, configuration: configuration)
+        }
+
         guard cycleFrame < totalFrames else { return 0 }
 
         let logic = configuration.slowTempoLogic
@@ -602,6 +648,69 @@ private final class ElasticSlingshotRenderState {
         }
 
         return 0
+    }
+
+    private func metronomeGuideSample(
+        cycleFrame: AVAudioFramePosition,
+        configuration: ElasticSlingshotRenderConfiguration
+    ) -> Double {
+        let logic = configuration.slowTempoLogic
+        let pulseFrames = max(frames(for: 0.045), 1)
+        let strikeFrame = frames(for: configuration.totalDuration)
+        let events: [(AVAudioFramePosition, Double)] = [
+            (0, 0.32),
+            (frames(for: logic.topTimestamp), 0.24),
+            (strikeFrame, 0.38)
+        ]
+
+        for event in events {
+            if let progress = eventProgress(
+                cycleFrame: cycleFrame,
+                eventFrame: event.0,
+                durationFrames: pulseFrames
+            ) {
+                return metronomeClickSample(progress: progress, gain: event.1, profile: configuration.soundProfile)
+            }
+        }
+
+        return 0
+    }
+
+    private func metronomeClickSample(progress: Double, gain: Double, profile: ElasticSlingshotSoundProfile) -> Double {
+        let progress = min(max(progress, 0), 1)
+        let envelope = exp(-28 * progress)
+        let woodBody = sin(progress * Double.pi * 19)
+        let cleanEdge = sin(progress * Double.pi * 47) * 0.20
+
+        switch profile {
+        case .pulse, .glass:
+            let digitalCore = sin(progress * Double.pi * 52)
+            let digitalEdge = sin(progress * Double.pi * 91) * 0.18
+            return (digitalCore + digitalEdge) * envelope * gain * 0.86
+        default:
+            return (woodBody + cleanEdge) * envelope * gain
+        }
+    }
+
+    private func buildResetPulseBed(
+        at relativeFrame: AVAudioFramePosition,
+        configuration: ElasticSlingshotRenderConfiguration
+    ) -> Double {
+        let loopFrames = max(frames(for: configuration.loopDuration), 1)
+        let cycleFrame = relativeFrame % loopFrames
+        let swingFrames = max(frames(for: configuration.totalDuration), 1)
+        guard cycleFrame >= swingFrames else { return 0 }
+
+        let restFrame = cycleFrame - swingFrames
+        let restFrames = max(loopFrames - swingFrames, 1)
+        let pulseIntervalFrames = max(frames(for: max(configuration.slowTempoLogic.anchorInterval * 0.5, 0.25)), 1)
+        let pulseFrame = restFrame % pulseIntervalFrames
+        let pulseProgress = Double(pulseFrame) / Double(pulseIntervalFrames)
+        let restProgress = Double(restFrame) / Double(restFrames)
+        let envelope = exp(-10 * pulseProgress) * (0.55 + (0.45 * restProgress))
+        let phase = voiceState.advanceSecondary(frequency: 112, sampleRate: sampleRate)
+
+        return sin(phase) * envelope * 0.045
     }
 
     private func eventProgress(
@@ -1111,7 +1220,8 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
     func start(
         beatsPerMinute: Double,
         recipe: ElasticSlingshotRecipe,
-        soundProfile: ElasticSlingshotSoundProfile
+        soundProfile: ElasticSlingshotSoundProfile,
+        instrumentMode: GarageTempoInstrumentMode
     ) {
         previewStopTask?.cancel()
         previewStopTask = nil
@@ -1122,6 +1232,7 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
             beatsPerMinute: beatsPerMinute,
             recipe: recipe,
             soundProfile: soundProfile,
+            instrumentMode: instrumentMode,
             mode: .continuous
         )
         playbackState = .playing
@@ -1130,7 +1241,8 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
     func playOneCycle(
         beatsPerMinute: Double,
         recipe: ElasticSlingshotRecipe,
-        soundProfile: ElasticSlingshotSoundProfile
+        soundProfile: ElasticSlingshotSoundProfile,
+        instrumentMode: GarageTempoInstrumentMode
     ) {
         previewStopTask?.cancel()
         previewStopTask = nil
@@ -1143,6 +1255,7 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
             beatsPerMinute: beatsPerMinute,
             recipe: recipe,
             soundProfile: soundProfile,
+            instrumentMode: instrumentMode,
             mode: .oneCycle
         )
         playbackState = .playing
@@ -1187,12 +1300,14 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
     func update(
         beatsPerMinute: Double,
         recipe: ElasticSlingshotRecipe,
-        soundProfile: ElasticSlingshotSoundProfile
+        soundProfile: ElasticSlingshotSoundProfile,
+        instrumentMode: GarageTempoInstrumentMode
     ) {
         renderState.update(
             beatsPerMinute: beatsPerMinute,
             recipe: recipe,
-            soundProfile: soundProfile
+            soundProfile: soundProfile,
+            instrumentMode: instrumentMode
         )
     }
 

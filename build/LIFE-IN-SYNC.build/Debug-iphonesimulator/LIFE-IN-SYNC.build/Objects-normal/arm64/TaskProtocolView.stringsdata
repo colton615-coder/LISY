@@ -1,0 +1,72 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/TaskProtocolView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "New Task",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 143
+        }
+      },
+      {
+        "comment": "",
+        "key": "Task",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 127
+        }
+      },
+      {
+        "comment": "",
+        "key": "Title",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 128
+        }
+      },
+      {
+        "comment": "",
+        "key": "Priority",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 130
+        }
+      },
+      {
+        "comment": "",
+        "key": "Set due date",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 136
+        }
+      },
+      {
+        "comment": "",
+        "key": "Due",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 139
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 146
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 152
+        }
+      }
+    ]
+  },
+  "version": 1
+}

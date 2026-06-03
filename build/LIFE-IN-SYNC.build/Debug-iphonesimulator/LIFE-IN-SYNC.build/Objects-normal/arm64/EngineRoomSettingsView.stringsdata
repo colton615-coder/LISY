@@ -1,0 +1,64 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/Garage/EngineRoomSettingsView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Preview selected sound skin",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 238
+        }
+      },
+      {
+        "comment": "",
+        "key": "Engine Room",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 52
+        }
+      },
+      {
+        "comment": "",
+        "key": "Instrument setup",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 61
+        }
+      },
+      {
+        "comment": "",
+        "key": "Stop playback to switch instruments.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 129
+        }
+      },
+      {
+        "comment": "",
+        "key": "Selected",
+        "location": {
+          "startingColumn": 78,
+          "startingLine": 177
+        }
+      },
+      {
+        "comment": "",
+        "key": "Not selected",
+        "location": {
+          "startingColumn": 91,
+          "startingLine": 177
+        }
+      },
+      {
+        "comment": "",
+        "key": "Preview %@",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 225
+        }
+      }
+    ]
+  },
+  "version": 1
+}

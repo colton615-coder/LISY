@@ -1,0 +1,104 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/HabitStackView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Today's Habits",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 28
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add Habit",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 35
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld of %lld today",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 186
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld day streak",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 192
+        }
+      },
+      {
+        "comment": "",
+        "key": "Undo",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 210
+        }
+      },
+      {
+        "comment": "",
+        "key": "Log Progress",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 220
+        }
+      },
+      {
+        "comment": "",
+        "key": "New Habit",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 252
+        }
+      },
+      {
+        "comment": "",
+        "key": "Habit Details",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 244
+        }
+      },
+      {
+        "comment": "",
+        "key": "Habit name",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 245
+        }
+      },
+      {
+        "comment": "",
+        "key": "Daily target: %lld",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 248
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 255
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 261
+        }
+      }
+    ]
+  },
+  "version": 1
+}

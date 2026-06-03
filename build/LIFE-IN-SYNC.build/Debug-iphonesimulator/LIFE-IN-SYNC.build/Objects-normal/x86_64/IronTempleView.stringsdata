@@ -1,0 +1,120 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/IronTempleView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Add Template",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 102
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld min",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 174
+        }
+      },
+      {
+        "comment": "",
+        "key": "New Template",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 213
+        }
+      },
+      {
+        "comment": "",
+        "key": "Template Details",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 209
+        }
+      },
+      {
+        "comment": "",
+        "key": "Template name",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 210
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 216
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 222
+        }
+      },
+      {
+        "comment": "",
+        "key": "Log Session",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 263
+        }
+      },
+      {
+        "comment": "",
+        "key": "Session Details",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 249
+        }
+      },
+      {
+        "comment": "",
+        "key": "Template",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 250
+        }
+      },
+      {
+        "comment": "",
+        "key": "Performed",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 260
+        }
+      },
+      {
+        "comment": "",
+        "key": "Duration: %lld min",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 257
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 266
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 272
+        }
+      }
+    ]
+  },
+  "version": 1
+}

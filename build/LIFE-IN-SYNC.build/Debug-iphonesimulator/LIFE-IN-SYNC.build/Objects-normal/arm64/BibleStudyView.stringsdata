@@ -1,0 +1,80 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/BibleStudyView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Recent Study Entries",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 21
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add Study Entry",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 44
+        }
+      },
+      {
+        "comment": "",
+        "key": "New Study Entry",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 132
+        }
+      },
+      {
+        "comment": "",
+        "key": "Study Entry",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 125
+        }
+      },
+      {
+        "comment": "",
+        "key": "Title",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 126
+        }
+      },
+      {
+        "comment": "",
+        "key": "Passage Reference",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 127
+        }
+      },
+      {
+        "comment": "",
+        "key": "Notes",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 128
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 135
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 141
+        }
+      }
+    ]
+  },
+  "version": 1
+}

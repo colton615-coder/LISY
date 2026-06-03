@@ -1,0 +1,176 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/Garage/GarageTempoWizard.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 660
+        }
+      },
+      {
+        "comment": "",
+        "key": "BPM",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 942
+        }
+      },
+      {
+        "comment": "",
+        "key": "Reset. Adjust. Resume.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 975
+        }
+      },
+      {
+        "comment": "",
+        "key": "Tempo Builder",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 1087
+        }
+      },
+      {
+        "comment": "",
+        "key": "Back",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 1083
+        }
+      },
+      {
+        "comment": "",
+        "key": "BPM",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1121
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cycle target",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 1200
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld cycle target",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 1188
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 1211
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cycles",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 1215
+        }
+      },
+      {
+        "comment": "",
+        "key": "Tempo J arc",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 1271
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@, %@ ratio, %lld cycles",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 1272
+        }
+      },
+      {
+        "comment": "",
+        "key": "BPM",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1469
+        }
+      },
+      {
+        "comment": "",
+        "key": "Live tune dock",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 1799
+        }
+      },
+      {
+        "comment": "",
+        "key": "Profile",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1888
+        }
+      },
+      {
+        "comment": "",
+        "key": "Profile",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 1942
+        }
+      },
+      {
+        "comment": "",
+        "key": "AirPods-first harmonic sine tones. Haptics stay off for clean tempo feedback.",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 2230
+        }
+      },
+      {
+        "comment": "",
+        "key": "Audio cues",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 2219
+        }
+      },
+      {
+        "comment": "",
+        "key": "Local rehearsal tool",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 2401
+        }
+      },
+      {
+        "comment": "",
+        "key": "No camera, mic, AI, or sensor-based claims. History and saved fingerprints stay behind a later persistence gate.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 2405
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ BPM - %@ setup - %@ tempo",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 2410
+        }
+      }
+    ]
+  },
+  "version": 1
+}

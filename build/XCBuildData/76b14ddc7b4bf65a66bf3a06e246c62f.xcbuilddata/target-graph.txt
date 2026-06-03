@@ -1,0 +1,2 @@
+Target dependency graph (1 target)
+Target 'LIFE-IN-SYNC' in project 'LIFE-IN-SYNC' (no dependencies)

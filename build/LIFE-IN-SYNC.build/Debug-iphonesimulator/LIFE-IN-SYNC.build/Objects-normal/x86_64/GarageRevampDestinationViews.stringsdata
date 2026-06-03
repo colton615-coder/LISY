@@ -1,0 +1,352 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/Garage/GarageRevampDestinationViews.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "What's today's focus?",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 142
+        }
+      },
+      {
+        "comment": "",
+        "key": "Describe the session you want. Garage will build a local, reviewable routine before anything starts.",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 146
+        }
+      },
+      {
+        "comment": "",
+        "key": "Saved Routines",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 285
+        }
+      },
+      {
+        "comment": "",
+        "key": "No saved routines for this environment yet.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 291
+        }
+      },
+      {
+        "comment": "",
+        "key": "Generate a new routine or build your own to start creating repeatable practice plans.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 296
+        }
+      },
+      {
+        "comment": "",
+        "key": "Garage Library",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 338
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld completed %@ sessions remain available in Garage history.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 342
+        }
+      },
+      {
+        "comment": "",
+        "key": "Generate New Routine",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 407
+        }
+      },
+      {
+        "comment": "",
+        "key": "Local Routine Setup",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 373
+        }
+      },
+      {
+        "comment": "",
+        "key": "Garage will assemble a reviewable %@ routine. Nothing is saved until you choose to save or complete a session.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 377
+        }
+      },
+      {
+        "comment": "",
+        "key": "Review Routine",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 439
+        }
+      },
+      {
+        "comment": "",
+        "key": "Unable To Save Routine",
+        "location": {
+          "startingColumn": 16,
+          "startingLine": 444
+        }
+      },
+      {
+        "comment": "",
+        "key": "OK",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 445
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld %@",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 469
+        }
+      },
+      {
+        "comment": "",
+        "key": "Review Routine",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 456
+        }
+      },
+      {
+        "comment": "",
+        "key": "No drills in this routine.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 502
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add drills before starting a Focus Room session.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 506
+        }
+      },
+      {
+        "comment": "",
+        "key": "+ %lld more drills",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 519
+        }
+      },
+      {
+        "comment": "",
+        "key": "This routine needs at least one drill before it can start.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 534
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld %@ selected",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 749
+        }
+      },
+      {
+        "comment": "",
+        "key": "Build Manually",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 771
+        }
+      },
+      {
+        "comment": "",
+        "key": "Browse the drill directory and create your own plan.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 775
+        }
+      },
+      {
+        "comment": "",
+        "key": "No drills selected yet.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 810
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open the directory to assemble this practice.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 814
+        }
+      },
+      {
+        "comment": "",
+        "key": "+ %lld more selected",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 855
+        }
+      },
+      {
+        "comment": "",
+        "key": "Remove %@",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 904
+        }
+      },
+      {
+        "comment": "",
+        "key": "Browse Drill Directory",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 959
+        }
+      },
+      {
+        "comment": "",
+        "key": "Search drills",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 1026
+        }
+      },
+      {
+        "comment": "",
+        "key": "No matching drills.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 1120
+        }
+      },
+      {
+        "comment": "",
+        "key": "Clear the search or switch categories.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 1124
+        }
+      },
+      {
+        "comment": "",
+        "key": "Done",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 1202
+        }
+      },
+      {
+        "comment": "",
+        "key": "E.g. 30 minutes on driver start line",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1242
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld/120",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 1261
+        }
+      },
+      {
+        "comment": "",
+        "key": "Generate My Plan",
+        "location": {
+          "startingColumn": 19,
+          "startingLine": 1280
+        }
+      },
+      {
+        "comment": "",
+        "key": "OR",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 1315
+        }
+      },
+      {
+        "comment": "",
+        "key": "AI",
+        "location": {
+          "startingColumn": 19,
+          "startingLine": 1342
+        }
+      },
+      {
+        "comment": "",
+        "key": "AI Plan Generator",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1334
+        }
+      },
+      {
+        "comment": "",
+        "key": "Constraints (optional)",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 1358
+        }
+      },
+      {
+        "comment": "",
+        "key": "Review Practice",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1409
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 1521
+        }
+      },
+      {
+        "comment": "",
+        "key": "Routine Saved",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 1575
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save Routine",
+        "location": {
+          "startingColumn": 47,
+          "startingLine": 1575
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld drills - %lld planned reps",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1691
+        }
+      }
+    ]
+  },
+  "version": 1
+}

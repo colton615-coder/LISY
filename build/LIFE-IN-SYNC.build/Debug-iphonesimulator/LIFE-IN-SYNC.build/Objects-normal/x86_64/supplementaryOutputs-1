@@ -1,0 +1,23 @@
+{
+  "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/Garage/GarageActiveSessionView.swift" : {
+    "const-values" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageActiveSessionView.swiftconstvalues",
+    "dependencies" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageActiveSessionView.d",
+    "diagnostics" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageActiveSessionView.dia",
+    "object" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageActiveSessionView.o",
+    "swift-dependencies" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageActiveSessionView.swiftdeps"
+  },
+  "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/Garage/GarageCoachPlanReviewView.swift" : {
+    "const-values" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageCoachPlanReviewView.swiftconstvalues",
+    "dependencies" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageCoachPlanReviewView.d",
+    "diagnostics" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageCoachPlanReviewView.dia",
+    "object" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageCoachPlanReviewView.o",
+    "swift-dependencies" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageCoachPlanReviewView.swiftdeps"
+  },
+  "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/Garage/GarageCoachingDashboardView.swift" : {
+    "const-values" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageCoachingDashboardView.swiftconstvalues",
+    "dependencies" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageCoachingDashboardView.d",
+    "diagnostics" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageCoachingDashboardView.dia",
+    "object" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageCoachingDashboardView.o",
+    "swift-dependencies" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageCoachingDashboardView.swiftdeps"
+  }
+}

@@ -1,0 +1,192 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/Garage/GarageTemplateBuilderWizard.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Unable To Save Routine",
+        "location": {
+          "startingColumn": 16,
+          "startingLine": 46
+        }
+      },
+      {
+        "comment": "",
+        "key": "OK",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 47
+        }
+      },
+      {
+        "comment": "",
+        "key": "New Routine",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 183
+        }
+      },
+      {
+        "comment": "",
+        "key": "Routine Name",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 137
+        }
+      },
+      {
+        "comment": "",
+        "key": "Routine Name",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 141
+        }
+      },
+      {
+        "comment": "",
+        "key": "Environment",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 153
+        }
+      },
+      {
+        "comment": "",
+        "key": "Drill Dictionary",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 294
+        }
+      },
+      {
+        "comment": "",
+        "key": "New Drill",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 231
+        }
+      },
+      {
+        "comment": "",
+        "key": "Drill Dictionary",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 209
+        }
+      },
+      {
+        "comment": "",
+        "key": "Create the first reusable drill.",
+        "location": {
+          "startingColumn": 52,
+          "startingLine": 213
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld reusable drills available.",
+        "location": {
+          "startingColumn": 89,
+          "startingLine": 213
+        }
+      },
+      {
+        "comment": "",
+        "key": "No drills yet",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 240
+        }
+      },
+      {
+        "comment": "",
+        "key": "Tap the plus button above to create the first reusable drill.",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 244
+        }
+      },
+      {
+        "comment": "",
+        "key": "No drills selected",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 269
+        }
+      },
+      {
+        "comment": "",
+        "key": "Pick drills from the dictionary to build this routine.",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 273
+        }
+      },
+      {
+        "comment": "",
+        "key": "Review",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 367
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 405
+        }
+      },
+      {
+        "comment": "",
+        "key": "New Drill",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 480
+        }
+      },
+      {
+        "comment": "",
+        "key": "Unable To Save Drill",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 489
+        }
+      },
+      {
+        "comment": "",
+        "key": "Default Reps",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 455
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 461
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 484
+        }
+      },
+      {
+        "comment": "",
+        "key": "OK",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 490
+        }
+      }
+    ]
+  },
+  "version": 1
+}

@@ -1,0 +1,23 @@
+{
+  "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/Garage/GarageEnvironmentFocusView.swift" : {
+    "const-values" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageEnvironmentFocusView.swiftconstvalues",
+    "dependencies" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageEnvironmentFocusView.d",
+    "diagnostics" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageEnvironmentFocusView.dia",
+    "object" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageEnvironmentFocusView.o",
+    "swift-dependencies" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageEnvironmentFocusView.swiftdeps"
+  },
+  "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/Garage/GarageFocusRoomView.swift" : {
+    "const-values" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageFocusRoomView.swiftconstvalues",
+    "dependencies" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageFocusRoomView.d",
+    "diagnostics" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageFocusRoomView.dia",
+    "object" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageFocusRoomView.o",
+    "swift-dependencies" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageFocusRoomView.swiftdeps"
+  },
+  "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/Garage/GarageHomeTabView.swift" : {
+    "const-values" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageHomeTabView.swiftconstvalues",
+    "dependencies" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageHomeTabView.d",
+    "diagnostics" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageHomeTabView.dia",
+    "object" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageHomeTabView.o",
+    "swift-dependencies" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/x86_64/GarageHomeTabView.swiftdeps"
+  }
+}

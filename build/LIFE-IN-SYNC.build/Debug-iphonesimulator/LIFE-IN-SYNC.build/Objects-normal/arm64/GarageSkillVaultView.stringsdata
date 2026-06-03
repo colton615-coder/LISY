@@ -1,0 +1,64 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/Garage/GarageSkillVaultView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Skill Vault",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 27
+        }
+      },
+      {
+        "comment": "",
+        "key": "Recent Sessions",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 78
+        }
+      },
+      {
+        "comment": "",
+        "key": "COACHING IMPACT",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 106
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cue given vs resulting progress",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 116
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld/%lld successful reps",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 185
+        }
+      },
+      {
+        "comment": "",
+        "key": "PR",
+        "location": {
+          "startingColumn": 14,
+          "startingLine": 335
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cue Given",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 397
+        }
+      }
+    ]
+  },
+  "version": 1
+}

@@ -1,0 +1,320 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/Garage/GarageActiveSessionView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Unable To Save Session",
+        "location": {
+          "startingColumn": 16,
+          "startingLine": 141
+        }
+      },
+      {
+        "comment": "",
+        "key": "OK",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 142
+        }
+      },
+      {
+        "comment": "",
+        "key": "Carry-forward cue or feel note",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 702
+        }
+      },
+      {
+        "comment": "",
+        "key": "No carry-forward cue will be saved for this session.",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 748
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save without carry-forward cue",
+        "location": {
+          "startingColumn": 45,
+          "startingLine": 745
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save without cue",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 725
+        }
+      },
+      {
+        "comment": "",
+        "key": "What percentage of reps produced the intended feel?",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 821
+        }
+      },
+      {
+        "comment": "",
+        "key": "If 8 out of 10 reps produced the intended feel, enter 80%.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 826
+        }
+      },
+      {
+        "comment": "",
+        "key": "Feel Success Score",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 852
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld percent",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 853
+        }
+      },
+      {
+        "comment": "",
+        "key": "Optional note from the block",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 855
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 832
+        }
+      },
+      {
+        "comment": "",
+        "key": "%",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 837
+        }
+      },
+      {
+        "comment": "",
+        "key": "Completion is not a rep score.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 947
+        }
+      },
+      {
+        "comment": "",
+        "key": "A completed drill does not automatically mean every rep succeeded. Review each rep count before saving to the vault.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 951
+        }
+      },
+      {
+        "comment": "",
+        "key": "No drill notes captured in this session.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 986
+        }
+      },
+      {
+        "comment": "",
+        "key": "Enter the room with one cue, one routine, and no extra noise.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1028
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 1048
+        }
+      },
+      {
+        "comment": "",
+        "key": "Drill",
+        "location": {
+          "startingColumn": 61,
+          "startingLine": 1052
+        }
+      },
+      {
+        "comment": "",
+        "key": "Drills",
+        "location": {
+          "startingColumn": 71,
+          "startingLine": 1052
+        }
+      },
+      {
+        "comment": "",
+        "key": "Total Time",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1137
+        }
+      },
+      {
+        "comment": "",
+        "key": "What did this drill teach you?",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 1204
+        }
+      },
+      {
+        "comment": "",
+        "key": "Environment-appropriate practice setup",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1232
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ reviewed",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 1397
+        }
+      },
+      {
+        "comment": "",
+        "key": "Mark %@ reviewed",
+        "location": {
+          "startingColumn": 81,
+          "startingLine": 1397
+        }
+      },
+      {
+        "comment": "",
+        "key": "Set the exact completion count that met the drill standard, then mark this drill reviewed.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1358
+        }
+      },
+      {
+        "comment": "",
+        "key": "Reviewed",
+        "location": {
+          "startingColumn": 46,
+          "startingLine": 1379
+        }
+      },
+      {
+        "comment": "",
+        "key": "Mark Reviewed",
+        "location": {
+          "startingColumn": 59,
+          "startingLine": 1379
+        }
+      },
+      {
+        "comment": "",
+        "key": "Reviewed",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 1410
+        }
+      },
+      {
+        "comment": "",
+        "key": "Needs Review",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 1410
+        }
+      },
+      {
+        "comment": "",
+        "key": "Success count",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 1471
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld of %lld",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 1472
+        }
+      },
+      {
+        "comment": "",
+        "key": "Drill Note",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 1551
+        }
+      },
+      {
+        "comment": "",
+        "key": "Note",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1535
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add a brief note",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 1539
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 1555
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 1562
+        }
+      },
+      {
+        "comment": "",
+        "key": "Move On",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 1647
+        }
+      },
+      {
+        "comment": "",
+        "key": "Close",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 1651
+        }
+      }
+    ]
+  },
+  "version": 1
+}

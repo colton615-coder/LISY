@@ -1,0 +1,56 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/SupplyListView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "New Item",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 176
+        }
+      },
+      {
+        "comment": "",
+        "key": "Item Details",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 166
+        }
+      },
+      {
+        "comment": "",
+        "key": "Item name",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 167
+        }
+      },
+      {
+        "comment": "",
+        "key": "Category",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 169
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 179
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 185
+        }
+      }
+    ]
+  },
+  "version": 1
+}

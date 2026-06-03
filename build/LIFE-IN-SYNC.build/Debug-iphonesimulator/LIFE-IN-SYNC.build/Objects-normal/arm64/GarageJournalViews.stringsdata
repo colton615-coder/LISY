@@ -1,0 +1,40 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/Garage/GarageJournalViews.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "New Entry",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 36
+        }
+      },
+      {
+        "comment": "",
+        "key": "Archive",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 64
+        }
+      },
+      {
+        "comment": "",
+        "key": "No journal entries yet.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 54
+        }
+      },
+      {
+        "comment": "",
+        "key": "New Entry will become the capture path once journal persistence is approved.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 58
+        }
+      }
+    ]
+  },
+  "version": 1
+}

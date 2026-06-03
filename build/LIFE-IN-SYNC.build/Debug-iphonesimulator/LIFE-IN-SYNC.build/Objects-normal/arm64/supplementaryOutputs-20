@@ -1,0 +1,37 @@
+{
+  "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/ModuleTheme.swift" : {
+    "const-values" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/ModuleTheme.swiftconstvalues",
+    "dependencies" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/ModuleTheme.d",
+    "diagnostics" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/ModuleTheme.dia",
+    "object" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/ModuleTheme.o",
+    "swift-dependencies" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/ModuleTheme.swiftdeps"
+  },
+  "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/SharedModuleUI.swift" : {
+    "const-values" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/SharedModuleUI.swiftconstvalues",
+    "dependencies" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/SharedModuleUI.d",
+    "diagnostics" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/SharedModuleUI.dia",
+    "object" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/SharedModuleUI.o",
+    "swift-dependencies" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/SharedModuleUI.swiftdeps"
+  },
+  "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/SupplyListView.swift" : {
+    "const-values" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/SupplyListView.swiftconstvalues",
+    "dependencies" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/SupplyListView.d",
+    "diagnostics" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/SupplyListView.dia",
+    "object" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/SupplyListView.o",
+    "swift-dependencies" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/SupplyListView.swiftdeps"
+  },
+  "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/TaskProtocolView.swift" : {
+    "const-values" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/TaskProtocolView.swiftconstvalues",
+    "dependencies" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/TaskProtocolView.d",
+    "diagnostics" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/TaskProtocolView.dia",
+    "object" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/TaskProtocolView.o",
+    "swift-dependencies" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/TaskProtocolView.swiftdeps"
+  },
+  "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "const-values" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftconstvalues",
+    "dependencies" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/GeneratedAssetSymbols.d",
+    "diagnostics" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/GeneratedAssetSymbols.dia",
+    "object" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "swift-dependencies" : "/Users/colton/Desktop/LIFE-IN-SYNC/build/LIFE-IN-SYNC.build/Debug-iphonesimulator/LIFE-IN-SYNC.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftdeps"
+  }
+}

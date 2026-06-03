@@ -1,0 +1,88 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/Garage/GarageHomeTabView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Selected",
+        "location": {
+          "startingColumn": 70,
+          "startingLine": 84
+        }
+      },
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 83,
+          "startingLine": 84
+        }
+      },
+      {
+        "comment": "",
+        "key": "Garage",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 94
+        }
+      },
+      {
+        "comment": "",
+        "key": "Command the practice. Pick the surface, then execute.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 100
+        }
+      },
+      {
+        "comment": "",
+        "key": "72",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 546
+        }
+      },
+      {
+        "comment": "",
+        "key": "BPM",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 552
+        }
+      },
+      {
+        "comment": "",
+        "key": "Capture carry forward cue",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 666
+        }
+      },
+      {
+        "comment": "",
+        "key": "What lesson comes forward?",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 640
+        }
+      },
+      {
+        "comment": "",
+        "key": "Capture one compact cue after the work.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 646
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@, %@",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 789
+        }
+      }
+    ]
+  },
+  "version": 1
+}

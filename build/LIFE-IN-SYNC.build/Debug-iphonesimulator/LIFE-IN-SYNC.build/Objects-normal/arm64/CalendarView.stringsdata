@@ -1,0 +1,104 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/CalendarView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Tasks Due",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 42
+        }
+      },
+      {
+        "comment": "",
+        "key": "Upcoming",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 53
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add Event",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 71
+        }
+      },
+      {
+        "comment": "",
+        "key": "Selected Day",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 119
+        }
+      },
+      {
+        "comment": "",
+        "key": "Day",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 122
+        }
+      },
+      {
+        "comment": "",
+        "key": "New Event",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 236
+        }
+      },
+      {
+        "comment": "",
+        "key": "Event Details",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 230
+        }
+      },
+      {
+        "comment": "",
+        "key": "Event title",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 231
+        }
+      },
+      {
+        "comment": "",
+        "key": "Start",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 232
+        }
+      },
+      {
+        "comment": "",
+        "key": "End",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 233
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 239
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 245
+        }
+      }
+    ]
+  },
+  "version": 1
+}

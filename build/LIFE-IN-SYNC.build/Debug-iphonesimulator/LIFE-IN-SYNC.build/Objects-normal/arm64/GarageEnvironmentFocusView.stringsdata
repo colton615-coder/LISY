@@ -1,0 +1,88 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/Garage/GarageEnvironmentFocusView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Secondary Path",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 84
+        }
+      },
+      {
+        "comment": "",
+        "key": "Generate Session Plan",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 90
+        }
+      },
+      {
+        "comment": "",
+        "key": "Use the local planner when you want Garage to assemble a coach-led prescription from the %@ library and your latest carry-forward note.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 94
+        }
+      },
+      {
+        "comment": "",
+        "key": "Carry Forward",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 113
+        }
+      },
+      {
+        "comment": "",
+        "key": "Last session saved without a cue. The generated plan will start from the environment baseline.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 129
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ efficiency - %@",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 135
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Carry Forward Yet",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 142
+        }
+      },
+      {
+        "comment": "",
+        "key": "The first generated plan will create a baseline for %@ practice.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 146
+        }
+      },
+      {
+        "comment": "",
+        "key": "Need A Specific Prescription?",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 223
+        }
+      },
+      {
+        "comment": "",
+        "key": "Use the existing diagnostic path when a predefined or saved routine is too broad for the miss you are working on.",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 227
+        }
+      }
+    ]
+  },
+  "version": 1
+}

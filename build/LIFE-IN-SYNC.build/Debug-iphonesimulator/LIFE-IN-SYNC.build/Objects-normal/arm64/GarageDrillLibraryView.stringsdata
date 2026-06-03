@@ -1,0 +1,144 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/Garage/GarageDrillLibraryView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Drill Library",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 25
+        }
+      },
+      {
+        "comment": "",
+        "key": "Routines by environment",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 64
+        }
+      },
+      {
+        "comment": "",
+        "key": "Start predefined work, review saved routines, or open a drill for instruction.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 68
+        }
+      },
+      {
+        "comment": "",
+        "key": "Routine Stack",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 284
+        }
+      },
+      {
+        "comment": "",
+        "key": "Close",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 317
+        }
+      },
+      {
+        "comment": "",
+        "key": "Primary Cue",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 377
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ • %@ • %@",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 388
+        }
+      },
+      {
+        "comment": "",
+        "key": "What It Trains",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 395
+        }
+      },
+      {
+        "comment": "",
+        "key": "Why It Matters",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 406
+        }
+      },
+      {
+        "comment": "",
+        "key": "Setup Walkthrough",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 419
+        }
+      },
+      {
+        "comment": "",
+        "key": "Key Cues",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 434
+        }
+      },
+      {
+        "comment": "",
+        "key": "Common Mistakes",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 449
+        }
+      },
+      {
+        "comment": "",
+        "key": "Close",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 477
+        }
+      },
+      {
+        "comment": "",
+        "key": "Launch Config",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 598
+        }
+      },
+      {
+        "comment": "",
+        "key": "Mode",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 607
+        }
+      },
+      {
+        "comment": "",
+        "key": "Mode",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 611
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 668
+        }
+      }
+    ]
+  },
+  "version": 1
+}

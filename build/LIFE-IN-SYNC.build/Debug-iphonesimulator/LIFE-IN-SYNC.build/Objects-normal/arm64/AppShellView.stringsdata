@@ -1,0 +1,24 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/AppShellView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Modules",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 28
+        }
+      },
+      {
+        "comment": "",
+        "key": "Dashboard",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 35
+        }
+      }
+    ]
+  },
+  "version": 1
+}

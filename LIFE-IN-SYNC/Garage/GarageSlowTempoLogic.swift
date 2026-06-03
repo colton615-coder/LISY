@@ -44,35 +44,35 @@ struct GarageSlowTempoLogic: Equatable {
     }
 
     var trainingMapText: String {
-        "Start → Load → Impact"
+        "Set → Smooth → Strike"
     }
 
     var subdivisionText: String {
-        "Quiet \(Int(subdivisionBPM.rounded())) BPM guide ticks"
+        "Quiet \(Int(subdivisionBPM.rounded())) BPM guide"
     }
 
     var primaryCue: String {
-        "Feel the top. Do not rush down."
+        "Smooth power. Do not rush down."
     }
 
     var landmarks: [GarageSlowTempoLandmark] {
         [
             GarageSlowTempoLandmark(
                 beat: 1,
-                title: "Start",
-                cue: "Start calm.",
+                title: "Set",
+                cue: "Set the move.",
                 isTransition: false
             ),
             GarageSlowTempoLandmark(
                 beat: 2,
-                title: "Load",
-                cue: "Feel the top.",
+                title: "Smooth",
+                cue: "Stay smooth.",
                 isTransition: true
             ),
             GarageSlowTempoLandmark(
                 beat: 3,
-                title: "Impact",
-                cue: "Down first, then speed.",
+                title: "Strike",
+                cue: "Strike clean.",
                 isTransition: false
             )
         ]
@@ -125,7 +125,7 @@ struct GarageSlowTempoLogic: Equatable {
             activeBeat = 3
             nextIndex = 0
             phaseLabel = "Reset"
-            phaseCue = "Let it settle."
+            phaseCue = "Feel the next set."
             isResting = true
         }
 

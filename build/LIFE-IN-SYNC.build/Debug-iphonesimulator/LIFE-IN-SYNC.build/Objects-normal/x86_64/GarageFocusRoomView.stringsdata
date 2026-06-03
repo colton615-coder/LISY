@@ -1,0 +1,104 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/Garage/GarageFocusRoomView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "No drills in this routine",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 149
+        }
+      },
+      {
+        "comment": "",
+        "key": "Return to Garage and choose a routine with at least one drill.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 153
+        }
+      },
+      {
+        "comment": "",
+        "key": "Reset timer",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 599
+        }
+      },
+      {
+        "comment": "",
+        "key": "Focus timer",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 750
+        }
+      },
+      {
+        "comment": "",
+        "key": "Target %@",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 715
+        }
+      },
+      {
+        "comment": "",
+        "key": "Timer complete.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 891
+        }
+      },
+      {
+        "comment": "",
+        "key": "Log the rep, then move cleanly into the next drill.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 895
+        }
+      },
+      {
+        "comment": "",
+        "key": "Finish routine",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 969
+        }
+      },
+      {
+        "comment": "",
+        "key": "Next drill, %@",
+        "location": {
+          "startingColumn": 67,
+          "startingLine": 969
+        }
+      },
+      {
+        "comment": "",
+        "key": "Routine Complete",
+        "location": {
+          "startingColumn": 45,
+          "startingLine": 934
+        }
+      },
+      {
+        "comment": "",
+        "key": "Next Drill",
+        "location": {
+          "startingColumn": 66,
+          "startingLine": 934
+        }
+      },
+      {
+        "comment": "",
+        "key": "•",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 989
+        }
+      }
+    ]
+  },
+  "version": 1
+}

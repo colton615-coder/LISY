@@ -1,0 +1,136 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/Garage/HorizonVaultDialView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 131
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ • %@",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 203
+        }
+      },
+      {
+        "comment": "",
+        "key": "LIVE",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 212
+        }
+      },
+      {
+        "comment": "",
+        "key": "READY",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 212
+        }
+      },
+      {
+        "comment": "",
+        "key": "Tempo instrument selector",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 254
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@. %@. %@",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 356
+        }
+      },
+      {
+        "comment": "",
+        "key": "Beat %lld, %@, %@",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 661
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 647
+        }
+      },
+      {
+        "comment": "",
+        "key": "Stop tempo loop",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 697
+        }
+      },
+      {
+        "comment": "",
+        "key": "Start %@",
+        "location": {
+          "startingColumn": 61,
+          "startingLine": 697
+        }
+      },
+      {
+        "comment": "",
+        "key": "Stop",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 684
+        }
+      },
+      {
+        "comment": "",
+        "key": "Start %@",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 684
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 710
+        }
+      },
+      {
+        "comment": "",
+        "key": "Back",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 777
+        }
+      },
+      {
+        "comment": "",
+        "key": "Record swing",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 788
+        }
+      },
+      {
+        "comment": "",
+        "key": "Engine room",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 797
+        }
+      }
+    ]
+  },
+  "version": 1
+}

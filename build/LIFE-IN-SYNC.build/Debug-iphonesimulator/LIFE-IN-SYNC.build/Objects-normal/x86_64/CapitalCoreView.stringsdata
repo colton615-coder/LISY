@@ -1,0 +1,144 @@
+{
+  "source": "/Users/colton/Desktop/LIFE-IN-SYNC/LIFE-IN-SYNC/CapitalCoreView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Add Expense",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 53
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add Budget",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 99
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ / %@",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 205
+        }
+      },
+      {
+        "comment": "",
+        "key": "New Expense",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 288
+        }
+      },
+      {
+        "comment": "",
+        "key": "Expense Details",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 275
+        }
+      },
+      {
+        "comment": "",
+        "key": "Expense title",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 276
+        }
+      },
+      {
+        "comment": "",
+        "key": "Amount",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 277
+        }
+      },
+      {
+        "comment": "",
+        "key": "Category",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 281
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 291
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 297
+        }
+      },
+      {
+        "comment": "",
+        "key": "New Budget",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 351
+        }
+      },
+      {
+        "comment": "",
+        "key": "Budget Details",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 332
+        }
+      },
+      {
+        "comment": "",
+        "key": "Category",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 333
+        }
+      },
+      {
+        "comment": "",
+        "key": "Limit Amount",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 339
+        }
+      },
+      {
+        "comment": "",
+        "key": "Period",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 344
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 354
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 360
+        }
+      }
+    ]
+  },
+  "version": 1
+}
