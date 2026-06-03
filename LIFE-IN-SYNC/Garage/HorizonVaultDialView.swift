@@ -4,12 +4,16 @@ import SwiftUI
 struct GarageTempoBuilderView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var audioEngine = ElasticSlingshotAudioEngine()
-    @State private var beatsPerMinute: Double = 75
+    @State private var beatsPerMinute: Double = GarageSlowTempoLogic.defaultAnchorBPM
     @State private var recipe = ElasticSlingshotRecipe()
     @State private var soundProfile: ElasticSlingshotSoundProfile = .elastic
     @State private var showsEngineRoom = false
     @State private var showsSwingCapture = false
     @State private var lastSwingCaptureURL: URL?
+
+    private var slowTempoLogic: GarageSlowTempoLogic {
+        GarageSlowTempoLogic(anchorBPM: beatsPerMinute)
+    }
 
     var body: some View {
         ZStack {
@@ -22,21 +26,30 @@ struct GarageTempoBuilderView: View {
                     onSettings: { showsEngineRoom = true }
                 )
 
-                Spacer(minLength: 18)
+                Spacer(minLength: 14)
+
+                GarageSlowTempoPromiseView(
+                    logic: slowTempoLogic,
+                    isPlaying: audioEngine.playbackState == .playing
+                )
+
+                Spacer(minLength: 14)
+
+                GarageSlowTempoLandmarkRail(logic: slowTempoLogic)
 
                 HorizonVaultDialView(beatsPerMinute: $beatsPerMinute)
-                    .frame(height: 196)
+                    .frame(height: 156)
                     .onChange(of: beatsPerMinute) { _, newValue in
                         updateAudioEngine(beatsPerMinute: newValue)
                     }
 
-                Spacer(minLength: 26)
+                Spacer(minLength: 18)
 
                 GarageHorizonVaultPlayToggle(
                     isPlaying: audioEngine.playbackState == .playing,
                     action: togglePlayback
                 )
-                .padding(.bottom, 26)
+                .padding(.bottom, 22)
             }
             .padding(.horizontal, 18)
             .padding(.top, 10)
@@ -212,6 +225,194 @@ struct HorizonVaultDialView: View {
                 }
             }
         }
+    }
+}
+
+private struct GarageSlowTempoPromiseView: View {
+    let logic: GarageSlowTempoLogic
+    let isPlaying: Bool
+
+    private let neonGreen = Color(red: 0, green: 1, blue: 0.67)
+    private let neonYellow = Color(red: 1, green: 0.93, blue: 0.1)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(logic.tempoTitle)
+                    .font(.system(size: 30, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+
+                Spacer(minLength: 8)
+
+                Text(isPlaying ? "RUNNING" : "READY")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(isPlaying ? .black : neonGreen)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill(isPlaying ? neonYellow : neonGreen.opacity(0.10))
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(isPlaying ? neonYellow.opacity(0.72) : neonGreen.opacity(0.24), lineWidth: 1)
+                    )
+            }
+
+            Text(logic.trainingMapText)
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.88))
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+
+            HStack(spacing: 8) {
+                Text(logic.subdivisionText)
+                    .foregroundStyle(neonGreen.opacity(0.78))
+
+                Circle()
+                    .fill(.white.opacity(0.28))
+                    .frame(width: 3, height: 3)
+
+                Text(logic.primaryCue)
+                    .foregroundStyle(.white.opacity(0.72))
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct GarageSlowTempoLandmarkRail: View {
+    let logic: GarageSlowTempoLogic
+
+    private let neonGreen = Color(red: 0, green: 1, blue: 0.67)
+    private let neonYellow = Color(red: 1, green: 0.93, blue: 0.1)
+
+    var body: some View {
+        let landmarks = logic.landmarks
+
+        HStack(alignment: .top, spacing: 0) {
+            ForEach(Array(landmarks.enumerated()), id: \.element.id) { index, landmark in
+                GarageSlowTempoLandmarkNode(landmark: landmark)
+
+                if index < landmarks.count - 1 {
+                    GarageSlowTempoSubdivisionBridge(tickCount: max(logic.subdivisionMultiplier - 1, 1))
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 27)
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color.white.opacity(0.045))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                )
+                .shadow(color: neonGreen.opacity(0.08), radius: 18, x: 0, y: 10)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(logic.trainingMapText). \(logic.subdivisionText). \(logic.primaryCue)")
+    }
+}
+
+private struct GarageSlowTempoLandmarkNode: View {
+    let landmark: GarageSlowTempoLandmark
+
+    private let neonGreen = Color(red: 0, green: 1, blue: 0.67)
+    private let neonYellow = Color(red: 1, green: 0.93, blue: 0.1)
+    private let deepGreen = Color(red: 0.02, green: 0.04, blue: 0.024)
+
+    var body: some View {
+        VStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(landmark.isTransition ? neonYellow.opacity(0.18) : neonGreen.opacity(0.12))
+                    .frame(width: landmark.isTransition ? 58 : 48, height: landmark.isTransition ? 58 : 48)
+                    .shadow(
+                        color: (landmark.isTransition ? neonYellow : neonGreen).opacity(landmark.isTransition ? 0.30 : 0.18),
+                        radius: landmark.isTransition ? 18 : 12,
+                        x: 0,
+                        y: 8
+                    )
+
+                Circle()
+                    .stroke(landmark.isTransition ? neonYellow.opacity(0.86) : neonGreen.opacity(0.62), lineWidth: landmark.isTransition ? 1.5 : 1)
+                    .frame(width: landmark.isTransition ? 58 : 48, height: landmark.isTransition ? 58 : 48)
+
+                Text("\(landmark.beat)")
+                    .font(.system(size: landmark.isTransition ? 23 : 19, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(landmark.isTransition ? deepGreen : .white)
+                    .frame(width: landmark.isTransition ? 40 : 34, height: landmark.isTransition ? 40 : 34)
+                    .background(
+                        Circle()
+                            .fill(landmark.isTransition ? neonYellow : Color.white.opacity(0.08))
+                    )
+            }
+            .frame(width: 62, height: 62)
+
+            VStack(spacing: 3) {
+                Text(landmark.title)
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.76)
+                    .frame(width: 88, height: 30)
+
+                Text(landmark.cue)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.56))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.62)
+                    .frame(width: 88)
+            }
+        }
+        .frame(width: 88)
+    }
+}
+
+private struct GarageSlowTempoSubdivisionBridge: View {
+    let tickCount: Int
+
+    private let neonGreen = Color(red: 0, green: 1, blue: 0.67)
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            neonGreen.opacity(0.12),
+                            neonGreen.opacity(0.30),
+                            neonGreen.opacity(0.12)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(height: 1)
+
+            HStack(spacing: 7) {
+                ForEach(0..<tickCount, id: \.self) { _ in
+                    Capsule()
+                        .fill(neonGreen.opacity(0.46))
+                        .frame(width: 3, height: 14)
+                }
+            }
+        }
+        .frame(height: 18)
+        .accessibilityHidden(true)
     }
 }
 

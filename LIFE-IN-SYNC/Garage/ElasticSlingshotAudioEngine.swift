@@ -5,21 +5,27 @@ import Foundation
 private let elasticSlingshotStopFadeDuration: TimeInterval = 0.09
 private let elasticSlingshotImpactDuration: TimeInterval = 0.08
 private let elasticSlingshotToneReleaseFrames: AVAudioFramePosition = 2
+private let elasticSlingshotAnchorPulseDuration: TimeInterval = 0.07
+private let elasticSlingshotSubdivisionTickDuration: TimeInterval = 0.035
 
 struct ElasticSlingshotRecipe: Equatable {
     var tempoRatio: ElasticSlingshotTempoRatio = .tour
     var restInterval: TimeInterval = 5
+    var subdivisionMultiplier = GarageSlowTempoLogic.defaultSubdivisionMultiplier
 
     var normalizedTakeaway: Double {
-        tempoRatio.phaseFractions.takeaway
+        let duration = max(swingDuration(for: GarageSlowTempoLogic.defaultAnchorBPM), 0.01)
+        return takeawayDuration(for: GarageSlowTempoLogic.defaultAnchorBPM) / duration
     }
 
     var normalizedPause: Double {
-        tempoRatio.phaseFractions.pause
+        let duration = max(swingDuration(for: GarageSlowTempoLogic.defaultAnchorBPM), 0.01)
+        return pauseDuration(for: GarageSlowTempoLogic.defaultAnchorBPM) / duration
     }
 
     var normalizedDownswing: Double {
-        tempoRatio.phaseFractions.downswing
+        let duration = max(swingDuration(for: GarageSlowTempoLogic.defaultAnchorBPM), 0.01)
+        return downswingDuration(for: GarageSlowTempoLogic.defaultAnchorBPM) / duration
     }
 
     var displayText: String {
@@ -27,23 +33,30 @@ struct ElasticSlingshotRecipe: Equatable {
     }
 
     func swingDuration(for beatsPerMinute: Double) -> TimeInterval {
-        (60 / max(beatsPerMinute, 1)) * tempoRatio.totalBeatCount
+        slowTempoLogic(for: beatsPerMinute).swingDuration
     }
 
     func takeawayDuration(for beatsPerMinute: Double) -> TimeInterval {
-        swingDuration(for: beatsPerMinute) * normalizedTakeaway
+        slowTempoLogic(for: beatsPerMinute).anchorInterval
     }
 
     func pauseDuration(for beatsPerMinute: Double) -> TimeInterval {
-        swingDuration(for: beatsPerMinute) * normalizedPause
+        slowTempoLogic(for: beatsPerMinute).topHoldDuration(for: tempoRatio)
     }
 
     func downswingDuration(for beatsPerMinute: Double) -> TimeInterval {
-        swingDuration(for: beatsPerMinute) * normalizedDownswing
+        slowTempoLogic(for: beatsPerMinute).downswingDuration(for: tempoRatio)
     }
 
     func loopDuration(for beatsPerMinute: Double) -> TimeInterval {
         swingDuration(for: beatsPerMinute) + restInterval
+    }
+
+    func slowTempoLogic(for beatsPerMinute: Double) -> GarageSlowTempoLogic {
+        GarageSlowTempoLogic(
+            anchorBPM: beatsPerMinute,
+            subdivisionMultiplier: subdivisionMultiplier
+        )
     }
 }
 
@@ -82,6 +95,17 @@ enum ElasticSlingshotTempoRatio: String, CaseIterable, Identifiable {
 
     var downswingBeatCount: Double {
         1
+    }
+
+    var topHoldBeatFraction: Double {
+        switch self {
+        case .punchy:
+            return 0.10
+        case .tour:
+            return 0.16
+        case .smooth:
+            return 0.24
+        }
     }
 
     var totalBeatCount: Double {
@@ -195,16 +219,20 @@ private struct ElasticSlingshotRenderConfiguration {
         recipe.swingDuration(for: beatsPerMinute)
     }
 
+    var slowTempoLogic: GarageSlowTempoLogic {
+        recipe.slowTempoLogic(for: beatsPerMinute)
+    }
+
     var takebackDuration: TimeInterval {
-        totalDuration * recipe.normalizedTakeaway
+        recipe.takeawayDuration(for: beatsPerMinute)
     }
 
     var pauseDuration: TimeInterval {
-        totalDuration * recipe.normalizedPause
+        recipe.pauseDuration(for: beatsPerMinute)
     }
 
     var downswingDuration: TimeInterval {
-        totalDuration * recipe.normalizedDownswing
+        recipe.downswingDuration(for: beatsPerMinute)
     }
 
     var loopDuration: TimeInterval {
@@ -442,7 +470,8 @@ private final class ElasticSlingshotRenderState {
             rawSample = 0
         }
 
-        return rawSample * playbackEnvelope(at: frame, configuration: configuration)
+        let guideSample = slowTempoGuideSample(at: relativeFrame, configuration: configuration)
+        return (rawSample + guideSample) * playbackEnvelope(at: frame, configuration: configuration)
     }
 
     private func phase(for relativeFrame: AVAudioFramePosition, configuration: ElasticSlingshotRenderConfiguration) -> ElasticSlingshotPhase {
@@ -488,6 +517,74 @@ private final class ElasticSlingshotRenderState {
         }
 
         return .loopDelay
+    }
+
+    private func slowTempoGuideSample(
+        at relativeFrame: AVAudioFramePosition,
+        configuration: ElasticSlingshotRenderConfiguration
+    ) -> Double {
+        let totalFrames = max(frames(for: configuration.totalDuration), 1)
+        let loopFrames = max(frames(for: configuration.loopDuration), totalFrames)
+
+        let cycleFrame: AVAudioFramePosition
+        switch configuration.mode {
+        case .continuous:
+            cycleFrame = relativeFrame % loopFrames
+        case .oneCycle:
+            cycleFrame = relativeFrame
+        }
+
+        guard cycleFrame < totalFrames else { return 0 }
+
+        let logic = configuration.slowTempoLogic
+        let anchorPulseFrames = max(frames(for: elasticSlingshotAnchorPulseDuration), 1)
+        let subdivisionTickFrames = max(frames(for: elasticSlingshotSubdivisionTickDuration), 1)
+        let topFrame = frames(for: logic.topTimestamp)
+
+        if let progress = eventProgress(
+            cycleFrame: cycleFrame,
+            eventFrame: 0,
+            durationFrames: anchorPulseFrames
+        ) {
+            return startAnchorPulseSample(progress: progress, profile: configuration.soundProfile)
+        }
+
+        if let progress = eventProgress(
+            cycleFrame: cycleFrame,
+            eventFrame: topFrame,
+            durationFrames: anchorPulseFrames
+        ) {
+            return topAnchorPulseSample(progress: progress, profile: configuration.soundProfile)
+        }
+
+        let subdivisionMultiplier = max(logic.subdivisionMultiplier, 1)
+        guard subdivisionMultiplier > 1 else { return 0 }
+
+        for anchorIndex in 0..<2 {
+            for subdivisionIndex in 1..<subdivisionMultiplier {
+                let eventTime = (Double(anchorIndex) * logic.anchorInterval) + (Double(subdivisionIndex) * logic.subdivisionInterval)
+                let eventFrame = frames(for: eventTime)
+
+                if let progress = eventProgress(
+                    cycleFrame: cycleFrame,
+                    eventFrame: eventFrame,
+                    durationFrames: subdivisionTickFrames
+                ) {
+                    return subdivisionTickSample(progress: progress, profile: configuration.soundProfile)
+                }
+            }
+        }
+
+        return 0
+    }
+
+    private func eventProgress(
+        cycleFrame: AVAudioFramePosition,
+        eventFrame: AVAudioFramePosition,
+        durationFrames: AVAudioFramePosition
+    ) -> Double? {
+        guard cycleFrame >= eventFrame, cycleFrame < eventFrame + durationFrames else { return nil }
+        return Double(cycleFrame - eventFrame) / Double(max(durationFrames, 1))
     }
 
     private func debugLogImpactIfNeeded(
@@ -609,6 +706,33 @@ private final class ElasticSlingshotRenderState {
         case .rubber:
             return rubberTone(frequency: frequency * 0.76, envelope: trailEnvelope, progress: 1 - progress)
         }
+    }
+
+    private func startAnchorPulseSample(progress: Double, profile: ElasticSlingshotSoundProfile) -> Double {
+        let progress = min(max(progress, 0), 1)
+        let envelope = exp(-18 * progress)
+        let body = sin(progress * Double.pi * 18)
+        let edge = sin(progress * Double.pi * 31) * 0.28
+
+        return (body + edge) * envelope * anchorPulseGain(for: profile)
+    }
+
+    private func topAnchorPulseSample(progress: Double, profile: ElasticSlingshotSoundProfile) -> Double {
+        let progress = min(max(progress, 0), 1)
+        let envelope = exp(-12 * progress)
+        let body = sin(progress * Double.pi * 13)
+        let lift = sin(progress * Double.pi * 21) * 0.18
+
+        return (body + lift) * envelope * topPulseGain(for: profile)
+    }
+
+    private func subdivisionTickSample(progress: Double, profile: ElasticSlingshotSoundProfile) -> Double {
+        let progress = min(max(progress, 0), 1)
+        let envelope = exp(-24 * progress)
+        let tick = sin(progress * Double.pi * 29)
+        let air = sin(progress * Double.pi * 43) * 0.14
+
+        return (tick + air) * envelope * subdivisionTickGain(for: profile)
     }
 
     private func impactSample(progress: Double, profile: ElasticSlingshotSoundProfile) -> Double {
@@ -855,6 +979,45 @@ private final class ElasticSlingshotRenderState {
             return 0.36
         case .pulse:
             return 0.30
+        }
+    }
+
+    private func anchorPulseGain(for profile: ElasticSlingshotSoundProfile) -> Double {
+        switch profile {
+        case .storm, .gravity:
+            return 0.20
+        case .airframe, .glass:
+            return 0.14
+        case .reed, .pulse:
+            return 0.16
+        case .elastic, .rubber:
+            return 0.18
+        }
+    }
+
+    private func topPulseGain(for profile: ElasticSlingshotSoundProfile) -> Double {
+        switch profile {
+        case .storm, .gravity:
+            return 0.25
+        case .airframe, .glass:
+            return 0.18
+        case .reed, .pulse:
+            return 0.21
+        case .elastic, .rubber:
+            return 0.23
+        }
+    }
+
+    private func subdivisionTickGain(for profile: ElasticSlingshotSoundProfile) -> Double {
+        switch profile {
+        case .storm, .gravity:
+            return 0.055
+        case .airframe, .glass:
+            return 0.042
+        case .reed, .pulse:
+            return 0.048
+        case .elastic, .rubber:
+            return 0.050
         }
     }
 
