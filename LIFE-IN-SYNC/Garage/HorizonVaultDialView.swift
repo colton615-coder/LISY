@@ -3,6 +3,7 @@ import SwiftUI
 @MainActor
 struct GarageTempoBuilderView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var audioEngine = ElasticSlingshotAudioEngine()
     @State private var beatsPerMinute: Double = GarageSlowTempoLogic.defaultAnchorBPM
     @State private var recipe = ElasticSlingshotRecipe()
@@ -10,6 +11,7 @@ struct GarageTempoBuilderView: View {
     @State private var showsEngineRoom = false
     @State private var showsSwingCapture = false
     @State private var lastSwingCaptureURL: URL?
+    @State private var playbackStartDate: Date?
 
     private var slowTempoLogic: GarageSlowTempoLogic {
         GarageSlowTempoLogic(anchorBPM: beatsPerMinute)
@@ -26,34 +28,51 @@ struct GarageTempoBuilderView: View {
                     onSettings: { showsEngineRoom = true }
                 )
 
-                Spacer(minLength: 14)
+                Spacer(minLength: 12)
 
-                GarageSlowTempoPromiseView(
+                GarageTempoBuilderHeader(
                     logic: slowTempoLogic,
-                    isPlaying: audioEngine.playbackState == .playing
+                    isPlaying: isPlaying,
+                    soundProfile: soundProfile
                 )
 
-                Spacer(minLength: 14)
+                Spacer(minLength: 16)
 
-                GarageSlowTempoLandmarkRail(logic: slowTempoLogic)
+                TimelineView(.animation(minimumInterval: reduceMotion ? 0.25 : 1 / 30, paused: isPlaying == false)) { timeline in
+                    let elapsedTime = playbackStartDate.map { timeline.date.timeIntervalSince($0) } ?? 0
+                    let visualState = slowTempoLogic.visualState(elapsedTime: elapsedTime, isPlaying: isPlaying)
 
-                HorizonVaultDialView(beatsPerMinute: $beatsPerMinute)
-                    .frame(height: 156)
-                    .onChange(of: beatsPerMinute) { _, newValue in
-                        updateAudioEngine(beatsPerMinute: newValue)
-                    }
+                    GarageTempoCockpitInstrument(
+                        logic: slowTempoLogic,
+                        visualState: visualState,
+                        isPlaying: isPlaying,
+                        reduceMotion: reduceMotion
+                    )
+                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: visualState.activeBeat)
+                }
 
-                Spacer(minLength: 18)
+                Spacer(minLength: 16)
 
-                GarageHorizonVaultPlayToggle(
-                    isPlaying: audioEngine.playbackState == .playing,
-                    action: togglePlayback
+                GarageTempoBuilderControlDeck(
+                    beatsPerMinute: $beatsPerMinute,
+                    isPlaying: isPlaying,
+                    soundProfile: soundProfile,
+                    onPlayToggle: togglePlayback,
+                    onOpenSettings: { showsEngineRoom = true }
                 )
-                .padding(.bottom, 22)
+                .onChange(of: beatsPerMinute) { _, newValue in
+                    updateAudioEngine(beatsPerMinute: newValue)
+                }
+
+                Spacer(minLength: 12)
+
+                GarageTempoMicroMap(logic: slowTempoLogic)
+                    .padding(.bottom, 12)
             }
             .padding(.horizontal, 18)
             .padding(.top, 10)
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: audioEngine.playbackState)
         .sheet(isPresented: $showsEngineRoom) {
             EngineRoomSettingsView(
                 recipe: $recipe,
@@ -82,15 +101,21 @@ struct GarageTempoBuilderView: View {
         }
         .onDisappear {
             audioEngine.stop()
+            playbackStartDate = nil
         }
         .navigationBarBackButtonHidden(true)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
     }
 
+    private var isPlaying: Bool {
+        audioEngine.playbackState == .playing
+    }
+
     private func togglePlayback() {
         switch audioEngine.playbackState {
         case .stopped:
+            playbackStartDate = Date()
             audioEngine.start(
                 beatsPerMinute: beatsPerMinute,
                 recipe: recipe,
@@ -98,6 +123,7 @@ struct GarageTempoBuilderView: View {
             )
         case .playing:
             audioEngine.stop()
+            playbackStartDate = nil
         }
     }
 
@@ -111,308 +137,410 @@ struct GarageTempoBuilderView: View {
 
     private func close() {
         audioEngine.stop()
+        playbackStartDate = nil
         dismiss()
     }
 }
 
-struct HorizonVaultDialView: View {
-    @Binding var beatsPerMinute: Double
-    @State private var dragStartBPM: Double?
+private struct GarageTempoBuilderHeader: View {
+    let logic: GarageSlowTempoLogic
+    let isPlaying: Bool
+    let soundProfile: ElasticSlingshotSoundProfile
 
-    private let minimumBPM = 50.0
-    private let maximumBPM = 90.0
-    private let pointsPerBeat: CGFloat = 11
+    private let neonGreen = Color(red: 0, green: 1, blue: 0.67)
+    private let neonYellow = Color(red: 1, green: 0.93, blue: 0.1)
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text(logic.tempoTitle)
+                    .font(.system(size: 27, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.74)
+
+                Text(logic.trainingMapText)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.70))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.74)
+            }
+
+            Spacer(minLength: 8)
+
+            VStack(alignment: .trailing, spacing: 7) {
+                Text(isPlaying ? "LIVE" : "READY")
+                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .foregroundStyle(isPlaying ? .black : neonGreen)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill(isPlaying ? neonYellow : neonGreen.opacity(0.12))
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(isPlaying ? neonYellow.opacity(0.70) : neonGreen.opacity(0.28), lineWidth: 1)
+                    )
+
+                Text(soundProfile.title)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.62))
+                    .lineLimit(1)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct GarageTempoCockpitInstrument: View {
+    let logic: GarageSlowTempoLogic
+    let visualState: GarageSlowTempoVisualState
+    let isPlaying: Bool
+    let reduceMotion: Bool
+
     private let neonGreen = Color(red: 0, green: 1, blue: 0.67)
     private let neonYellow = Color(red: 1, green: 0.93, blue: 0.1)
 
     var body: some View {
         GeometryReader { proxy in
-            let centerX = proxy.size.width / 2
-            let trackY = proxy.size.height * 0.56
-            let drag = DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    if dragStartBPM == nil {
-                        dragStartBPM = beatsPerMinute
-                    }
-
-                    let delta = -Double(value.translation.width / pointsPerBeat)
-                    let nextValue = (dragStartBPM ?? beatsPerMinute) + delta
-                    beatsPerMinute = min(max(nextValue.rounded(), minimumBPM), maximumBPM)
-                }
-                .onEnded { _ in
-                    dragStartBPM = nil
-                }
+            let ringSize = min(min(proxy.size.width, proxy.size.height), 318)
+            let center = CGPoint(x: proxy.size.width / 2, y: proxy.size.height / 2)
 
             ZStack {
-                VStack(spacing: 6) {
-                    Text("\(Int(beatsPerMinute.rounded()))")
-                        .font(.system(size: 72, weight: .semibold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(.white)
-
-                    Text("MASTER BPM")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(neonGreen.opacity(0.72))
-                        .tracking(1.6)
-                }
-                .offset(y: -56)
-
-                Canvas { context, size in
-                    let visibleBeats = Int(ceil(size.width / pointsPerBeat)) + 16
-                    let centerBeat = Int(beatsPerMinute.rounded())
-                    let startBeat = max(Int(minimumBPM), centerBeat - visibleBeats / 2)
-                    let endBeat = min(Int(maximumBPM), centerBeat + visibleBeats / 2)
-
-                    for beat in startBeat...endBeat {
-                        let offset = CGFloat(beat) - CGFloat(beatsPerMinute)
-                        let x = centerX + offset * pointsPerBeat
-                        guard x >= -24, x <= size.width + 24 else { continue }
-
-                        let isBenchmark = beat.isMultiple(of: 10)
-                        let isMedium = beat.isMultiple(of: 5)
-                        let height: CGFloat = isBenchmark ? 34 : isMedium ? 22 : 11
-                        let width: CGFloat = isBenchmark ? 1.4 : isMedium ? 1 : 0.7
-                        let color = isBenchmark ? neonGreen : isMedium ? neonGreen.opacity(0.46) : Color.white.opacity(0.22)
-                        let tickRect = CGRect(x: x - width / 2, y: trackY - height / 2, width: width, height: height)
-
-                        context.fill(Path(roundedRect: tickRect, cornerRadius: width), with: .color(color))
-
-                        if isBenchmark {
-                            let label = Text("\(beat)")
-                                .font(.system(size: 11, weight: .medium, design: .rounded))
-                                .foregroundStyle(neonGreen.opacity(0.86))
-                            context.draw(label, at: CGPoint(x: x, y: trackY + 33), anchor: .top)
-                        }
-                    }
-                }
-                .gesture(drag)
-                .contentShape(Rectangle())
-
-                VStack(spacing: 0) {
-                    Rectangle()
-                        .fill(neonYellow)
-                        .frame(width: 2, height: 82)
-                        .shadow(color: neonYellow.opacity(0.55), radius: 10, x: 0, y: 0)
-
-                    Triangle()
-                        .fill(neonYellow)
-                        .frame(width: 15, height: 9)
-                }
-                .position(x: centerX, y: trackY - 50)
-
-                Rectangle()
+                Circle()
                     .fill(
-                        LinearGradient(
-                            colors: [.clear, neonGreen.opacity(0.22), .clear],
-                            startPoint: .leading,
-                            endPoint: .trailing
+                        RadialGradient(
+                            colors: [
+                                neonGreen.opacity(isPlaying ? 0.20 : 0.12),
+                                Color.white.opacity(0.045),
+                                Color.white.opacity(0.018)
+                            ],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: ringSize * 0.56
                         )
                     )
-                    .frame(height: 1)
-                    .position(x: centerX, y: trackY)
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Master BPM")
-            .accessibilityValue("\(Int(beatsPerMinute.rounded())) beats per minute")
-            .accessibilityAdjustableAction { direction in
-                switch direction {
-                case .increment:
-                    beatsPerMinute = min(beatsPerMinute + 1, maximumBPM)
-                case .decrement:
-                    beatsPerMinute = max(beatsPerMinute - 1, minimumBPM)
-                @unknown default:
-                    break
+                    .frame(width: ringSize, height: ringSize)
+                    .shadow(color: neonGreen.opacity(isPlaying ? 0.18 : 0.08), radius: 34, x: 0, y: 18)
+
+                Circle()
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    .frame(width: ringSize, height: ringSize)
+
+                Circle()
+                    .trim(from: 0, to: max(visualState.cycleProgress, 0.012))
+                    .stroke(
+                        AngularGradient(
+                            colors: [neonGreen.opacity(0.55), neonYellow, neonGreen.opacity(0.85)],
+                            center: .center
+                        ),
+                        style: StrokeStyle(lineWidth: 7, lineCap: .round)
+                    )
+                    .frame(width: ringSize - 10, height: ringSize - 10)
+                    .rotationEffect(.degrees(-90))
+                    .opacity(isPlaying ? 1 : 0.40)
+
+                GarageTempoSubdivisionTicks(
+                    tickCount: logic.subdivisionMultiplier * 2,
+                    activeProgress: visualState.cycleProgress,
+                    isPlaying: isPlaying
+                )
+                .frame(width: ringSize - 40, height: ringSize - 40)
+
+                ForEach(logic.landmarks) { landmark in
+                    GarageTempoOrbitLandmark(
+                        landmark: landmark,
+                        isActive: visualState.activeBeat == landmark.beat && isPlaying,
+                        isPlaying: isPlaying
+                    )
+                    .position(position(for: landmark.beat, center: center, radius: (ringSize / 2) - 20))
                 }
+
+                GarageTempoCenterReadout(
+                    logic: logic,
+                    visualState: visualState,
+                    isPlaying: isPlaying
+                )
+                .frame(width: ringSize * 0.64)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .scaleEffect(isPlaying && reduceMotion == false ? 1.01 : 1)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(logic.tempoTitle). \(visualState.phaseLabel). \(isPlaying ? visualState.phaseCue : logic.primaryCue)")
         }
+        .frame(maxWidth: .infinity)
+        .frame(height: 360)
+    }
+
+    private func position(for beat: Int, center: CGPoint, radius: CGFloat) -> CGPoint {
+        let degrees: Double
+        switch beat {
+        case 1:
+            degrees = 220
+        case 2:
+            degrees = 270
+        default:
+            degrees = 320
+        }
+
+        let radians = degrees * Double.pi / 180
+        return CGPoint(
+            x: center.x + cos(radians) * radius,
+            y: center.y + sin(radians) * radius
+        )
     }
 }
 
-private struct GarageSlowTempoPromiseView: View {
+private struct GarageTempoCenterReadout: View {
     let logic: GarageSlowTempoLogic
+    let visualState: GarageSlowTempoVisualState
     let isPlaying: Bool
 
     private let neonGreen = Color(red: 0, green: 1, blue: 0.67)
     private let neonYellow = Color(red: 1, green: 0.93, blue: 0.1)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(logic.tempoTitle)
-                    .font(.system(size: 30, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
+        VStack(spacing: 8) {
+            Text("\(Int(logic.anchorBPM.rounded()))")
+                .font(.system(size: 76, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(.white)
+                .shadow(color: neonGreen.opacity(0.16), radius: 16, x: 0, y: 8)
 
-                Spacer(minLength: 8)
-
-                Text(isPlaying ? "RUNNING" : "READY")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(isPlaying ? .black : neonGreen)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(
-                        Capsule()
-                            .fill(isPlaying ? neonYellow : neonGreen.opacity(0.10))
-                    )
-                    .overlay(
-                        Capsule()
-                            .stroke(isPlaying ? neonYellow.opacity(0.72) : neonGreen.opacity(0.24), lineWidth: 1)
-                    )
-            }
-
-            Text(logic.trainingMapText)
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.88))
+            Text(visualState.phaseLabel.uppercased())
+                .font(.system(size: 13, weight: .black, design: .rounded))
+                .tracking(1.3)
+                .foregroundStyle(visualState.activeLandmark.isTransition ? neonYellow : neonGreen)
                 .lineLimit(1)
+                .minimumScaleFactor(0.74)
+
+            Text(isPlaying ? visualState.phaseCue : logic.primaryCue)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.74))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
                 .minimumScaleFactor(0.78)
+                .frame(maxWidth: 176)
 
-            HStack(spacing: 8) {
-                Text(logic.subdivisionText)
-                    .foregroundStyle(neonGreen.opacity(0.78))
-
-                Circle()
-                    .fill(.white.opacity(0.28))
-                    .frame(width: 3, height: 3)
-
-                Text(logic.primaryCue)
-                    .foregroundStyle(.white.opacity(0.72))
-            }
-            .font(.system(size: 12, weight: .semibold))
-            .lineLimit(1)
-            .minimumScaleFactor(0.72)
+            Text(logic.subdivisionText)
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundStyle(neonGreen.opacity(0.66))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .padding(.top, 2)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
     }
 }
 
-private struct GarageSlowTempoLandmarkRail: View {
-    let logic: GarageSlowTempoLogic
-
-    private let neonGreen = Color(red: 0, green: 1, blue: 0.67)
-    private let neonYellow = Color(red: 1, green: 0.93, blue: 0.1)
-
-    var body: some View {
-        let landmarks = logic.landmarks
-
-        HStack(alignment: .top, spacing: 0) {
-            ForEach(Array(landmarks.enumerated()), id: \.element.id) { index, landmark in
-                GarageSlowTempoLandmarkNode(landmark: landmark)
-
-                if index < landmarks.count - 1 {
-                    GarageSlowTempoSubdivisionBridge(tickCount: max(logic.subdivisionMultiplier - 1, 1))
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 27)
-                }
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 14)
-        .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color.white.opacity(0.045))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                )
-                .shadow(color: neonGreen.opacity(0.08), radius: 18, x: 0, y: 10)
-        )
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(logic.trainingMapText). \(logic.subdivisionText). \(logic.primaryCue)")
-    }
-}
-
-private struct GarageSlowTempoLandmarkNode: View {
+private struct GarageTempoOrbitLandmark: View {
     let landmark: GarageSlowTempoLandmark
+    let isActive: Bool
+    let isPlaying: Bool
 
     private let neonGreen = Color(red: 0, green: 1, blue: 0.67)
     private let neonYellow = Color(red: 1, green: 0.93, blue: 0.1)
     private let deepGreen = Color(red: 0.02, green: 0.04, blue: 0.024)
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 5) {
             ZStack {
                 Circle()
-                    .fill(landmark.isTransition ? neonYellow.opacity(0.18) : neonGreen.opacity(0.12))
-                    .frame(width: landmark.isTransition ? 58 : 48, height: landmark.isTransition ? 58 : 48)
-                    .shadow(
-                        color: (landmark.isTransition ? neonYellow : neonGreen).opacity(landmark.isTransition ? 0.30 : 0.18),
-                        radius: landmark.isTransition ? 18 : 12,
-                        x: 0,
-                        y: 8
-                    )
+                    .fill(fillColor)
+                    .frame(width: isActive || landmark.isTransition ? 56 : 48, height: isActive || landmark.isTransition ? 56 : 48)
+                    .shadow(color: activeColor.opacity(isActive ? 0.40 : 0.16), radius: isActive ? 20 : 10, x: 0, y: 8)
 
                 Circle()
-                    .stroke(landmark.isTransition ? neonYellow.opacity(0.86) : neonGreen.opacity(0.62), lineWidth: landmark.isTransition ? 1.5 : 1)
-                    .frame(width: landmark.isTransition ? 58 : 48, height: landmark.isTransition ? 58 : 48)
+                    .stroke(activeColor.opacity(isActive ? 0.95 : 0.38), lineWidth: isActive ? 2 : 1)
+                    .frame(width: isActive || landmark.isTransition ? 56 : 48, height: isActive || landmark.isTransition ? 56 : 48)
 
                 Text("\(landmark.beat)")
-                    .font(.system(size: landmark.isTransition ? 23 : 19, weight: .bold, design: .rounded))
+                    .font(.system(size: isActive ? 22 : 18, weight: .black, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(landmark.isTransition ? deepGreen : .white)
-                    .frame(width: landmark.isTransition ? 40 : 34, height: landmark.isTransition ? 40 : 34)
-                    .background(
-                        Circle()
-                            .fill(landmark.isTransition ? neonYellow : Color.white.opacity(0.08))
-                    )
+                    .foregroundStyle(isActive || landmark.isTransition ? deepGreen : .white)
             }
-            .frame(width: 62, height: 62)
 
-            VStack(spacing: 3) {
-                Text(landmark.title)
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.76)
-                    .frame(width: 88, height: 30)
-
-                Text(landmark.cue)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.56))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.62)
-                    .frame(width: 88)
-            }
+            Text(landmark.title)
+                .font(.system(size: 10, weight: .black, design: .rounded))
+                .foregroundStyle(.white.opacity(isActive ? 0.92 : 0.58))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.68)
+                .frame(width: 82, height: 24)
         }
-        .frame(width: 88)
+        .scaleEffect(isActive ? 1.07 : 1)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Beat \(landmark.beat), \(landmark.title), \(landmark.cue)")
+    }
+
+    private var activeColor: Color {
+        landmark.isTransition ? neonYellow : neonGreen
+    }
+
+    private var fillColor: Color {
+        if isActive || landmark.isTransition {
+            return activeColor
+        }
+
+        return neonGreen.opacity(isPlaying ? 0.14 : 0.09)
     }
 }
 
-private struct GarageSlowTempoSubdivisionBridge: View {
+private struct GarageTempoSubdivisionTicks: View {
     let tickCount: Int
+    let activeProgress: Double
+    let isPlaying: Bool
 
     private let neonGreen = Color(red: 0, green: 1, blue: 0.67)
 
     var body: some View {
         ZStack {
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            neonGreen.opacity(0.12),
-                            neonGreen.opacity(0.30),
-                            neonGreen.opacity(0.12)
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .frame(height: 1)
+            ForEach(0..<max(tickCount, 1), id: \.self) { index in
+                let angle = Angle.degrees(Double(index) / Double(max(tickCount, 1)) * 360 - 90)
+                let tickProgress = Double(index) / Double(max(tickCount, 1))
+                let isPassed = isPlaying && tickProgress <= activeProgress
 
-            HStack(spacing: 7) {
-                ForEach(0..<tickCount, id: \.self) { _ in
-                    Capsule()
-                        .fill(neonGreen.opacity(0.46))
-                        .frame(width: 3, height: 14)
+                Capsule()
+                    .fill(neonGreen.opacity(isPassed ? 0.68 : 0.20))
+                    .frame(width: 3, height: isPassed ? 18 : 11)
+                    .offset(y: -132)
+                    .rotationEffect(angle)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+private struct GarageTempoBuilderControlDeck: View {
+    @Binding var beatsPerMinute: Double
+    let isPlaying: Bool
+    let soundProfile: ElasticSlingshotSoundProfile
+    let onPlayToggle: () -> Void
+    let onOpenSettings: () -> Void
+
+    private let minimumBPM = 50.0
+    private let maximumBPM = 90.0
+    private let neonGreen = Color(red: 0, green: 1, blue: 0.67)
+    private let neonYellow = Color(red: 1, green: 0.93, blue: 0.1)
+    private let deepGreen = Color(red: 0.02, green: 0.04, blue: 0.024)
+
+    var body: some View {
+        HStack(spacing: 12) {
+            GarageTempoIconButton(systemImage: "minus") {
+                beatsPerMinute = max(beatsPerMinute - 1, minimumBPM)
+            }
+
+            Button(action: onPlayToggle) {
+                HStack(spacing: 10) {
+                    Image(systemName: isPlaying ? "stop.fill" : "play.fill")
+                        .font(.system(size: 15, weight: .black))
+
+                    Text(isPlaying ? "Stop" : "Start Tempo")
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                }
+                .foregroundStyle(deepGreen)
+                .frame(maxWidth: .infinity)
+                .frame(height: 58)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(isPlaying ? neonYellow : neonGreen)
+                        .shadow(color: (isPlaying ? neonYellow : neonGreen).opacity(0.32), radius: 18, x: 0, y: 10)
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isPlaying ? "Stop tempo loop" : "Start tempo loop")
+
+            GarageTempoIconButton(systemImage: "plus") {
+                beatsPerMinute = min(beatsPerMinute + 1, maximumBPM)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            Button(action: onOpenSettings) {
+                Text(soundProfile.title)
+                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.80))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill(Color.white.opacity(0.07))
+                            .overlay(
+                                Capsule()
+                                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                            )
+                    )
+            }
+            .buttonStyle(.plain)
+            .offset(y: -34)
+            .accessibilityLabel("Open Engine Room")
+        }
+    }
+}
+
+private struct GarageTempoIconButton: View {
+    let systemImage: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 16, weight: .black))
+                .foregroundStyle(.white.opacity(0.88))
+                .frame(width: 50, height: 58)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color.white.opacity(0.06))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct GarageTempoMicroMap: View {
+    let logic: GarageSlowTempoLogic
+
+    private let neonGreen = Color(red: 0, green: 1, blue: 0.67)
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(logic.landmarks) { landmark in
+                HStack(spacing: 5) {
+                    Text("\(landmark.beat)")
+                        .font(.system(size: 10, weight: .black, design: .rounded))
+                        .foregroundStyle(landmark.isTransition ? Color(red: 1, green: 0.93, blue: 0.1) : neonGreen)
+
+                    Text(landmark.title)
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.58))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.68)
+                }
+                .frame(maxWidth: .infinity)
+
+                if landmark.id != logic.landmarks.last?.id {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.14))
+                        .frame(width: 1, height: 12)
                 }
             }
         }
-        .frame(height: 18)
-        .accessibilityHidden(true)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            Capsule()
+                .fill(Color.white.opacity(0.035))
+                .overlay(
+                    Capsule()
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(logic.trainingMapText)
     }
 }
 
@@ -471,38 +599,6 @@ private struct GarageHorizonVaultTopBar: View {
             .foregroundStyle(.white.opacity(0.86))
             .accessibilityLabel("Engine room")
         }
-    }
-}
-
-private struct GarageHorizonVaultPlayToggle: View {
-    let isPlaying: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: isPlaying ? "stop.fill" : "play.fill")
-                .font(.system(size: 26, weight: .bold))
-                .foregroundStyle(.black)
-                .frame(width: 86, height: 86)
-                .background(
-                    Circle()
-                        .fill(isPlaying ? Color(red: 1, green: 0.93, blue: 0.1) : Color(red: 0, green: 1, blue: 0.67))
-                )
-                .shadow(color: (isPlaying ? Color(red: 1, green: 0.93, blue: 0.1) : Color(red: 0, green: 1, blue: 0.67)).opacity(0.36), radius: 24, x: 0, y: 14)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(isPlaying ? "Stop tempo loop" : "Play tempo loop")
-    }
-}
-
-private struct Triangle: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.midX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        path.closeSubpath()
-        return path
     }
 }
 

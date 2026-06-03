@@ -77,6 +77,50 @@ struct GarageSlowTempoLogic: Equatable {
             )
         ]
     }
+
+    func visualState(elapsedTime: TimeInterval, isPlaying: Bool) -> GarageSlowTempoVisualState {
+        guard isPlaying else {
+            return GarageSlowTempoVisualState(
+                elapsedInCycle: 0,
+                cycleProgress: 0,
+                activeBeat: 1,
+                activeLandmark: landmarks[0],
+                nextLandmark: landmarks[1],
+                phaseLabel: "Ready",
+                phaseCue: primaryCue,
+                isResting: false
+            )
+        }
+
+        let cycleDuration = max(swingDuration, 0.1)
+        let elapsedInCycle = elapsedTime.truncatingRemainder(dividingBy: cycleDuration)
+        let activeBeat: Int
+        let nextIndex: Int
+
+        if elapsedInCycle < topTimestamp {
+            activeBeat = 1
+            nextIndex = 1
+        } else if elapsedInCycle < impactTimestamp {
+            activeBeat = 2
+            nextIndex = 2
+        } else {
+            activeBeat = 3
+            nextIndex = 0
+        }
+
+        let activeLandmark = landmarks[max(min(activeBeat - 1, landmarks.count - 1), 0)]
+
+        return GarageSlowTempoVisualState(
+            elapsedInCycle: elapsedInCycle,
+            cycleProgress: min(max(elapsedInCycle / cycleDuration, 0), 1),
+            activeBeat: activeBeat,
+            activeLandmark: activeLandmark,
+            nextLandmark: landmarks[nextIndex],
+            phaseLabel: activeLandmark.title,
+            phaseCue: activeLandmark.cue,
+            isResting: false
+        )
+    }
 }
 
 struct GarageSlowTempoLandmark: Identifiable, Equatable {
@@ -85,4 +129,15 @@ struct GarageSlowTempoLandmark: Identifiable, Equatable {
     let title: String
     let cue: String
     let isTransition: Bool
+}
+
+struct GarageSlowTempoVisualState: Equatable {
+    let elapsedInCycle: TimeInterval
+    let cycleProgress: Double
+    let activeBeat: Int
+    let activeLandmark: GarageSlowTempoLandmark
+    let nextLandmark: GarageSlowTempoLandmark
+    let phaseLabel: String
+    let phaseCue: String
+    let isResting: Bool
 }
