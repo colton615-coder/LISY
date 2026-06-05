@@ -44,7 +44,7 @@ struct GarageSlowTempoLogic: Equatable {
     }
 
     var trainingMapText: String {
-        "Set → Smooth → Strike"
+        "Start → Load → Impact"
     }
 
     var subdivisionText: String {
@@ -52,27 +52,27 @@ struct GarageSlowTempoLogic: Equatable {
     }
 
     var primaryCue: String {
-        "Smooth power. Do not rush down."
+        "Load with patience. Release clean."
     }
 
     var landmarks: [GarageSlowTempoLandmark] {
         [
             GarageSlowTempoLandmark(
                 beat: 1,
-                title: "Set",
-                cue: "Set the move.",
+                title: "Start",
+                cue: "Start the move.",
                 isTransition: false
             ),
             GarageSlowTempoLandmark(
                 beat: 2,
-                title: "Smooth",
-                cue: "Stay smooth.",
+                title: "Load",
+                cue: "Hold the load.",
                 isTransition: true
             ),
             GarageSlowTempoLandmark(
                 beat: 3,
-                title: "Strike",
-                cue: "Strike clean.",
+                title: "Impact",
+                cue: "Impact clean.",
                 isTransition: false
             )
         ]

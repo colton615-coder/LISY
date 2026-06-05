@@ -23,6 +23,8 @@ struct EngineRoomSettingsView: View {
 
                     instrumentModeControl
 
+                    swingShapeControl
+
                     soundSkinSelector
 
                     breakBetweenSwingsControl
@@ -36,11 +38,9 @@ struct EngineRoomSettingsView: View {
         }
         .onAppear {
             setDefaultSoundForMode()
-            recipe.tempoRatio = .tour
         }
         .onChange(of: instrumentMode) { _, _ in
             setDefaultSoundForMode()
-            recipe.tempoRatio = .tour
         }
         .onDisappear {
             previewEngine.stop()
@@ -175,6 +175,69 @@ struct EngineRoomSettingsView: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel(choice.title)
                         .accessibilityValue(soundProfile == choice.profile ? "Selected" : "Not selected")
+                    }
+                }
+            }
+        }
+    }
+
+    private var swingShapeControl: some View {
+        EngineRoomPanel {
+            VStack(alignment: .leading, spacing: 14) {
+                EngineRoomSectionHeader(title: "Swing Shape", value: recipe.tempoRatio.displayTitle)
+
+                Text("Controls how long the load feels before release.")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.50))
+
+                VStack(spacing: 8) {
+                    ForEach(ElasticSlingshotTempoRatio.allCases) { ratio in
+                        Button {
+                            var updatedRecipe = recipe
+                            updatedRecipe.tempoRatio = ratio
+                            recipe = updatedRecipe
+                        } label: {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                        Text(ratio.displayTitle)
+                                            .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                            .foregroundStyle(.white)
+
+                                        Text(ratio.title)
+                                            .font(.system(size: 11, weight: .black, design: .rounded))
+                                            .monospacedDigit()
+                                            .foregroundStyle(.white.opacity(0.46))
+                                    }
+
+                                    Text(ratio.feelLine)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(.white.opacity(0.58))
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.78)
+                                }
+
+                                Spacer()
+
+                                Circle()
+                                    .fill(recipe.tempoRatio == ratio ? neonGreen : Color.white.opacity(0.18))
+                                    .frame(width: 10, height: 10)
+                            }
+                            .padding(.horizontal, 14)
+                            .frame(height: 62)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(recipe.tempoRatio == ratio ? neonGreen.opacity(0.12) : Color.white.opacity(0.045))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .stroke(recipe.tempoRatio == ratio ? neonGreen.opacity(0.36) : Color.white.opacity(0.08), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(ratio.displayTitle)
+                        .accessibilityValue(recipe.tempoRatio == ratio ? "Selected" : ratio.title)
+                        .accessibilityHint(ratio.feelLine)
                     }
                 }
             }

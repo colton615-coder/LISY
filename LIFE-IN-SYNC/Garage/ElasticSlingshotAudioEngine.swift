@@ -296,6 +296,10 @@ private struct ElasticSlingshotRenderConfiguration {
         recipe.downswingDuration(for: beatsPerMinute)
     }
 
+    var loadReleaseTimestamp: TimeInterval {
+        takebackDuration + pauseDuration
+    }
+
     var loopDuration: TimeInterval {
         switch mode {
         case .continuous:
@@ -611,7 +615,7 @@ private final class ElasticSlingshotRenderState {
         let logic = configuration.slowTempoLogic
         let anchorPulseFrames = max(frames(for: elasticSlingshotAnchorPulseDuration), 1)
         let subdivisionTickFrames = max(frames(for: elasticSlingshotSubdivisionTickDuration), 1)
-        let topFrame = frames(for: logic.topTimestamp)
+        let topFrame = frames(for: configuration.loadReleaseTimestamp)
 
         if let progress = eventProgress(
             cycleFrame: cycleFrame,
@@ -654,12 +658,11 @@ private final class ElasticSlingshotRenderState {
         cycleFrame: AVAudioFramePosition,
         configuration: ElasticSlingshotRenderConfiguration
     ) -> Double {
-        let logic = configuration.slowTempoLogic
         let pulseFrames = max(frames(for: 0.045), 1)
         let strikeFrame = frames(for: configuration.totalDuration)
         let events: [(AVAudioFramePosition, Double)] = [
             (0, 0.32),
-            (frames(for: logic.topTimestamp), 0.24),
+            (frames(for: configuration.loadReleaseTimestamp), 0.24),
             (strikeFrame, 0.38)
         ]
 
