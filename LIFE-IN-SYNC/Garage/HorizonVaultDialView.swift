@@ -191,7 +191,7 @@ private struct GarageTempoTopBar: View {
 
             HStack(spacing: 6) {
                 GarageTempoIconButton(systemImage: "camera.fill", label: "Swing capture", action: onCapture)
-                GarageTempoIconButton(systemImage: "gearshape.fill", label: "Settings", action: onSettings)
+                GarageTempoIconButton(systemImage: "slider.horizontal.3", label: "Control Room", action: onSettings)
             }
             .disabled(controlsEnabled == false)
             .opacity(controlsEnabled ? 1 : 0.34)
@@ -211,7 +211,12 @@ private struct GarageMetronomePage: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            GarageTempoPageTitle(title: "Metronome", subtitle: "Set the pace. Let it repeat.")
+            GarageTempoPageTitle(
+                title: isPlaying ? "Tempo Running" : "Your Swing Tempo",
+                subtitle: isPlaying
+                    ? "Address. Top. Impact. Reset. Repeat."
+                    : "Saved tempo loaded. Tap Start, settle into the count, then swing."
+            )
                 .padding(.top, 18)
 
             Spacer(minLength: 12)
@@ -242,20 +247,27 @@ private struct GarageMetronomePage: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("\(Int(beatsPerMinute.rounded())) beats per minute")
 
+            Text(isPlaying ? "CONTINUOUS RHYTHM LOOP" : "TEMPO SPEED")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .tracking(1.6)
+                .foregroundStyle(isPlaying ? GaragePremiumPalette.gold : GarageProTheme.textSecondary)
+                .padding(.top, 2)
+
             Slider(value: $beatsPerMinute, in: 40...120, step: 1)
                 .tint(GaragePremiumPalette.gold)
                 .disabled(isPlaying)
+                .opacity(isPlaying ? 0.24 : 1)
                 .padding(.horizontal, 8)
                 .accessibilityLabel("Tempo")
 
             GarageTempoSoundButton(
                 title: selectedClick.title,
-                subtitle: "Metronome sound",
+                subtitle: "Selected rhythm sound",
                 systemImage: "waveform",
                 action: onOpenSounds
             )
             .disabled(isPlaying)
-            .opacity(isPlaying ? 0.38 : 1)
+            .opacity(isPlaying ? 0.22 : 1)
             .padding(.top, 18)
 
             GarageTempoPrimaryButton(isPlaying: isPlaying, action: onPlayToggle)
@@ -303,7 +315,7 @@ private struct GarageGuidedSwingPage: View {
 
             GarageTempoSoundButton(
                 title: selectedSound.title,
-                subtitle: "Guided sound",
+                subtitle: "Selected swing sound",
                 systemImage: "waveform.path",
                 action: onOpenSounds
             )
@@ -356,12 +368,24 @@ private struct GarageTempoPendulum: View {
     var body: some View {
         ZStack(alignment: .top) {
             RoundedRectangle(cornerRadius: 34, style: .continuous)
-                .fill(GarageProTheme.elevatedSurface.opacity(0.72))
+                .fill(
+                    isPlaying
+                        ? GaragePremiumPalette.emeraldGlass.opacity(0.72)
+                        : GarageProTheme.elevatedSurface.opacity(0.72)
+                )
                 .overlay(
                     RoundedRectangle(cornerRadius: 34, style: .continuous)
-                        .stroke(GarageProTheme.border, lineWidth: 1)
+                        .stroke(
+                            isPlaying ? GaragePremiumPalette.gold.opacity(0.34) : GarageProTheme.border,
+                            lineWidth: 1
+                        )
                 )
-                .shadow(color: GarageProTheme.darkShadow, radius: 24, x: 0, y: 18)
+                .shadow(
+                    color: isPlaying ? GaragePremiumPalette.gold.opacity(0.14) : GarageProTheme.darkShadow,
+                    radius: isPlaying ? 30 : 24,
+                    x: 0,
+                    y: 18
+                )
 
             ZStack(alignment: .top) {
                 Capsule()
@@ -396,8 +420,58 @@ private struct GarageTempoPendulum: View {
                 .frame(width: 12, height: 12)
                 .shadow(color: GaragePremiumPalette.gold.opacity(0.36), radius: 8)
                 .padding(.top, 20)
+
+            VStack {
+                HStack {
+                    Text(isPlaying ? "LIVE SWING RHYTHM" : "SWING RHYTHM")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .tracking(1.5)
+                        .foregroundStyle(isPlaying ? GaragePremiumPalette.gold : GarageProTheme.textSecondary)
+
+                    Spacer()
+
+                    Circle()
+                        .fill(isPlaying ? GaragePremiumPalette.gold : GarageProTheme.textSecondary.opacity(0.32))
+                        .frame(width: 7, height: 7)
+                        .shadow(color: GaragePremiumPalette.gold.opacity(isPlaying ? 0.5 : 0), radius: 8)
+                }
+
+                Spacer()
+
+                GarageTempoPhaseRail()
+            }
+            .padding(22)
         }
         .accessibilityHidden(true)
+    }
+}
+
+private struct GarageTempoPhaseRail: View {
+    private let phases = ["Address", "Top", "Impact"]
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(Array(phases.enumerated()), id: \.offset) { index, phase in
+                HStack(spacing: 8) {
+                    VStack(spacing: 5) {
+                        Circle()
+                            .fill(index == 2 ? GaragePremiumPalette.gold : GaragePremiumPalette.mintText.opacity(0.46))
+                            .frame(width: index == 2 ? 8 : 6, height: index == 2 ? 8 : 6)
+
+                        Text(phase)
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(index == 2 ? GaragePremiumPalette.gold : GarageProTheme.textSecondary)
+                    }
+
+                    if index < phases.count - 1 {
+                        Capsule()
+                            .fill(GaragePremiumPalette.mintText.opacity(0.12))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 1)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -546,9 +620,12 @@ private struct GarageTempoSoundButton: View {
 
                 Spacer()
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(GarageProTheme.textSecondary)
+                Text("Preview")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(GaragePremiumPalette.gold)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(GaragePremiumPalette.gold.opacity(0.10), in: Capsule())
             }
             .padding(.horizontal, 14)
             .frame(height: 58)
@@ -559,6 +636,7 @@ private struct GarageTempoSoundButton: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityHint("Opens sounds to choose and preview")
     }
 }
 
@@ -602,7 +680,7 @@ private struct GarageTempoPageIndicator: View {
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selectedPage)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(selectedPage == .metronome ? "Metronome page, one of two" : "Guided Swing page, two of two")
+        .accessibilityLabel(selectedPage == .metronome ? "Swing tempo page, one of two" : "Guided Swing page, two of two")
     }
 }
 
@@ -631,7 +709,7 @@ private struct GarageMetronomeSoundLibrary: View {
     @StateObject private var previewEngine = ElasticSlingshotAudioEngine()
 
     var body: some View {
-        GarageTempoSheetScaffold(title: "Metronome Sounds", onDone: { dismiss() }) {
+        GarageTempoSheetScaffold(title: "Rhythm Sounds", onDone: { dismiss() }) {
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 ForEach(GarageMetronomeClickProfile.allCases) { profile in
                     GarageTempoSoundTile(
@@ -664,7 +742,7 @@ private struct GarageGuidedSoundLibrary: View {
     @StateObject private var previewEngine = ElasticSlingshotAudioEngine()
 
     var body: some View {
-        GarageTempoSheetScaffold(title: "Guided Sounds", onDone: { dismiss() }) {
+        GarageTempoSheetScaffold(title: "Swing Sounds", onDone: { dismiss() }) {
             VStack(spacing: 12) {
                 ForEach(GarageGuidedSwingProfile.allCases) { profile in
                     GarageTempoSoundTile(
@@ -694,10 +772,14 @@ private struct GarageTempoSettingsSheet: View {
     @Binding var restInterval: Double
 
     var body: some View {
-        GarageTempoSheetScaffold(title: "Settings", onDone: { dismiss() }) {
+        GarageTempoSheetScaffold(title: "Control Room", onDone: { dismiss() }) {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Rest Between Swings")
                     .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(GarageProTheme.textSecondary)
+
+                Text("Set the reset space before the next rhythm begins.")
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundStyle(GarageProTheme.textSecondary)
 
                 HStack(spacing: 8) {
