@@ -126,7 +126,6 @@ struct GarageTempoBuilderView: View {
             return
         }
 
-        playbackStartDate = Date()
         audioEngine.start(
             beatsPerMinute: beatsPerMinute,
             recipe: recipe,
@@ -135,6 +134,7 @@ struct GarageTempoBuilderView: View {
             guidedClicksEnabled: selectedPage == .guidedSwing && guidedClicksEnabled,
             instrumentMode: selectedPage.instrumentMode
         )
+        playbackStartDate = audioEngine.playbackState == .playing ? Date() : nil
     }
 
     private func stopPlayback() {
@@ -315,11 +315,11 @@ private struct GarageGuidedSwingPage: View {
 
             Toggle(isOn: $clicksEnabled) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Clicks")
+                    Text("Background clicks")
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
                         .foregroundStyle(GarageProTheme.textPrimary)
 
-                    Text("Layer the selected metronome sound")
+                    Text("Light rhythm support between swing cues")
                         .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(GarageProTheme.textSecondary)
                 }

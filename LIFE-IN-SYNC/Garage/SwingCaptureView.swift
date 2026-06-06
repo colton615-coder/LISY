@@ -279,6 +279,7 @@ private final class SwingCaptureController: UIViewController, AVCaptureFileOutpu
             guard let self else { return }
 
             captureSession.beginConfiguration()
+            captureSession.automaticallyConfiguresApplicationAudioSession = false
             captureSession.sessionPreset = .high
 
             guard configureVideoInput(), configureAudioInput(), configureMovieOutput() else {
