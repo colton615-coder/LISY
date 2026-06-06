@@ -173,11 +173,9 @@ private enum GarageFocusRoomLayout {
 
 private enum FocusRoomPalette {
     static let background = Color(red: 0.012, green: 0.035, blue: 0.026)
-    static let backgroundLift = Color(red: 0.025, green: 0.105, blue: 0.07)
     static let panel = Color(red: 0.025, green: 0.082, blue: 0.058)
     static let green = Color(red: 0.23, green: 0.96, blue: 0.49)
     static let greenSoft = Color(red: 0.47, green: 0.91, blue: 0.59)
-    static let yellow = Color(red: 1.0, green: 0.78, blue: 0.22)
     static let primaryText = Color.white
     static let secondaryText = Color.white.opacity(0.68)
     static let border = Color(red: 0.23, green: 0.96, blue: 0.49).opacity(0.18)
@@ -344,71 +342,61 @@ private enum FocusHeroVisualState: Hashable {
         switch self {
         case .idle:
             return FocusHeroStyle(
-                ringLineWidth: 24,
-                trackOpacity: 0.22,
-                ringOpacity: 0.88,
+                ringLineWidth: 10,
+                trackOpacity: 0.14,
+                ringOpacity: 0.78,
                 heroOpacity: 1,
                 elapsedFont: .system(size: 52, weight: .black, design: .monospaced),
                 targetFont: .system(size: 15, weight: .black, design: .rounded),
                 statusFont: .system(size: 11, weight: .black, design: .rounded),
-                progressFont: .system(size: 12, weight: .bold, design: .rounded),
-                shouldAnimateRing: false,
                 showsCompletionPrompt: false,
                 showsNextDrillCard: false
             )
         case .running:
             return FocusHeroStyle(
-                ringLineWidth: 28,
-                trackOpacity: 0.18,
-                ringOpacity: 1,
+                ringLineWidth: 12,
+                trackOpacity: 0.14,
+                ringOpacity: 0.9,
                 heroOpacity: 1,
                 elapsedFont: .system(size: 56, weight: .black, design: .monospaced),
                 targetFont: .system(size: 15, weight: .black, design: .rounded),
                 statusFont: .system(size: 11, weight: .black, design: .rounded),
-                progressFont: .system(size: 12, weight: .bold, design: .rounded),
-                shouldAnimateRing: true,
                 showsCompletionPrompt: false,
                 showsNextDrillCard: false
             )
         case .paused:
             return FocusHeroStyle(
-                ringLineWidth: 26,
-                trackOpacity: 0.16,
-                ringOpacity: 0.7,
-                heroOpacity: 0.74,
+                ringLineWidth: 10,
+                trackOpacity: 0.12,
+                ringOpacity: 0.58,
+                heroOpacity: 0.9,
                 elapsedFont: .system(size: 54, weight: .black, design: .monospaced),
                 targetFont: .system(size: 15, weight: .black, design: .rounded),
                 statusFont: .system(size: 11, weight: .black, design: .rounded),
-                progressFont: .system(size: 12, weight: .bold, design: .rounded),
-                shouldAnimateRing: false,
                 showsCompletionPrompt: false,
                 showsNextDrillCard: false
             )
         case .completed:
             return FocusHeroStyle(
-                ringLineWidth: 28,
-                trackOpacity: 0.14,
-                ringOpacity: 1,
+                ringLineWidth: 12,
+                trackOpacity: 0.12,
+                ringOpacity: 0.9,
                 heroOpacity: 1,
                 elapsedFont: .system(size: 56, weight: .black, design: .monospaced),
                 targetFont: .system(size: 15, weight: .black, design: .rounded),
                 statusFont: .system(size: 11, weight: .black, design: .rounded),
-                progressFont: .system(size: 12, weight: .bold, design: .rounded),
-                shouldAnimateRing: false,
                 showsCompletionPrompt: true,
                 showsNextDrillCard: true
             )
         case .skipped:
             return FocusHeroStyle(
-                ringLineWidth: 24,
-                trackOpacity: 0.16,
-                ringOpacity: 0.78,
+                ringLineWidth: 10,
+                trackOpacity: 0.12,
+                ringOpacity: 0.64,
                 heroOpacity: 0.9,
                 elapsedFont: .system(size: 52, weight: .black, design: .monospaced),
                 targetFont: .system(size: 15, weight: .black, design: .rounded),
                 statusFont: .system(size: 11, weight: .black, design: .rounded),
-                progressFont: .system(size: 12, weight: .bold, design: .rounded),
-                shouldAnimateRing: false,
                 showsCompletionPrompt: false,
                 showsNextDrillCard: true
             )
@@ -424,28 +412,13 @@ private struct FocusHeroStyle {
     let elapsedFont: Font
     let targetFont: Font
     let statusFont: Font
-    let progressFont: Font
-    let shouldAnimateRing: Bool
     let showsCompletionPrompt: Bool
     let showsNextDrillCard: Bool
 }
 
 private struct FocusRoomBackground: View {
     var body: some View {
-        ZStack {
-            GaragePracticeAtmosphereBackground()
-
-            RadialGradient(
-                colors: [
-                    FocusRoomPalette.green.opacity(0.24),
-                    .clear
-                ],
-                center: .center,
-                startRadius: 32,
-                endRadius: 330
-            )
-            .ignoresSafeArea()
-        }
+        GaragePracticeAtmosphereBackground()
     }
 }
 
@@ -525,8 +498,6 @@ private struct FocusRoomExecutionSurface: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            FocusRoomModeTabs()
-
             FocusRoomTeachingSection(
                 setupSteps: drill.content.setupSteps,
                 cueSteps: drill.content.cueSteps,
@@ -555,7 +526,6 @@ private struct FocusRoomExecutionSurface: View {
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.88), value: visualState)
     }
 }
 
@@ -659,18 +629,7 @@ private struct GarageDominantTimerHero: View {
 
             ZStack {
                 Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                FocusRoomPalette.panel.opacity(0.98),
-                                FocusRoomPalette.backgroundLift.opacity(0.76),
-                                Color.black.opacity(0.2)
-                            ],
-                            center: .center,
-                            startRadius: diameter * 0.12,
-                            endRadius: diameter * 0.54
-                        )
-                    )
+                    .fill(FocusRoomPalette.panel.opacity(0.72))
 
                 Circle()
                     .stroke(FocusRoomPalette.green.opacity(style.trackOpacity), lineWidth: style.ringLineWidth)
@@ -679,29 +638,12 @@ private struct GarageDominantTimerHero: View {
                 Circle()
                     .trim(from: 0, to: max(progress, 0.035))
                     .stroke(
-                        visualState == .completed ? FocusRoomPalette.green.opacity(style.ringOpacity) : FocusRoomPalette.yellow.opacity(style.ringOpacity),
+                        FocusRoomPalette.green.opacity(style.ringOpacity),
                         style: StrokeStyle(lineWidth: style.ringLineWidth, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
                     .padding(style.ringLineWidth / 2)
-                    .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.86), value: progress)
-                    .overlay {
-                        if style.shouldAnimateRing, reduceMotion == false {
-                            RunningSweepHighlight(
-                                progress: progress,
-                                lineWidth: style.ringLineWidth
-                            )
-                            .padding(style.ringLineWidth / 2)
-                        }
-                    }
-
-                Circle()
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                    .padding(34)
-
-                Circle()
-                    .stroke(Color.black.opacity(0.32), lineWidth: 1)
-                    .padding(18)
+                    .animation(reduceMotion ? nil : .linear(duration: 0.2), value: progress)
 
                 VStack(spacing: 8) {
                     Text(formattedTime(elapsedSeconds))
@@ -710,11 +652,10 @@ private struct GarageDominantTimerHero: View {
                         .foregroundStyle(FocusRoomPalette.primaryText)
                         .lineLimit(1)
                         .minimumScaleFactor(0.52)
-                        .shadow(color: FocusRoomPalette.green.opacity(0.2), radius: 10, x: 0, y: 0)
 
                     Text("Target \(formattedTime(durationSeconds))")
                         .font(style.targetFont)
-                        .foregroundStyle(FocusRoomPalette.yellow)
+                        .foregroundStyle(FocusRoomPalette.secondaryText)
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
 
@@ -724,16 +665,6 @@ private struct GarageDominantTimerHero: View {
                         .tracking(1.7)
                         .foregroundStyle(visualState == .paused ? FocusRoomPalette.secondaryText : FocusRoomPalette.green)
                         .lineLimit(1)
-
-                    Text(progressPercentText)
-                        .font(style.progressFont)
-                        .foregroundStyle(FocusRoomPalette.secondaryText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.78)
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 5)
-                        .background(Color.black.opacity(0.22), in: Capsule())
-                        .overlay(Capsule().stroke(FocusRoomPalette.border, lineWidth: 1))
                 }
                 .padding(.horizontal, 40)
             }
@@ -743,9 +674,7 @@ private struct GarageDominantTimerHero: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: 380)
-        .shadow(color: FocusRoomPalette.green.opacity(0.26), radius: 28, x: 0, y: 14)
-        .shadow(color: Color.black.opacity(0.4), radius: 18, x: 0, y: 12)
-        .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.88), value: visualState)
+        .shadow(color: Color.black.opacity(0.28), radius: 18, x: 0, y: 10)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Focus timer")
         .accessibilityValue(accessibilityValue)
@@ -768,27 +697,6 @@ private struct GarageDominantTimerHero: View {
     }
 }
 
-private struct RunningSweepHighlight: View {
-    let progress: Double
-    let lineWidth: CGFloat
-
-    @State private var pulse = false
-
-    var body: some View {
-        Circle()
-            .trim(from: max(progress - 0.055, 0), to: max(progress, 0.035))
-            .stroke(
-                Color.white.opacity(pulse ? 0.35 : 0.16),
-                style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
-            )
-            .rotationEffect(.degrees(-90))
-            .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: pulse)
-            .onAppear {
-                pulse = true
-            }
-    }
-}
-
 private struct FocusRoomTeachingSection: View {
     let setupSteps: [String]
     let cueSteps: [String]
@@ -796,91 +704,33 @@ private struct FocusRoomTeachingSection: View {
     let durationText: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            VStack(alignment: .leading, spacing: 8) {
-                FocusRoomBulletBlock(
-                    title: "SETUP",
-                    tint: FocusRoomPalette.green,
-                    steps: Array(setupSteps.prefix(3))
-                )
-                Divider().overlay(FocusRoomPalette.border.opacity(0.8))
-                FocusRoomBulletBlock(
-                    title: "STEPS",
-                    tint: FocusRoomPalette.yellow,
-                    steps: Array(cueSteps.prefix(2))
-                )
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 14) {
+                Label(modeLabel, systemImage: "flag")
+                Label(durationText, systemImage: "timer")
             }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(FocusRoomPalette.secondaryText)
 
-            VStack(spacing: 8) {
-                FocusRoomMiniMetric(value: modeLabel, title: "Mode", systemImage: "flag")
-                FocusRoomMiniMetric(value: durationText, title: "Goal", systemImage: "timer")
-            }
-            .frame(width: 92)
+            FocusRoomBulletBlock(
+                title: "SETUP",
+                tint: FocusRoomPalette.green,
+                steps: Array(setupSteps.prefix(3))
+            )
+
+            Divider().overlay(FocusRoomPalette.border.opacity(0.7))
+
+            FocusRoomBulletBlock(
+                title: "STEPS",
+                tint: FocusRoomPalette.greenSoft,
+                steps: Array(cueSteps.prefix(2))
+            )
         }
         .padding(12)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .background(FocusRoomPalette.panel.opacity(0.48), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(FocusRoomPalette.panel.opacity(0.58), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-        )
-    }
-}
-
-private struct FocusRoomModeTabs: View {
-    private let tabs = ["Overview", "Steps", "Keys"]
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(tabs, id: \.self) { tab in
-                Text(tab)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(tab == "Overview" ? FocusRoomPalette.primaryText : FocusRoomPalette.secondaryText)
-                    .frame(maxWidth: .infinity, minHeight: 38)
-                    .background {
-                        if tab == "Overview" {
-                            Capsule()
-                                .fill(FocusRoomPalette.green.opacity(0.18))
-                                .overlay(Capsule().stroke(FocusRoomPalette.green.opacity(0.18), lineWidth: 1))
-                        }
-                    }
-            }
-        }
-        .padding(4)
-        .background(Color.black.opacity(0.22), in: Capsule())
-        .overlay(Capsule().stroke(Color.white.opacity(0.07), lineWidth: 1))
-        .accessibilityHidden(true)
-    }
-}
-
-private struct FocusRoomMiniMetric: View {
-    let value: String
-    let title: String
-    let systemImage: String
-
-    var body: some View {
-        VStack(spacing: 4) {
-            Image(systemName: systemImage)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(FocusRoomPalette.yellow)
-
-            Text(value)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(FocusRoomPalette.primaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.62)
-
-            Text(title)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(FocusRoomPalette.secondaryText)
-                .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity, minHeight: 68)
-        .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.white.opacity(0.07), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(FocusRoomPalette.border.opacity(0.7), lineWidth: 1)
         )
     }
 }
@@ -1022,50 +872,31 @@ private struct FocusRoomBottomActions: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            HStack(spacing: 8) {
-                FocusRoomDockButton(
-                    title: noteTitle,
-                    systemImage: noteTitle == GarageFocusRoomCopy.focusRoomNoteAddCta ? "square.and.pencil" : "note.text",
-                    action: onNote
-                )
+            FocusRoomDockButton(
+                title: noteTitle,
+                systemImage: noteTitle == GarageFocusRoomCopy.focusRoomNoteAddCta ? "square.and.pencil" : "note.text",
+                action: onNote
+            )
 
-                FocusRoomDockButton(
-                    title: "Skip Drill",
-                    systemImage: "forward.end.fill",
-                    action: onSkip
-                )
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            FocusRoomDockButton(
+                title: "Skip",
+                systemImage: "forward.end",
+                action: onSkip
+            )
 
             Button {
                 garageTriggerImpact(.medium)
                 onPrimary()
             } label: {
-                Image(systemName: primarySystemImage)
-                    .font(.system(size: 21, weight: .black))
-                    .minimumScaleFactor(0.7)
-                    .foregroundStyle(GaragePremiumPalette.emeraldDeep)
-                    .frame(width: 58, height: 58)
-                    .background(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 1.0, green: 0.86, blue: 0.27),
-                                GaragePremiumPalette.gold,
-                                GaragePremiumPalette.goldDeep
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        in: Circle()
-                    )
-                    .overlay(
-                        Circle()
-                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
-                    )
-                    .shadow(color: GaragePremiumPalette.gold.opacity(0.34), radius: 14, x: 0, y: 6)
+                Label(primaryTitle, systemImage: primarySystemImage)
+                    .font(.system(size: 14, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .foregroundStyle(FocusRoomPalette.background)
+                    .frame(maxWidth: .infinity, minHeight: 46)
+                    .background(FocusRoomPalette.green, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(primaryTitle)
             .accessibilityIdentifier("garage-focus-primary")
         }
         .padding(.horizontal, 14)
