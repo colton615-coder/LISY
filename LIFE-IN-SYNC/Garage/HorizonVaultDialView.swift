@@ -12,7 +12,7 @@ struct GarageTempoBuilderView: View {
     @AppStorage("garage.tempoBuilder.guidedClicks") private var guidedClicksEnabled = false
     @AppStorage("garage.tempoBuilder.restInterval") private var restInterval = 5.0
 
-    @State private var selectedPage: GarageTempoPage = .metronome
+    @State private var selectedPage: GarageTempoPage = .guidedSwing
     @State private var presentedSheet: GarageTempoSheet?
     @State private var showsSwingCapture = false
     @State private var playbackStartDate: Date?
@@ -62,7 +62,6 @@ struct GarageTempoBuilderView: View {
 
                     GarageGuidedSwingPage(
                         selectedSound: selectedGuidedSound,
-                        clicksEnabled: $guidedClicksEnabled,
                         beatsPerMinute: beatsPerMinute,
                         recipe: recipe,
                         isPlaying: isPlaying && selectedPage == .guidedSwing,
@@ -102,7 +101,10 @@ struct GarageTempoBuilderView: View {
                     recipe: recipe
                 )
             case .settings:
-                GarageTempoSettingsSheet(restInterval: $restInterval)
+                GarageTempoSettingsSheet(
+                    restInterval: $restInterval,
+                    guidedClicksEnabled: $guidedClicksEnabled
+                )
             }
         }
         .fullScreenCover(isPresented: $showsSwingCapture) {
@@ -215,7 +217,7 @@ private struct GarageMetronomePage: View {
                 title: isPlaying ? "Tempo Running" : "Your Swing Tempo",
                 subtitle: isPlaying
                     ? "Address. Top. Impact. Reset. Repeat."
-                    : "Saved tempo loaded. Tap Start, settle into the count, then swing."
+                    : "Saved tempo loaded. Tap Start, follow the rhythm, then swing."
             )
                 .padding(.top, 18)
 
@@ -285,7 +287,6 @@ private struct GarageMetronomePage: View {
 
 private struct GarageGuidedSwingPage: View {
     let selectedSound: GarageGuidedSwingProfile
-    @Binding var clicksEnabled: Bool
     let beatsPerMinute: Double
     let recipe: ElasticSlingshotRecipe
     let isPlaying: Bool
@@ -296,7 +297,12 @@ private struct GarageGuidedSwingPage: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            GarageTempoPageTitle(title: "Guided Swing", subtitle: "Hear the motion. Repeat the rhythm.")
+            GarageTempoPageTitle(
+                title: isPlaying ? "Tempo Running" : "Your Swing Tempo",
+                subtitle: isPlaying
+                    ? "Follow the light through Address, Top, and Impact."
+                    : "Saved tempo loaded. Tap Start, follow the light, then swing."
+            )
                 .padding(.top, 18)
 
             Spacer(minLength: 16)
@@ -313,6 +319,24 @@ private struct GarageGuidedSwingPage: View {
 
             Spacer(minLength: 8)
 
+            HStack(spacing: 7) {
+                Text("\(Int(beatsPerMinute.rounded())) BPM")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(GaragePremiumPalette.gold)
+
+                Circle()
+                    .fill(GarageProTheme.textSecondary.opacity(0.42))
+                    .frame(width: 4, height: 4)
+
+                Text("Saved swing tempo")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(GarageProTheme.textSecondary)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(Int(beatsPerMinute.rounded())) beats per minute, saved swing tempo")
+            .padding(.bottom, 12)
+
             GarageTempoSoundButton(
                 title: selectedSound.title,
                 subtitle: "Selected swing sound",
@@ -324,24 +348,7 @@ private struct GarageGuidedSwingPage: View {
 
             GarageTempoPrimaryButton(isPlaying: isPlaying, action: onPlayToggle)
                 .padding(.top, 14)
-
-            Toggle(isOn: $clicksEnabled) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Background clicks")
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(GarageProTheme.textPrimary)
-
-                    Text("Light rhythm support between swing cues")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundStyle(GarageProTheme.textSecondary)
-                }
-            }
-            .tint(GaragePremiumPalette.gold)
-            .disabled(isPlaying)
-            .opacity(isPlaying ? 0.52 : 1)
-            .padding(.horizontal, 4)
-            .padding(.top, 16)
-            .padding(.bottom, 10)
+                .padding(.bottom, 10)
         }
     }
 
@@ -488,12 +495,24 @@ private struct GarageGuidedSwingArc: View {
 
             ZStack {
                 RoundedRectangle(cornerRadius: 34, style: .continuous)
-                    .fill(GarageProTheme.elevatedSurface.opacity(0.68))
+                    .fill(
+                        isPlaying
+                            ? GaragePremiumPalette.emeraldGlass.opacity(0.72)
+                            : GarageProTheme.elevatedSurface.opacity(0.68)
+                    )
                     .overlay(
                         RoundedRectangle(cornerRadius: 34, style: .continuous)
-                            .stroke(GarageProTheme.border, lineWidth: 1)
+                            .stroke(
+                                isPlaying ? GaragePremiumPalette.gold.opacity(0.34) : GarageProTheme.border,
+                                lineWidth: 1
+                            )
                     )
-                    .shadow(color: GarageProTheme.darkShadow, radius: 24, x: 0, y: 18)
+                    .shadow(
+                        color: isPlaying ? GaragePremiumPalette.gold.opacity(0.14) : GarageProTheme.darkShadow,
+                        radius: isPlaying ? 30 : 24,
+                        x: 0,
+                        y: 18
+                    )
 
                 path
                     .stroke(GaragePremiumPalette.mintText.opacity(0.13), style: StrokeStyle(lineWidth: 3, lineCap: .round))
@@ -522,10 +541,46 @@ private struct GarageGuidedSwingArc: View {
                         .shadow(color: GaragePremiumPalette.gold.opacity(0.24), radius: 12)
                         .position(x: rect.minX, y: rect.maxY)
                 }
+
+                GarageGuidedSwingLandmark(
+                    title: "Address",
+                    isActive: state.activeBeat == 1 && state.isResting == false,
+                    alignment: .leading
+                )
+                .position(x: rect.minX + 20, y: rect.maxY + 22)
+
+                GarageGuidedSwingLandmark(
+                    title: "Top",
+                    isActive: state.activeBeat == 2 && state.isResting == false,
+                    alignment: .center
+                )
+                .position(x: rect.midX + 24, y: rect.minY - 18)
+
+                GarageGuidedSwingLandmark(
+                    title: "Impact",
+                    isActive: state.activeBeat == 3 && state.isResting == false,
+                    alignment: .trailing
+                )
+                .position(x: rect.maxX - 18, y: rect.maxY - 2)
+
+                VStack(spacing: 3) {
+                    Text(isPlaying ? state.phaseLabel.uppercased() : "GUIDED SWING")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .tracking(1.5)
+                        .foregroundStyle(GaragePremiumPalette.gold)
+
+                    if isPlaying {
+                        Text(state.phaseCue)
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundStyle(GarageProTheme.textSecondary)
+                    }
+                }
+                .multilineTextAlignment(.center)
+                .position(x: rect.midX, y: rect.maxY - 48)
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(isPlaying ? "Guided swing running" : "Guided swing ready")
+        .accessibilityLabel(isPlaying ? "Guided swing running, \(state.phaseLabel)" : "Guided swing ready")
     }
 
     private func guidedPath(in rect: CGRect) -> Path {
@@ -572,6 +627,26 @@ private struct GarageGuidedSwingArc: View {
             x: (inverse * inverse * start.x) + (2 * inverse * progress * control.x) + (progress * progress * end.x),
             y: (inverse * inverse * start.y) + (2 * inverse * progress * control.y) + (progress * progress * end.y)
         )
+    }
+}
+
+private struct GarageGuidedSwingLandmark: View {
+    let title: String
+    let isActive: Bool
+    let alignment: HorizontalAlignment
+
+    var body: some View {
+        VStack(alignment: alignment, spacing: 4) {
+            Circle()
+                .fill(isActive ? GaragePremiumPalette.gold : GaragePremiumPalette.mintText.opacity(0.42))
+                .frame(width: isActive ? 11 : 7, height: isActive ? 11 : 7)
+                .shadow(color: GaragePremiumPalette.gold.opacity(isActive ? 0.6 : 0), radius: 12)
+
+            Text(title)
+                .font(.system(size: 11, weight: isActive ? .bold : .semibold, design: .rounded))
+                .foregroundStyle(isActive ? GaragePremiumPalette.gold : GarageProTheme.textSecondary)
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isActive)
     }
 }
 
@@ -671,11 +746,17 @@ private struct GarageTempoPageIndicator: View {
     let selectedPage: GarageTempoPage
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 12) {
             ForEach(GarageTempoPage.allCases) { page in
-                Capsule()
-                    .fill(page == selectedPage ? GaragePremiumPalette.gold : GarageProTheme.textSecondary.opacity(0.28))
-                    .frame(width: page == selectedPage ? 18 : 6, height: 6)
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(page == selectedPage ? GaragePremiumPalette.gold : GarageProTheme.textSecondary.opacity(0.28))
+                        .frame(width: 5, height: 5)
+
+                    Text(page == .metronome ? "Tempo" : "Guided Swing")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(page == selectedPage ? GaragePremiumPalette.gold : GarageProTheme.textSecondary)
+                }
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selectedPage)
@@ -709,7 +790,7 @@ private struct GarageMetronomeSoundLibrary: View {
     @StateObject private var previewEngine = ElasticSlingshotAudioEngine()
 
     var body: some View {
-        GarageTempoSheetScaffold(title: "Rhythm Sounds", onDone: { dismiss() }) {
+        GarageTempoSheetScaffold(title: "Swing Sounds", onDone: { dismiss() }) {
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 ForEach(GarageMetronomeClickProfile.allCases) { profile in
                     GarageTempoSoundTile(
@@ -770,10 +851,11 @@ private struct GarageGuidedSoundLibrary: View {
 private struct GarageTempoSettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var restInterval: Double
+    @Binding var guidedClicksEnabled: Bool
 
     var body: some View {
         GarageTempoSheetScaffold(title: "Control Room", onDone: { dismiss() }) {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 20) {
                 Text("Rest Between Swings")
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                     .foregroundStyle(GarageProTheme.textSecondary)
@@ -800,6 +882,22 @@ private struct GarageTempoSettingsSheet: View {
                         .buttonStyle(.plain)
                     }
                 }
+
+                Divider()
+                    .overlay(GarageProTheme.border)
+
+                Toggle(isOn: $guidedClicksEnabled) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Background Clicks")
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .foregroundStyle(GarageProTheme.textPrimary)
+
+                        Text("Light rhythm support beneath the guided swing.")
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundStyle(GarageProTheme.textSecondary)
+                    }
+                }
+                .tint(GaragePremiumPalette.gold)
             }
         }
     }
