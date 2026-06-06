@@ -186,6 +186,83 @@ enum GarageTempoInstrumentMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum GarageMetronomeClickProfile: String, CaseIterable, Identifiable {
+    case hardwood
+    case ball
+    case steel
+    case leather
+    case stone
+    case rim
+    case pulse
+    case glass
+    case signal
+    case core
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .hardwood: "Hardwood"
+        case .ball: "Ball"
+        case .steel: "Steel"
+        case .leather: "Leather"
+        case .stone: "Stone"
+        case .rim: "Rim"
+        case .pulse: "Pulse"
+        case .glass: "Glass"
+        case .signal: "Signal"
+        case .core: "Core"
+        }
+    }
+
+    var character: String {
+        switch self {
+        case .hardwood: "Dry and warm"
+        case .ball: "Compact strike"
+        case .steel: "Restrained metal"
+        case .leather: "Tight muted snap"
+        case .stone: "Dense natural tick"
+        case .rim: "Crisp and dry"
+        case .pulse: "Low synthetic transient"
+        case .glass: "Controlled bright ping"
+        case .signal: "Clean future marker"
+        case .core: "Firm abstract impact"
+        }
+    }
+}
+
+enum GarageGuidedSwingProfile: String, CaseIterable, Identifiable {
+    case tension
+    case vector
+    case mass
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .tension: "Tension"
+        case .vector: "Vector"
+        case .mass: "Mass"
+        }
+    }
+
+    var character: String {
+        switch self {
+        case .tension: "Controlled rise. Strong release."
+        case .vector: "Precise synthetic movement."
+        case .mass: "Low weight. Compact force."
+        }
+    }
+
+    var engineProfile: ElasticSlingshotSoundProfile {
+        switch self {
+        case .tension: .elastic
+        case .vector: .pulse
+        case .mass: .gravity
+        }
+    }
+}
+
 enum ElasticSlingshotSoundProfile: String, CaseIterable, Identifiable {
     case elastic
     case storm
@@ -268,6 +345,8 @@ private struct ElasticSlingshotRenderConfiguration {
     var beatsPerMinute: Double
     var recipe: ElasticSlingshotRecipe
     var soundProfile: ElasticSlingshotSoundProfile
+    var metronomeClickProfile: GarageMetronomeClickProfile
+    var guidedClicksEnabled: Bool
     var instrumentMode: GarageTempoInstrumentMode
     var baseFrame: AVAudioFramePosition
     var mode: ElasticSlingshotPlaybackMode
@@ -301,6 +380,10 @@ private struct ElasticSlingshotRenderConfiguration {
     }
 
     var loopDuration: TimeInterval {
+        if instrumentMode == .metronome {
+            return slowTempoLogic.anchorInterval
+        }
+
         switch mode {
         case .continuous:
             return totalDuration + recipe.restInterval
@@ -411,6 +494,8 @@ private final class ElasticSlingshotRenderState {
         beatsPerMinute: 75,
         recipe: ElasticSlingshotRecipe(),
         soundProfile: .elastic,
+        metronomeClickProfile: .hardwood,
+        guidedClicksEnabled: false,
         instrumentMode: .build,
         baseFrame: 0,
         mode: .continuous,
@@ -431,12 +516,16 @@ private final class ElasticSlingshotRenderState {
         beatsPerMinute: Double,
         recipe: ElasticSlingshotRecipe,
         soundProfile: ElasticSlingshotSoundProfile,
+        metronomeClickProfile: GarageMetronomeClickProfile,
+        guidedClicksEnabled: Bool,
         instrumentMode: GarageTempoInstrumentMode
     ) {
         lock.lock()
         configuration.beatsPerMinute = beatsPerMinute
         configuration.recipe = recipe
         configuration.soundProfile = soundProfile
+        configuration.metronomeClickProfile = metronomeClickProfile
+        configuration.guidedClicksEnabled = guidedClicksEnabled
         configuration.instrumentMode = instrumentMode
         lock.unlock()
     }
@@ -445,6 +534,8 @@ private final class ElasticSlingshotRenderState {
         beatsPerMinute: Double,
         recipe: ElasticSlingshotRecipe,
         soundProfile: ElasticSlingshotSoundProfile,
+        metronomeClickProfile: GarageMetronomeClickProfile,
+        guidedClicksEnabled: Bool,
         instrumentMode: GarageTempoInstrumentMode,
         mode: ElasticSlingshotPlaybackMode
     ) {
@@ -453,6 +544,8 @@ private final class ElasticSlingshotRenderState {
             beatsPerMinute: beatsPerMinute,
             recipe: recipe,
             soundProfile: soundProfile,
+            metronomeClickProfile: metronomeClickProfile,
+            guidedClicksEnabled: guidedClicksEnabled,
             instrumentMode: instrumentMode,
             baseFrame: max(latestFrame, 0),
             mode: mode,
@@ -537,7 +630,7 @@ private final class ElasticSlingshotRenderState {
             debugLogImpactIfNeeded(at: relativeFrame, configuration: configuration)
             rawSample = configuration.instrumentMode == .metronome ? 0 : impactSample(progress: progress, profile: configuration.soundProfile)
         case .loopDelay:
-            rawSample = configuration.instrumentMode == .build ? buildResetPulseBed(at: relativeFrame, configuration: configuration) : 0
+            rawSample = 0
         case .finished:
             rawSample = 0
         }
@@ -610,48 +703,12 @@ private final class ElasticSlingshotRenderState {
             return metronomeGuideSample(cycleFrame: cycleFrame, configuration: configuration)
         }
 
-        guard cycleFrame < totalFrames else { return 0 }
+        guard configuration.guidedClicksEnabled, cycleFrame < totalFrames else { return 0 }
 
-        let logic = configuration.slowTempoLogic
-        let anchorPulseFrames = max(frames(for: elasticSlingshotAnchorPulseDuration), 1)
-        let subdivisionTickFrames = max(frames(for: elasticSlingshotSubdivisionTickDuration), 1)
-        let topFrame = frames(for: configuration.loadReleaseTimestamp)
+        let beatFrames = max(frames(for: configuration.slowTempoLogic.anchorInterval), 1)
+        let clickFrame = cycleFrame % beatFrames
+        return metronomeGuideSample(cycleFrame: clickFrame, configuration: configuration)
 
-        if let progress = eventProgress(
-            cycleFrame: cycleFrame,
-            eventFrame: 0,
-            durationFrames: anchorPulseFrames
-        ) {
-            return startAnchorPulseSample(progress: progress, profile: configuration.soundProfile)
-        }
-
-        if let progress = eventProgress(
-            cycleFrame: cycleFrame,
-            eventFrame: topFrame,
-            durationFrames: anchorPulseFrames
-        ) {
-            return topAnchorPulseSample(progress: progress, profile: configuration.soundProfile)
-        }
-
-        let subdivisionMultiplier = max(logic.subdivisionMultiplier, 1)
-        guard subdivisionMultiplier > 1 else { return 0 }
-
-        for anchorIndex in 0..<2 {
-            for subdivisionIndex in 1..<subdivisionMultiplier {
-                let eventTime = (Double(anchorIndex) * logic.anchorInterval) + (Double(subdivisionIndex) * logic.subdivisionInterval)
-                let eventFrame = frames(for: eventTime)
-
-                if let progress = eventProgress(
-                    cycleFrame: cycleFrame,
-                    eventFrame: eventFrame,
-                    durationFrames: subdivisionTickFrames
-                ) {
-                    return subdivisionTickSample(progress: progress, profile: configuration.soundProfile)
-                }
-            }
-        }
-
-        return 0
     }
 
     private func metronomeGuideSample(
@@ -659,39 +716,46 @@ private final class ElasticSlingshotRenderState {
         configuration: ElasticSlingshotRenderConfiguration
     ) -> Double {
         let pulseFrames = max(frames(for: 0.045), 1)
-        let strikeFrame = frames(for: configuration.totalDuration)
-        let events: [(AVAudioFramePosition, Double)] = [
-            (0, 0.32),
-            (frames(for: configuration.loadReleaseTimestamp), 0.24),
-            (strikeFrame, 0.38)
-        ]
-
-        for event in events {
-            if let progress = eventProgress(
-                cycleFrame: cycleFrame,
-                eventFrame: event.0,
-                durationFrames: pulseFrames
-            ) {
-                return metronomeClickSample(progress: progress, gain: event.1, profile: configuration.soundProfile)
-            }
+        if let progress = eventProgress(
+            cycleFrame: cycleFrame,
+            eventFrame: 0,
+            durationFrames: pulseFrames
+        ) {
+            return metronomeClickSample(
+                progress: progress,
+                profile: configuration.metronomeClickProfile
+            )
         }
 
         return 0
     }
 
-    private func metronomeClickSample(progress: Double, gain: Double, profile: ElasticSlingshotSoundProfile) -> Double {
+    private func metronomeClickSample(progress: Double, profile: GarageMetronomeClickProfile) -> Double {
         let progress = min(max(progress, 0), 1)
-        let envelope = exp(-28 * progress)
-        let woodBody = sin(progress * Double.pi * 19)
-        let cleanEdge = sin(progress * Double.pi * 47) * 0.20
+        let noise = voiceState.nextNoiseSample()
+        let phase = progress * Double.pi
 
         switch profile {
-        case .pulse, .glass:
-            let digitalCore = sin(progress * Double.pi * 52)
-            let digitalEdge = sin(progress * Double.pi * 91) * 0.18
-            return (digitalCore + digitalEdge) * envelope * gain * 0.86
-        default:
-            return (woodBody + cleanEdge) * envelope * gain
+        case .hardwood:
+            return (sin(phase * 19) + sin(phase * 47) * 0.18) * exp(-29 * progress) * 0.34
+        case .ball:
+            return (sin(phase * 34) * 0.72 + noise * 0.22) * exp(-38 * progress) * 0.38
+        case .steel:
+            return (sin(phase * 61) + sin(phase * 97) * 0.28) * exp(-31 * progress) * 0.27
+        case .leather:
+            return (sin(phase * 14) * 0.66 + noise * 0.25) * exp(-42 * progress) * 0.34
+        case .stone:
+            return (sin(phase * 11) * 0.78 + noise * 0.16) * exp(-27 * progress) * 0.36
+        case .rim:
+            return (sin(phase * 43) + sin(phase * 71) * 0.24) * exp(-36 * progress) * 0.30
+        case .pulse:
+            return (sin(phase * 24) >= 0 ? 1 : -1) * exp(-32 * progress) * 0.25
+        case .glass:
+            return (sin(phase * 76) + sin(phase * 121) * 0.20) * exp(-24 * progress) * 0.22
+        case .signal:
+            return (sin(phase * 52) * 0.72 + sin(phase * 83) * 0.22) * exp(-34 * progress) * 0.28
+        case .core:
+            return tanh((sin(phase * 17) * 0.78 + noise * 0.20) * 1.7) * exp(-30 * progress) * 0.35
         }
     }
 
@@ -748,7 +812,7 @@ private final class ElasticSlingshotRenderState {
 
         guard voiceState.lastImpactDebugLogKey != key else { return }
         voiceState.lastImpactDebugLogKey = key
-        print("[SoundSkin] impact synthesis profile=\(configuration.soundProfile.rawValue) mode=\(configuration.mode.debugName)")
+        print("[TempoAudio] guided impact profile=\(configuration.soundProfile.rawValue) mode=\(configuration.mode.debugName)")
     }
 
     private func takebackSample(progress: Double, profile: ElasticSlingshotSoundProfile) -> Double {
@@ -1224,6 +1288,8 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
         beatsPerMinute: Double,
         recipe: ElasticSlingshotRecipe,
         soundProfile: ElasticSlingshotSoundProfile,
+        metronomeClickProfile: GarageMetronomeClickProfile,
+        guidedClicksEnabled: Bool,
         instrumentMode: GarageTempoInstrumentMode
     ) {
         previewStopTask?.cancel()
@@ -1235,6 +1301,8 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
             beatsPerMinute: beatsPerMinute,
             recipe: recipe,
             soundProfile: soundProfile,
+            metronomeClickProfile: metronomeClickProfile,
+            guidedClicksEnabled: guidedClicksEnabled,
             instrumentMode: instrumentMode,
             mode: .continuous
         )
@@ -1245,6 +1313,8 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
         beatsPerMinute: Double,
         recipe: ElasticSlingshotRecipe,
         soundProfile: ElasticSlingshotSoundProfile,
+        metronomeClickProfile: GarageMetronomeClickProfile,
+        guidedClicksEnabled: Bool,
         instrumentMode: GarageTempoInstrumentMode
     ) {
         previewStopTask?.cancel()
@@ -1253,17 +1323,21 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
         fadeStopTask = nil
         prepareIfNeeded()
         renderState.silence()
-        print("[SoundSkin] preview profile=\(soundProfile.rawValue)")
+        print("[TempoAudio] preview profile=\(soundProfile.rawValue)")
         renderState.start(
             beatsPerMinute: beatsPerMinute,
             recipe: recipe,
             soundProfile: soundProfile,
+            metronomeClickProfile: metronomeClickProfile,
+            guidedClicksEnabled: guidedClicksEnabled,
             instrumentMode: instrumentMode,
             mode: .oneCycle
         )
         playbackState = .playing
 
-        let previewDuration = recipe.swingDuration(for: beatsPerMinute) + elasticSlingshotImpactDuration + 0.08
+        let previewDuration = instrumentMode == .metronome
+            ? 0.30
+            : recipe.swingDuration(for: beatsPerMinute) + elasticSlingshotImpactDuration + 0.08
         previewStopTask = Task { [weak self] in
             let nanoseconds = UInt64(max(previewDuration, 0.1) * 1_000_000_000)
             try? await Task.sleep(nanoseconds: nanoseconds)
@@ -1304,12 +1378,16 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
         beatsPerMinute: Double,
         recipe: ElasticSlingshotRecipe,
         soundProfile: ElasticSlingshotSoundProfile,
+        metronomeClickProfile: GarageMetronomeClickProfile,
+        guidedClicksEnabled: Bool,
         instrumentMode: GarageTempoInstrumentMode
     ) {
         renderState.update(
             beatsPerMinute: beatsPerMinute,
             recipe: recipe,
             soundProfile: soundProfile,
+            metronomeClickProfile: metronomeClickProfile,
+            guidedClicksEnabled: guidedClicksEnabled,
             instrumentMode: instrumentMode
         )
     }

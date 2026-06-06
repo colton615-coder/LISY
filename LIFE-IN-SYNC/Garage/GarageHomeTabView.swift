@@ -189,7 +189,7 @@ private struct GarageTempoServicePage: View {
         GarageServiceCard(
             label: "Training Mode",
             title: "Tempo Builder",
-            subtitle: "A standalone timing instrument for rhythm, ratio, and repeatable pace.",
+            subtitle: "Hear the rhythm. Repeat it. Build it into your swing.",
             tone: .instrument,
             artwork: GarageRhythmArtwork()
         ) {
@@ -543,7 +543,7 @@ private struct GarageTempoPreview: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center, spacing: 16) {
                 HStack(alignment: .lastTextBaseline, spacing: 8) {
-                    Text("72")
+                    Text("60")
                         .font(.system(size: 56, weight: .black, design: .rounded))
                         .foregroundStyle(GarageProTheme.textPrimary)
                         .lineLimit(1)
@@ -556,62 +556,45 @@ private struct GarageTempoPreview: View {
                 }
                 .layoutPriority(1)
 
-                GarageTempoMetricPill(value: "3:1", label: "Ratio")
+                Spacer()
+
+                Image(systemName: "metronome")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(GaragePremiumPalette.gold)
+                    .frame(width: 58, height: 58)
+                    .background(GaragePremiumPalette.gold.opacity(0.10), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(GaragePremiumPalette.gold.opacity(0.24), lineWidth: 1)
+                    )
             }
 
-            VStack(spacing: 9) {
-                ForEach([0.78, 0.54, 0.38], id: \.self) { value in
-                    GeometryReader { proxy in
-                        ZStack(alignment: .leading) {
-                            Capsule()
-                                .fill(GaragePremiumPalette.emerald.opacity(0.20))
-
-                            Capsule()
-                                .fill(GaragePremiumPalette.gold.opacity(0.82))
-                                .frame(width: proxy.size.width * value)
-                        }
-                    }
-                    .frame(height: 7)
-                }
-            }
-
-            HStack(spacing: 8) {
-                ForEach(["Full Swing", "Wedges", "Putting"], id: \.self) { chip in
-                    Text(chip)
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(chip == "Full Swing" ? GaragePremiumPalette.gold : GaragePremiumPalette.mintText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.76)
-                        .padding(.horizontal, 12)
-                        .frame(minHeight: 36)
-                        .background(chip == "Full Swing" ? GaragePremiumPalette.gold.opacity(0.10) : GaragePremiumPalette.emeraldGlass.opacity(0.20), in: Capsule())
-                }
+            HStack(spacing: 10) {
+                GarageTempoPreviewMode(title: "Metronome", systemImage: "metronome")
+                GarageTempoPreviewMode(title: "Guided Swing", systemImage: "waveform.path")
             }
         }
     }
 }
 
-private struct GarageTempoMetricPill: View {
-    let value: String
-    let label: String
+private struct GarageTempoPreviewMode: View {
+    let title: String
+    let systemImage: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(value)
-                .font(.system(size: 13, weight: .black, design: .rounded))
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(GaragePremiumPalette.gold)
-                .lineLimit(1)
 
-            Text(label)
-                .font(.system(size: 10, weight: .bold, design: .rounded))
+            Text(title)
+                .font(.footnote.weight(.semibold))
                 .foregroundStyle(GaragePremiumPalette.mintText)
-                .textCase(.uppercase)
-                .tracking(1.2)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 10)
-        .frame(minHeight: 38, alignment: .leading)
-        .background(GaragePremiumPalette.emeraldGlass.opacity(0.26), in: Capsule())
+        .frame(maxWidth: .infinity)
+        .frame(minHeight: 40)
+        .background(GaragePremiumPalette.emeraldGlass.opacity(0.24), in: Capsule())
         .overlay(Capsule().stroke(GaragePremiumPalette.mintText.opacity(0.11), lineWidth: 1))
     }
 }
