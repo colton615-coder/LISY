@@ -82,6 +82,8 @@ struct GarageTempoBuilderView: View {
                         reduceMotion: reduceMotion,
                         hasPendingTempo: hasPendingTempo,
                         onStart: startPlayback,
+                        onPause: pausePlayback,
+                        onResume: resumePlayback,
                         onControlRoom: { presentedSheet = .settings },
                         onStop: stopPlayback
                     )
@@ -177,9 +179,11 @@ struct GarageTempoBuilderView: View {
 
     private func startGuidedSequence() {
         playbackTask = Task { @MainActor in
+            await runGuidedCountIn()
+            guard Task.isCancelled == false else { return }
+
             while Task.isCancelled == false {
-                appliedBPM = guidedSwingBPM
-                hasPendingTempo = false
+                applyPendingGuidedTempo()
                 playbackStartDate = Date()
                 countdownValue = nil
                 sessionState = .playing
@@ -200,16 +204,49 @@ struct GarageTempoBuilderView: View {
                 sessionState = .resting
                 try? await Task.sleep(nanoseconds: UInt64(restInterval * 1_000_000_000))
                 guard Task.isCancelled == false else { return }
-                sessionState = .countingIn
-                for value in [3, 2, 1] {
-                    guard Task.isCancelled == false else { return }
-                    countdownValue = value
-                    countdownSpeaker.speak(value)
-                    triggerHaptic(.light)
-                    try? await Task.sleep(nanoseconds: 1_000_000_000)
-                }
             }
         }
+    }
+
+    private func runGuidedCountIn() async {
+        sessionState = .countingIn
+        playbackStartDate = nil
+        for value in [3, 2, 1] {
+            guard Task.isCancelled == false else { return }
+            countdownValue = value
+            countdownSpeaker.speak(value)
+            triggerHaptic(.light)
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+    }
+
+    private func applyPendingGuidedTempo() {
+        guard appliedBPM != guidedSwingBPM else {
+            hasPendingTempo = false
+            return
+        }
+        appliedBPM = guidedSwingBPM
+        hasPendingTempo = false
+    }
+
+    private func pausePlayback() {
+        guard selectedPage == .guidedSwing, isActive else { return }
+        playbackTask?.cancel()
+        playbackTask = nil
+        countdownSpeaker.stop()
+        countdownValue = nil
+        hapticTask?.cancel()
+        hapticTask = nil
+        audioEngine.stop()
+        playbackStartDate = nil
+        sessionState = .paused
+    }
+
+    private func resumePlayback() {
+        guard selectedPage == .guidedSwing, sessionState == .paused else { return }
+        appliedBPM = guidedSwingBPM
+        hasPendingTempo = false
+        startGuidedSequence()
     }
 
     private func stopPlayback() {
@@ -226,10 +263,15 @@ struct GarageTempoBuilderView: View {
     }
 
     private func tempoChanged() {
-        guard isRunning, selectedPage == .metronome else {
+        guard isActive else {
             appliedBPM = activeSavedBPM
             return
         }
+        if selectedPage == .guidedSwing {
+            hasPendingTempo = appliedBPM != guidedSwingBPM
+            return
+        }
+        guard isRunning else { return }
         hasPendingTempo = true
     }
 
@@ -301,6 +343,7 @@ private enum GarageTempoSessionState: Equatable {
     case countingIn
     case resting
     case playing
+    case paused
 }
 
 @MainActor
@@ -486,6 +529,8 @@ private struct GarageGuidedSwingPage: View {
     let countdownValue: Int?
     let hasPendingTempo: Bool
     let onStart: () -> Void
+    let onPause: () -> Void
+    let onResume: () -> Void
     let onControlRoom: () -> Void
     let onStop: () -> Void
 
@@ -535,7 +580,6 @@ private struct GarageGuidedSwingPage: View {
             Slider(value: $beatsPerMinute, in: 40...120, step: 1)
                 .tint(GaragePremiumPalette.gold)
                 .padding(.horizontal, 8)
-                .disabled(sessionState != .ready)
                 .accessibilityLabel("Guided Swing tempo")
 
             GarageTempoControlRoomHandle(action: onControlRoom)
@@ -547,6 +591,8 @@ private struct GarageGuidedSwingPage: View {
                 state: sessionState,
                 reduceMotion: reduceMotion,
                 onStart: onStart,
+                onPause: onPause,
+                onResume: onResume,
                 onStop: onStop
             )
                 .padding(.top, 12)
@@ -560,9 +606,11 @@ private struct GarageGuidedSwingPage: View {
         case .countingIn:
             return "Next swing after the count."
         case .resting:
-            return "Reset. Your next count follows."
+            return "Reset. Next swing starts after the rest."
         case .playing:
             return "Follow the build to impact."
+        case .paused:
+            return "Paused. Resume starts with a fresh count."
         case .ready:
             return "Press Start. Settle into your rhythm."
         }
@@ -846,31 +894,72 @@ private struct GarageTempoSessionControls: View {
     let state: GarageTempoSessionState
     let reduceMotion: Bool
     let onStart: () -> Void
+    var onPause: (() -> Void)?
+    var onResume: (() -> Void)?
     let onStop: () -> Void
     @Namespace private var controlNamespace
 
     private var isActive: Bool { state != .ready }
+    private var supportsPause: Bool { onPause != nil && onResume != nil }
 
     var body: some View {
-        Button(action: isActive ? onStop : onStart) {
-            GarageTempoActionLabel(
-                title: isActive ? "Stop" : "Start",
-                systemImage: isActive ? "stop.fill" : "play.fill"
-            )
-            .font(.system(size: 17, weight: .bold, design: .rounded))
-            .foregroundStyle(isActive ? Color.white : GaragePremiumPalette.emeraldDeep)
-            .frame(maxWidth: .infinity)
-            .frame(height: 56)
-            .background {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(isActive ? Color(red: 0.11, green: 0.11, blue: 0.12) : GaragePremiumPalette.gold)
-                    .shadow(color: isActive ? .clear : GaragePremiumPalette.gold.opacity(0.24), radius: 14, x: 0, y: 8)
-                    .matchedGeometryEffect(id: "sessionControlSurface", in: controlNamespace)
+        HStack(spacing: 10) {
+            Button(action: primaryAction) {
+                GarageTempoActionLabel(
+                    title: primaryTitle,
+                    systemImage: primarySystemImage
+                )
+                .font(.system(size: 17, weight: .bold, design: .rounded))
+                .foregroundStyle(isActive ? Color.white : GaragePremiumPalette.emeraldDeep)
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(isActive ? Color(red: 0.11, green: 0.11, blue: 0.12) : GaragePremiumPalette.gold)
+                        .shadow(color: isActive ? .clear : GaragePremiumPalette.gold.opacity(0.24), radius: 14, x: 0, y: 8)
+                        .matchedGeometryEffect(id: "sessionControlSurface", in: controlNamespace)
+                    }
+            }
+            .buttonStyle(.plain)
+
+            if supportsPause, isActive {
+                Button(action: onStop) {
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Color.white)
+                        .frame(width: 56, height: 56)
+                        .background(Color(red: 0.11, green: 0.11, blue: 0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Stop")
+            }
         }
-        .buttonStyle(.plain)
         .frame(height: 56)
         .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.84), value: isActive)
+    }
+
+    private var primaryTitle: String {
+        if state == .paused { return "Resume" }
+        if supportsPause, isActive { return "Pause" }
+        return isActive ? "Stop" : "Start"
+    }
+
+    private var primarySystemImage: String {
+        if state == .paused { return "play.fill" }
+        if supportsPause, isActive { return "pause.fill" }
+        return isActive ? "stop.fill" : "play.fill"
+    }
+
+    private func primaryAction() {
+        if state == .paused {
+            onResume?()
+        } else if supportsPause, isActive {
+            onPause?()
+        } else if isActive {
+            onStop()
+        } else {
+            onStart()
+        }
     }
 }
 
