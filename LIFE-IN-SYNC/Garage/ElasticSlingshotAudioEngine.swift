@@ -357,7 +357,8 @@ private struct ElasticSlingshotRenderConfiguration {
     var beatsPerMinute: Double
     var recipe: ElasticSlingshotRecipe
     var soundProfile: ElasticSlingshotSoundProfile
-    var metronomeClickProfile: GarageMetronomeClickProfile
+    var metronomeStartProfile: GarageMetronomeClickProfile
+    var metronomeImpactProfile: GarageMetronomeClickProfile
     var guidedClicksEnabled: Bool
     var instrumentMode: GarageTempoInstrumentMode
     var baseFrame: AVAudioFramePosition
@@ -393,7 +394,7 @@ private struct ElasticSlingshotRenderConfiguration {
 
     var loopDuration: TimeInterval {
         if instrumentMode == .metronome {
-            return slowTempoLogic.anchorInterval
+            return slowTempoLogic.anchorInterval * 4
         }
 
         switch mode {
@@ -525,7 +526,8 @@ private final class ElasticSlingshotRenderState {
         beatsPerMinute: 75,
         recipe: ElasticSlingshotRecipe(),
         soundProfile: .elastic,
-        metronomeClickProfile: .hardwood,
+        metronomeStartProfile: .hardwood,
+        metronomeImpactProfile: .steel,
         guidedClicksEnabled: false,
         instrumentMode: .build,
         baseFrame: 0,
@@ -547,7 +549,8 @@ private final class ElasticSlingshotRenderState {
         beatsPerMinute: Double,
         recipe: ElasticSlingshotRecipe,
         soundProfile: ElasticSlingshotSoundProfile,
-        metronomeClickProfile: GarageMetronomeClickProfile,
+        metronomeStartProfile: GarageMetronomeClickProfile,
+        metronomeImpactProfile: GarageMetronomeClickProfile,
         guidedClicksEnabled: Bool,
         instrumentMode: GarageTempoInstrumentMode
     ) {
@@ -556,11 +559,13 @@ private final class ElasticSlingshotRenderState {
             || configuration.recipe != recipe
             || configuration.instrumentMode != instrumentMode
         let voiceChanged = configuration.soundProfile != soundProfile
-            || configuration.metronomeClickProfile != metronomeClickProfile
+            || configuration.metronomeStartProfile != metronomeStartProfile
+            || configuration.metronomeImpactProfile != metronomeImpactProfile
         configuration.beatsPerMinute = beatsPerMinute
         configuration.recipe = recipe
         configuration.soundProfile = soundProfile
-        configuration.metronomeClickProfile = metronomeClickProfile
+        configuration.metronomeStartProfile = metronomeStartProfile
+        configuration.metronomeImpactProfile = metronomeImpactProfile
         configuration.guidedClicksEnabled = guidedClicksEnabled
         configuration.instrumentMode = instrumentMode
         if configuration.isPlaying, timingChanged {
@@ -577,7 +582,8 @@ private final class ElasticSlingshotRenderState {
         beatsPerMinute: Double,
         recipe: ElasticSlingshotRecipe,
         soundProfile: ElasticSlingshotSoundProfile,
-        metronomeClickProfile: GarageMetronomeClickProfile,
+        metronomeStartProfile: GarageMetronomeClickProfile,
+        metronomeImpactProfile: GarageMetronomeClickProfile,
         guidedClicksEnabled: Bool,
         instrumentMode: GarageTempoInstrumentMode,
         mode: ElasticSlingshotPlaybackMode
@@ -587,7 +593,8 @@ private final class ElasticSlingshotRenderState {
             beatsPerMinute: beatsPerMinute,
             recipe: recipe,
             soundProfile: soundProfile,
-            metronomeClickProfile: metronomeClickProfile,
+            metronomeStartProfile: metronomeStartProfile,
+            metronomeImpactProfile: metronomeImpactProfile,
             guidedClicksEnabled: guidedClicksEnabled,
             instrumentMode: instrumentMode,
             baseFrame: max(latestFrame, 0),
@@ -744,13 +751,22 @@ private final class ElasticSlingshotRenderState {
         }
 
         if configuration.instrumentMode == .metronome {
-            return metronomeGuideSample(
+            let startCue = metronomeGuideSample(
                 cycleFrame: cycleFrame,
                 eventFrame: 0,
                 duration: 0.040,
-                gain: 1,
-                configuration: configuration
+                gain: 0.82,
+                profile: configuration.metronomeStartProfile
             )
+            let impactFrames = max(frames(for: 0.050), 1)
+            let impactCue = metronomeGuideSample(
+                cycleFrame: cycleFrame,
+                eventFrame: max(loopFrames - impactFrames, 1),
+                duration: 0.050,
+                gain: 1,
+                profile: configuration.metronomeImpactProfile
+            )
+            return startCue + impactCue
         }
 
         guard configuration.guidedClicksEnabled, cycleFrame < totalFrames else { return 0 }
@@ -762,7 +778,7 @@ private final class ElasticSlingshotRenderState {
             eventFrame: beatFrames / 2,
             duration: 0.028,
             gain: 0.32,
-            configuration: configuration
+            profile: configuration.metronomeStartProfile
         )
 
     }
@@ -772,7 +788,7 @@ private final class ElasticSlingshotRenderState {
         eventFrame: AVAudioFramePosition,
         duration: TimeInterval,
         gain: Double,
-        configuration: ElasticSlingshotRenderConfiguration
+        profile: GarageMetronomeClickProfile
     ) -> Double {
         let pulseFrames = max(frames(for: duration), 1)
         if let progress = eventProgress(
@@ -782,7 +798,7 @@ private final class ElasticSlingshotRenderState {
         ) {
             return metronomeClickSample(
                 progress: progress,
-                profile: configuration.metronomeClickProfile
+                profile: profile
             ) * gain
         }
 
@@ -1394,7 +1410,8 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
         beatsPerMinute: Double,
         recipe: ElasticSlingshotRecipe,
         soundProfile: ElasticSlingshotSoundProfile,
-        metronomeClickProfile: GarageMetronomeClickProfile,
+        metronomeStartProfile: GarageMetronomeClickProfile,
+        metronomeImpactProfile: GarageMetronomeClickProfile,
         guidedClicksEnabled: Bool,
         instrumentMode: GarageTempoInstrumentMode
     ) {
@@ -1407,7 +1424,8 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
             beatsPerMinute: beatsPerMinute,
             recipe: recipe,
             soundProfile: soundProfile,
-            metronomeClickProfile: metronomeClickProfile,
+            metronomeStartProfile: metronomeStartProfile,
+            metronomeImpactProfile: metronomeImpactProfile,
             guidedClicksEnabled: guidedClicksEnabled,
             instrumentMode: instrumentMode,
             mode: .continuous
@@ -1420,7 +1438,8 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
         beatsPerMinute: Double,
         recipe: ElasticSlingshotRecipe,
         soundProfile: ElasticSlingshotSoundProfile,
-        metronomeClickProfile: GarageMetronomeClickProfile,
+        metronomeStartProfile: GarageMetronomeClickProfile,
+        metronomeImpactProfile: GarageMetronomeClickProfile,
         guidedClicksEnabled: Bool,
         instrumentMode: GarageTempoInstrumentMode
     ) {
@@ -1435,7 +1454,8 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
             beatsPerMinute: beatsPerMinute,
             recipe: recipe,
             soundProfile: soundProfile,
-            metronomeClickProfile: metronomeClickProfile,
+            metronomeStartProfile: metronomeStartProfile,
+            metronomeImpactProfile: metronomeImpactProfile,
             guidedClicksEnabled: guidedClicksEnabled,
             instrumentMode: instrumentMode,
             mode: .oneCycle
@@ -1489,7 +1509,8 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
         beatsPerMinute: Double,
         recipe: ElasticSlingshotRecipe,
         soundProfile: ElasticSlingshotSoundProfile,
-        metronomeClickProfile: GarageMetronomeClickProfile,
+        metronomeStartProfile: GarageMetronomeClickProfile,
+        metronomeImpactProfile: GarageMetronomeClickProfile,
         guidedClicksEnabled: Bool,
         instrumentMode: GarageTempoInstrumentMode
     ) {
@@ -1497,7 +1518,8 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
             beatsPerMinute: beatsPerMinute,
             recipe: recipe,
             soundProfile: soundProfile,
-            metronomeClickProfile: metronomeClickProfile,
+            metronomeStartProfile: metronomeStartProfile,
+            metronomeImpactProfile: metronomeImpactProfile,
             guidedClicksEnabled: guidedClicksEnabled,
             instrumentMode: instrumentMode
         )

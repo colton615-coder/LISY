@@ -215,7 +215,8 @@ struct GarageTempoAudioQAView: View {
             beatsPerMinute: beatsPerMinute,
             recipe: recipe,
             soundProfile: guidedProfile.engineProfile,
-            metronomeClickProfile: clickProfile,
+            metronomeStartProfile: clickProfile,
+            metronomeImpactProfile: clickProfile,
             guidedClicksEnabled: mode == .build && guidedClicksEnabled,
             instrumentMode: mode
         )
@@ -227,7 +228,8 @@ struct GarageTempoAudioQAView: View {
             beatsPerMinute: beatsPerMinute,
             recipe: recipe,
             soundProfile: guidedProfile.engineProfile,
-            metronomeClickProfile: clickProfile,
+            metronomeStartProfile: clickProfile,
+            metronomeImpactProfile: clickProfile,
             guidedClicksEnabled: mode == .build && guidedClicksEnabled,
             instrumentMode: mode
         )
@@ -238,7 +240,8 @@ struct GarageTempoAudioQAView: View {
             beatsPerMinute: beatsPerMinute,
             recipe: recipe,
             soundProfile: guidedProfile.engineProfile,
-            metronomeClickProfile: profile,
+            metronomeStartProfile: profile,
+            metronomeImpactProfile: profile,
             guidedClicksEnabled: false,
             instrumentMode: .metronome
         )
@@ -249,7 +252,8 @@ struct GarageTempoAudioQAView: View {
             beatsPerMinute: beatsPerMinute,
             recipe: recipe,
             soundProfile: profile.engineProfile,
-            metronomeClickProfile: clickProfile,
+            metronomeStartProfile: clickProfile,
+            metronomeImpactProfile: clickProfile,
             guidedClicksEnabled: guidedClicksEnabled,
             instrumentMode: .build
         )
