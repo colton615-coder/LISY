@@ -235,30 +235,42 @@ enum GarageGuidedSwingProfile: String, CaseIterable, Identifiable {
     case tension
     case vector
     case mass
+    case sharpPulse
+    case airStrike
+    case deepStrike
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .tension: "Tension"
-        case .vector: "Vector"
-        case .mass: "Mass"
+        case .tension: "Clean Pulse"
+        case .vector: "Glass Tick"
+        case .mass: "Low Punch"
+        case .sharpPulse: "Sharp Pulse"
+        case .airStrike: "Air Strike"
+        case .deepStrike: "Deep Strike"
         }
     }
 
     var character: String {
         switch self {
-        case .tension: "Controlled rise. Strong release."
-        case .vector: "Precise synthetic movement."
-        case .mass: "Low weight. Compact force."
+        case .tension: "Sharp, precise build with a clean strike."
+        case .vector: "Bright, tight build with a precise strike."
+        case .mass: "Deeper build with a compact impact."
+        case .sharpPulse: "Clean digital build with a firm strike."
+        case .airStrike: "Light, clean rise with a crisp impact."
+        case .deepStrike: "Low pressure build with a strong impact."
         }
     }
 
     var engineProfile: ElasticSlingshotSoundProfile {
         switch self {
         case .tension: .elastic
-        case .vector: .pulse
+        case .vector: .glass
         case .mass: .gravity
+        case .sharpPulse: .pulse
+        case .airStrike: .airframe
+        case .deepStrike: .storm
         }
     }
 }

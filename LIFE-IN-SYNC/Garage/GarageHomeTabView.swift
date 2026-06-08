@@ -539,11 +539,13 @@ private struct GarageWaveLine: Shape {
 }
 
 private struct GarageTempoPreview: View {
+    @AppStorage("garage.tempoBuilder.bpm") private var guidedSwingBPM = 60.0
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center, spacing: 16) {
                 HStack(alignment: .lastTextBaseline, spacing: 8) {
-                    Text("60")
+                    Text("\(Int(guidedSwingBPM.rounded()))")
                         .font(.system(size: 56, weight: .black, design: .rounded))
                         .foregroundStyle(GarageProTheme.textPrimary)
                         .lineLimit(1)
@@ -558,7 +560,7 @@ private struct GarageTempoPreview: View {
 
                 Spacer()
 
-                Image(systemName: "metronome")
+                Image(systemName: "waveform.path")
                     .font(.system(size: 28, weight: .semibold))
                     .foregroundStyle(GaragePremiumPalette.gold)
                     .frame(width: 58, height: 58)
@@ -569,10 +571,7 @@ private struct GarageTempoPreview: View {
                     )
             }
 
-            HStack(spacing: 10) {
-                GarageTempoPreviewMode(title: "Metronome", systemImage: "metronome")
-                GarageTempoPreviewMode(title: "Guided Swing", systemImage: "waveform.path")
-            }
+            GarageTempoPreviewMode(title: "Guided Swing · Saved swing tempo", systemImage: "waveform.path")
         }
     }
 }
