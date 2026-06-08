@@ -584,40 +584,20 @@ private struct GarageTempoPendulum: View {
     let reduceMotion: Bool
 
     private var angle: Angle {
-        guard isPlaying else { return .degrees(-29) }
+        guard isPlaying else { return .degrees(29) }
         guard reduceMotion == false else { return .degrees(0) }
 
         if progress < 0.75 {
             let backswingProgress = progress / 0.75
-            return .degrees(-29 + (29 * smoothstep(backswingProgress)))
+            return .degrees(29 - (29 * smoothstep(backswingProgress)))
         }
 
         let downswingProgress = min((progress - 0.75) / 0.22, 1)
-        return .degrees(29 * smoothstep(downswingProgress))
+        return .degrees(-29 * smoothstep(downswingProgress))
     }
 
     var body: some View {
         ZStack(alignment: .top) {
-            RoundedRectangle(cornerRadius: 34, style: .continuous)
-                .fill(
-                    isPlaying
-                        ? GaragePremiumPalette.emeraldGlass.opacity(0.72)
-                        : GarageProTheme.elevatedSurface.opacity(0.72)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 34, style: .continuous)
-                        .stroke(
-                            isPlaying ? GaragePremiumPalette.gold.opacity(0.34) : GarageProTheme.border,
-                            lineWidth: 1
-                        )
-                )
-                .shadow(
-                    color: isPlaying ? GaragePremiumPalette.gold.opacity(0.14) : GarageProTheme.darkShadow,
-                    radius: isPlaying ? 30 : 24,
-                    x: 0,
-                    y: 18
-                )
-
             ZStack(alignment: .top) {
                 Capsule()
                     .fill(
@@ -631,11 +611,6 @@ private struct GarageTempoPendulum: View {
                     .shadow(color: GaragePremiumPalette.gold.opacity(0.22), radius: 10)
 
                 Circle()
-                    .fill(GaragePremiumPalette.gold)
-                    .frame(width: 24, height: 24)
-                    .overlay(Circle().stroke(Color.white.opacity(0.34), lineWidth: 1))
-
-                Circle()
                     .fill(GaragePremiumPalette.emeraldDeep)
                     .frame(width: 58, height: 58)
                     .overlay(Circle().stroke(GaragePremiumPalette.gold.opacity(0.54), lineWidth: 2))
@@ -645,12 +620,6 @@ private struct GarageTempoPendulum: View {
             .frame(height: 252, alignment: .top)
             .rotationEffect(angle, anchor: .top)
             .padding(.top, 26)
-
-            Circle()
-                .fill(GaragePremiumPalette.gold)
-                .frame(width: 12, height: 12)
-                .shadow(color: GaragePremiumPalette.gold.opacity(0.36), radius: 8)
-                .padding(.top, 20)
 
             VStack {
                 HStack {
