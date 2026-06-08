@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import UIKit
 
@@ -6,28 +7,28 @@ struct GarageTempoBuilderView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var audioEngine = ElasticSlingshotAudioEngine()
+    @StateObject private var countdownSpeaker = GarageTempoCountdownSpeaker()
 
-    @AppStorage("garage.tempoBuilder.bpm") private var guidedSwingBPM = 60.0
     @AppStorage("garage.tempoBuilder.metronomeBPM") private var metronomeBPM = 60.0
     @AppStorage("garage.tempoBuilder.click") private var clickRawValue = GarageMetronomeClickProfile.hardwood.rawValue
     @AppStorage("garage.tempoBuilder.guidedSound") private var guidedRawValue = GarageGuidedSwingProfile.tension.rawValue
     @AppStorage("garage.tempoBuilder.restInterval") private var restInterval = 5.0
     @AppStorage("garage.tempoBuilder.haptics") private var hapticsEnabled = true
 
-    @State private var selectedPage: GarageTempoPage = .guidedSwing
+    @State private var selectedPage: GarageTempoPage = .metronome
     @State private var presentedSheet: GarageTempoSheet?
     @State private var showsSwingCapture = false
     @State private var playbackStartDate: Date?
     @State private var sessionState = GarageTempoSessionState.ready
     @State private var appliedBPM = 60.0
-    @State private var showsSavedToast = false
+    @State private var countdownValue: Int?
     @State private var hasPendingTempo = false
     @State private var playbackTask: Task<Void, Never>?
     @State private var hapticTask: Task<Void, Never>?
 
     private var isActive: Bool { sessionState == .countingIn || sessionState == .playing }
     private var isRunning: Bool { sessionState == .playing }
-    private var activeSavedBPM: Double { selectedPage == .guidedSwing ? guidedSwingBPM : metronomeBPM }
+    private var activeSavedBPM: Double { metronomeBPM }
 
     private var selectedClick: GarageMetronomeClickProfile {
         GarageMetronomeClickProfile(rawValue: clickRawValue) ?? .hardwood
@@ -57,11 +58,10 @@ struct GarageTempoBuilderView: View {
                 )
 
                 TabView(selection: $selectedPage) {
-                    GarageGuidedSwingPage(
-                        beatsPerMinute: $guidedSwingBPM,
+                    GarageMetronomePage(
+                        beatsPerMinute: $metronomeBPM,
                         appliedBPM: appliedBPM,
-                        recipe: recipe,
-                        sessionState: selectedPage == .guidedSwing ? sessionState : .ready,
+                        sessionState: selectedPage == .metronome ? sessionState : .ready,
                         playbackStartDate: playbackStartDate,
                         reduceMotion: reduceMotion,
                         hasPendingTempo: hasPendingTempo,
@@ -69,19 +69,22 @@ struct GarageTempoBuilderView: View {
                         onPause: pausePlayback,
                         onStop: stopPlayback
                     )
-                    .tag(GarageTempoPage.guidedSwing)
+                    .tag(GarageTempoPage.metronome)
 
-                    GarageMetronomePage(
+                    GarageGuidedSwingPage(
                         beatsPerMinute: $metronomeBPM,
                         appliedBPM: appliedBPM,
-                        sessionState: selectedPage == .metronome ? sessionState : .ready,
+                        recipe: recipe,
+                        sessionState: selectedPage == .guidedSwing ? sessionState : .ready,
                         playbackStartDate: playbackStartDate,
                         reduceMotion: reduceMotion,
+                        countdownValue: countdownValue,
+                        hasPendingTempo: hasPendingTempo,
                         onStart: startPlayback,
                         onPause: pausePlayback,
                         onStop: stopPlayback
                     )
-                    .tag(GarageTempoPage.metronome)
+                    .tag(GarageTempoPage.guidedSwing)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .scrollDisabled(isActive)
@@ -91,36 +94,21 @@ struct GarageTempoBuilderView: View {
             }
             .padding(.horizontal, 18)
             .padding(.top, 8)
-
-            if showsSavedToast {
-                Text("Tempo saved")
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .foregroundStyle(GaragePremiumPalette.emeraldDeep)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(GaragePremiumPalette.gold, in: Capsule())
-                    .shadow(color: GaragePremiumPalette.gold.opacity(0.24), radius: 14)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .frame(maxHeight: .infinity, alignment: .top)
-                    .padding(.top, 66)
-            }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selectedPage)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: sessionState)
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: showsSavedToast)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: countdownValue)
         .onChange(of: selectedPage) { _, _ in
             stopPlayback()
         }
-        .onChange(of: guidedSwingBPM) { _, _ in tempoChanged(for: .guidedSwing) }
-        .onChange(of: metronomeBPM) { _, _ in tempoChanged(for: .metronome) }
+        .onChange(of: metronomeBPM) { _, _ in tempoChanged() }
         .fullScreenCover(isPresented: Binding(
             get: { presentedSheet == .settings },
             set: { if $0 == false { presentedSheet = nil } }
         )) {
             GarageTempoControlRoom(
                 page: selectedPage,
-                guidedSwingBPM: guidedSwingBPM,
-                metronomeBPM: metronomeBPM,
+                beatsPerMinute: metronomeBPM,
                 selectedGuidedRawValue: $guidedRawValue,
                 restInterval: $restInterval,
                 hapticsEnabled: $hapticsEnabled,
@@ -144,6 +132,7 @@ struct GarageTempoBuilderView: View {
 
     private func startPlayback() {
         playbackTask?.cancel()
+        countdownSpeaker.stop()
         appliedBPM = activeSavedBPM
         hasPendingTempo = false
         if selectedPage == .guidedSwing {
@@ -167,6 +156,7 @@ struct GarageTempoBuilderView: View {
             return
         }
         playbackStartDate = Date()
+        countdownValue = nil
         sessionState = .playing
         startRunningHaptics()
         schedulePendingTempoIfNeeded()
@@ -176,22 +166,13 @@ struct GarageTempoBuilderView: View {
         sessionState = .countingIn
         playbackStartDate = nil
         playbackTask = Task { @MainActor in
-            for tick in 0..<3 {
+            for value in [3, 2, 1] {
                 guard Task.isCancelled == false else { return }
-                audioEngine.playOneCycle(
-                    beatsPerMinute: 108,
-                    recipe: recipe,
-                    soundProfile: .elastic,
-                    metronomeClickProfile: .hardwood,
-                    guidedClicksEnabled: false,
-                    instrumentMode: .metronome
-                )
+                countdownValue = value
+                countdownSpeaker.speak(value)
                 triggerHaptic(.light)
-                if tick < 2 {
-                    try? await Task.sleep(nanoseconds: 560_000_000)
-                }
+                try? await Task.sleep(nanoseconds: 850_000_000)
             }
-            try? await Task.sleep(nanoseconds: 180_000_000)
             guard Task.isCancelled == false else { return }
             startEngine()
         }
@@ -200,6 +181,8 @@ struct GarageTempoBuilderView: View {
     private func pausePlayback() {
         playbackTask?.cancel()
         playbackTask = nil
+        countdownSpeaker.stop()
+        countdownValue = nil
         hapticTask?.cancel()
         hapticTask = nil
         audioEngine.stop()
@@ -210,6 +193,8 @@ struct GarageTempoBuilderView: View {
     private func stopPlayback() {
         playbackTask?.cancel()
         playbackTask = nil
+        countdownSpeaker.stop()
+        countdownValue = nil
         hapticTask?.cancel()
         hapticTask = nil
         audioEngine.stop()
@@ -218,10 +203,9 @@ struct GarageTempoBuilderView: View {
         hasPendingTempo = false
     }
 
-    private func tempoChanged(for page: GarageTempoPage) {
-        showSavedToast()
-        guard page == selectedPage, isRunning else {
-            if page == selectedPage { appliedBPM = activeSavedBPM }
+    private func tempoChanged() {
+        guard isRunning else {
+            appliedBPM = activeSavedBPM
             return
         }
         hasPendingTempo = true
@@ -233,7 +217,7 @@ struct GarageTempoBuilderView: View {
         playbackTask?.cancel()
         let cycleDuration = selectedPage == .guidedSwing
             ? recipe.loopDuration(for: appliedBPM)
-            : 60 / max(appliedBPM, 1)
+            : (60 / max(appliedBPM, 1)) * 4
         let elapsed = Date().timeIntervalSince(playbackStartDate)
         let remaining = cycleDuration - elapsed.truncatingRemainder(dividingBy: cycleDuration)
         playbackTask = Task { @MainActor in
@@ -280,14 +264,6 @@ struct GarageTempoBuilderView: View {
         }
     }
 
-    private func showSavedToast() {
-        showsSavedToast = true
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 1_200_000_000)
-            showsSavedToast = false
-        }
-    }
-
     private func triggerHaptic(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
         guard hapticsEnabled else { return }
         UIImpactFeedbackGenerator(style: style).impactOccurred()
@@ -300,8 +276,8 @@ struct GarageTempoBuilderView: View {
 }
 
 private enum GarageTempoPage: String, CaseIterable, Identifiable {
-    case guidedSwing
     case metronome
+    case guidedSwing
 
     var id: String { rawValue }
 
@@ -324,6 +300,27 @@ private enum GarageTempoSessionState: Equatable {
     case countingIn
     case playing
     case paused
+}
+
+@MainActor
+private final class GarageTempoCountdownSpeaker: ObservableObject {
+    private let synthesizer = AVSpeechSynthesizer()
+
+    func speak(_ value: Int) {
+        if synthesizer.isSpeaking {
+            synthesizer.stopSpeaking(at: .immediate)
+        }
+
+        let utterance = AVSpeechUtterance(string: "\(value)")
+        utterance.rate = 0.46
+        utterance.pitchMultiplier = 0.92
+        utterance.volume = 0.9
+        synthesizer.speak(utterance)
+    }
+
+    func stop() {
+        synthesizer.stopSpeaking(at: .immediate)
+    }
 }
 
 private struct GarageTempoTopBar: View {
@@ -361,6 +358,7 @@ private struct GarageMetronomePage: View {
     let sessionState: GarageTempoSessionState
     let playbackStartDate: Date?
     let reduceMotion: Bool
+    let hasPendingTempo: Bool
     let onStart: () -> Void
     let onPause: () -> Void
     let onStop: () -> Void
@@ -371,7 +369,7 @@ private struct GarageMetronomePage: View {
         VStack(spacing: 0) {
             GarageTempoPageTitle(
                 title: "Metronome",
-                subtitle: isPlaying ? "Steady click running." : "Steady click training."
+                subtitle: isPlaying ? "Golf-rhythm click running." : "Steady golf-rhythm click."
             )
                 .padding(.top, 18)
 
@@ -403,10 +401,10 @@ private struct GarageMetronomePage: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("\(Int(beatsPerMinute.rounded())) beats per minute")
 
-            Text(isPlaying ? "CONTINUOUS RHYTHM LOOP" : "TEMPO SPEED")
+            Text(hasPendingTempo ? "APPLIES NEXT CYCLE" : isPlaying ? "GOLF RHYTHM LOOP" : "TEMPO SPEED")
                 .font(.system(size: 10, weight: .bold, design: .rounded))
                 .tracking(1.6)
-                .foregroundStyle(isPlaying ? GaragePremiumPalette.gold : GarageProTheme.textSecondary)
+                .foregroundStyle(isPlaying || hasPendingTempo ? GaragePremiumPalette.gold : GarageProTheme.textSecondary)
                 .padding(.top, 2)
 
             Slider(value: $beatsPerMinute, in: 40...120, step: 1)
@@ -427,8 +425,8 @@ private struct GarageMetronomePage: View {
 
     private func progress(at date: Date) -> Double {
         guard isPlaying, let playbackStartDate else { return 0.25 }
-        let interval = 60 / max(appliedBPM, 1)
-        return date.timeIntervalSince(playbackStartDate).truncatingRemainder(dividingBy: interval) / interval
+        let golfRhythmCycle = (60 / max(appliedBPM, 1)) * 4
+        return date.timeIntervalSince(playbackStartDate).truncatingRemainder(dividingBy: golfRhythmCycle) / golfRhythmCycle
     }
 }
 
@@ -439,6 +437,7 @@ private struct GarageGuidedSwingPage: View {
     let sessionState: GarageTempoSessionState
     let playbackStartDate: Date?
     let reduceMotion: Bool
+    let countdownValue: Int?
     let hasPendingTempo: Bool
     let onStart: () -> Void
     let onPause: () -> Void
@@ -450,9 +449,7 @@ private struct GarageGuidedSwingPage: View {
         VStack(spacing: 0) {
             GarageTempoPageTitle(
                 title: "Guided Swing",
-                subtitle: sessionState == .countingIn
-                    ? "Get ready. Follow the build after the final tick."
-                    : "Set your swing tempo. Press Start and follow the build to impact."
+                subtitle: subtitle
             )
                 .padding(.top, 18)
 
@@ -462,7 +459,8 @@ private struct GarageGuidedSwingPage: View {
                 GarageGuidedSwingTimeline(
                     state: visualState(at: timeline.date),
                     isPlaying: isPlaying,
-                    reduceMotion: reduceMotion
+                    reduceMotion: reduceMotion,
+                    countdownValue: countdownValue
                 )
             }
             .frame(maxWidth: .infinity)
@@ -493,6 +491,7 @@ private struct GarageGuidedSwingPage: View {
             Slider(value: $beatsPerMinute, in: 40...120, step: 1)
                 .tint(GaragePremiumPalette.gold)
                 .padding(.horizontal, 8)
+                .disabled(sessionState == .countingIn)
                 .accessibilityLabel("Guided Swing tempo")
 
             GarageTempoSessionControls(
@@ -503,6 +502,17 @@ private struct GarageGuidedSwingPage: View {
             )
                 .padding(.top, 14)
                 .padding(.bottom, 10)
+        }
+    }
+
+    private var subtitle: String {
+        switch sessionState {
+        case .countingIn:
+            "Get ready."
+        case .playing:
+            "Follow the build to impact."
+        case .ready, .paused:
+            "Press Start. Move after the countdown."
         }
     }
 
@@ -522,8 +532,16 @@ private struct GarageTempoPendulum: View {
     let reduceMotion: Bool
 
     private var angle: Angle {
-        guard isPlaying, reduceMotion == false else { return .degrees(0) }
-        return .degrees(cos(progress * Double.pi * 2) * 29)
+        guard isPlaying else { return .degrees(-29) }
+        guard reduceMotion == false else { return .degrees(0) }
+
+        if progress < 0.75 {
+            let backswingProgress = progress / 0.75
+            return .degrees(-29 + (29 * smoothstep(backswingProgress)))
+        }
+
+        let downswingProgress = min((progress - 0.75) / 0.22, 1)
+        return .degrees(29 * smoothstep(downswingProgress))
     }
 
     var body: some View {
@@ -584,7 +602,7 @@ private struct GarageTempoPendulum: View {
 
             VStack {
                 HStack {
-                    Text(isPlaying ? "LIVE SWING RHYTHM" : "SWING RHYTHM")
+                    Text(isPlaying ? "LIVE GOLF RHYTHM" : "GOLF RHYTHM")
                         .font(.system(size: 10, weight: .bold, design: .rounded))
                         .tracking(1.5)
                         .foregroundStyle(isPlaying ? GaragePremiumPalette.gold : GarageProTheme.textSecondary)
@@ -599,16 +617,31 @@ private struct GarageTempoPendulum: View {
 
                 Spacer()
 
-                GarageTempoPhaseRail()
+                GarageTempoPhaseRail(progress: progress, isPlaying: isPlaying)
             }
             .padding(22)
         }
         .accessibilityHidden(true)
     }
+
+    private func smoothstep(_ value: Double) -> Double {
+        let clamped = min(max(value, 0), 1)
+        return clamped * clamped * (3 - (2 * clamped))
+    }
 }
 
 private struct GarageTempoPhaseRail: View {
-    private let phases = ["Address", "Top", "Impact"]
+    let progress: Double
+    let isPlaying: Bool
+
+    private let phases = ["Start", "Top", "Impact"]
+
+    private var activePhase: Int {
+        guard isPlaying else { return 0 }
+        if progress < 0.70 { return 0 }
+        if progress < 0.94 { return 1 }
+        return 2
+    }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -616,12 +649,12 @@ private struct GarageTempoPhaseRail: View {
                 HStack(spacing: 8) {
                     VStack(spacing: 5) {
                         Circle()
-                            .fill(index == 2 ? GaragePremiumPalette.gold : GaragePremiumPalette.mintText.opacity(0.46))
-                            .frame(width: index == 2 ? 8 : 6, height: index == 2 ? 8 : 6)
+                            .fill(index == activePhase ? GaragePremiumPalette.gold : GaragePremiumPalette.mintText.opacity(0.46))
+                            .frame(width: index == activePhase ? 8 : 6, height: index == activePhase ? 8 : 6)
 
                         Text(phase)
                             .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundStyle(index == 2 ? GaragePremiumPalette.gold : GarageProTheme.textSecondary)
+                            .foregroundStyle(index == activePhase ? GaragePremiumPalette.gold : GarageProTheme.textSecondary)
                     }
 
                     if index < phases.count - 1 {
@@ -640,6 +673,7 @@ private struct GarageGuidedSwingTimeline: View {
     let state: GarageSlowTempoVisualState
     let isPlaying: Bool
     let reduceMotion: Bool
+    let countdownValue: Int?
 
     var body: some View {
         GeometryReader { proxy in
@@ -709,18 +743,28 @@ private struct GarageGuidedSwingTimeline: View {
                     .position(x: lineEnd, y: lineY + 38)
 
                 Circle()
-                    .stroke(GaragePremiumPalette.gold.opacity(impactActive ? 0.72 : 0), lineWidth: 3)
-                    .frame(width: impactActive && reduceMotion == false ? 54 : 18, height: impactActive && reduceMotion == false ? 54 : 18)
+                    .fill(GaragePremiumPalette.gold.opacity(impactActive ? 0.18 : 0))
+                    .frame(width: impactActive && reduceMotion == false ? 72 : 18, height: impactActive && reduceMotion == false ? 72 : 18)
+                    .position(x: lineEnd, y: lineY)
+
+                Circle()
+                    .stroke(GaragePremiumPalette.gold.opacity(impactActive ? 0.92 : 0), lineWidth: 4)
+                    .frame(width: impactActive && reduceMotion == false ? 58 : 18, height: impactActive && reduceMotion == false ? 58 : 18)
                     .position(x: lineEnd, y: lineY)
                     .animation(.spring(response: 0.35, dampingFraction: 0.8), value: impactActive)
 
                 VStack(spacing: 3) {
-                    Text(isPlaying ? state.phaseLabel.uppercased() : "GUIDED SWING")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                    Text(countdownValue.map { String($0) } ?? (isPlaying ? state.phaseLabel.uppercased() : "GUIDED SWING"))
+                        .font(.system(size: countdownValue == nil ? 11 : 46, weight: .bold, design: .rounded))
                         .tracking(1.5)
                         .foregroundStyle(GaragePremiumPalette.gold)
 
-                    if isPlaying {
+                    if countdownValue != nil {
+                        Text("MOVE AFTER 1")
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .tracking(1.3)
+                            .foregroundStyle(GarageProTheme.textSecondary)
+                    } else if isPlaying {
                         Text(state.phaseCue)
                             .font(.system(size: 11, weight: .medium, design: .rounded))
                             .foregroundStyle(GarageProTheme.textSecondary)
@@ -731,7 +775,10 @@ private struct GarageGuidedSwingTimeline: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(isPlaying ? "Guided swing running, \(state.phaseLabel)" : "Guided swing ready")
+        .accessibilityLabel(
+            countdownValue.map { "Guided swing countdown, \($0)" }
+                ?? (isPlaying ? "Guided swing running, \(state.phaseLabel)" : "Guided swing ready")
+        )
     }
 }
 
@@ -846,7 +893,7 @@ private struct GarageTempoPageIndicator: View {
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selectedPage)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(selectedPage == .guidedSwing ? "Guided Swing page, one of two" : "Metronome page, two of two")
+        .accessibilityLabel(selectedPage == .metronome ? "Metronome page, one of two" : "Guided Swing page, two of two")
     }
 }
 
@@ -903,8 +950,7 @@ private struct GarageGuidedSoundLibrary: View {
 private struct GarageTempoControlRoom: View {
     @Environment(\.dismiss) private var dismiss
     let page: GarageTempoPage
-    let guidedSwingBPM: Double
-    let metronomeBPM: Double
+    let beatsPerMinute: Double
     @Binding var selectedGuidedRawValue: String
     @Binding var restInterval: Double
     @Binding var hapticsEnabled: Bool
@@ -941,8 +987,8 @@ private struct GarageTempoControlRoom: View {
 
                     GarageTempoSettingsGroup {
                         GarageTempoReadbackRow(
-                            title: page == .guidedSwing ? "Active Swing BPM" : "Active Metronome BPM",
-                            value: "\(Int((page == .guidedSwing ? guidedSwingBPM : metronomeBPM).rounded())) BPM"
+                            title: "Active BPM",
+                            value: "\(Int(beatsPerMinute.rounded())) BPM"
                         )
                     }
 
@@ -954,7 +1000,7 @@ private struct GarageTempoControlRoom: View {
                             GarageTempoSettingsDivider()
                             GarageTempoActionRow(title: "Preview Guided Swing", systemImage: "play.fill") {
                                 previewEngine.playOneCycle(
-                                    beatsPerMinute: guidedSwingBPM,
+                                    beatsPerMinute: beatsPerMinute,
                                     recipe: recipe,
                                     soundProfile: selectedGuidedSound.engineProfile,
                                     metronomeClickProfile: .hardwood,
@@ -994,7 +1040,7 @@ private struct GarageTempoControlRoom: View {
                         GarageTempoSettingsGroup {
                             GarageTempoActionRow(title: "Preview Click", systemImage: "play.fill") {
                                 previewEngine.playOneCycle(
-                                    beatsPerMinute: metronomeBPM,
+                                    beatsPerMinute: beatsPerMinute,
                                     recipe: recipe,
                                     soundProfile: .elastic,
                                     metronomeClickProfile: .hardwood,
@@ -1021,7 +1067,7 @@ private struct GarageTempoControlRoom: View {
         .sheet(isPresented: $showsSoundLibrary) {
             GarageGuidedSoundLibrary(
                 selectedRawValue: $selectedGuidedRawValue,
-                beatsPerMinute: guidedSwingBPM,
+                beatsPerMinute: beatsPerMinute,
                 recipe: recipe
             )
         }
