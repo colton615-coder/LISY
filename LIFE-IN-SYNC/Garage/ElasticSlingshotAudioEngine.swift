@@ -792,8 +792,8 @@ private final class ElasticSlingshotRenderState {
             let regularTick = metronomeGuideSample(
                 cycleFrame: clickFrame,
                 eventFrame: 0,
-                duration: 0.040,
-                gain: 0.82,
+                duration: 0.026,
+                gain: 0.88,
                 profile: configuration.metronomeStartProfile
             )
             return regularTick
@@ -855,8 +855,12 @@ private final class ElasticSlingshotRenderState {
             shapedBody = tanh((body * 0.78) + (noise * 0.16))
         }
 
-        let transient = (shapedBody * tuning.bodyMix) + (edge * tuning.edgeMix) + (noise * tuning.noiseMix)
-        let envelope = exp(-tuning.decayRate * progress)
+        let leadingEdge = exp(-72 * progress)
+        let transient = (shapedBody * tuning.bodyMix * 0.86)
+            + (edge * tuning.edgeMix * 1.35)
+            + (noise * tuning.noiseMix * 0.45)
+            + (leadingEdge * 0.22)
+        let envelope = exp(-max(tuning.decayRate, 42) * progress)
         return tanh(transient * tuning.drive) * tuning.gain * envelope
     }
 

@@ -56,6 +56,9 @@ struct GarageTempoBuilderView: View {
 
     var body: some View {
         tempoContent
+            .onAppear {
+                clampSavedTempos()
+            }
             .onChange(of: selectedPage) { _, _ in
                 stopPlayback()
             }
@@ -165,6 +168,12 @@ struct GarageTempoBuilderView: View {
         } else {
             startMetronome()
         }
+    }
+
+    private func clampSavedTempos() {
+        metronomeBPM = GarageSlowTempoLogic.clampedConsumerBPM(metronomeBPM)
+        guidedSwingBPM = GarageSlowTempoLogic.clampedConsumerBPM(guidedSwingBPM)
+        appliedBPM = activeSavedBPM
     }
 
     private func startMetronome() {
@@ -504,7 +513,7 @@ private struct GarageMetronomePage: View {
                 .foregroundStyle(GarageProTheme.textSecondary)
                 .padding(.top, 2)
 
-            Slider(value: $beatsPerMinute, in: 40...120, step: 1)
+            Slider(value: $beatsPerMinute, in: GarageSlowTempoLogic.consumerBPMRange, step: 1)
                 .tint(GaragePremiumPalette.gold)
                 .padding(.horizontal, 8)
                 .accessibilityLabel("Metronome tempo")
@@ -590,7 +599,7 @@ private struct GarageGuidedSwingPage: View {
                 .foregroundStyle(GarageProTheme.textSecondary)
                 .padding(.top, 2)
 
-            Slider(value: $beatsPerMinute, in: 40...120, step: 1)
+            Slider(value: $beatsPerMinute, in: GarageSlowTempoLogic.consumerBPMRange, step: 1)
                 .tint(GaragePremiumPalette.gold)
                 .padding(.horizontal, 8)
                 .accessibilityLabel("Guided Swing tempo")

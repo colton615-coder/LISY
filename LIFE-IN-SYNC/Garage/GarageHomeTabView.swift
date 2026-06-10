@@ -545,7 +545,7 @@ private struct GarageTempoPreview: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center, spacing: 16) {
                 HStack(alignment: .lastTextBaseline, spacing: 8) {
-                    Text("\(Int(guidedSwingBPM.rounded()))")
+                    Text("\(Int(GarageSlowTempoLogic.clampedConsumerBPM(guidedSwingBPM).rounded()))")
                         .font(.system(size: 56, weight: .black, design: .rounded))
                         .foregroundStyle(GarageProTheme.textPrimary)
                         .lineLimit(1)

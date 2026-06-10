@@ -3,6 +3,11 @@ import Foundation
 struct GarageSlowTempoLogic: Equatable {
     static let defaultAnchorBPM = 60.0
     static let defaultSubdivisionMultiplier = 2
+    static let consumerBPMRange = 20.0...75.0
+
+    static func clampedConsumerBPM(_ beatsPerMinute: Double) -> Double {
+        min(max(beatsPerMinute, consumerBPMRange.lowerBound), consumerBPMRange.upperBound)
+    }
 
     var anchorBPM = defaultAnchorBPM
     var subdivisionMultiplier = defaultSubdivisionMultiplier
