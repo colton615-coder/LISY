@@ -538,11 +538,18 @@ private final class ElasticSlingshotRenderState {
         resetToken: 0
     )
     private var latestFrame: AVAudioFramePosition = 0
+    private var currentLoopProgress: Double = 0.0
     private var voiceState = ElasticSlingshotVoiceState()
     private var appliedResetToken = 0
 
     init(sampleRate: Double) {
         self.sampleRate = sampleRate
+    }
+
+    func getLoopProgress() -> Double {
+        lock.lock()
+        defer { lock.unlock() }
+        return currentLoopProgress
     }
 
     func update(
@@ -561,6 +568,27 @@ private final class ElasticSlingshotRenderState {
         let voiceChanged = configuration.soundProfile != soundProfile
             || configuration.metronomeStartProfile != metronomeStartProfile
             || configuration.metronomeImpactProfile != metronomeImpactProfile
+        if configuration.isPlaying, timingChanged {
+            let oldTotalFrames = max(frames(for: configuration.totalDuration), 1)
+            let oldLoopFrames = max(frames(for: configuration.loopDuration), oldTotalFrames)
+            let currentRelativeFrame = max(latestFrame - configuration.baseFrame, 0)
+
+            // Capture the exact location in the active cycle.
+            let currentCycleFrame = currentRelativeFrame % oldLoopFrames
+            let currentProgressFraction = Double(currentCycleFrame) / Double(oldLoopFrames)
+
+            // Compute the new loop frame boundaries ahead of assignment.
+            let newSlowTempoLogic = recipe.slowTempoLogic(for: beatsPerMinute)
+            let newLoopDuration = instrumentMode == .metronome
+                ? newSlowTempoLogic.anchorInterval * 4
+                : recipe.loopDuration(for: beatsPerMinute)
+            let newLoopFrames = max(AVAudioFramePosition((newLoopDuration * sampleRate).rounded()), 1)
+
+            // Shift the base frame so the active cycle keeps the same progress.
+            let newRelativeCycleFrame = AVAudioFramePosition((currentProgressFraction * Double(newLoopFrames)).rounded())
+            configuration.baseFrame = latestFrame - newRelativeCycleFrame
+            configuration.alignsBaseFrameOnNextRender = false
+        }
         configuration.beatsPerMinute = beatsPerMinute
         configuration.recipe = recipe
         configuration.soundProfile = soundProfile
@@ -568,10 +596,6 @@ private final class ElasticSlingshotRenderState {
         configuration.metronomeImpactProfile = metronomeImpactProfile
         configuration.guidedClicksEnabled = guidedClicksEnabled
         configuration.instrumentMode = instrumentMode
-        if configuration.isPlaying, timingChanged {
-            configuration.baseFrame = max(latestFrame, 0)
-            configuration.alignsBaseFrameOnNextRender = true
-        }
         if configuration.isPlaying, timingChanged || voiceChanged {
             configuration.resetToken += 1
         }
@@ -661,6 +685,14 @@ private final class ElasticSlingshotRenderState {
 
     private func sampleValue(at frame: AVAudioFramePosition, configuration: ElasticSlingshotRenderConfiguration) -> Double {
         let relativeFrame = max(frame - configuration.baseFrame, 0)
+        let totalFramesForProgress = max(frames(for: configuration.totalDuration), 1)
+        let loopFramesForProgress = max(frames(for: configuration.loopDuration), totalFramesForProgress)
+        let cycleFrameForProgress = configuration.mode == .continuous ? (relativeFrame % loopFramesForProgress) : relativeFrame
+
+        lock.lock()
+        currentLoopProgress = Double(cycleFrameForProgress) / Double(loopFramesForProgress)
+        lock.unlock()
+
         if appliedResetToken != configuration.resetToken {
             voiceState = ElasticSlingshotVoiceState()
             appliedResetToken = configuration.resetToken
@@ -751,22 +783,20 @@ private final class ElasticSlingshotRenderState {
         }
 
         if configuration.instrumentMode == .metronome {
-            let startCue = metronomeGuideSample(
-                cycleFrame: cycleFrame,
+            let beatInterval = configuration.slowTempoLogic.anchorInterval
+            let beatFrames = max(frames(for: beatInterval), 1)
+
+            // Align each click to the recurring beat grid.
+            let clickFrame = cycleFrame % beatFrames
+
+            let regularTick = metronomeGuideSample(
+                cycleFrame: clickFrame,
                 eventFrame: 0,
                 duration: 0.040,
                 gain: 0.82,
                 profile: configuration.metronomeStartProfile
             )
-            let impactFrames = max(frames(for: 0.050), 1)
-            let impactCue = metronomeGuideSample(
-                cycleFrame: cycleFrame,
-                eventFrame: max(loopFrames - impactFrames, 1),
-                duration: 0.050,
-                gain: 1,
-                profile: configuration.metronomeImpactProfile
-            )
-            return startCue + impactCue
+            return regularTick
         }
 
         guard configuration.guidedClicksEnabled, cycleFrame < totalFrames else { return 0 }
@@ -1523,6 +1553,10 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
             guidedClicksEnabled: guidedClicksEnabled,
             instrumentMode: instrumentMode
         )
+    }
+
+    func currentPlaybackProgress() -> Double {
+        renderState.getLoopProgress()
     }
 
     @discardableResult
