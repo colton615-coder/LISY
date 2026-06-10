@@ -238,7 +238,7 @@ enum GarageMetronomeClickProfile: String, CaseIterable, Identifiable {
             return profile
         }
 
-        switch rawValue {
+        return switch rawValue {
         case "hardwood": .woodblock
         case "ball", "rim": .rimshot
         case "steel": .brightSignal
