@@ -483,7 +483,7 @@ private struct GarageMetronomePage: View {
 
             TimelineView(.animation(minimumInterval: reduceMotion ? 0.15 : 1 / 60, paused: isPlaying == false)) { _ in
                 GarageTempoPendulum(
-                    progress: isPlaying ? playbackProgress() : 0.25,
+                    progress: isPlaying ? pendulumProgress : 0.5,
                     isPlaying: isPlaying,
                     reduceMotion: reduceMotion
                 )
@@ -535,10 +535,15 @@ private struct GarageMetronomePage: View {
     }
 
     private var statusText: String {
-        if hasPendingTempo { return "New tempo applies next cycle." }
-        return isPlaying ? "Golf-rhythm click running." : "Steady golf-rhythm click."
+        if hasPendingTempo { return "New tempo applying." }
+        return isPlaying ? "Metronome running." : "Steady click. Every beat."
     }
 
+    private var pendulumProgress: Double {
+        let beatPosition = playbackProgress() * 4
+        let twoBeatPosition = beatPosition.truncatingRemainder(dividingBy: 2)
+        return twoBeatPosition <= 1 ? twoBeatPosition : 2 - twoBeatPosition
+    }
 }
 
 private struct GarageGuidedSwingPage: View {
@@ -654,16 +659,11 @@ private struct GarageTempoPendulum: View {
     let reduceMotion: Bool
 
     private var angle: Angle {
-        guard isPlaying else { return .degrees(29) }
+        guard isPlaying else { return .degrees(0) }
         guard reduceMotion == false else { return .degrees(0) }
 
-        if progress < 0.75 {
-            let backswingProgress = progress / 0.75
-            return .degrees(29 - (29 * smoothstep(backswingProgress)))
-        }
-
-        let downswingProgress = min((progress - 0.75) / 0.22, 1)
-        return .degrees(-29 * smoothstep(downswingProgress))
+        let normalizedProgress = min(max(progress, 0), 1)
+        return .degrees(-29 + (58 * smoothstep(normalizedProgress)))
     }
 
     var body: some View {
@@ -693,7 +693,7 @@ private struct GarageTempoPendulum: View {
 
             VStack {
                 HStack {
-                    Text(isPlaying ? "LIVE GOLF RHYTHM" : "GOLF RHYTHM")
+                    Text(isPlaying ? "LIVE METRONOME" : "METRONOME")
                         .font(.system(size: 10, weight: .bold, design: .rounded))
                         .tracking(1.5)
                         .foregroundStyle(isPlaying ? GaragePremiumPalette.gold : GarageProTheme.textSecondary)
@@ -708,7 +708,11 @@ private struct GarageTempoPendulum: View {
 
                 Spacer()
 
-                GarageTempoPhaseRail(progress: progress, isPlaying: isPlaying)
+                Text(isPlaying ? "EVERY BEAT" : "READY")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .tracking(1.5)
+                    .foregroundStyle(isPlaying ? GaragePremiumPalette.gold : GarageProTheme.textSecondary)
+                    .frame(maxWidth: .infinity)
             }
             .padding(22)
         }
@@ -718,45 +722,6 @@ private struct GarageTempoPendulum: View {
     private func smoothstep(_ value: Double) -> Double {
         let clamped = min(max(value, 0), 1)
         return clamped * clamped * (3 - (2 * clamped))
-    }
-}
-
-private struct GarageTempoPhaseRail: View {
-    let progress: Double
-    let isPlaying: Bool
-
-    private let phases = ["Start", "Top", "Impact"]
-
-    private var activePhase: Int {
-        guard isPlaying else { return 0 }
-        if progress < 0.70 { return 0 }
-        if progress < 0.94 { return 1 }
-        return 2
-    }
-
-    var body: some View {
-        HStack(spacing: 8) {
-            ForEach(Array(phases.enumerated()), id: \.offset) { index, phase in
-                HStack(spacing: 8) {
-                    VStack(spacing: 5) {
-                        Circle()
-                            .fill(index == activePhase ? GaragePremiumPalette.gold : GaragePremiumPalette.mintText.opacity(0.46))
-                            .frame(width: index == activePhase ? 8 : 6, height: index == activePhase ? 8 : 6)
-
-                        Text(phase)
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundStyle(index == activePhase ? GaragePremiumPalette.gold : GarageProTheme.textSecondary)
-                    }
-
-                    if index < phases.count - 1 {
-                        Capsule()
-                            .fill(GaragePremiumPalette.mintText.opacity(0.12))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 1)
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -1218,33 +1183,17 @@ private struct GarageTempoControlRoom: View {
                         }
                     } else {
                         GarageTempoSettingsGroup {
-                            GarageTempoActionValueRow(title: "Start Sound", value: selectedStartSound.title) {
+                            GarageTempoActionValueRow(title: "Click Sound", value: selectedStartSound.title) {
                                 soundLibrary = .metronomeStart
                             }
                             GarageTempoSettingsDivider()
-                            GarageTempoActionRow(title: "Preview Start", systemImage: "play.fill") {
+                            GarageTempoActionRow(title: "Preview Click", systemImage: "play.fill") {
                                 previewEngine.playOneCycle(
                                     beatsPerMinute: beatsPerMinute,
                                     recipe: recipe,
                                     soundProfile: .elastic,
                                     metronomeStartProfile: selectedStartSound,
                                     metronomeImpactProfile: selectedStartSound,
-                                    guidedClicksEnabled: false,
-                                    instrumentMode: .metronome
-                                )
-                            }
-                            GarageTempoSettingsDivider()
-                            GarageTempoActionValueRow(title: "Impact Sound", value: selectedImpactSound.title) {
-                                soundLibrary = .metronomeImpact
-                            }
-                            GarageTempoSettingsDivider()
-                            GarageTempoActionRow(title: "Preview Impact", systemImage: "play.fill") {
-                                previewEngine.playOneCycle(
-                                    beatsPerMinute: beatsPerMinute,
-                                    recipe: recipe,
-                                    soundProfile: .elastic,
-                                    metronomeStartProfile: selectedImpactSound,
-                                    metronomeImpactProfile: selectedImpactSound,
                                     guidedClicksEnabled: false,
                                     instrumentMode: .metronome
                                 )
@@ -1276,14 +1225,7 @@ private struct GarageTempoControlRoom: View {
             case .metronomeStart:
                 GarageMetronomeSoundLibrary(
                     selectedRawValue: $selectedStartRawValue,
-                    title: "Start Sounds",
-                    beatsPerMinute: beatsPerMinute,
-                    recipe: recipe
-                )
-            case .metronomeImpact:
-                GarageMetronomeSoundLibrary(
-                    selectedRawValue: $selectedImpactRawValue,
-                    title: "Impact Sounds",
+                    title: "Click Sounds",
                     beatsPerMinute: beatsPerMinute,
                     recipe: recipe
                 )
@@ -1295,7 +1237,6 @@ private struct GarageTempoControlRoom: View {
 private enum GarageTempoSoundLibrary: String, Identifiable {
     case guided
     case metronomeStart
-    case metronomeImpact
 
     var id: String { rawValue }
 }
