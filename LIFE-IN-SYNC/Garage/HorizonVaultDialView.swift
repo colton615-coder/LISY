@@ -22,7 +22,6 @@ struct GarageTempoBuilderView: View {
     @State private var selectedPage: GarageTempoPage = .metronome
     @State private var presentedSheet: GarageTempoSheet?
     @State private var showsSwingCapture = false
-    @State private var playbackStartDate: Date?
     @State private var sessionState = GarageTempoSessionState.ready
     @State private var appliedBPM = 60.0
     @State private var countdownValue: Int?
@@ -120,11 +119,10 @@ struct GarageTempoBuilderView: View {
         TabView(selection: $selectedPage) {
             GarageMetronomePage(
                 beatsPerMinute: $metronomeBPM,
-                appliedBPM: appliedBPM,
                 sessionState: selectedPage == .metronome ? sessionState : .ready,
-                playbackStartDate: playbackStartDate,
                 reduceMotion: reduceMotion,
                 hasPendingTempo: hasPendingTempo,
+                playbackProgress: { audioEngine.currentPlaybackProgress() },
                 onStart: startPlayback,
                 onControlRoom: { presentedSheet = .settings },
                 onStop: stopPlayback
@@ -136,10 +134,10 @@ struct GarageTempoBuilderView: View {
                 appliedBPM: appliedBPM,
                 recipe: recipe,
                 sessionState: selectedPage == .guidedSwing ? sessionState : .ready,
-                playbackStartDate: playbackStartDate,
                 reduceMotion: reduceMotion,
                 countdownValue: countdownValue,
                 hasPendingTempo: hasPendingTempo,
+                playbackProgress: { audioEngine.currentPlaybackProgress() },
                 onStart: startPlayback,
                 onPause: pausePlayback,
                 onResume: resumePlayback,
@@ -183,7 +181,6 @@ struct GarageTempoBuilderView: View {
             sessionState = .ready
             return
         }
-        playbackStartDate = Date()
         countdownValue = nil
         sessionState = .playing
         startRunningHaptics()
@@ -196,7 +193,6 @@ struct GarageTempoBuilderView: View {
 
             while Task.isCancelled == false {
                 applyPendingGuidedTempo()
-                playbackStartDate = Date()
                 countdownValue = nil
                 sessionState = .playing
                 audioEngine.playOneCycle(
@@ -212,7 +208,6 @@ struct GarageTempoBuilderView: View {
                 let swingDuration = recipe.swingDuration(for: appliedBPM) + 0.16
                 try? await Task.sleep(nanoseconds: UInt64(swingDuration * 1_000_000_000))
                 guard Task.isCancelled == false else { return }
-                playbackStartDate = nil
                 sessionState = .resting
                 try? await Task.sleep(nanoseconds: UInt64(restInterval * 1_000_000_000))
                 guard Task.isCancelled == false else { return }
@@ -222,7 +217,6 @@ struct GarageTempoBuilderView: View {
 
     private func runGuidedCountIn() async {
         sessionState = .countingIn
-        playbackStartDate = nil
         for value in [3, 2, 1] {
             guard Task.isCancelled == false else { return }
             countdownValue = value
@@ -250,7 +244,6 @@ struct GarageTempoBuilderView: View {
         hapticTask?.cancel()
         hapticTask = nil
         audioEngine.stop()
-        playbackStartDate = nil
         sessionState = .paused
     }
 
@@ -269,7 +262,6 @@ struct GarageTempoBuilderView: View {
         hapticTask?.cancel()
         hapticTask = nil
         audioEngine.stop()
-        playbackStartDate = nil
         sessionState = .ready
         hasPendingTempo = false
     }
@@ -284,7 +276,17 @@ struct GarageTempoBuilderView: View {
             return
         }
         guard isRunning else { return }
-        hasPendingTempo = true
+        appliedBPM = metronomeBPM
+        hasPendingTempo = false
+        audioEngine.update(
+            beatsPerMinute: appliedBPM,
+            recipe: recipe,
+            soundProfile: selectedGuidedSound.engineProfile,
+            metronomeStartProfile: selectedStartClick,
+            metronomeImpactProfile: selectedImpactClick,
+            guidedClicksEnabled: false,
+            instrumentMode: .metronome
+        )
     }
 
     private func startRunningHaptics() {
@@ -293,10 +295,16 @@ struct GarageTempoBuilderView: View {
         let page = selectedPage
         let bpm = appliedBPM
         hapticTask = Task { @MainActor in
+            var lastMetronomeBeatIndex = -1
             while Task.isCancelled == false, sessionState == .playing {
                 if page == .metronome {
-                    triggerHaptic(.light)
-                    try? await Task.sleep(nanoseconds: UInt64((60 / max(bpm, 1)) * 4 * 1_000_000_000))
+                    let progress = audioEngine.currentPlaybackProgress()
+                    let beatIndex = min(Int(floor(progress * 4)), 3)
+                    if beatIndex != lastMetronomeBeatIndex {
+                        lastMetronomeBeatIndex = beatIndex
+                        triggerHaptic(.light)
+                    }
+                    try? await Task.sleep(nanoseconds: 8_000_000)
                 } else {
                     let topDelay = recipe.takeawayDuration(for: bpm)
                     let impactDelay = recipe.pauseDuration(for: bpm) + recipe.downswingDuration(for: bpm)
@@ -447,11 +455,10 @@ private struct GarageTempoPageSelector: View {
 
 private struct GarageMetronomePage: View {
     @Binding var beatsPerMinute: Double
-    let appliedBPM: Double
     let sessionState: GarageTempoSessionState
-    let playbackStartDate: Date?
     let reduceMotion: Bool
     let hasPendingTempo: Bool
+    let playbackProgress: () -> Double
     let onStart: () -> Void
     let onControlRoom: () -> Void
     let onStop: () -> Void
@@ -465,9 +472,9 @@ private struct GarageMetronomePage: View {
 
             Spacer(minLength: 12)
 
-            TimelineView(.animation(minimumInterval: reduceMotion ? 0.15 : 1 / 60, paused: isPlaying == false)) { timeline in
+            TimelineView(.animation(minimumInterval: reduceMotion ? 0.15 : 1 / 60, paused: isPlaying == false)) { _ in
                 GarageTempoPendulum(
-                    progress: progress(at: timeline.date),
+                    progress: isPlaying ? playbackProgress() : 0.25,
                     isPlaying: isPlaying,
                     reduceMotion: reduceMotion
                 )
@@ -500,7 +507,6 @@ private struct GarageMetronomePage: View {
             Slider(value: $beatsPerMinute, in: 40...120, step: 1)
                 .tint(GaragePremiumPalette.gold)
                 .padding(.horizontal, 8)
-                .disabled(sessionState != .ready)
                 .accessibilityLabel("Metronome tempo")
 
             GarageTempoControlRoomHandle(action: onControlRoom)
@@ -524,11 +530,6 @@ private struct GarageMetronomePage: View {
         return isPlaying ? "Golf-rhythm click running." : "Steady golf-rhythm click."
     }
 
-    private func progress(at date: Date) -> Double {
-        guard isPlaying, let playbackStartDate else { return 0.25 }
-        let golfRhythmCycle = (60 / max(appliedBPM, 1)) * 4
-        return date.timeIntervalSince(playbackStartDate).truncatingRemainder(dividingBy: golfRhythmCycle) / golfRhythmCycle
-    }
 }
 
 private struct GarageGuidedSwingPage: View {
@@ -536,10 +537,10 @@ private struct GarageGuidedSwingPage: View {
     let appliedBPM: Double
     let recipe: ElasticSlingshotRecipe
     let sessionState: GarageTempoSessionState
-    let playbackStartDate: Date?
     let reduceMotion: Bool
     let countdownValue: Int?
     let hasPendingTempo: Bool
+    let playbackProgress: () -> Double
     let onStart: () -> Void
     let onPause: () -> Void
     let onResume: () -> Void
@@ -555,9 +556,9 @@ private struct GarageGuidedSwingPage: View {
 
             Spacer(minLength: 12)
 
-            TimelineView(.animation(minimumInterval: reduceMotion ? 0.15 : 1 / 60, paused: isPlaying == false)) { timeline in
+            TimelineView(.animation(minimumInterval: reduceMotion ? 0.15 : 1 / 60, paused: isPlaying == false)) { _ in
                 GarageGuidedSwingTimeline(
-                    state: visualState(at: timeline.date),
+                    state: visualState(progress: playbackProgress()),
                     isPlaying: isPlaying,
                     isResting: sessionState == .resting || sessionState == .countingIn,
                     reduceMotion: reduceMotion,
@@ -628,8 +629,8 @@ private struct GarageGuidedSwingPage: View {
         }
     }
 
-    private func visualState(at date: Date) -> GarageSlowTempoVisualState {
-        let elapsed = playbackStartDate.map { date.timeIntervalSince($0) } ?? 0
+    private func visualState(progress: Double) -> GarageSlowTempoVisualState {
+        let elapsed = max(progress, 0) * recipe.swingDuration(for: appliedBPM)
         return recipe.slowTempoLogic(for: appliedBPM).visualState(
             elapsedTime: elapsed,
             isPlaying: isPlaying,
