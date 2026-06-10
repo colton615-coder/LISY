@@ -197,6 +197,14 @@ enum GarageMetronomeClickProfile: String, CaseIterable, Identifiable {
     case digitalTick
     case softAir
     case brightSignal
+    case dryClave
+    case hardwoodClick
+    case rangeStick
+    case mutedTap
+    case quietBlock
+    case glassPing
+    case impactKnock
+    case digitalPulse
 
     var id: String { rawValue }
 
@@ -204,14 +212,22 @@ enum GarageMetronomeClickProfile: String, CaseIterable, Identifiable {
         switch self {
         case .woodblock: "Woodblock"
         case .rimshot: "Rimshot"
-        case .leatherSnap: "Leather Snap"
-        case .stoneKnock: "Stone Knock"
+        case .leatherSnap: "Muted Skin"
+        case .stoneKnock: "Deep Knock"
         case .glassTick: "Glass Tick"
         case .crispMarker: "Crisp Marker"
         case .lowPunch: "Low Punch"
-        case .digitalTick: "Digital Tick"
+        case .digitalTick: "Hat Tick"
         case .softAir: "Soft Air"
         case .brightSignal: "Bright Signal"
+        case .dryClave: "Dry Clave"
+        case .hardwoodClick: "Hardwood Click"
+        case .rangeStick: "Range Stick"
+        case .mutedTap: "Muted Tap"
+        case .quietBlock: "Quiet Block"
+        case .glassPing: "Glass Ping"
+        case .impactKnock: "Impact Knock"
+        case .digitalPulse: "Digital Pulse"
         }
     }
 
@@ -224,9 +240,17 @@ enum GarageMetronomeClickProfile: String, CaseIterable, Identifiable {
         case .glassTick: "Light, bright, brittle"
         case .crispMarker: "Short, clear beat marker"
         case .lowPunch: "Deep, firm speaker presence"
-        case .digitalTick: "Clean, synthetic, surgical"
+        case .digitalTick: "Dry metallic hi-hat tick"
         case .softAir: "Light and unobtrusive"
         case .brightSignal: "Clear, projecting marker"
+        case .dryClave: "Dry, tight, immediate"
+        case .hardwoodClick: "Solid wood, compact attack"
+        case .rangeStick: "Hard stick, clean contact"
+        case .mutedTap: "Soft skin, short response"
+        case .quietBlock: "Low-fatigue wood marker"
+        case .glassPing: "Bright, clear accent"
+        case .impactKnock: "Firm, focused impact"
+        case .digitalPulse: "Short electronic pulse"
         }
     }
 
@@ -242,11 +266,21 @@ enum GarageMetronomeClickProfile: String, CaseIterable, Identifiable {
         case .digitalTick: "digital_tick"
         case .softAir: "soft_air"
         case .brightSignal: "bright_signal"
+        case .dryClave: "dry_clave"
+        case .hardwoodClick: "hardwood_click"
+        case .rangeStick: "range_stick"
+        case .mutedTap: "muted_tap"
+        case .quietBlock: "quiet_block"
+        case .glassPing: "glass_ping"
+        case .impactKnock: "impact_knock"
+        case .digitalPulse: "digital_pulse"
         }
     }
 
-    static let physicalMaterials: [Self] = [.woodblock, .rimshot, .leatherSnap, .stoneKnock, .glassTick]
-    static let functionalTones: [Self] = [.crispMarker, .lowPunch, .digitalTick, .softAir, .brightSignal]
+    static let crispMarkers: [Self] = [.crispMarker, .dryClave, .hardwoodClick, .rangeStick, .woodblock, .rimshot]
+    static let softPractice: [Self] = [.softAir, .mutedTap, .quietBlock, .leatherSnap]
+    static let signalAccents: [Self] = [.brightSignal, .glassPing, .glassTick, .impactKnock, .stoneKnock, .lowPunch]
+    static let digitalSynthetic: [Self] = [.digitalPulse, .digitalTick]
 
     static func migrated(from rawValue: String) -> Self {
         if let profile = Self(rawValue: rawValue) {
@@ -1022,6 +1056,20 @@ private final class ElasticSlingshotRenderState {
             let signal = sin(phase * (speaker ? 45 : 52))
             let overtone = sin(phase * (speaker ? 68 : 82))
             sample = tanh((signal * 0.64) + (overtone * 0.26) + (onset * 0.20)) * exp(-48 * progress) * 0.50
+        case .dryClave, .hardwoodClick, .rangeStick, .quietBlock:
+            let wood = sin(phase * (speaker ? 20 : 26))
+            sample = tanh((wood * 0.64) + (onset * 0.44)) * exp(-76 * progress) * 0.52
+        case .mutedTap:
+            sample = tanh((noise * 0.34) + (onset * 0.38)) * exp(-68 * progress) * 0.50
+        case .glassPing:
+            let ping = sin(phase * (speaker ? 64 : 82))
+            sample = ((ping * 0.72) + (onset * 0.22)) * exp(-56 * progress) * 0.48
+        case .impactKnock:
+            let knock = sin(phase * (speaker ? 8 : 11))
+            sample = tanh((knock * 0.82) + (onset * 0.24)) * exp(-36 * progress) * 0.56
+        case .digitalPulse:
+            let pulse = sin(phase * (speaker ? 42 : 54)) >= 0 ? 0.62 : -0.62
+            sample = tanh((pulse * 0.70) + (onset * 0.34)) * exp(-88 * progress) * 0.48
         }
 
         return tanh(sample * 1.28) / 1.28

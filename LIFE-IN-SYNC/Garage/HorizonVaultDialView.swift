@@ -1048,8 +1048,10 @@ private struct GarageMetronomeSoundLibrary: View {
     @State private var previewedProfile: GarageMetronomeClickProfile?
 
     private let groups: [(String, [GarageMetronomeClickProfile])] = [
-        ("Physical Materials", GarageMetronomeClickProfile.physicalMaterials),
-        ("Functional Tones", GarageMetronomeClickProfile.functionalTones)
+        ("Crisp / Marker", GarageMetronomeClickProfile.crispMarkers),
+        ("Soft Practice", GarageMetronomeClickProfile.softPractice),
+        ("Signal / Accent", GarageMetronomeClickProfile.signalAccents),
+        ("Digital / Synthetic", GarageMetronomeClickProfile.digitalSynthetic)
     ]
 
     var body: some View {
