@@ -549,12 +549,17 @@ private struct GarageMetronomeSampleLibrary {
 
     static func load() -> Self {
         let samples = GarageMetronomeClickProfile.allCases.reduce(into: [GarageMetronomeClickProfile: [Float]]()) { result, profile in
-            guard let url = sampleURL(for: profile),
-                  let sample = loadSample(at: url) else {
+            guard let url = sampleURL(for: profile) else {
+                debugLog("Missing bundled sample: \(profile.assetName).wav. Falling back to synthesized click.")
+                return
+            }
+            guard let sample = loadSample(at: url) else {
+                debugLog("Could not decode bundled sample: \(profile.assetName).wav. Falling back to synthesized click.")
                 return
             }
             result[profile] = sample
         }
+        debugLog("Loaded \(samples.count)/\(GarageMetronomeClickProfile.allCases.count) bundled samples.")
         return Self(samplesByProfile: samples)
     }
 
@@ -563,6 +568,10 @@ private struct GarageMetronomeSampleLibrary {
             forResource: profile.assetName,
             withExtension: "wav",
             subdirectory: "Metronome_Audio"
+        ) ?? Bundle.main.url(
+            forResource: profile.assetName,
+            withExtension: "wav",
+            subdirectory: "Garage/Metronome_Audio"
         ) ?? Bundle.main.url(forResource: profile.assetName, withExtension: "wav")
     }
 
@@ -585,6 +594,12 @@ private struct GarageMetronomeSampleLibrary {
         } catch {
             return nil
         }
+    }
+
+    private static func debugLog(_ message: String) {
+#if DEBUG
+        print("[MetronomeAudio] \(message)")
+#endif
     }
 }
 
