@@ -56,6 +56,40 @@ struct GarageTempoBuilderView: View {
     }
 
     var body: some View {
+        tempoContent
+            .onChange(of: selectedPage) { _, _ in
+                stopPlayback()
+            }
+            .onChange(of: metronomeBPM) { _, _ in tempoChanged() }
+            .onChange(of: guidedSwingBPM) { _, _ in tempoChanged() }
+            .sheet(isPresented: settingsPresentation) {
+                GarageTempoControlRoom(
+                    page: selectedPage,
+                    beatsPerMinute: activeSavedBPM,
+                    selectedStartRawValue: $startClickRawValue,
+                    selectedImpactRawValue: $impactClickRawValue,
+                    selectedGuidedRawValue: $guidedRawValue,
+                    restInterval: $restInterval,
+                    hapticsEnabled: $hapticsEnabled,
+                    recipe: recipe
+                )
+            }
+            .fullScreenCover(isPresented: $showsSwingCapture) {
+                SwingCaptureView { _ in
+                    showsSwingCapture = false
+                } onCancel: {
+                    showsSwingCapture = false
+                }
+            }
+            .onDisappear {
+                stopPlayback()
+            }
+            .navigationBarBackButtonHidden(true)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var tempoContent: some View {
         ZStack {
             GarageTempoBackground()
 
@@ -73,76 +107,54 @@ struct GarageTempoBuilderView: View {
                 )
                 .padding(.top, 8)
 
-                TabView(selection: $selectedPage) {
-                    GarageMetronomePage(
-                        beatsPerMinute: $metronomeBPM,
-                        appliedBPM: appliedBPM,
-                        sessionState: selectedPage == .metronome ? sessionState : .ready,
-                        playbackStartDate: playbackStartDate,
-                        reduceMotion: reduceMotion,
-                        hasPendingTempo: hasPendingTempo,
-                        onStart: startPlayback,
-                        onPause: pausePlayback,
-                        onResume: resumePlayback,
-                        onControlRoom: { presentedSheet = .settings },
-                        onStop: stopPlayback
-                    )
-                    .tag(GarageTempoPage.metronome)
-
-                    GarageGuidedSwingPage(
-                        beatsPerMinute: $guidedSwingBPM,
-                        appliedBPM: appliedBPM,
-                        recipe: recipe,
-                        sessionState: selectedPage == .guidedSwing ? sessionState : .ready,
-                        playbackStartDate: playbackStartDate,
-                        reduceMotion: reduceMotion,
-                        countdownValue: countdownValue,
-                        hasPendingTempo: hasPendingTempo,
-                        onStart: startPlayback,
-                        onControlRoom: { presentedSheet = .settings },
-                        onStop: stopPlayback
-                    )
-                    .tag(GarageTempoPage.guidedSwing)
-                }
+                tempoPages
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .scrollDisabled(isActive)
             }
             .padding(.horizontal, 18)
             .padding(.top, 8)
         }
-        .onChange(of: selectedPage) { _, _ in
-            stopPlayback()
+    }
+
+    private var tempoPages: some View {
+        TabView(selection: $selectedPage) {
+            GarageMetronomePage(
+                beatsPerMinute: $metronomeBPM,
+                appliedBPM: appliedBPM,
+                sessionState: selectedPage == .metronome ? sessionState : .ready,
+                playbackStartDate: playbackStartDate,
+                reduceMotion: reduceMotion,
+                hasPendingTempo: hasPendingTempo,
+                onStart: startPlayback,
+                onControlRoom: { presentedSheet = .settings },
+                onStop: stopPlayback
+            )
+            .tag(GarageTempoPage.metronome)
+
+            GarageGuidedSwingPage(
+                beatsPerMinute: $guidedSwingBPM,
+                appliedBPM: appliedBPM,
+                recipe: recipe,
+                sessionState: selectedPage == .guidedSwing ? sessionState : .ready,
+                playbackStartDate: playbackStartDate,
+                reduceMotion: reduceMotion,
+                countdownValue: countdownValue,
+                hasPendingTempo: hasPendingTempo,
+                onStart: startPlayback,
+                onPause: pausePlayback,
+                onResume: resumePlayback,
+                onControlRoom: { presentedSheet = .settings },
+                onStop: stopPlayback
+            )
+            .tag(GarageTempoPage.guidedSwing)
         }
-        .onChange(of: metronomeBPM) { _, _ in tempoChanged() }
-        .onChange(of: guidedSwingBPM) { _, _ in tempoChanged() }
-        .sheet(isPresented: Binding(
+    }
+
+    private var settingsPresentation: Binding<Bool> {
+        Binding(
             get: { presentedSheet == .settings },
             set: { if $0 == false { presentedSheet = nil } }
-        )) {
-            GarageTempoControlRoom(
-                page: selectedPage,
-                beatsPerMinute: activeSavedBPM,
-                selectedStartRawValue: $startClickRawValue,
-                selectedImpactRawValue: $impactClickRawValue,
-                selectedGuidedRawValue: $guidedRawValue,
-                restInterval: $restInterval,
-                hapticsEnabled: $hapticsEnabled,
-                recipe: recipe
-            )
-        }
-        .fullScreenCover(isPresented: $showsSwingCapture) {
-            SwingCaptureView { _ in
-                showsSwingCapture = false
-            } onCancel: {
-                showsSwingCapture = false
-            }
-        }
-        .onDisappear {
-            stopPlayback()
-        }
-        .navigationBarBackButtonHidden(true)
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
+        )
     }
 
     private func startPlayback() {
