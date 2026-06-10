@@ -12,8 +12,8 @@ struct GarageTempoBuilderView: View {
 
     @AppStorage("garage.tempoBuilder.metronomeBPM") private var metronomeBPM = 60.0
     @AppStorage("garage.tempoBuilder.bpm") private var guidedSwingBPM = 60.0
-    @AppStorage("garage.tempoBuilder.metronomeStartSound") private var startClickRawValue = GarageMetronomeClickProfile.hardwood.rawValue
-    @AppStorage("garage.tempoBuilder.metronomeImpactSound") private var impactClickRawValue = GarageMetronomeClickProfile.steel.rawValue
+    @AppStorage("garage.tempoBuilder.metronomeStartSound") private var startClickRawValue = GarageMetronomeClickProfile.woodblock.rawValue
+    @AppStorage("garage.tempoBuilder.metronomeImpactSound") private var impactClickRawValue = GarageMetronomeClickProfile.brightSignal.rawValue
     @AppStorage("garage.tempoBuilder.guidedSound") private var guidedRawValue = GarageGuidedSwingProfile.tension.rawValue
     @AppStorage("garage.tempoBuilder.restInterval") private var restInterval = 5.0
     @AppStorage("garage.tempoBuilder.haptics") private var hapticsEnabled = true
@@ -36,11 +36,11 @@ struct GarageTempoBuilderView: View {
     }
 
     private var selectedStartClick: GarageMetronomeClickProfile {
-        GarageMetronomeClickProfile(rawValue: startClickRawValue) ?? .hardwood
+        GarageMetronomeClickProfile.migrated(from: startClickRawValue)
     }
 
     private var selectedImpactClick: GarageMetronomeClickProfile {
-        GarageMetronomeClickProfile(rawValue: impactClickRawValue) ?? .steel
+        GarageMetronomeClickProfile.migrated(from: impactClickRawValue)
     }
 
     private var selectedGuidedSound: GarageGuidedSwingProfile {
@@ -57,6 +57,7 @@ struct GarageTempoBuilderView: View {
     var body: some View {
         tempoContent
             .onAppear {
+                migrateSavedClickSound()
                 clampSavedTempos()
             }
             .onChange(of: selectedPage) { _, _ in
@@ -174,6 +175,10 @@ struct GarageTempoBuilderView: View {
         metronomeBPM = GarageSlowTempoLogic.clampedConsumerBPM(metronomeBPM)
         guidedSwingBPM = GarageSlowTempoLogic.clampedConsumerBPM(guidedSwingBPM)
         appliedBPM = activeSavedBPM
+    }
+
+    private func migrateSavedClickSound() {
+        startClickRawValue = GarageMetronomeClickProfile.migrated(from: startClickRawValue).rawValue
     }
 
     private func startMetronome() {
@@ -1020,8 +1025,8 @@ private struct GarageGuidedSoundLibrary: View {
                             beatsPerMinute: beatsPerMinute,
                             recipe: recipe,
                             soundProfile: profile.engineProfile,
-                            metronomeStartProfile: .hardwood,
-                            metronomeImpactProfile: .steel,
+                            metronomeStartProfile: .woodblock,
+                            metronomeImpactProfile: .brightSignal,
                             guidedClicksEnabled: false,
                             instrumentMode: .build
                         )
@@ -1040,44 +1045,75 @@ private struct GarageMetronomeSoundLibrary: View {
     let beatsPerMinute: Double
     let recipe: ElasticSlingshotRecipe
     @StateObject private var previewEngine = ElasticSlingshotAudioEngine()
+    @State private var previewedProfile: GarageMetronomeClickProfile?
 
     private let groups: [(String, [GarageMetronomeClickProfile])] = [
-        ("Classic Pings", [.hardwood, .steel, .rim, .glass]),
-        ("Electronic Beats", [.pulse, .signal, .core]),
-        ("Real Golf Sounds", [.ball, .leather, .stone])
+        ("Physical Materials", GarageMetronomeClickProfile.physicalMaterials),
+        ("Functional Tones", GarageMetronomeClickProfile.functionalTones)
     ]
 
     var body: some View {
-        GarageTempoSheetScaffold(title: title, onDone: { dismiss() }) {
-            ForEach(groups, id: \.0) { group in
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(group.0.uppercased())
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .tracking(1.2)
-                        .foregroundStyle(GarageProTheme.textSecondary)
+        ZStack {
+            GarageTempoBackground()
 
-                    ForEach(group.1) { profile in
-                        GarageTempoSoundTile(
-                            title: profile.title,
-                            subtitle: profile.character,
-                            isSelected: selectedRawValue == profile.rawValue
-                        ) {
-                            selectedRawValue = profile.rawValue
-                            previewEngine.playOneCycle(
-                                beatsPerMinute: beatsPerMinute,
-                                recipe: recipe,
-                                soundProfile: .elastic,
-                                metronomeStartProfile: profile,
-                                metronomeImpactProfile: profile,
-                                guidedClicksEnabled: false,
-                                instrumentMode: .metronome
-                            )
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 22) {
+                    HStack {
+                        Text(title)
+                            .font(.system(size: 28, weight: .semibold, design: .rounded))
+                            .foregroundStyle(GarageProTheme.textPrimary)
+
+                        Spacer()
+
+                        Button("Done") { dismiss() }
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .foregroundStyle(GaragePremiumPalette.gold)
+                    }
+
+                    ForEach(groups, id: \.0) { group in
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(group.0.uppercased())
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .tracking(1.2)
+                                .foregroundStyle(Color.white.opacity(0.72))
+
+                            ForEach(group.1) { profile in
+                                GarageMetronomeSoundRow(profile: profile) {
+                                    preview(profile)
+                                }
+                            }
                         }
                     }
                 }
+                .padding(20)
+                .padding(.bottom, previewedProfile == nil ? 18 : 96)
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if let previewedProfile {
+                GarageMetronomeSelectionBar(
+                    profile: previewedProfile,
+                    isSelected: selectedRawValue == previewedProfile.rawValue,
+                    onSelect: { selectedRawValue = previewedProfile.rawValue }
+                )
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
         .onDisappear { previewEngine.stop() }
+    }
+
+    private func preview(_ profile: GarageMetronomeClickProfile) {
+        previewedProfile = profile
+        previewEngine.playOneCycle(
+            beatsPerMinute: beatsPerMinute,
+            recipe: recipe,
+            soundProfile: .elastic,
+            metronomeStartProfile: profile,
+            metronomeImpactProfile: profile,
+            guidedClicksEnabled: false,
+            instrumentMode: .metronome
+        )
     }
 }
 
@@ -1095,11 +1131,11 @@ private struct GarageTempoControlRoom: View {
     @State private var soundLibrary: GarageTempoSoundLibrary?
 
     private var selectedStartSound: GarageMetronomeClickProfile {
-        GarageMetronomeClickProfile(rawValue: selectedStartRawValue) ?? .hardwood
+        GarageMetronomeClickProfile.migrated(from: selectedStartRawValue)
     }
 
     private var selectedImpactSound: GarageMetronomeClickProfile {
-        GarageMetronomeClickProfile(rawValue: selectedImpactRawValue) ?? .steel
+        GarageMetronomeClickProfile.migrated(from: selectedImpactRawValue)
     }
 
     private var selectedGuidedSound: GarageGuidedSwingProfile {
@@ -1323,6 +1359,90 @@ private struct GarageTempoSettingsDivider: View {
         Divider()
             .overlay(GarageProTheme.border)
             .padding(.leading, 16)
+    }
+}
+
+private struct GarageMetronomeSoundRow: View {
+    let profile: GarageMetronomeClickProfile
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: "waveform")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(GaragePremiumPalette.gold)
+                    .frame(width: 28)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(profile.title)
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundStyle(GarageProTheme.textPrimary)
+
+                    Text(profile.character)
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.white.opacity(0.68))
+                }
+
+                Spacer()
+
+                Image(systemName: "play.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(GaragePremiumPalette.gold)
+                    .frame(width: 32, height: 32)
+                    .background(GaragePremiumPalette.gold.opacity(0.12), in: Circle())
+            }
+            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+            .padding(.horizontal, 16)
+            .background(GarageProTheme.insetSurface.opacity(0.82), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(GarageProTheme.border, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Preview \(profile.title)")
+        .accessibilityHint(profile.character)
+    }
+}
+
+private struct GarageMetronomeSelectionBar: View {
+    let profile: GarageMetronomeClickProfile
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    var body: some View {
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("PREVIEWED SOUND")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .tracking(1.2)
+                    .foregroundStyle(Color.white.opacity(0.68))
+
+                Text(profile.title)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundStyle(GarageProTheme.textPrimary)
+            }
+
+            Spacer()
+
+            Button(action: onSelect) {
+                Text(isSelected ? "Selected" : "Select")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundStyle(isSelected ? GaragePremiumPalette.gold : GaragePremiumPalette.emeraldDeep)
+                    .frame(minWidth: 92)
+                    .frame(height: 44)
+                    .background(
+                        isSelected ? GarageProTheme.insetSurface : GaragePremiumPalette.gold,
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(isSelected)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .background(GaragePremiumPalette.emeraldDeep.opacity(0.98))
+        .overlay(alignment: .top) {
+            Divider().overlay(GaragePremiumPalette.gold.opacity(0.22))
+        }
     }
 }
 

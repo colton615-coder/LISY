@@ -5,7 +5,7 @@ import SwiftUI
 struct GarageTempoAudioQAView: View {
     @StateObject private var audioEngine = ElasticSlingshotAudioEngine()
     @State private var mode = GarageTempoInstrumentMode.metronome
-    @State private var clickProfile = GarageMetronomeClickProfile.hardwood
+    @State private var clickProfile = GarageMetronomeClickProfile.woodblock
     @State private var guidedProfile = GarageGuidedSwingProfile.tension
     @State private var beatsPerMinute = 60.0
     @State private var guidedClicksEnabled = false
