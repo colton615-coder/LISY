@@ -1,0 +1,18 @@
+{
+  "source": "Virtuosity Drums",
+  "repository": "https://github.com/studiorack/virtuosity-drums",
+  "license": "CC0 1.0 Universal",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "files": {
+    "woodblock": "Samples/perc/oh/woodblock/woodblock_hi_vl4_rr1.wav",
+    "rimshot": "Samples/snaremic/snare/snaremic_snare_rimshot_vl10.flac",
+    "leather_snap": "Samples/perc/close/conga/Conga_17_HitHM1_71_127_rr3_Close.wav",
+    "stone_knock": "Samples/snaremic/ltom/snaremic_ltom_muted_vl10.flac",
+    "glass_tick": "Samples/perc/close/triangle/Triangle1_HitM_v1_rr4_Close.wav",
+    "crisp_marker": "Samples/perc/close/claves/Claves1_Hit_v2_rr3_Close.wav",
+    "low_punch": "Samples/kickmic/kick/kickmic_kick_snon_vl4_rr1.flac",
+    "digital_tick": "Samples/snaremic/hh/snaremic_hh_closed_vl4_rr1.flac",
+    "soft_air": "Samples/perc/close/cabasa/Cabasa1_Rub_v2_rr4_Close.wav",
+    "bright_signal": "Samples/perc/close/cowbell/Cowbell1_Normal_v3_rr1_Close.wav"
+  }
+}

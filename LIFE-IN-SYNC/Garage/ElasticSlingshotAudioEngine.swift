@@ -230,6 +230,21 @@ enum GarageMetronomeClickProfile: String, CaseIterable, Identifiable {
         }
     }
 
+    var assetName: String {
+        switch self {
+        case .woodblock: "woodblock"
+        case .rimshot: "rimshot"
+        case .leatherSnap: "leather_snap"
+        case .stoneKnock: "stone_knock"
+        case .glassTick: "glass_tick"
+        case .crispMarker: "crisp_marker"
+        case .lowPunch: "low_punch"
+        case .digitalTick: "digital_tick"
+        case .softAir: "soft_air"
+        case .brightSignal: "bright_signal"
+        }
+    }
+
     static let physicalMaterials: [Self] = [.woodblock, .rimshot, .leatherSnap, .stoneKnock, .glassTick]
     static let functionalTones: [Self] = [.crispMarker, .lowPunch, .digitalTick, .softAir, .brightSignal]
 
@@ -529,9 +544,54 @@ private enum GarageTempoOutputRouteFamily {
     case headphones
 }
 
+private struct GarageMetronomeSampleLibrary {
+    let samplesByProfile: [GarageMetronomeClickProfile: [Float]]
+
+    static func load() -> Self {
+        let samples = GarageMetronomeClickProfile.allCases.reduce(into: [GarageMetronomeClickProfile: [Float]]()) { result, profile in
+            guard let url = sampleURL(for: profile),
+                  let sample = loadSample(at: url) else {
+                return
+            }
+            result[profile] = sample
+        }
+        return Self(samplesByProfile: samples)
+    }
+
+    private static func sampleURL(for profile: GarageMetronomeClickProfile) -> URL? {
+        Bundle.main.url(
+            forResource: profile.assetName,
+            withExtension: "wav",
+            subdirectory: "Metronome_Audio"
+        ) ?? Bundle.main.url(forResource: profile.assetName, withExtension: "wav")
+    }
+
+    private static func loadSample(at url: URL) -> [Float]? {
+        do {
+            let file = try AVAudioFile(
+                forReading: url,
+                commonFormat: .pcmFormatFloat32,
+                interleaved: false
+            )
+            let capacity = AVAudioFrameCount(file.length)
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: capacity) else {
+                return nil
+            }
+            try file.read(into: buffer)
+            guard let channelData = buffer.floatChannelData?[0] else {
+                return nil
+            }
+            return Array(UnsafeBufferPointer(start: channelData, count: Int(buffer.frameLength)))
+        } catch {
+            return nil
+        }
+    }
+}
+
 private final class ElasticSlingshotRenderState {
     private let lock = NSLock()
     private let sampleRate: Double
+    private let metronomeSamples: [GarageMetronomeClickProfile: [Float]]
     private var configuration = ElasticSlingshotRenderConfiguration(
         beatsPerMinute: 75,
         recipe: ElasticSlingshotRecipe(),
@@ -554,8 +614,9 @@ private final class ElasticSlingshotRenderState {
     private var voiceState = ElasticSlingshotVoiceState()
     private var appliedResetToken = 0
 
-    init(sampleRate: Double) {
+    init(sampleRate: Double, metronomeSamples: [GarageMetronomeClickProfile: [Float]]) {
         self.sampleRate = sampleRate
+        self.metronomeSamples = metronomeSamples
     }
 
     func getLoopProgress() -> Double {
@@ -871,6 +932,14 @@ private final class ElasticSlingshotRenderState {
         profile: GarageMetronomeClickProfile,
         routeFamily: GarageTempoOutputRouteFamily
     ) -> Double {
+        let sampleFrame = cycleFrame - eventFrame
+        if sampleFrame >= 0,
+           let sample = metronomeSamples[profile],
+           Int(sampleFrame) < sample.count {
+            let routeGain = routeFamily == .speaker ? 1.0 : 0.92
+            return Double(sample[Int(sampleFrame)]) * gain * routeGain
+        }
+
         let pulseFrames = max(frames(for: duration), 1)
         if let progress = eventProgress(
             cycleFrame: cycleFrame,
@@ -1488,7 +1557,11 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
     private var routeChangeCancellable: AnyCancellable?
 
     init() {
-        let renderState = ElasticSlingshotRenderState(sampleRate: sampleRate)
+        let sampleLibrary = GarageMetronomeSampleLibrary.load()
+        let renderState = ElasticSlingshotRenderState(
+            sampleRate: sampleRate,
+            metronomeSamples: sampleLibrary.samplesByProfile
+        )
         self.renderState = renderState
         self.sourceNode = AVAudioSourceNode { _, timestamp, frameCount, audioBufferList in
             renderState.render(timestamp: timestamp, frameCount: frameCount, audioBufferList: audioBufferList)
