@@ -495,10 +495,16 @@ private struct GarageMetronomePage: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 18) {
-                    GarageTempoStatusLine(text: statusText, isHighlighted: isPlaying || hasPendingTempo)
-                        .padding(.top, 12)
-                        .id(primaryControlID)
+                VStack(alignment: .leading, spacing: 14) {
+                    if isPlaying || hasPendingTempo {
+                        GarageTempoStatusLine(text: statusText, isHighlighted: true)
+                            .padding(.top, 8)
+                            .id(primaryControlID)
+                    } else {
+                        Color.clear
+                            .frame(height: 1)
+                            .id(primaryControlID)
+                    }
 
                     GarageMetronomeBPMControl(beatsPerMinute: $beatsPerMinute)
 
@@ -510,54 +516,36 @@ private struct GarageMetronomePage: View {
                         )
                     }
                     .frame(maxWidth: .infinity)
-                    .frame(height: 164)
+                    .frame(height: 148)
 
-                    GarageMetronomeSelectedSoundControl(
+                    GarageMetronomeSoundToolbar(
                         profile: selectedProfile,
                         hapticsEnabled: $hapticsEnabled,
                         controlsEnabled: controlsEnabled,
-                        onPreview: { preview(selectedProfile) }
+                        showsAllSounds: showsAllSounds,
+                        onPreview: { preview(selectedProfile) },
+                        onToggleLibrary: {
+                            guard controlsEnabled else { return }
+                            withAnimation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86)) {
+                                showsAllSounds.toggle()
+                            }
+                        }
                     )
 
-                    GarageMetronomeSoundSectionHeader(title: "Quick Sounds")
-
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                        ForEach(quickProfiles) { profile in
-                            GarageMetronomeQuickSoundCard(
-                                profile: profile,
-                                isSelected: profile == selectedProfile,
-                                controlsEnabled: controlsEnabled,
-                                onSelect: { select(profile) },
-                                onPreview: { preview(profile) }
-                            )
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(quickProfiles) { profile in
+                                GarageMetronomeQuickSoundCard(
+                                    profile: profile,
+                                    isSelected: profile == selectedProfile,
+                                    controlsEnabled: controlsEnabled,
+                                    onSelect: { select(profile) },
+                                    onPreview: { preview(profile) }
+                                )
+                                .frame(width: 154)
+                            }
                         }
                     }
-
-                    Button {
-                        guard controlsEnabled else { return }
-                        withAnimation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86)) {
-                            showsAllSounds.toggle()
-                        }
-                    } label: {
-                        HStack {
-                            Text("All Sounds")
-                            Spacer()
-                            Text("\(GarageMetronomeClickProfile.allCases.count)")
-                                .foregroundStyle(GarageProTheme.textSecondary)
-                            Image(systemName: showsAllSounds ? "chevron.up" : "chevron.down")
-                                .font(.system(size: 11, weight: .bold))
-                        }
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundStyle(GarageProTheme.textPrimary)
-                        .padding(.horizontal, 16)
-                        .frame(height: 50)
-                        .background(GarageProTheme.insetSurface.opacity(0.72), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(GarageProTheme.border, lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(controlsEnabled == false)
-                    .opacity(controlsEnabled ? 1 : 0.42)
-                    .accessibilityValue(showsAllSounds ? "Expanded" : "Collapsed")
 
                     if showsAllSounds {
                         GarageMetronomeInlineSoundLibrary(
@@ -666,9 +654,8 @@ private struct GarageMetronomeBPMControl: View {
                 .tint(GaragePremiumPalette.gold)
                 .accessibilityLabel("Metronome tempo")
         }
-        .padding(16)
-        .background(GarageProTheme.insetSurface.opacity(0.68), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(GarageProTheme.border, lineWidth: 1))
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
     }
 
     private func stepButton(systemImage: String, adjustment: Double, disabled: Bool) -> some View {
@@ -678,9 +665,8 @@ private struct GarageMetronomeBPMControl: View {
             Image(systemName: systemImage)
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(disabled ? GarageProTheme.textSecondary : GaragePremiumPalette.gold)
-                .frame(width: 46, height: 46)
-                .background(GaragePremiumPalette.emeraldDeep.opacity(0.72), in: Circle())
-                .overlay(Circle().stroke(GarageProTheme.border, lineWidth: 1))
+                .frame(width: 42, height: 42)
+                .background(GarageProTheme.insetSurface.opacity(0.58), in: Circle())
         }
         .buttonStyle(.plain)
         .disabled(disabled)
@@ -688,49 +674,74 @@ private struct GarageMetronomeBPMControl: View {
     }
 }
 
-private struct GarageMetronomeSelectedSoundControl: View {
+private struct GarageMetronomeSoundToolbar: View {
     let profile: GarageMetronomeClickProfile
     @Binding var hapticsEnabled: Bool
     let controlsEnabled: Bool
+    let showsAllSounds: Bool
     let onPreview: () -> Void
+    let onToggleLibrary: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("SELECTED SOUND")
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .tracking(1.2)
-                    .foregroundStyle(GarageProTheme.textSecondary)
-                Text(profile.title)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(GarageProTheme.textPrimary)
-                Text(profile.character)
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundStyle(GarageProTheme.textSecondary)
-                    .lineLimit(1)
-            }
+        HStack(spacing: 8) {
+            Button(action: onToggleLibrary) {
+                HStack(spacing: 8) {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(GaragePremiumPalette.gold)
 
-            Spacer(minLength: 8)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("SOUND")
+                            .font(.system(size: 8, weight: .bold, design: .rounded))
+                            .tracking(1)
+                            .foregroundStyle(GarageProTheme.textSecondary)
+                        Text(profile.title)
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundStyle(GarageProTheme.textPrimary)
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 4)
+
+                    Image(systemName: showsAllSounds ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(height: 42)
+            }
+            .buttonStyle(.plain)
+            .disabled(controlsEnabled == false)
+            .accessibilityLabel("All Sounds")
+            .accessibilityValue(showsAllSounds ? "Expanded" : "Collapsed")
 
             Button(action: onPreview) {
                 Image(systemName: "play.fill")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(GaragePremiumPalette.gold)
-                    .frame(width: 44, height: 44)
-                    .background(GaragePremiumPalette.gold.opacity(0.12), in: Circle())
+                    .frame(width: 42, height: 42)
             }
             .buttonStyle(.plain)
             .disabled(controlsEnabled == false)
             .accessibilityLabel("Preview \(profile.title)")
 
-            Toggle("Haptics", isOn: $hapticsEnabled)
-                .labelsHidden()
-                .tint(GaragePremiumPalette.gold)
-                .accessibilityLabel("Haptics")
+            Button {
+                hapticsEnabled.toggle()
+            } label: {
+                Image(systemName: hapticsEnabled ? "iphone.radiowaves.left.and.right" : "iphone.slash")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(hapticsEnabled ? GaragePremiumPalette.gold : GarageProTheme.textSecondary)
+                    .frame(width: 42, height: 42)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Haptics")
+            .accessibilityValue(hapticsEnabled ? "On" : "Off")
         }
-        .padding(14)
-        .background(GarageProTheme.insetSurface.opacity(0.74), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(GarageProTheme.border, lineWidth: 1))
+        .padding(.leading, 12)
+        .padding(.trailing, 4)
+        .background(GarageProTheme.insetSurface.opacity(0.58), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(GarageProTheme.border, lineWidth: 1))
+        .opacity(controlsEnabled ? 1 : 0.52)
     }
 }
 
@@ -765,7 +776,7 @@ private struct GarageMetronomeQuickSoundCard: View {
                         .lineLimit(1)
                     Spacer(minLength: 0)
                 }
-                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Select \(profile.title)")
@@ -775,16 +786,16 @@ private struct GarageMetronomeQuickSoundCard: View {
                 Image(systemName: "play.fill")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(GaragePremiumPalette.gold)
-                    .frame(width: 36, height: 44)
+                    .frame(width: 32, height: 40)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Preview \(profile.title)")
         }
-        .padding(.leading, 12)
+        .padding(.leading, 10)
         .padding(.trailing, 4)
-        .background(GarageProTheme.insetSurface.opacity(isSelected ? 0.92 : 0.62), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(GarageProTheme.insetSurface.opacity(isSelected ? 0.88 : 0.48), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(isSelected ? GaragePremiumPalette.gold.opacity(0.72) : GarageProTheme.border, lineWidth: 1)
         )
         .disabled(controlsEnabled == false)
