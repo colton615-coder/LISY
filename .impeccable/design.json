@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-06-11T02:53:11Z",
+  "title": "Design System: LIFE IN SYNC",
+  "extensions": {
+    "colorMeta": {
+      "garage-gold": {
+        "role": "primary",
+        "displayName": "Practice Gold",
+        "canonical": "#FABF2E",
+        "tonalRamp": ["#BD780D", "#FABF2E", "#FDE047"]
+      },
+      "garage-emerald-deep": {
+        "role": "neutral",
+        "displayName": "Deep Emerald",
+        "canonical": "#031A12",
+        "tonalRamp": ["#031A12", "#0D3826", "#175938", "#236331", "#2D7A3E"]
+      },
+      "garage-mint-text": {
+        "role": "neutral",
+        "displayName": "Mint Support",
+        "canonical": "#A8D6B3",
+        "tonalRamp": ["#6E9C78", "#A8D6B3", "#D7F0DD"]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Instrument Value",
+        "purpose": "BPM, timers, and other single dominant practice values."
+      },
+      "body": {
+        "displayName": "Native Body",
+        "purpose": "Practical instructions, settings, and supporting copy."
+      }
+    },
+    "shadows": [
+      {
+        "name": "raised-panel",
+        "value": "black 28% opacity, 10-12pt blur, 6-8pt y-offset",
+        "purpose": "Structural separation for raised Garage surfaces."
+      },
+      {
+        "name": "active-cue",
+        "value": "gold or module accent at 12-24% opacity",
+        "purpose": "Restrained emphasis for the current action or timing cue."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state-transition",
+        "value": "150-300ms native easing",
+        "purpose": "Communicate selection, playback, and presentation state."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "crossfade or immediate state change",
+        "purpose": "Preserve meaning without traveling or pulsing animation."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact-phone",
+        "value": "375pt portrait reference"
+      },
+      {
+        "name": "large-phone",
+        "value": "430pt portrait reference"
+      }
+    ],
+    "narrative": {
+      "northStar": "The Focused Instrument",
+      "rules": [
+        "The tool disappears into the task.",
+        "Premium means restraint.",
+        "Gold marks action or state, not decoration.",
+        "Practice stays player-facing."
+      ]
+    }
+  },
+  "components": []
+}

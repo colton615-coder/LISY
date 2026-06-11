@@ -420,8 +420,8 @@ private struct GarageTempoTopBar: View {
             Spacer()
 
             GarageTempoIconButton(systemImage: "camera.fill", label: "Swing capture", action: onCapture)
-            .disabled(controlsEnabled == false)
-            .opacity(controlsEnabled ? 1 : 0.34)
+                .disabled(controlsEnabled == false)
+                .opacity(controlsEnabled ? 1 : 0.34)
         }
         .frame(height: 46)
     }
@@ -443,13 +443,17 @@ private struct GarageTempoPageSelector: View {
                 } label: {
                     Text(page.title)
                         .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundStyle(page == selectedPage ? Color.white : Color(red: 0.17, green: 0.17, blue: 0.18))
+                        .foregroundStyle(page == selectedPage ? Color.white : GaragePremiumPalette.mintText.opacity(0.72))
                         .frame(maxWidth: .infinity)
                         .frame(height: 38)
                         .background {
                             if page == selectedPage {
                                 RoundedRectangle(cornerRadius: 13, style: .continuous)
-                                    .fill(Color(red: 0.11, green: 0.11, blue: 0.12))
+                                    .fill(Color.black.opacity(0.62))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                            .stroke(GaragePremiumPalette.gold.opacity(0.48), lineWidth: 1)
+                                    )
                                     .matchedGeometryEffect(id: "selectedTempoPage", in: namespace)
                             }
                         }
@@ -461,7 +465,11 @@ private struct GarageTempoPageSelector: View {
             }
         }
         .padding(4)
-        .background(GaragePremiumPalette.gold, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(GaragePremiumPalette.emeraldGlass.opacity(0.72), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(GaragePremiumPalette.mintText.opacity(0.16), lineWidth: 1)
+        )
         .frame(height: 44)
         .disabled(controlsEnabled == false)
         .opacity(controlsEnabled ? 1 : 0.46)
@@ -480,91 +488,43 @@ private struct GarageMetronomePage: View {
     let onStart: () -> Void
     let onStop: () -> Void
     @StateObject private var previewEngine = ElasticSlingshotAudioEngine()
-    @State private var showsAllSounds = false
 
     private var isPlaying: Bool { sessionState == .playing }
     private var controlsEnabled: Bool { sessionState == .ready }
     private var selectedProfile: GarageMetronomeClickProfile {
         GarageMetronomeClickProfile.migrated(from: selectedRawValue)
     }
-    private let primaryControlID = "metronome-primary-controls"
-    private let quickProfiles: [GarageMetronomeClickProfile] = [
-        .crispMarker, .dryClave, .hardwoodClick, .mutedTap, .glassPing, .digitalPulse
-    ]
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 14) {
-                    if isPlaying || hasPendingTempo {
-                        GarageTempoStatusLine(text: statusText, isHighlighted: true)
-                            .padding(.top, 8)
-                            .id(primaryControlID)
-                    } else {
-                        Color.clear
-                            .frame(height: 1)
-                            .id(primaryControlID)
-                    }
+        VStack(spacing: 0) {
+            GarageTempoStatusLine(
+                text: isPlaying || hasPendingTempo ? statusText : "",
+                isHighlighted: isPlaying || hasPendingTempo
+            )
+                .padding(.top, 8)
 
-                    GarageMetronomeBPMControl(beatsPerMinute: $beatsPerMinute)
+            GarageMetronomeBPMControl(beatsPerMinute: $beatsPerMinute)
+                .padding(.top, 4)
 
-                    TimelineView(.animation(minimumInterval: reduceMotion ? 0.15 : 1 / 60, paused: isPlaying == false)) { _ in
-                        GarageTempoPendulum(
-                            progress: isPlaying ? pendulumProgress : 0.5,
-                            isPlaying: isPlaying,
-                            reduceMotion: reduceMotion
-                        )
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 148)
-
-                    GarageMetronomeSoundToolbar(
-                        profile: selectedProfile,
-                        hapticsEnabled: $hapticsEnabled,
-                        controlsEnabled: controlsEnabled,
-                        showsAllSounds: showsAllSounds,
-                        onPreview: { preview(selectedProfile) },
-                        onToggleLibrary: {
-                            guard controlsEnabled else { return }
-                            withAnimation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.86)) {
-                                showsAllSounds.toggle()
-                            }
-                        }
-                    )
-
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(quickProfiles) { profile in
-                                GarageMetronomeQuickSoundCard(
-                                    profile: profile,
-                                    isSelected: profile == selectedProfile,
-                                    controlsEnabled: controlsEnabled,
-                                    onSelect: { select(profile) },
-                                    onPreview: { preview(profile) }
-                                )
-                                .frame(width: 154)
-                            }
-                        }
-                    }
-
-                    if showsAllSounds {
-                        GarageMetronomeInlineSoundLibrary(
-                            selectedProfile: selectedProfile,
-                            controlsEnabled: controlsEnabled,
-                            onSelect: { profile in
-                                select(profile)
-                                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) {
-                                    showsAllSounds = false
-                                    proxy.scrollTo(primaryControlID, anchor: .top)
-                                }
-                            },
-                            onPreview: preview
-                        )
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                    }
-                }
-                .padding(.bottom, 92)
+            TimelineView(.animation(minimumInterval: reduceMotion ? 0.15 : 1 / 60, paused: isPlaying == false)) { _ in
+                GarageTempoPendulum(
+                    progress: isPlaying ? pendulumProgress : 0.5,
+                    isPlaying: isPlaying,
+                    reduceMotion: reduceMotion,
+                    beatsPerMinute: beatsPerMinute
+                )
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .layoutPriority(1)
+
+            GarageMetronomeSoundToolbar(
+                profile: selectedProfile,
+                hapticsEnabled: $hapticsEnabled,
+                controlsEnabled: controlsEnabled,
+                onSelect: select,
+                onPreview: { preview(selectedProfile) }
+            )
+            .padding(.bottom, 10)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             GarageTempoSessionControls(
@@ -588,7 +548,6 @@ private struct GarageMetronomePage: View {
         .onChange(of: sessionState) { _, newState in
             guard newState != .ready else { return }
             previewEngine.stop()
-            showsAllSounds = false
         }
     }
 
@@ -635,7 +594,7 @@ private struct GarageMetronomeBPMControl: View {
 
                 HStack(alignment: .lastTextBaseline, spacing: 7) {
                     Text("\(Int(beatsPerMinute.rounded()))")
-                        .font(.system(size: 62, weight: .semibold, design: .rounded))
+                        .font(.system(size: 70, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                     Text("BPM")
                         .font(.system(size: 12, weight: .bold, design: .rounded))
@@ -665,8 +624,9 @@ private struct GarageMetronomeBPMControl: View {
             Image(systemName: systemImage)
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(disabled ? GarageProTheme.textSecondary : GaragePremiumPalette.gold)
-                .frame(width: 42, height: 42)
-                .background(GarageProTheme.insetSurface.opacity(0.58), in: Circle())
+                .frame(width: 48, height: 48)
+                .background(GaragePremiumPalette.emeraldGlass.opacity(0.72), in: Circle())
+                .overlay(Circle().stroke(GaragePremiumPalette.mintText.opacity(0.16), lineWidth: 1))
         }
         .buttonStyle(.plain)
         .disabled(disabled)
@@ -678,42 +638,25 @@ private struct GarageMetronomeSoundToolbar: View {
     let profile: GarageMetronomeClickProfile
     @Binding var hapticsEnabled: Bool
     let controlsEnabled: Bool
-    let showsAllSounds: Bool
+    let onSelect: (GarageMetronomeClickProfile) -> Void
     let onPreview: () -> Void
-    let onToggleLibrary: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
-            Button(action: onToggleLibrary) {
-                HStack(spacing: 8) {
-                    Image(systemName: "waveform")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(GaragePremiumPalette.gold)
-
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("SOUND")
-                            .font(.system(size: 8, weight: .bold, design: .rounded))
-                            .tracking(1)
-                            .foregroundStyle(GarageProTheme.textSecondary)
-                        Text(profile.title)
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                            .foregroundStyle(GarageProTheme.textPrimary)
-                            .lineLimit(1)
+            Menu {
+                ForEach(GarageMetronomeClickProfile.allCases) { candidate in
+                    Button {
+                        onSelect(candidate)
+                    } label: {
+                        Label(candidate.title, systemImage: candidate == profile ? "checkmark" : "waveform")
                     }
-
-                    Spacer(minLength: 4)
-
-                    Image(systemName: showsAllSounds ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(GarageProTheme.textSecondary)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: 42)
+            } label: {
+                GarageMetronomeSoundLabel(profile: profile)
             }
-            .buttonStyle(.plain)
             .disabled(controlsEnabled == false)
-            .accessibilityLabel("All Sounds")
-            .accessibilityValue(showsAllSounds ? "Expanded" : "Collapsed")
+            .accessibilityLabel("Choose metronome sound")
+            .accessibilityValue(profile.title)
 
             Button(action: onPreview) {
                 Image(systemName: "play.fill")
@@ -745,96 +688,34 @@ private struct GarageMetronomeSoundToolbar: View {
     }
 }
 
-private struct GarageMetronomeSoundSectionHeader: View {
-    let title: String
-
-    var body: some View {
-        Text(title.uppercased())
-            .font(.system(size: 10, weight: .bold, design: .rounded))
-            .tracking(1.4)
-            .foregroundStyle(GarageProTheme.textSecondary)
-    }
-}
-
-private struct GarageMetronomeQuickSoundCard: View {
+private struct GarageMetronomeSoundLabel: View {
     let profile: GarageMetronomeClickProfile
-    let isSelected: Bool
-    let controlsEnabled: Bool
-    let onSelect: () -> Void
-    let onPreview: () -> Void
 
     var body: some View {
-        HStack(spacing: 6) {
-            Button(action: onSelect) {
-                HStack(spacing: 7) {
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "waveform")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(isSelected ? GaragePremiumPalette.gold : GarageProTheme.textSecondary)
-                    Text(profile.title)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(GarageProTheme.textPrimary)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                }
-                .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Select \(profile.title)")
-            .accessibilityAddTraits(isSelected ? .isSelected : [])
+        HStack(spacing: 8) {
+            Image(systemName: "waveform")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(GaragePremiumPalette.gold)
 
-            Button(action: onPreview) {
-                Image(systemName: "play.fill")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(GaragePremiumPalette.gold)
-                    .frame(width: 32, height: 40)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("SOUND")
+                    .font(.system(size: 8, weight: .bold, design: .rounded))
+                    .tracking(1)
+                    .foregroundStyle(GarageProTheme.textSecondary)
+                Text(profile.title)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(GarageProTheme.textPrimary)
+                    .lineLimit(1)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Preview \(profile.title)")
+
+            Spacer(minLength: 4)
+
+            Image(systemName: "chevron.down")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(GarageProTheme.textSecondary)
         }
-        .padding(.leading, 10)
-        .padding(.trailing, 4)
-        .background(GarageProTheme.insetSurface.opacity(isSelected ? 0.88 : 0.48), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(isSelected ? GaragePremiumPalette.gold.opacity(0.72) : GarageProTheme.border, lineWidth: 1)
-        )
-        .disabled(controlsEnabled == false)
-        .opacity(controlsEnabled ? 1 : 0.42)
-    }
-}
-
-private struct GarageMetronomeInlineSoundLibrary: View {
-    let selectedProfile: GarageMetronomeClickProfile
-    let controlsEnabled: Bool
-    let onSelect: (GarageMetronomeClickProfile) -> Void
-    let onPreview: (GarageMetronomeClickProfile) -> Void
-
-    private let groups: [(String, [GarageMetronomeClickProfile])] = [
-        ("Crisp / Marker", GarageMetronomeClickProfile.crispMarkers),
-        ("Soft Practice", GarageMetronomeClickProfile.softPractice),
-        ("Signal / Accent", GarageMetronomeClickProfile.signalAccents),
-        ("Digital / Synthetic", GarageMetronomeClickProfile.digitalSynthetic)
-    ]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            ForEach(groups, id: \.0) { group in
-                VStack(alignment: .leading, spacing: 9) {
-                    GarageMetronomeSoundSectionHeader(title: group.0)
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 9) {
-                        ForEach(group.1) { profile in
-                            GarageMetronomeQuickSoundCard(
-                                profile: profile,
-                                isSelected: profile == selectedProfile,
-                                controlsEnabled: controlsEnabled,
-                                onSelect: { onSelect(profile) },
-                                onPreview: { onPreview(profile) }
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: 42)
     }
 }
 
@@ -949,71 +830,232 @@ private struct GarageTempoPendulum: View {
     let progress: Double
     let isPlaying: Bool
     let reduceMotion: Bool
+    let beatsPerMinute: Double
 
     private var angle: Angle {
         guard isPlaying else { return .degrees(0) }
         guard reduceMotion == false else { return .degrees(0) }
 
         let normalizedProgress = min(max(progress, 0), 1)
-        return .degrees(-29 + (58 * smoothstep(normalizedProgress)))
+        return .degrees(-31 + (62 * smoothstep(normalizedProgress)))
     }
 
     var body: some View {
-        ZStack(alignment: .top) {
-            ZStack(alignment: .top) {
-                Capsule()
+        GeometryReader { proxy in
+            let stageWidth = min(proxy.size.width * 0.88, 340)
+            let stageHeight = min(proxy.size.height * 0.98, 430)
+            let bodyHeight = stageHeight * 0.69
+            let bodyWidth = stageWidth * 0.76
+            let baseHeight = stageHeight * 0.23
+            let armHeight = stageHeight * 0.56
+            let arcCenter = CGPoint(x: stageWidth / 2, y: stageHeight * 0.39)
+            let arcRadius = stageWidth * 0.43
+
+            ZStack {
+                ForEach(0..<25, id: \.self) { index in
+                    let degrees = -68 + (Double(index) * 136 / 24)
+                    let radians = degrees * .pi / 180
+                    let isMajor = index.isMultiple(of: 4)
+
+                    Capsule()
+                        .fill(isMajor ? GaragePremiumPalette.gold.opacity(0.50) : GaragePremiumPalette.mintText.opacity(0.34))
+                        .frame(width: isMajor ? 2 : 1, height: isMajor ? 15 : 9)
+                        .rotationEffect(.degrees(degrees))
+                        .position(
+                            x: arcCenter.x + (sin(radians) * arcRadius),
+                            y: arcCenter.y - (cos(radians) * arcRadius)
+                        )
+                }
+
+                GarageMetronomeBodyShape()
                     .fill(
                         LinearGradient(
-                            colors: [GaragePremiumPalette.gold, GaragePremiumPalette.goldDeep],
+                            colors: [
+                                GaragePremiumPalette.emeraldGlass.opacity(0.98),
+                                GaragePremiumPalette.emeraldDeep,
+                                Color.black.opacity(0.88)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(
+                        GarageMetronomeBodyShape()
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        GaragePremiumPalette.gold.opacity(0.88),
+                                        GaragePremiumPalette.mintText.opacity(0.16),
+                                        GaragePremiumPalette.goldDeep.opacity(0.86)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 2
+                            )
+                    )
+                    .frame(width: bodyWidth, height: bodyHeight)
+                    .offset(y: stageHeight * 0.04)
+                    .shadow(color: Color.black.opacity(0.42), radius: 22, x: 0, y: 16)
+
+                GarageMetronomeScale(beatsPerMinute: beatsPerMinute)
+                    .frame(width: bodyWidth * 0.30, height: bodyHeight * 0.70)
+                    .offset(y: stageHeight * 0.02)
+
+                ZStack(alignment: .bottom) {
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [GaragePremiumPalette.gold, GaragePremiumPalette.goldDeep],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 5, height: armHeight)
+                        .overlay(Capsule().stroke(Color.white.opacity(0.34), lineWidth: 0.6))
+
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    Color.white.opacity(0.84),
+                                    GaragePremiumPalette.gold,
+                                    GaragePremiumPalette.goldDeep
+                                ],
+                                center: .topLeading,
+                                startRadius: 1,
+                                endRadius: 30
+                            )
+                        )
+                        .frame(width: 42, height: 42)
+                        .overlay(Circle().stroke(GaragePremiumPalette.gold.opacity(0.88), lineWidth: 2))
+                        .shadow(color: GaragePremiumPalette.gold.opacity(isPlaying ? 0.30 : 0.14), radius: 12)
+                        .offset(y: -(armHeight * 0.48))
+                }
+                .frame(width: 60, height: armHeight, alignment: .bottom)
+                .rotationEffect(angle, anchor: .bottom)
+                .offset(y: -(baseHeight * 0.64))
+
+                GarageMetronomeBaseShape()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                GaragePremiumPalette.emeraldGlass,
+                                GaragePremiumPalette.emeraldDeep,
+                                Color.black.opacity(0.94)
+                            ],
                             startPoint: .top,
                             endPoint: .bottom
                         )
                     )
-                    .frame(width: 4, height: 104)
-                    .shadow(color: GaragePremiumPalette.gold.opacity(0.22), radius: 10)
+                    .overlay(
+                        GarageMetronomeBaseShape()
+                            .stroke(GaragePremiumPalette.gold.opacity(0.66), lineWidth: 1.5)
+                    )
+                    .frame(width: stageWidth * 0.88, height: baseHeight)
+                    .offset(y: stageHeight * 0.37)
+                    .shadow(color: Color.black.opacity(0.48), radius: 18, x: 0, y: 14)
 
                 Circle()
                     .fill(GaragePremiumPalette.emeraldDeep)
-                    .frame(width: 44, height: 44)
-                    .overlay(Circle().stroke(GaragePremiumPalette.gold.opacity(0.54), lineWidth: 2))
-                    .shadow(color: GaragePremiumPalette.gold.opacity(isPlaying ? 0.28 : 0.12), radius: 16)
-                    .offset(y: 86)
-            }
-            .frame(height: 132, alignment: .top)
-            .rotationEffect(angle, anchor: .top)
-            .padding(.top, 18)
+                    .frame(width: 58, height: 58)
+                    .overlay(Circle().stroke(GaragePremiumPalette.gold.opacity(0.78), lineWidth: 2))
+                    .overlay(
+                        Image(systemName: "waveform")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundStyle(GaragePremiumPalette.gold)
+                    )
+                    .offset(y: stageHeight * 0.37)
 
-            VStack {
-                HStack {
-                    Text(isPlaying ? "LIVE METRONOME" : "METRONOME")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .tracking(1.5)
-                        .foregroundStyle(isPlaying ? GaragePremiumPalette.gold : GarageProTheme.textSecondary)
-
-                    Spacer()
-
-                    Circle()
-                        .fill(isPlaying ? GaragePremiumPalette.gold : GarageProTheme.textSecondary.opacity(0.32))
-                        .frame(width: 7, height: 7)
-                        .shadow(color: GaragePremiumPalette.gold.opacity(isPlaying ? 0.5 : 0), radius: 8)
-                }
-
-                Spacer()
-
-                Text(isPlaying ? "EVERY BEAT" : "READY")
+                Text(isPlaying ? "LIVE" : "READY")
                     .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .tracking(1.5)
-                    .foregroundStyle(isPlaying ? GaragePremiumPalette.gold : GarageProTheme.textSecondary)
-                    .frame(maxWidth: .infinity)
+                    .tracking(1.4)
+                    .foregroundStyle(isPlaying ? GaragePremiumPalette.gold : GaragePremiumPalette.mintText)
+                    .offset(y: -(stageHeight * 0.40))
             }
-            .padding(14)
+            .frame(width: stageWidth, height: stageHeight)
+            .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
         }
-        .accessibilityHidden(true)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            isPlaying
+                ? "Metronome running at \(Int(beatsPerMinute.rounded())) beats per minute"
+                : "Metronome ready at \(Int(beatsPerMinute.rounded())) beats per minute"
+        )
     }
 
     private func smoothstep(_ value: Double) -> Double {
         let clamped = min(max(value, 0), 1)
         return clamped * clamped * (3 - (2 * clamped))
+    }
+}
+
+private struct GarageMetronomeBodyShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX - rect.width * 0.16, y: 0))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.midX + rect.width * 0.16, y: 0),
+            control: CGPoint(x: rect.midX, y: -rect.height * 0.05)
+        )
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.closeSubpath()
+        return path
+    }
+}
+
+private struct GarageMetronomeBaseShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + rect.width * 0.08, y: 0))
+        path.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.08, y: 0))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY * 0.88))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.minX, y: rect.maxY * 0.88),
+            control: CGPoint(x: rect.midX, y: rect.maxY * 1.04)
+        )
+        path.closeSubpath()
+        return path
+    }
+}
+
+private struct GarageMetronomeScale: View {
+    let beatsPerMinute: Double
+
+    private let marks = [40, 60, 80, 100, 120, 140, 160, 180, 200, 220]
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                Capsule()
+                    .fill(Color.black.opacity(0.30))
+                    .overlay(Capsule().stroke(GaragePremiumPalette.gold.opacity(0.24), lineWidth: 1))
+
+                ForEach(marks.indices, id: \.self) { index in
+                    let mark = marks[index]
+                    let y = proxy.size.height * (0.08 + (Double(index) * 0.84 / Double(marks.count - 1)))
+                    let isClosest = abs(Double(mark) - beatsPerMinute) < 11
+
+                    HStack(spacing: 5) {
+                        Capsule()
+                            .fill(isClosest ? GaragePremiumPalette.gold : GaragePremiumPalette.goldDeep.opacity(0.68))
+                            .frame(width: isClosest ? 12 : 7, height: 1)
+
+                        Text("\(mark)")
+                            .font(.system(size: isClosest ? 10 : 8, weight: isClosest ? .bold : .medium, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(isClosest ? GaragePremiumPalette.gold : GaragePremiumPalette.mintText.opacity(0.56))
+
+                        Capsule()
+                            .fill(isClosest ? GaragePremiumPalette.gold : GaragePremiumPalette.goldDeep.opacity(0.68))
+                            .frame(width: isClosest ? 12 : 7, height: 1)
+                    }
+                    .position(x: proxy.size.width / 2, y: y)
+                }
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
 
@@ -1285,6 +1327,8 @@ private struct GarageTempoIconButton: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(GarageProTheme.textPrimary.opacity(0.86))
                 .frame(width: 40, height: 40)
+                .background(GaragePremiumPalette.emeraldGlass.opacity(0.52), in: Circle())
+                .overlay(Circle().stroke(GaragePremiumPalette.mintText.opacity(0.14), lineWidth: 1))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
