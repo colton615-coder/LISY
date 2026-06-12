@@ -1439,9 +1439,9 @@ private final class ElasticSlingshotRenderState {
         switch phase {
         case let .takeback(progress):
             return exponentialRamp(from: 220, to: 880, progress: pow(min(max(progress, 0), 1), 1.08))
-        case .pause:
+        case .pause(_):
             return 880
-        case .downswing, .impact, .loopDelay, .finished:
+        case .downswing(_), .impact(_), .followThrough(_), .loopDelay, .finished:
             return 0
         }
     }

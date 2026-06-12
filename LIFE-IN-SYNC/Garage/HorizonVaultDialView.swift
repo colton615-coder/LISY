@@ -227,6 +227,8 @@ struct GarageTempoBuilderView: View {
                 sessionState = .resting
                 await runRestCountdown()
                 guard Task.isCancelled == false else { return }
+                await runGuidedCountIn()
+                guard Task.isCancelled == false else { return }
             }
         }
     }
@@ -1047,8 +1049,8 @@ private struct GarageGuidedSwingTimeline: View {
                         .stroke(
                             LinearGradient(
                                 colors: [GaragePremiumPalette.emerald, GaragePremiumPalette.gold],
-                                startPoint: .trailing,
-                                endPoint: .leading
+                                startPoint: .leading,
+                                endPoint: .trailing
                             ),
                             style: StrokeStyle(lineWidth: 5, lineCap: .round)
                         )
@@ -1056,7 +1058,7 @@ private struct GarageGuidedSwingTimeline: View {
 
                 Circle()
                     .fill(isResting ? GaragePremiumPalette.mintText.opacity(0.36) : GaragePremiumPalette.gold)
-                    .frame(width: reduceMotion ? 17 : 21, height: reduceMotion ? 17 : 21)
+                    .frame(width: reduceMotion ? 15 : 17, height: reduceMotion ? 15 : 17)
                     .shadow(color: isResting ? .clear : GaragePremiumPalette.gold.opacity(0.42), radius: 16)
                     .position(markerPoint)
 
@@ -1126,17 +1128,18 @@ private struct GarageGuidedSwingTimeline: View {
         )
         path.addQuadCurve(
             to: finish,
-            control: CGPoint(x: size.width * 0.08, y: size.height * 0.70)
+            control: CGPoint(x: size.width * 0.93, y: size.height * 0.80)
         )
         return path
     }
 
     private func point(at progress: Double, in size: CGSize) -> CGPoint {
         let progress = min(max(progress, 0), 1)
-        let start = CGPoint(x: size.width * 0.91, y: size.height * 0.72)
+        let start = CGPoint(x: size.width * 0.09, y: size.height * 0.72)
         let control = CGPoint(x: size.width * 0.52, y: size.height * 0.02)
-        let impact = CGPoint(x: size.width * 0.14, y: size.height * 0.66)
-        let finish = CGPoint(x: size.width * 0.05, y: size.height * 0.84)
+        let impact = CGPoint(x: size.width * 0.86, y: size.height * 0.66)
+        let followThroughControl = CGPoint(x: size.width * 0.93, y: size.height * 0.80)
+        let finish = CGPoint(x: size.width * 0.95, y: size.height * 0.88)
 
         if progress <= 0.90 {
             let t = progress / 0.90
@@ -1148,10 +1151,10 @@ private struct GarageGuidedSwingTimeline: View {
         }
 
         let t = (progress - 0.90) / 0.10
-        let eased = 1 - pow(1 - t, 3)
+        let inverse = 1 - t
         return CGPoint(
-            x: impact.x + ((finish.x - impact.x) * eased),
-            y: impact.y + ((finish.y - impact.y) * eased)
+            x: (inverse * inverse * impact.x) + (2 * inverse * t * followThroughControl.x) + (t * t * finish.x),
+            y: (inverse * inverse * impact.y) + (2 * inverse * t * followThroughControl.y) + (t * t * finish.y)
         )
     }
 }
