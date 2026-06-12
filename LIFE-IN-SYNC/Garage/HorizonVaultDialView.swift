@@ -66,7 +66,7 @@ struct GarageTempoBuilderView: View {
             }
             .onChange(of: metronomeBPM) { _, _ in tempoChanged() }
             .onChange(of: guidedSwingBPM) { _, _ in tempoChanged() }
-            .sheet(isPresented: settingsPresentation) {
+            .fullScreenCover(isPresented: settingsPresentation) {
                 GarageTempoControlRoom(
                     beatsPerMinute: guidedSwingBPM,
                     selectedStartRawValue: $startClickRawValue,
@@ -99,7 +99,9 @@ struct GarageTempoBuilderView: View {
             VStack(spacing: 0) {
                 GarageTempoTopBar(
                     controlsEnabled: isActive == false,
+                    showsControlRoom: selectedPage == .guidedSwing,
                     onBack: close,
+                    onControlRoom: { presentedSheet = .settings },
                     onCapture: { showsSwingCapture = true }
                 )
 
@@ -146,7 +148,6 @@ struct GarageTempoBuilderView: View {
                 onStart: startPlayback,
                 onPause: pausePlayback,
                 onResume: resumePlayback,
-                onControlRoom: { presentedSheet = .settings },
                 onStop: stopPlayback
             )
             .tag(GarageTempoPage.guidedSwing)
@@ -432,24 +433,36 @@ private final class GarageTempoCountdownSpeaker: ObservableObject {
 
 private struct GarageTempoTopBar: View {
     let controlsEnabled: Bool
+    let showsControlRoom: Bool
     let onBack: () -> Void
+    let onControlRoom: () -> Void
     let onCapture: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            GarageTempoIconButton(systemImage: "chevron.left", label: "Back", action: onBack)
-
-            Spacer()
-
+        ZStack {
             Text("Tempo Builder")
                 .font(.system(size: 17, weight: .semibold, design: .rounded))
                 .foregroundStyle(GarageProTheme.textPrimary)
 
-            Spacer()
+            HStack(spacing: 8) {
+                GarageTempoIconButton(systemImage: "chevron.left", label: "Back", action: onBack)
 
-            GarageTempoIconButton(systemImage: "camera.fill", label: "Swing capture", action: onCapture)
-                .disabled(controlsEnabled == false)
-                .opacity(controlsEnabled ? 1 : 0.34)
+                Spacer()
+
+                if showsControlRoom {
+                    GarageTempoIconButton(
+                        systemImage: "slider.horizontal.3",
+                        label: "Open Control Room",
+                        action: onControlRoom
+                    )
+                    .disabled(controlsEnabled == false)
+                    .opacity(controlsEnabled ? 1 : 0.34)
+                }
+
+                GarageTempoIconButton(systemImage: "camera.fill", label: "Swing capture", action: onCapture)
+                    .disabled(controlsEnabled == false)
+                    .opacity(controlsEnabled ? 1 : 0.34)
+            }
         }
         .frame(height: 46)
     }
@@ -700,7 +713,6 @@ private struct GarageGuidedSwingPage: View {
     let onStart: () -> Void
     let onPause: () -> Void
     let onResume: () -> Void
-    let onControlRoom: () -> Void
     let onStop: () -> Void
 
     private var isPlaying: Bool { sessionState == .playing }
@@ -751,11 +763,6 @@ private struct GarageGuidedSwingPage: View {
                 .tint(GaragePremiumPalette.gold)
                 .padding(.horizontal, 8)
                 .accessibilityLabel("Guided Swing tempo")
-
-            GarageTempoControlRoomHandle(action: onControlRoom)
-                .disabled(sessionState != .ready)
-                .opacity(sessionState == .ready ? 1 : 0.34)
-                .padding(.top, 12)
 
             GarageTempoSessionControls(
                 state: sessionState,
@@ -1283,22 +1290,6 @@ private struct GarageTempoActionLabel: View {
             Text(title)
         }
         .offset(x: -2)
-    }
-}
-
-private struct GarageTempoControlRoomHandle: View {
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Capsule()
-                .fill(GaragePremiumPalette.mintText.opacity(0.38))
-                .frame(width: 54, height: 5)
-                .frame(maxWidth: .infinity)
-                .frame(height: 18)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Open Control Room")
     }
 }
 
