@@ -93,15 +93,16 @@ struct GarageSlowTempoLogic: Equatable {
                 nextLandmark: landmarks[1],
                 phaseLabel: "Ready",
                 phaseCue: primaryCue,
-                isResting: false
+                isResting: false,
+                motionProgress: 0
             )
         }
 
         let swingDuration = max(recipe.swingDuration(for: anchorBPM), 0.1)
         let cycleDuration = max(recipe.loopDuration(for: anchorBPM), swingDuration)
         let elapsedInCycle = elapsedTime.truncatingRemainder(dividingBy: cycleDuration)
-        let impactWindow = min(max(recipe.restInterval * 0.18, 0.14), 0.26)
-        let impactEndTimestamp = min(swingDuration + impactWindow, cycleDuration)
+        let impactEndTimestamp = swingDuration + recipe.impactDuration
+        let followThroughEndTimestamp = impactEndTimestamp + recipe.followThroughDuration
         let activeBeat: Int
         let nextIndex: Int
         let phaseLabel: String
@@ -120,11 +121,11 @@ struct GarageSlowTempoLogic: Equatable {
             phaseLabel = landmarks[1].title
             phaseCue = recipe.tempoRatio.feelLine
             isResting = false
-        } else if elapsedInCycle < impactEndTimestamp {
+        } else if elapsedInCycle < followThroughEndTimestamp {
             activeBeat = 3
             nextIndex = 0
-            phaseLabel = landmarks[2].title
-            phaseCue = landmarks[2].cue
+            phaseLabel = elapsedInCycle < impactEndTimestamp ? landmarks[2].title : "Follow Through"
+            phaseCue = elapsedInCycle < impactEndTimestamp ? landmarks[2].cue : "Finish balanced."
             isResting = false
         } else {
             activeBeat = 3
@@ -144,8 +145,46 @@ struct GarageSlowTempoLogic: Equatable {
             nextLandmark: landmarks[nextIndex],
             phaseLabel: phaseLabel,
             phaseCue: phaseCue,
-            isResting: isResting
+            isResting: isResting,
+            motionProgress: motionProgress(
+                elapsedTime: elapsedInCycle,
+                recipe: recipe
+            )
         )
+    }
+
+    private func motionProgress(elapsedTime: TimeInterval, recipe: ElasticSlingshotRecipe) -> Double {
+        let takeawayEnd = recipe.takeawayDuration(for: anchorBPM)
+        let pauseEnd = takeawayEnd + recipe.pauseDuration(for: anchorBPM)
+        let impactStart = recipe.swingDuration(for: anchorBPM)
+        let impactEnd = impactStart + recipe.impactDuration
+        let followThroughEnd = impactEnd + recipe.followThroughDuration
+
+        if elapsedTime < takeawayEnd {
+            return 0.58 * smoothstep(elapsedTime / max(takeawayEnd, 0.01))
+        }
+        if elapsedTime < pauseEnd {
+            let progress = (elapsedTime - takeawayEnd) / max(pauseEnd - takeawayEnd, 0.01)
+            return 0.58 + (0.04 * smoothstep(progress))
+        }
+        if elapsedTime < impactStart {
+            let progress = (elapsedTime - pauseEnd) / max(impactStart - pauseEnd, 0.01)
+            return 0.62 + (0.28 * pow(min(max(progress, 0), 1), 2.35))
+        }
+        if elapsedTime < impactEnd {
+            let progress = (elapsedTime - impactStart) / max(recipe.impactDuration, 0.01)
+            return 0.90 + (0.03 * progress)
+        }
+        if elapsedTime < followThroughEnd {
+            let progress = (elapsedTime - impactEnd) / max(recipe.followThroughDuration, 0.01)
+            return 0.93 + (0.07 * (1 - pow(1 - min(max(progress, 0), 1), 3)))
+        }
+        return 1
+    }
+
+    private func smoothstep(_ value: Double) -> Double {
+        let value = min(max(value, 0), 1)
+        return value * value * (3 - (2 * value))
     }
 }
 
@@ -166,4 +205,5 @@ struct GarageSlowTempoVisualState: Equatable {
     let phaseLabel: String
     let phaseCue: String
     let isResting: Bool
+    let motionProgress: Double
 }

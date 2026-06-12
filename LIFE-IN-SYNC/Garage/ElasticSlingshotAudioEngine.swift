@@ -11,7 +11,12 @@ private let elasticSlingshotSubdivisionTickDuration: TimeInterval = 0.035
 struct ElasticSlingshotRecipe: Equatable {
     var tempoRatio: ElasticSlingshotTempoRatio = .tour
     var restInterval: TimeInterval = 5
+    var followThroughDuration: TimeInterval = 0.42
     var subdivisionMultiplier = GarageSlowTempoLogic.defaultSubdivisionMultiplier
+
+    var impactDuration: TimeInterval {
+        elasticSlingshotImpactDuration
+    }
 
     var normalizedTakeaway: Double {
         let duration = max(swingDuration(for: GarageSlowTempoLogic.defaultAnchorBPM), 0.01)
@@ -49,7 +54,11 @@ struct ElasticSlingshotRecipe: Equatable {
     }
 
     func loopDuration(for beatsPerMinute: Double) -> TimeInterval {
-        swingDuration(for: beatsPerMinute) + elasticSlingshotImpactDuration + restInterval
+        guidedMotionDuration(for: beatsPerMinute) + restInterval
+    }
+
+    func guidedMotionDuration(for beatsPerMinute: Double) -> TimeInterval {
+        swingDuration(for: beatsPerMinute) + elasticSlingshotImpactDuration + followThroughDuration
     }
 
     func slowTempoLogic(for beatsPerMinute: Double) -> GarageSlowTempoLogic {
@@ -420,6 +429,7 @@ private enum ElasticSlingshotPhase {
     case pause(releaseGain: Double)
     case downswing(progress: Double)
     case impact(progress: Double)
+    case followThrough(progress: Double)
     case loopDelay
     case finished
 }
@@ -474,7 +484,7 @@ private struct ElasticSlingshotRenderConfiguration {
         case .continuous:
             return recipe.loopDuration(for: beatsPerMinute)
         case .oneCycle:
-            return totalDuration
+            return recipe.guidedMotionDuration(for: beatsPerMinute)
         }
     }
 }
@@ -869,6 +879,8 @@ private final class ElasticSlingshotRenderState {
         case let .impact(progress):
             debugLogImpactIfNeeded(at: relativeFrame, configuration: configuration)
             rawSample = configuration.instrumentMode == .metronome ? 0 : impactSample(progress: progress, profile: configuration.soundProfile)
+        case let .followThrough(progress):
+            rawSample = configuration.instrumentMode == .metronome ? 0 : followThroughSample(progress: progress, profile: configuration.soundProfile)
         case .loopDelay:
             rawSample = 0
         case .finished:
@@ -885,7 +897,8 @@ private final class ElasticSlingshotRenderState {
         let loopFrames = max(frames(for: configuration.loopDuration), totalFrames)
         let impactDurationFrames = max(frames(for: elasticSlingshotImpactDuration), 1)
 
-        if configuration.mode == .oneCycle, relativeFrame >= totalFrames + impactDurationFrames {
+        let followThroughFrames = max(frames(for: configuration.recipe.followThroughDuration), 1)
+        if configuration.mode == .oneCycle, relativeFrame >= totalFrames + impactDurationFrames + followThroughFrames {
             return .finished
         }
 
@@ -920,6 +933,12 @@ private final class ElasticSlingshotRenderState {
         if cycleFrame < totalFrames + impactDurationFrames {
             let impactFrame = cycleFrame - totalFrames
             return .impact(progress: Double(impactFrame) / Double(impactDurationFrames))
+        }
+
+        let followThroughEndFrame = totalFrames + impactDurationFrames + followThroughFrames
+        if cycleFrame < followThroughEndFrame {
+            let followThroughFrame = cycleFrame - totalFrames - impactDurationFrames
+            return .followThrough(progress: Double(followThroughFrame) / Double(followThroughFrames))
         }
 
         return .loopDelay
@@ -1312,6 +1331,23 @@ private final class ElasticSlingshotRenderState {
         return impactSoftLimit(shapedSample)
     }
 
+    private func followThroughSample(progress: Double, profile: ElasticSlingshotSoundProfile) -> Double {
+        let progress = min(max(progress, 0), 1)
+        let envelope = pow(1 - smoothstep(progress), 2) * 0.16
+        let frequency = exponentialRamp(from: 210, to: 92, progress: progress)
+
+        switch profile {
+        case .storm, .gravity:
+            return gravityTone(frequency: frequency * 0.56, envelope: envelope, progress: progress)
+        case .airframe, .glass:
+            return airframeTone(frequency: frequency * 1.18, envelope: envelope, air: 0.18)
+        case .reed, .rubber:
+            return flowWaveTone(frequency: frequency * 0.78, envelope: envelope)
+        case .elastic, .pulse:
+            return pureSynthTone(frequency: frequency, envelope: envelope, brightness: 0.54, shimmer: 0.02)
+        }
+    }
+
     private func analogBandTone(frequency: Double, envelope: Double, drive: Double, noiseAmount: Double) -> Double {
         let primaryPhase = voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)
         let secondaryPhase = voiceState.advanceSecondary(frequency: frequency * 0.502, sampleRate: sampleRate)
@@ -1697,7 +1733,7 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
 
         let previewDuration = instrumentMode == .metronome
             ? 0.30
-            : recipe.swingDuration(for: beatsPerMinute) + elasticSlingshotImpactDuration + 0.08
+            : recipe.guidedMotionDuration(for: beatsPerMinute) + 0.08
         previewStopTask = Task { [weak self] in
             let nanoseconds = UInt64(max(previewDuration, 0.1) * 1_000_000_000)
             try? await Task.sleep(nanoseconds: nanoseconds)
