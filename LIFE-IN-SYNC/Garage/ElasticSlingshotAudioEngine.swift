@@ -1443,8 +1443,6 @@ private final class ElasticSlingshotRenderState {
             return 880
         case .downswing, .impact, .loopDelay, .finished:
             return 0
-        case .followThrough(progress: let progress):
-            <#code#>
         }
     }
 
