@@ -84,7 +84,7 @@ struct GarageTempoAudioQAView: View {
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .foregroundStyle(GarageProTheme.textPrimary)
 
-            Text("Count-in: not implemented · Rest: \(Int(restInterval))s silent · Capture continuity: open camera while running")
+            Text("Guided Swing: fresh 3-2-1 after every restart · Rest: \(Int(restInterval))s silent · Capture continuity: open camera while running")
                 .font(.system(size: 11, weight: .medium, design: .rounded))
                 .foregroundStyle(GarageProTheme.textSecondary)
         }

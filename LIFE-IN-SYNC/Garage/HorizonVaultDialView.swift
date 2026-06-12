@@ -7,8 +7,8 @@ import UIKit
 struct GarageTempoBuilderView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @StateObject private var audioEngine = ElasticSlingshotAudioEngine()
-    @StateObject private var countdownSpeaker = GarageTempoCountdownSpeaker()
+    @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var session = GarageTempoSessionController()
 
     @AppStorage("garage.tempoBuilder.metronomeBPM") private var metronomeBPM = 60.0
     @AppStorage("garage.tempoBuilder.bpm") private var guidedSwingBPM = 60.0
@@ -22,16 +22,8 @@ struct GarageTempoBuilderView: View {
     @State private var selectedPage: GarageTempoPage = .metronome
     @State private var presentedSheet: GarageTempoSheet?
     @State private var showsSwingCapture = false
-    @State private var sessionState = GarageTempoSessionState.ready
-    @State private var appliedBPM = 60.0
-    @State private var countdownValue: Int?
-    @State private var restProgress = 0.0
-    @State private var hasPendingTempo = false
-    @State private var playbackTask: Task<Void, Never>?
-    @State private var hapticTask: Task<Void, Never>?
 
-    private var isActive: Bool { sessionState != .ready }
-    private var isRunning: Bool { sessionState == .playing }
+    private var isActive: Bool { session.isActive }
     private var activeSavedBPM: Double {
         selectedPage == .metronome ? metronomeBPM : guidedSwingBPM
     }
@@ -55,6 +47,18 @@ struct GarageTempoBuilderView: View {
         return recipe
     }
 
+    private var sessionConfiguration: GarageTempoSessionConfiguration {
+        GarageTempoSessionConfiguration(
+            page: selectedPage,
+            beatsPerMinute: activeSavedBPM,
+            recipe: recipe,
+            guidedSound: selectedGuidedSound,
+            startClick: selectedStartClick,
+            impactClick: selectedImpactClick,
+            hapticsEnabled: hapticsEnabled
+        )
+    }
+
     var body: some View {
         tempoContent
             .onAppear {
@@ -62,10 +66,16 @@ struct GarageTempoBuilderView: View {
                 clampSavedTempos()
             }
             .onChange(of: selectedPage) { _, _ in
-                stopPlayback()
+                session.stop()
+                session.synchronizeReadyBPM(activeSavedBPM)
             }
-            .onChange(of: metronomeBPM) { _, _ in tempoChanged() }
-            .onChange(of: guidedSwingBPM) { _, _ in tempoChanged() }
+            .onChange(of: metronomeBPM) { _, _ in session.configurationChanged(sessionConfiguration) }
+            .onChange(of: guidedSwingBPM) { _, _ in session.configurationChanged(sessionConfiguration) }
+            .onChange(of: scenePhase) { _, phase in
+                if phase != .active {
+                    session.stop()
+                }
+            }
             .fullScreenCover(isPresented: settingsPresentation) {
                 GarageTempoControlRoom(
                     beatsPerMinute: guidedSwingBPM,
@@ -85,7 +95,7 @@ struct GarageTempoBuilderView: View {
                 }
             }
             .onDisappear {
-                stopPlayback()
+                session.stop()
             }
             .navigationBarBackButtonHidden(true)
             .navigationTitle("")
@@ -104,6 +114,7 @@ struct GarageTempoBuilderView: View {
                     onControlRoom: { presentedSheet = .settings },
                     onCapture: { showsSwingCapture = true }
                 )
+                .accessibilityIdentifier("tempo-builder-top-bar")
 
                 GarageTempoPageSelector(
                     selectedPage: $selectedPage,
@@ -111,6 +122,7 @@ struct GarageTempoBuilderView: View {
                     namespace: pageSelectorNamespace
                 )
                 .padding(.top, 8)
+                .accessibilityIdentifier("tempo-builder-mode-selector")
 
                 tempoPages
                 .tabViewStyle(.page(indexDisplayMode: .never))
@@ -126,29 +138,28 @@ struct GarageTempoBuilderView: View {
             GarageMetronomePage(
                 beatsPerMinute: $metronomeBPM,
                 selectedRawValue: $startClickRawValue,
-                sessionState: selectedPage == .metronome ? sessionState : .ready,
+                sessionState: selectedPage == .metronome ? session.state : .ready,
                 reduceMotion: reduceMotion,
-                hasPendingTempo: hasPendingTempo,
-                playbackProgress: { audioEngine.currentPlaybackProgress() },
-                onStart: startPlayback,
-                onStop: stopPlayback
+                hasPendingTempo: session.hasPendingTempo,
+                playbackProgress: session.currentPlaybackProgress,
+                onStart: { session.start(sessionConfiguration) },
+                onStop: session.stop
             )
             .tag(GarageTempoPage.metronome)
 
             GarageGuidedSwingPage(
                 beatsPerMinute: $guidedSwingBPM,
-                appliedBPM: appliedBPM,
+                appliedBPM: session.appliedBPM,
                 recipe: recipe,
-                sessionState: selectedPage == .guidedSwing ? sessionState : .ready,
+                sessionState: selectedPage == .guidedSwing ? session.state : .ready,
                 reduceMotion: reduceMotion,
-                countdownValue: countdownValue,
-                restProgress: restProgress,
-                hasPendingTempo: hasPendingTempo,
-                playbackProgress: { audioEngine.currentPlaybackProgress() },
-                onStart: startPlayback,
-                onPause: pausePlayback,
-                onResume: resumePlayback,
-                onStop: stopPlayback
+                countdownValue: session.countdownValue,
+                restProgress: session.restProgress,
+                hasPendingTempo: session.hasPendingTempo,
+                playbackProgress: session.currentPlaybackProgress,
+                onStart: { session.start(sessionConfiguration) },
+                onRestart: { session.restartGuidedSwing(sessionConfiguration) },
+                onStop: session.stop
             )
             .tag(GarageTempoPage.guidedSwing)
         }
@@ -161,229 +172,19 @@ struct GarageTempoBuilderView: View {
         )
     }
 
-    private func startPlayback() {
-        playbackTask?.cancel()
-        countdownSpeaker.stop()
-        appliedBPM = activeSavedBPM
-        hasPendingTempo = false
-        if selectedPage == .guidedSwing {
-            startGuidedSequence()
-        } else {
-            startMetronome()
-        }
-    }
-
     private func clampSavedTempos() {
         metronomeBPM = GarageSlowTempoLogic.clampedConsumerBPM(metronomeBPM)
         guidedSwingBPM = GarageSlowTempoLogic.clampedConsumerBPM(guidedSwingBPM)
-        appliedBPM = activeSavedBPM
+        session.synchronizeReadyBPM(activeSavedBPM)
     }
 
     private func migrateSavedClickSound() {
         startClickRawValue = GarageMetronomeClickProfile.migrated(from: startClickRawValue).rawValue
     }
 
-    private func startMetronome() {
-        audioEngine.start(
-            beatsPerMinute: appliedBPM,
-            recipe: recipe,
-            soundProfile: selectedGuidedSound.engineProfile,
-            metronomeStartProfile: selectedStartClick,
-            metronomeImpactProfile: selectedImpactClick,
-            guidedClicksEnabled: false,
-            instrumentMode: .metronome
-        )
-        guard audioEngine.playbackState == .playing else {
-            sessionState = .ready
-            return
-        }
-        countdownValue = nil
-        sessionState = .playing
-        startRunningHaptics()
-    }
-
-    private func startGuidedSequence() {
-        playbackTask = Task { @MainActor in
-            await runGuidedCountIn()
-            guard Task.isCancelled == false else { return }
-
-            while Task.isCancelled == false {
-                applyPendingGuidedTempo()
-                countdownValue = nil
-                restProgress = 0
-                sessionState = .playing
-                audioEngine.playOneCycle(
-                    beatsPerMinute: appliedBPM,
-                    recipe: recipe,
-                    soundProfile: selectedGuidedSound.engineProfile,
-                    metronomeStartProfile: selectedStartClick,
-                    metronomeImpactProfile: selectedImpactClick,
-                    guidedClicksEnabled: false,
-                    instrumentMode: .build
-                )
-                startRunningHaptics()
-                let motionDuration = recipe.guidedMotionDuration(for: appliedBPM)
-                try? await Task.sleep(nanoseconds: UInt64(motionDuration * 1_000_000_000))
-                guard Task.isCancelled == false else { return }
-                sessionState = .resting
-                await runRestCountdown()
-                guard Task.isCancelled == false else { return }
-                await runGuidedCountIn()
-                guard Task.isCancelled == false else { return }
-            }
-        }
-    }
-
-    private func runGuidedCountIn() async {
-        sessionState = .countingIn
-        restProgress = 0
-        for value in [3, 2, 1] {
-            guard Task.isCancelled == false else { return }
-            countdownValue = value
-            countdownSpeaker.speak(value)
-            triggerHaptic(.light)
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-        }
-    }
-
-    private func runRestCountdown() async {
-        let interval = max(restInterval, 1)
-        let start = Date()
-        restProgress = 0
-
-        while Task.isCancelled == false {
-            let elapsedSeconds = Date().timeIntervalSince(start)
-            restProgress = min(max(elapsedSeconds / interval, 0), 1)
-            guard restProgress < 1 else { return }
-            try? await Task.sleep(nanoseconds: 50_000_000)
-        }
-    }
-
-    private func applyPendingGuidedTempo() {
-        guard appliedBPM != guidedSwingBPM else {
-            hasPendingTempo = false
-            return
-        }
-        appliedBPM = guidedSwingBPM
-        hasPendingTempo = false
-    }
-
-    private func pausePlayback() {
-        guard selectedPage == .guidedSwing, isActive else { return }
-        playbackTask?.cancel()
-        playbackTask = nil
-        countdownSpeaker.stop()
-        countdownValue = nil
-        restProgress = 0
-        hapticTask?.cancel()
-        hapticTask = nil
-        audioEngine.stop()
-        sessionState = .paused
-    }
-
-    private func resumePlayback() {
-        guard selectedPage == .guidedSwing, sessionState == .paused else { return }
-        appliedBPM = guidedSwingBPM
-        hasPendingTempo = false
-        startGuidedSequence()
-    }
-
-    private func stopPlayback() {
-        playbackTask?.cancel()
-        playbackTask = nil
-        countdownSpeaker.stop()
-        countdownValue = nil
-        restProgress = 0
-        hapticTask?.cancel()
-        hapticTask = nil
-        audioEngine.stop()
-        sessionState = .ready
-        hasPendingTempo = false
-    }
-
-    private func tempoChanged() {
-        guard isActive else {
-            appliedBPM = activeSavedBPM
-            return
-        }
-        if selectedPage == .guidedSwing {
-            hasPendingTempo = appliedBPM != guidedSwingBPM
-            return
-        }
-        guard isRunning else { return }
-        appliedBPM = metronomeBPM
-        hasPendingTempo = false
-        audioEngine.update(
-            beatsPerMinute: appliedBPM,
-            recipe: recipe,
-            soundProfile: selectedGuidedSound.engineProfile,
-            metronomeStartProfile: selectedStartClick,
-            metronomeImpactProfile: selectedImpactClick,
-            guidedClicksEnabled: false,
-            instrumentMode: .metronome
-        )
-    }
-
-    private func startRunningHaptics() {
-        hapticTask?.cancel()
-        guard hapticsEnabled else { return }
-        let page = selectedPage
-        let bpm = appliedBPM
-        hapticTask = Task { @MainActor in
-            var lastMetronomeBeatIndex = -1
-            while Task.isCancelled == false, sessionState == .playing {
-                if page == .metronome {
-                    let progress = audioEngine.currentPlaybackProgress()
-                    let beatIndex = min(Int(floor(progress * 4)), 3)
-                    if beatIndex != lastMetronomeBeatIndex {
-                        lastMetronomeBeatIndex = beatIndex
-                        triggerHaptic(.light)
-                    }
-                    try? await Task.sleep(nanoseconds: 8_000_000)
-                } else {
-                    let topDelay = recipe.takeawayDuration(for: bpm)
-                    let impactDelay = recipe.pauseDuration(for: bpm) + recipe.downswingDuration(for: bpm)
-                    try? await Task.sleep(nanoseconds: UInt64(topDelay * 1_000_000_000))
-                    guard Task.isCancelled == false else { return }
-                    triggerHaptic(.light)
-                    try? await Task.sleep(nanoseconds: UInt64(impactDelay * 1_000_000_000))
-                    guard Task.isCancelled == false else { return }
-                    triggerHaptic(.rigid)
-                    return
-                }
-            }
-        }
-    }
-
-    private func triggerHaptic(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
-        guard hapticsEnabled else { return }
-        UIImpactFeedbackGenerator(style: style).impactOccurred()
-    }
-
     private func close() {
-        stopPlayback()
+        session.stop()
         dismiss()
-    }
-}
-
-private enum GarageTempoPage: String, CaseIterable, Identifiable {
-    case metronome
-    case guidedSwing
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .metronome: "Metronome"
-        case .guidedSwing: "Guided Swing"
-        }
-    }
-
-    var instrumentMode: GarageTempoInstrumentMode {
-        switch self {
-        case .metronome: .metronome
-        case .guidedSwing: .build
-        }
     }
 }
 
@@ -391,44 +192,6 @@ private enum GarageTempoSheet: String, Identifiable {
     case settings
 
     var id: String { rawValue }
-}
-
-private enum GarageTempoSessionState: Equatable {
-    case ready
-    case countingIn
-    case resting
-    case playing
-    case paused
-}
-
-@MainActor
-private final class GarageTempoCountdownSpeaker: ObservableObject {
-    private let synthesizer = AVSpeechSynthesizer()
-    private lazy var preferredVoice: AVSpeechSynthesisVoice? = {
-        AVSpeechSynthesisVoice.speechVoices()
-            .filter { $0.language.hasPrefix("en") && $0.gender == .female }
-            .sorted { $0.quality.rawValue > $1.quality.rawValue }
-            .first
-            ?? AVSpeechSynthesisVoice(language: "en-US")
-    }()
-
-    func speak(_ value: Int) {
-        if synthesizer.isSpeaking {
-            synthesizer.stopSpeaking(at: .immediate)
-        }
-
-        let utterance = AVSpeechUtterance(string: "\(value)")
-        utterance.voice = preferredVoice
-        utterance.rate = 0.43
-        utterance.pitchMultiplier = 0.96
-        utterance.volume = 0.86
-        utterance.preUtteranceDelay = 0.04
-        synthesizer.speak(utterance)
-    }
-
-    func stop() {
-        synthesizer.stopSpeaking(at: .immediate)
-    }
 }
 
 private struct GarageTempoTopBar: View {
@@ -456,12 +219,13 @@ private struct GarageTempoTopBar: View {
                         action: onControlRoom
                     )
                     .disabled(controlsEnabled == false)
-                    .opacity(controlsEnabled ? 1 : 0.34)
+                    .opacity(controlsEnabled ? 1 : 0.65)
+                    .accessibilityIdentifier("tempo-builder-control-room")
                 }
 
                 GarageTempoIconButton(systemImage: "camera.fill", label: "Swing capture", action: onCapture)
                     .disabled(controlsEnabled == false)
-                    .opacity(controlsEnabled ? 1 : 0.34)
+                    .opacity(controlsEnabled ? 1 : 0.65)
             }
         }
         .frame(height: 46)
@@ -513,7 +277,7 @@ private struct GarageTempoPageSelector: View {
         )
         .frame(height: 44)
         .disabled(controlsEnabled == false)
-        .opacity(controlsEnabled ? 1 : 0.46)
+        .opacity(controlsEnabled ? 1 : 0.68)
     }
 }
 
@@ -592,6 +356,7 @@ private struct GarageMetronomePage: View {
 
 private struct GarageMetronomeBPMControl: View {
     @Binding var beatsPerMinute: Double
+    @ScaledMetric(relativeTo: .largeTitle) private var bpmFontSize = 70
 
     private var range: ClosedRange<Double> { GarageSlowTempoLogic.consumerBPMRange }
 
@@ -602,7 +367,7 @@ private struct GarageMetronomeBPMControl: View {
 
                 HStack(alignment: .lastTextBaseline, spacing: 7) {
                     Text("\(Int(beatsPerMinute.rounded()))")
-                        .font(.system(size: 70, weight: .semibold, design: .rounded))
+                        .font(.system(size: bpmFontSize, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                     Text("BPM")
                         .font(.system(size: 12, weight: .bold, design: .rounded))
@@ -649,13 +414,10 @@ private struct GarageMetronomeSoundToolbar: View {
 
     var body: some View {
         Menu {
-            ForEach(GarageMetronomeClickProfile.allCases) { candidate in
-                Button {
-                    onSelect(candidate)
-                } label: {
-                    Label(candidate.title, systemImage: candidate == profile ? "checkmark" : "waveform")
-                }
-            }
+            soundSection("Crisp Markers", profiles: GarageMetronomeClickProfile.crispMarkers)
+            soundSection("Soft Practice", profiles: GarageMetronomeClickProfile.softPractice)
+            soundSection("Signal Accents", profiles: GarageMetronomeClickProfile.signalAccents)
+            soundSection("Digital", profiles: GarageMetronomeClickProfile.digitalSynthetic)
         } label: {
             GarageMetronomeSoundLabel(profile: profile)
         }
@@ -666,6 +428,19 @@ private struct GarageMetronomeSoundToolbar: View {
         .opacity(controlsEnabled ? 1 : 0.52)
         .accessibilityLabel("Choose metronome sound")
         .accessibilityValue(profile.title)
+    }
+
+    @ViewBuilder
+    private func soundSection(_ title: String, profiles: [GarageMetronomeClickProfile]) -> some View {
+        Section(title) {
+            ForEach(profiles) { candidate in
+                Button {
+                    onSelect(candidate)
+                } label: {
+                    Label(candidate.title, systemImage: candidate == profile ? "checkmark" : "waveform")
+                }
+            }
+        }
     }
 }
 
@@ -711,9 +486,10 @@ private struct GarageGuidedSwingPage: View {
     let hasPendingTempo: Bool
     let playbackProgress: () -> Double
     let onStart: () -> Void
-    let onPause: () -> Void
-    let onResume: () -> Void
+    let onRestart: () -> Void
     let onStop: () -> Void
+    @ScaledMetric(relativeTo: .largeTitle) private var bpmFontSize = 58
+    @ScaledMetric(relativeTo: .body) private var timelineHeight = 250
 
     private var isPlaying: Bool { sessionState == .playing }
 
@@ -735,13 +511,13 @@ private struct GarageGuidedSwingPage: View {
                 )
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 250)
+            .frame(height: min(max(timelineHeight, 210), 310))
 
             Spacer(minLength: 12)
 
             HStack(alignment: .lastTextBaseline, spacing: 8) {
                 Text("\(Int(beatsPerMinute.rounded()))")
-                    .font(.system(size: 58, weight: .semibold, design: .rounded))
+                    .font(.system(size: bpmFontSize, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(GarageProTheme.textPrimary)
 
@@ -768,8 +544,7 @@ private struct GarageGuidedSwingPage: View {
                 state: sessionState,
                 reduceMotion: reduceMotion,
                 onStart: onStart,
-                onPause: onPause,
-                onResume: onResume,
+                onRestart: onRestart,
                 onStop: onStop
             )
                 .padding(.top, 12)
@@ -786,8 +561,6 @@ private struct GarageGuidedSwingPage: View {
             return "Reset. Next swing starts after the rest."
         case .playing:
             return "Follow the build to impact."
-        case .paused:
-            return "Paused. Resume starts with a fresh count."
         case .ready:
             return "Press Start. Settle into your rhythm."
         }
@@ -1208,13 +981,12 @@ private struct GarageTempoSessionControls: View {
     let state: GarageTempoSessionState
     let reduceMotion: Bool
     let onStart: () -> Void
-    var onPause: (() -> Void)?
-    var onResume: (() -> Void)?
+    var onRestart: (() -> Void)?
     let onStop: () -> Void
     @Namespace private var controlNamespace
 
     private var isActive: Bool { state != .ready }
-    private var supportsPause: Bool { onPause != nil && onResume != nil }
+    private var supportsRestart: Bool { onRestart != nil }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -1235,8 +1007,9 @@ private struct GarageTempoSessionControls: View {
                     }
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier(primaryAccessibilityIdentifier)
 
-            if supportsPause, isActive {
+            if supportsRestart, isActive {
                 Button(action: onStop) {
                     Image(systemName: "stop.fill")
                         .font(.system(size: 16, weight: .bold))
@@ -1246,6 +1019,7 @@ private struct GarageTempoSessionControls: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Stop")
+                .accessibilityIdentifier("tempo-builder-stop")
             }
         }
         .frame(height: 56)
@@ -1253,22 +1027,23 @@ private struct GarageTempoSessionControls: View {
     }
 
     private var primaryTitle: String {
-        if state == .paused { return "Resume" }
-        if supportsPause, isActive { return "Pause" }
+        if supportsRestart, isActive { return "Restart Swing" }
         return isActive ? "Stop" : "Start"
     }
 
     private var primarySystemImage: String {
-        if state == .paused { return "play.fill" }
-        if supportsPause, isActive { return "pause.fill" }
+        if supportsRestart, isActive { return "arrow.counterclockwise" }
         return isActive ? "stop.fill" : "play.fill"
     }
 
+    private var primaryAccessibilityIdentifier: String {
+        if supportsRestart, isActive { return "tempo-builder-restart-swing" }
+        return isActive ? "tempo-builder-stop" : "tempo-builder-start"
+    }
+
     private func primaryAction() {
-        if state == .paused {
-            onResume?()
-        } else if supportsPause, isActive {
-            onPause?()
+        if supportsRestart, isActive {
+            onRestart?()
         } else if isActive {
             onStop()
         } else {
@@ -1303,7 +1078,7 @@ private struct GarageTempoIconButton: View {
             Image(systemName: systemImage)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(GarageProTheme.textPrimary.opacity(0.86))
-                .frame(width: 40, height: 40)
+                .frame(width: 44, height: 44)
                 .background(GaragePremiumPalette.emeraldGlass.opacity(0.52), in: Circle())
                 .overlay(Circle().stroke(GaragePremiumPalette.mintText.opacity(0.14), lineWidth: 1))
         }
@@ -1336,6 +1111,11 @@ private struct GarageTempoControlRoom: View {
         GarageGuidedSwingProfile(rawValue: selectedGuidedRawValue) ?? .tension
     }
 
+    private let soundGroups: [(title: String, profiles: [GarageGuidedSwingProfile])] = [
+        ("Clean & Precise", GarageGuidedSwingProfile.cleanAndPrecise),
+        ("Weight & Air", GarageGuidedSwingProfile.weightAndAir)
+    ]
+
     var body: some View {
         ZStack {
             GarageTempoBackground()
@@ -1345,17 +1125,17 @@ private struct GarageTempoControlRoom: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Control Room")
-                                .font(.system(size: 28, weight: .semibold, design: .rounded))
+                                .font(.title.weight(.semibold))
                                 .foregroundStyle(GarageProTheme.textPrimary)
                             Text("Guided Swing")
-                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .font(.caption.weight(.bold))
                                 .foregroundStyle(GaragePremiumPalette.gold)
                         }
 
                         Spacer()
 
                         Button("Done") { dismiss() }
-                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .font(.body.weight(.semibold))
                             .foregroundStyle(GaragePremiumPalette.gold)
                     }
 
@@ -1374,27 +1154,29 @@ private struct GarageTempoControlRoom: View {
                         }
                         if showsSoundChoices {
                             GarageTempoSettingsDivider()
-                            VStack(spacing: 8) {
-                                ForEach(GarageGuidedSwingProfile.allCases) { profile in
-                                    GarageTempoSoundTile(
-                                        title: profile.title,
-                                        subtitle: profile.character,
-                                        isSelected: selectedGuidedRawValue == profile.rawValue
-                                    ) {
-                                        selectedGuidedRawValue = profile.rawValue
-                                        previewEngine.playOneCycle(
-                                            beatsPerMinute: beatsPerMinute,
-                                            recipe: recipe,
-                                            soundProfile: profile.engineProfile,
-                                            metronomeStartProfile: selectedStartSound,
-                                            metronomeImpactProfile: selectedImpactSound,
-                                            guidedClicksEnabled: false,
-                                            instrumentMode: .build
-                                        )
+                            VStack(spacing: 0) {
+                                ForEach(soundGroups, id: \.title) { group in
+                                    Text(group.title.uppercased())
+                                        .font(.caption2.weight(.bold))
+                                        .tracking(1.1)
+                                        .foregroundStyle(GarageProTheme.textSecondary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 16)
+                                        .padding(.top, 14)
+                                        .padding(.bottom, 6)
+                                        .accessibilityIdentifier("guided-sound-group-\(group.title)")
+
+                                    ForEach(group.profiles) { profile in
+                                        GarageTempoSoundRow(
+                                            title: profile.title,
+                                            subtitle: profile.character,
+                                            isSelected: selectedGuidedRawValue == profile.rawValue
+                                        ) {
+                                            selectAndPreview(profile)
+                                        }
                                     }
                                 }
                             }
-                            .padding(12)
                             .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                         GarageTempoSettingsDivider()
@@ -1415,11 +1197,11 @@ private struct GarageTempoControlRoom: View {
                         Stepper(value: $restInterval, in: 1...20, step: 1) {
                             HStack {
                                 Text("Rest Between Swings")
-                                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                    .font(.body.weight(.semibold))
                                     .foregroundStyle(GarageProTheme.textPrimary)
                                 Spacer()
                                 Text("\(Int(restInterval.rounded()))s")
-                                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                                    .font(.body.weight(.bold))
                                     .monospacedDigit()
                                     .foregroundStyle(GaragePremiumPalette.gold)
                             }
@@ -1435,7 +1217,7 @@ private struct GarageTempoControlRoom: View {
 
                     GarageTempoSettingsGroup {
                         Toggle("Haptics", isOn: $hapticsEnabled)
-                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .font(.body.weight(.semibold))
                             .foregroundStyle(GarageProTheme.textPrimary)
                             .tint(GaragePremiumPalette.gold)
                             .padding(16)
@@ -1446,6 +1228,19 @@ private struct GarageTempoControlRoom: View {
             }
         }
         .onDisappear { previewEngine.stop() }
+    }
+
+    private func selectAndPreview(_ profile: GarageGuidedSwingProfile) {
+        selectedGuidedRawValue = profile.rawValue
+        previewEngine.playOneCycle(
+            beatsPerMinute: beatsPerMinute,
+            recipe: recipe,
+            soundProfile: profile.engineProfile,
+            metronomeStartProfile: selectedStartSound,
+            metronomeImpactProfile: selectedImpactSound,
+            guidedClicksEnabled: false,
+            instrumentMode: .build
+        )
     }
 }
 
@@ -1468,11 +1263,11 @@ private struct GarageTempoReadbackRow: View {
     var body: some View {
         HStack {
             Text(title)
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .font(.body.weight(.semibold))
                 .foregroundStyle(GarageProTheme.textPrimary)
             Spacer()
             Text(value)
-                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .font(.body.weight(.bold))
                 .foregroundStyle(GaragePremiumPalette.gold)
         }
         .padding(16)
@@ -1488,7 +1283,7 @@ private struct GarageTempoActionRow: View {
         Button(action: action) {
             HStack {
                 Text(title)
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .font(.body.weight(.semibold))
                     .foregroundStyle(GarageProTheme.textPrimary)
                 Spacer()
                 Image(systemName: systemImage)
@@ -1510,11 +1305,11 @@ private struct GarageTempoActionValueRow: View {
         Button(action: action) {
             HStack {
                 Text(title)
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .font(.body.weight(.semibold))
                     .foregroundStyle(GarageProTheme.textPrimary)
                 Spacer()
                 Text(value)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.body.weight(.bold))
                     .foregroundStyle(GaragePremiumPalette.gold)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .bold))
@@ -1534,7 +1329,7 @@ private struct GarageTempoSettingsDivider: View {
     }
 }
 
-private struct GarageTempoSoundTile: View {
+private struct GarageTempoSoundRow: View {
     let title: String
     let subtitle: String
     let isSelected: Bool
@@ -1542,40 +1337,41 @@ private struct GarageTempoSoundTile: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Image(systemName: "waveform")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(GaragePremiumPalette.gold)
+            HStack(spacing: 12) {
+                Image(systemName: "waveform")
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(GaragePremiumPalette.gold)
+                    .frame(width: 22)
 
-                    Spacer()
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(GarageProTheme.textPrimary)
 
-                    Circle()
-                        .fill(isSelected ? GaragePremiumPalette.gold : GarageProTheme.textSecondary.opacity(0.22))
-                        .frame(width: 8, height: 8)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(GarageProTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Text(title)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(GarageProTheme.textPrimary)
+                Spacer(minLength: 8)
 
-                Text(subtitle)
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundStyle(GarageProTheme.textSecondary)
-                    .lineLimit(2)
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(isSelected ? GaragePremiumPalette.gold : GarageProTheme.textSecondary.opacity(0.45))
             }
-            .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
-            .padding(14)
-            .background(
-                isSelected ? GaragePremiumPalette.gold.opacity(0.10) : GarageProTheme.insetSurface.opacity(0.76),
-                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(isSelected ? GaragePremiumPalette.gold.opacity(0.42) : GarageProTheme.border, lineWidth: 1)
-            )
+            .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(isSelected ? GaragePremiumPalette.gold.opacity(0.08) : Color.clear)
         }
         .buttonStyle(.plain)
+        .overlay(alignment: .bottom) {
+            Divider()
+                .overlay(GarageProTheme.border)
+                .padding(.leading, 50)
+        }
+        .accessibilityLabel(title)
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
         .accessibilityHint("Plays a preview")
     }

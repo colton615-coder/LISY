@@ -353,6 +353,9 @@ enum GarageGuidedSwingProfile: String, CaseIterable, Identifiable {
         case .deepStrike: .storm
         }
     }
+
+    static let cleanAndPrecise: [Self] = [.tension, .vector, .sharpPulse]
+    static let weightAndAir: [Self] = [.mass, .airStrike, .deepStrike]
 }
 
 enum ElasticSlingshotSoundProfile: String, CaseIterable, Identifiable {
@@ -1852,3 +1855,5 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
         return outputs.isEmpty ? "No output route" : outputs.joined(separator: ", ")
     }
 }
+
+extension ElasticSlingshotAudioEngine: GarageTempoAudioControlling {}
