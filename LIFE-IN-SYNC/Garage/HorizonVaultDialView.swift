@@ -993,7 +993,6 @@ private struct GarageTempoSessionControls: View {
     let onStart: () -> Void
     var onRestart: (() -> Void)?
     let onStop: () -> Void
-    @Namespace private var controlNamespace
 
     private var isActive: Bool { state != .ready }
     private var supportsRestart: Bool { onRestart != nil }
@@ -1007,13 +1006,15 @@ private struct GarageTempoSessionControls: View {
                 )
                 .font(.system(size: 17, weight: .bold, design: .rounded))
                 .foregroundStyle(isActive ? Color.white : GaragePremiumPalette.emeraldDeep)
+                .transaction { transaction in
+                    transaction.animation = nil
+                }
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
                 .background {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .fill(isActive ? Color(red: 0.11, green: 0.11, blue: 0.12) : GaragePremiumPalette.gold)
                         .shadow(color: isActive ? .clear : GaragePremiumPalette.gold.opacity(0.24), radius: 14, x: 0, y: 8)
-                        .matchedGeometryEffect(id: "sessionControlSurface", in: controlNamespace)
                     }
             }
             .buttonStyle(.plain)
@@ -1030,6 +1031,7 @@ private struct GarageTempoSessionControls: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Stop")
                 .accessibilityIdentifier("tempo-builder-stop")
+                .transition(.opacity.combined(with: .scale(scale: 0.94)))
             }
         }
         .frame(height: 56)
