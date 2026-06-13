@@ -125,8 +125,6 @@ struct GarageTempoBuilderView: View {
                 .accessibilityIdentifier("tempo-builder-mode-selector")
 
                 tempoPages
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                .scrollDisabled(isActive)
             }
             .padding(.horizontal, 18)
             .padding(.top, 8)
@@ -134,35 +132,47 @@ struct GarageTempoBuilderView: View {
     }
 
     private var tempoPages: some View {
-        TabView(selection: $selectedPage) {
-            GarageMetronomePage(
-                beatsPerMinute: $metronomeBPM,
-                selectedRawValue: $startClickRawValue,
-                sessionState: selectedPage == .metronome ? session.state : .ready,
-                reduceMotion: reduceMotion,
-                hasPendingTempo: session.hasPendingTempo,
-                playbackProgress: session.currentPlaybackProgress,
-                onStart: { session.start(sessionConfiguration) },
-                onStop: session.stop
-            )
-            .tag(GarageTempoPage.metronome)
-
-            GarageGuidedSwingPage(
-                beatsPerMinute: $guidedSwingBPM,
-                appliedBPM: session.appliedBPM,
-                recipe: recipe,
-                sessionState: selectedPage == .guidedSwing ? session.state : .ready,
-                reduceMotion: reduceMotion,
-                countdownValue: session.countdownValue,
-                restProgress: session.restProgress,
-                hasPendingTempo: session.hasPendingTempo,
-                playbackProgress: session.currentPlaybackProgress,
-                onStart: { session.start(sessionConfiguration) },
-                onRestart: { session.restartGuidedSwing(sessionConfiguration) },
-                onStop: session.stop
-            )
-            .tag(GarageTempoPage.guidedSwing)
+        ZStack {
+            if selectedPage == .metronome {
+                metronomePage
+                    .transition(.opacity)
+            } else {
+                guidedSwingPage
+                    .transition(.opacity)
+            }
         }
+        .clipped()
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: selectedPage)
+    }
+
+    private var metronomePage: some View {
+        GarageMetronomePage(
+            beatsPerMinute: $metronomeBPM,
+            selectedRawValue: $startClickRawValue,
+            sessionState: selectedPage == .metronome ? session.state : .ready,
+            reduceMotion: reduceMotion,
+            hasPendingTempo: session.hasPendingTempo,
+            playbackProgress: session.currentPlaybackProgress,
+            onStart: { session.start(sessionConfiguration) },
+            onStop: session.stop
+        )
+    }
+
+    private var guidedSwingPage: some View {
+        GarageGuidedSwingPage(
+            beatsPerMinute: $guidedSwingBPM,
+            appliedBPM: session.appliedBPM,
+            recipe: recipe,
+            sessionState: selectedPage == .guidedSwing ? session.state : .ready,
+            reduceMotion: reduceMotion,
+            countdownValue: session.countdownValue,
+            restProgress: session.restProgress,
+            hasPendingTempo: session.hasPendingTempo,
+            playbackProgress: session.currentPlaybackProgress,
+            onStart: { session.start(sessionConfiguration) },
+            onRestart: { session.restartGuidedSwing(sessionConfiguration) },
+            onStop: session.stop
+        )
     }
 
     private var settingsPresentation: Binding<Bool> {
