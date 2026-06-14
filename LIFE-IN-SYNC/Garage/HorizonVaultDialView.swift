@@ -421,16 +421,16 @@ private struct GarageGuidedSwingPage: View {
 
             Spacer(minLength: 12)
 
-            TimelineView(.animation(minimumInterval: reduceMotion ? 0.15 : 1 / 60, paused: isPlaying == false)) { _ in
-                GarageGuidedSwingTimeline(
-                    state: visualState(progress: playbackProgress()),
-                    isPlaying: isPlaying,
-                    isResting: sessionState == .resting || sessionState == .countingIn,
-                    reduceMotion: reduceMotion,
-                    countdownValue: countdownValue,
-                    restProgress: restProgress
-                )
-            }
+            GarageGuidedSwingTimeline(
+                state: visualState(progress: playbackProgress()),
+                isPlaying: isPlaying,
+                isResting: sessionState == .resting || sessionState == .countingIn,
+                reduceMotion: reduceMotion,
+                countdownValue: countdownValue,
+                restProgress: restProgress,
+                appliedBPM: appliedBPM,
+                recipe: recipe
+            )
             .frame(maxWidth: .infinity)
             .frame(height: min(max(timelineHeight, 210), 310))
 
@@ -729,39 +729,24 @@ private struct GarageGuidedSwingTimeline: View {
     let reduceMotion: Bool
     let countdownValue: Int?
     let restProgress: Double
+    let appliedBPM: Double
+    let recipe: ElasticSlingshotRecipe
 
     var body: some View {
         GeometryReader { proxy in
-            let progress = visualProgress
-            let path = swingPath(in: proxy.size)
-            let markerPoint = point(at: progress, in: proxy.size)
             let startPoint = point(at: 0, in: proxy.size)
             let topPoint = point(at: 0.58, in: proxy.size)
             let impactPoint = point(at: 0.90, in: proxy.size)
             let impactActive = isPlaying && state.motionProgress >= 0.90 && state.motionProgress <= 0.94
 
             ZStack {
-                path
-                    .stroke(GaragePremiumPalette.mintText.opacity(isResting ? 0.12 : 0.28), style: StrokeStyle(lineWidth: 3, lineCap: .round))
-
-                if isPlaying, isResting == false {
-                    path
-                        .trimmedPath(from: 0, to: progress)
-                        .stroke(
-                            LinearGradient(
-                                colors: [GaragePremiumPalette.emerald, GaragePremiumPalette.gold],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            ),
-                            style: StrokeStyle(lineWidth: 5, lineCap: .round)
-                        )
-                }
-
-                Circle()
-                    .fill(isResting ? GaragePremiumPalette.mintText.opacity(0.36) : GaragePremiumPalette.gold)
-                    .frame(width: reduceMotion ? 15 : 17, height: reduceMotion ? 15 : 17)
-                    .shadow(color: isResting ? .clear : GaragePremiumPalette.gold.opacity(0.42), radius: 16)
-                    .position(markerPoint)
+                GarageGuidedSwingArc(
+                    isPlaying: isPlaying,
+                    isResting: isResting,
+                    reduceMotion: reduceMotion,
+                    appliedBPM: appliedBPM,
+                    recipe: recipe
+                )
 
                 GarageGuidedSwingLandmark(title: "Start", isActive: state.activeBeat == 1 && isResting == false, alignment: .center)
                     .position(x: startPoint.x, y: startPoint.y + 30)
@@ -769,17 +754,6 @@ private struct GarageGuidedSwingTimeline: View {
                     .position(x: topPoint.x, y: topPoint.y - 26)
                 GarageGuidedSwingLandmark(title: "Impact", isActive: impactActive, alignment: .center)
                     .position(x: impactPoint.x, y: impactPoint.y + 30)
-
-                Circle()
-                    .fill(GaragePremiumPalette.gold.opacity(impactActive ? 0.18 : 0))
-                    .frame(width: impactActive && reduceMotion == false ? 72 : 18, height: impactActive && reduceMotion == false ? 72 : 18)
-                    .position(impactPoint)
-
-                Circle()
-                    .stroke(GaragePremiumPalette.gold.opacity(impactActive ? 0.92 : 0), lineWidth: 4)
-                    .frame(width: impactActive && reduceMotion == false ? 58 : 18, height: impactActive && reduceMotion == false ? 58 : 18)
-                    .position(impactPoint)
-                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: impactActive)
 
                 if isResting, countdownValue == nil {
                     Circle()
@@ -807,33 +781,6 @@ private struct GarageGuidedSwingTimeline: View {
         )
     }
 
-    private var visualProgress: Double {
-        if isResting { return 0 }
-        guard reduceMotion else { return min(max(state.motionProgress, 0), 1) }
-        switch state.activeBeat {
-        case 1: return 0
-        case 2: return 0.58
-        default: return 0.90
-        }
-    }
-
-    private func swingPath(in size: CGSize) -> Path {
-        let start = point(at: 0, in: size)
-        let impact = point(at: 0.90, in: size)
-        let finish = point(at: 1, in: size)
-        var path = Path()
-        path.move(to: start)
-        path.addQuadCurve(
-            to: impact,
-            control: CGPoint(x: size.width * 0.52, y: size.height * 0.02)
-        )
-        path.addQuadCurve(
-            to: finish,
-            control: CGPoint(x: size.width * 0.93, y: size.height * 0.80)
-        )
-        return path
-    }
-
     private func point(at progress: Double, in size: CGSize) -> CGPoint {
         let progress = min(max(progress, 0), 1)
         let start = CGPoint(x: size.width * 0.09, y: size.height * 0.72)
@@ -857,6 +804,294 @@ private struct GarageGuidedSwingTimeline: View {
             x: (inverse * inverse * impact.x) + (2 * inverse * t * followThroughControl.x) + (t * t * finish.x),
             y: (inverse * inverse * impact.y) + (2 * inverse * t * followThroughControl.y) + (t * t * finish.y)
         )
+    }
+}
+
+private struct GarageGuidedSwingArc: UIViewRepresentable {
+    let isPlaying: Bool
+    let isResting: Bool
+    let reduceMotion: Bool
+    let appliedBPM: Double
+    let recipe: ElasticSlingshotRecipe
+
+    func makeUIView(context: Context) -> GarageGuidedSwingArcView {
+        GarageGuidedSwingArcView()
+    }
+
+    func updateUIView(_ uiView: GarageGuidedSwingArcView, context: Context) {
+        uiView.update(
+            isPlaying: isPlaying,
+            isResting: isResting,
+            reduceMotion: reduceMotion,
+            appliedBPM: appliedBPM,
+            recipe: recipe
+        )
+    }
+}
+
+private final class GarageGuidedSwingArcView: UIView {
+    private let baseArcLayer = CAShapeLayer()
+    private let activeArcGradient = CAGradientLayer()
+    private let activeArcLayer = CAShapeLayer()
+    private let impactPulseLayer = CAShapeLayer()
+    private let trackingNode = CALayer()
+    private var configuration: Configuration?
+    private let goldColor = UIColor(red: 0.98, green: 0.75, blue: 0.18, alpha: 1)
+    private let emeraldColor = UIColor(red: 0.09, green: 0.35, blue: 0.22, alpha: 1)
+    private let mintTextColor = UIColor(red: 0.66, green: 0.84, blue: 0.70, alpha: 1)
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+
+        baseArcLayer.fillColor = UIColor.clear.cgColor
+        baseArcLayer.lineCap = .round
+        baseArcLayer.lineWidth = 3
+        layer.addSublayer(baseArcLayer)
+
+        activeArcLayer.fillColor = UIColor.clear.cgColor
+        activeArcLayer.lineCap = .round
+        activeArcLayer.lineWidth = 5
+        activeArcLayer.strokeEnd = 0
+        activeArcGradient.colors = [emeraldColor.cgColor, goldColor.cgColor]
+        activeArcGradient.startPoint = CGPoint(x: 0, y: 0.5)
+        activeArcGradient.endPoint = CGPoint(x: 1, y: 0.5)
+        activeArcGradient.mask = activeArcLayer
+        layer.addSublayer(activeArcGradient)
+
+        impactPulseLayer.fillColor = UIColor.clear.cgColor
+        impactPulseLayer.strokeColor = goldColor.cgColor
+        impactPulseLayer.lineWidth = 4
+        impactPulseLayer.opacity = 0
+        layer.addSublayer(impactPulseLayer)
+
+        trackingNode.bounds = CGRect(x: 0, y: 0, width: 17, height: 17)
+        trackingNode.cornerRadius = 8.5
+        trackingNode.backgroundColor = goldColor.cgColor
+        trackingNode.shadowColor = goldColor.cgColor
+        trackingNode.shadowOpacity = 0.42
+        trackingNode.shadowRadius = 16
+        layer.addSublayer(trackingNode)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        applyPath()
+    }
+
+    func update(
+        isPlaying: Bool,
+        isResting: Bool,
+        reduceMotion: Bool,
+        appliedBPM: Double,
+        recipe: ElasticSlingshotRecipe
+    ) {
+        let newConfiguration = Configuration(
+            isPlaying: isPlaying,
+            isResting: isResting,
+            reduceMotion: reduceMotion,
+            appliedBPM: appliedBPM,
+            recipe: recipe
+        )
+        let shouldStartCycle = configuration?.isPlaying != true && isPlaying
+        configuration = newConfiguration
+        applyAppearance()
+
+        if shouldStartCycle {
+            startMotionCycle()
+        } else if isPlaying == false {
+            stopMotion(at: 0)
+        }
+    }
+
+    private func applyPath() {
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        let path = kineticPath(in: bounds.size)
+        baseArcLayer.frame = bounds
+        baseArcLayer.path = path.cgPath
+        activeArcGradient.frame = bounds
+        activeArcLayer.frame = bounds
+        activeArcLayer.path = path.cgPath
+        impactPulseLayer.bounds = CGRect(x: 0, y: 0, width: 58, height: 58)
+        impactPulseLayer.path = UIBezierPath(ovalIn: impactPulseLayer.bounds).cgPath
+        impactPulseLayer.position = point(at: 0.90, in: bounds.size)
+
+        if trackingNode.animation(forKey: "garageGuidedSwingPosition") == nil {
+            trackingNode.position = point(at: 0, in: bounds.size)
+            if configuration?.isPlaying == true {
+                startMotionCycle()
+            }
+        }
+    }
+
+    private func applyAppearance() {
+        guard let configuration else { return }
+        let restingAlpha: CGFloat = configuration.isResting ? 0.12 : 0.28
+        baseArcLayer.strokeColor = mintTextColor.withAlphaComponent(restingAlpha).cgColor
+        activeArcLayer.strokeColor = UIColor.white.cgColor
+        activeArcGradient.opacity = configuration.isPlaying && configuration.isResting == false ? 1 : 0
+        trackingNode.backgroundColor = (
+            configuration.isResting
+                ? mintTextColor.withAlphaComponent(0.36)
+                : goldColor
+        ).cgColor
+        trackingNode.shadowOpacity = configuration.isResting ? 0 : 0.42
+        trackingNode.bounds.size = configuration.reduceMotion ? CGSize(width: 15, height: 15) : CGSize(width: 17, height: 17)
+        trackingNode.cornerRadius = trackingNode.bounds.width / 2
+    }
+
+    private func startMotionCycle() {
+        guard let configuration, bounds.width > 0, bounds.height > 0 else { return }
+        stopMotion(at: 0)
+        let duration = configuration.recipe.guidedMotionDuration(for: configuration.appliedBPM)
+
+        guard configuration.reduceMotion == false else {
+            startReducedMotionCycle(configuration: configuration, duration: duration)
+            return
+        }
+
+        let keyTimes = motionKeyTimes(configuration: configuration, duration: duration)
+        let positionAnimation = CAKeyframeAnimation(keyPath: "position")
+        positionAnimation.path = kineticPath(in: bounds.size).cgPath
+        positionAnimation.keyTimes = keyTimes
+        positionAnimation.timingFunctions = [
+            CAMediaTimingFunction(name: .easeIn),
+            CAMediaTimingFunction(name: .easeInEaseOut),
+            CAMediaTimingFunction(controlPoints: 0.65, 0.0, 0.95, 0.35),
+            CAMediaTimingFunction(name: .linear),
+            CAMediaTimingFunction(name: .easeOut)
+        ]
+        positionAnimation.duration = duration
+        positionAnimation.calculationMode = .cubic
+        positionAnimation.isRemovedOnCompletion = false
+        positionAnimation.fillMode = .forwards
+        trackingNode.add(positionAnimation, forKey: "garageGuidedSwingPosition")
+
+        let trailAnimation = CAKeyframeAnimation(keyPath: "strokeEnd")
+        trailAnimation.values = [0.0, 0.58, 0.62, 0.90, 0.93, 1.0]
+        trailAnimation.keyTimes = keyTimes
+        trailAnimation.timingFunctions = positionAnimation.timingFunctions
+        trailAnimation.duration = duration
+        trailAnimation.isRemovedOnCompletion = false
+        trailAnimation.fillMode = .forwards
+        activeArcLayer.add(trailAnimation, forKey: "garageGuidedSwingTrail")
+        startImpactPulse(after: configuration.recipe.swingDuration(for: configuration.appliedBPM))
+    }
+
+    private func startImpactPulse(after delay: TimeInterval) {
+        let opacity = CAKeyframeAnimation(keyPath: "opacity")
+        opacity.values = [0, 0.92, 0]
+        opacity.keyTimes = [0, 0.22, 1]
+
+        let scale = CAKeyframeAnimation(keyPath: "transform.scale")
+        scale.values = [0.3, 1, 1.35]
+        scale.keyTimes = [0, 0.35, 1]
+
+        let group = CAAnimationGroup()
+        group.animations = [opacity, scale]
+        group.beginTime = impactPulseLayer.convertTime(CACurrentMediaTime(), from: nil) + delay
+        group.duration = 0.38
+        impactPulseLayer.add(group, forKey: "garageGuidedSwingImpact")
+    }
+
+    private func startReducedMotionCycle(configuration: Configuration, duration: TimeInterval) {
+        let animation = CAKeyframeAnimation(keyPath: "position")
+        animation.values = [
+            NSValue(cgPoint: point(at: 0, in: bounds.size)),
+            NSValue(cgPoint: point(at: 0.58, in: bounds.size)),
+            NSValue(cgPoint: point(at: 0.62, in: bounds.size)),
+            NSValue(cgPoint: point(at: 0.90, in: bounds.size)),
+            NSValue(cgPoint: point(at: 0.93, in: bounds.size)),
+            NSValue(cgPoint: point(at: 1, in: bounds.size))
+        ]
+        animation.keyTimes = motionKeyTimes(configuration: configuration, duration: duration)
+        animation.duration = duration
+        animation.calculationMode = .discrete
+        animation.isRemovedOnCompletion = false
+        animation.fillMode = .forwards
+        trackingNode.add(animation, forKey: "garageGuidedSwingPosition")
+
+        let trailAnimation = CAKeyframeAnimation(keyPath: "strokeEnd")
+        trailAnimation.values = [0.0, 0.58, 0.62, 0.90, 0.93, 1.0]
+        trailAnimation.keyTimes = animation.keyTimes
+        trailAnimation.duration = duration
+        trailAnimation.calculationMode = .discrete
+        trailAnimation.isRemovedOnCompletion = false
+        trailAnimation.fillMode = .forwards
+        activeArcLayer.add(trailAnimation, forKey: "garageGuidedSwingTrail")
+    }
+
+    private func stopMotion(at progress: CGFloat) {
+        trackingNode.removeAnimation(forKey: "garageGuidedSwingPosition")
+        activeArcLayer.removeAnimation(forKey: "garageGuidedSwingTrail")
+        impactPulseLayer.removeAnimation(forKey: "garageGuidedSwingImpact")
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        trackingNode.position = point(at: progress, in: bounds.size)
+        activeArcLayer.strokeEnd = progress
+        CATransaction.commit()
+    }
+
+    private func motionKeyTimes(configuration: Configuration, duration: TimeInterval) -> [NSNumber] {
+        let recipe = configuration.recipe
+        let bpm = configuration.appliedBPM
+        let takeawayEnd = recipe.takeawayDuration(for: bpm)
+        let pauseEnd = takeawayEnd + recipe.pauseDuration(for: bpm)
+        let impactStart = recipe.swingDuration(for: bpm)
+        let impactEnd = recipe.swingDuration(for: bpm) + recipe.impactDuration
+        return [0, takeawayEnd, pauseEnd, impactStart, impactEnd, duration].map {
+            NSNumber(value: min(max($0 / max(duration, 0.01), 0), 1))
+        }
+    }
+
+    private func kineticPath(in size: CGSize) -> UIBezierPath {
+        let path = UIBezierPath()
+        path.move(to: point(at: 0, in: size))
+        path.addQuadCurve(to: point(at: 0.58, in: size), controlPoint: CGPoint(x: size.width * 0.24, y: size.height * 0.20))
+        path.addQuadCurve(to: point(at: 0.62, in: size), controlPoint: CGPoint(x: size.width * 0.55, y: size.height * 0.02))
+        path.addQuadCurve(to: point(at: 0.90, in: size), controlPoint: CGPoint(x: size.width * 0.76, y: size.height * 0.22))
+        path.addQuadCurve(to: point(at: 0.93, in: size), controlPoint: CGPoint(x: size.width * 0.88, y: size.height * 0.70))
+        path.addQuadCurve(to: point(at: 1, in: size), controlPoint: CGPoint(x: size.width * 0.93, y: size.height * 0.80))
+        return path
+    }
+
+    private func point(at progress: CGFloat, in size: CGSize) -> CGPoint {
+        let progress = min(max(progress, 0), 1)
+        let start = CGPoint(x: size.width * 0.09, y: size.height * 0.72)
+        let control = CGPoint(x: size.width * 0.52, y: size.height * 0.02)
+        let impact = CGPoint(x: size.width * 0.86, y: size.height * 0.66)
+        let followThroughControl = CGPoint(x: size.width * 0.93, y: size.height * 0.80)
+        let finish = CGPoint(x: size.width * 0.95, y: size.height * 0.88)
+
+        if progress <= 0.90 {
+            let t = progress / 0.90
+            let inverse = 1 - t
+            return CGPoint(
+                x: (inverse * inverse * start.x) + (2 * inverse * t * control.x) + (t * t * impact.x),
+                y: (inverse * inverse * start.y) + (2 * inverse * t * control.y) + (t * t * impact.y)
+            )
+        }
+
+        let t = (progress - 0.90) / 0.10
+        let inverse = 1 - t
+        return CGPoint(
+            x: (inverse * inverse * impact.x) + (2 * inverse * t * followThroughControl.x) + (t * t * finish.x),
+            y: (inverse * inverse * impact.y) + (2 * inverse * t * followThroughControl.y) + (t * t * finish.y)
+        )
+    }
+
+    private struct Configuration: Equatable {
+        let isPlaying: Bool
+        let isResting: Bool
+        let reduceMotion: Bool
+        let appliedBPM: Double
+        let recipe: ElasticSlingshotRecipe
     }
 }
 
