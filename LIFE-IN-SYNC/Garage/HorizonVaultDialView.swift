@@ -736,7 +736,7 @@ private struct GarageGuidedSwingTimeline: View {
         GeometryReader { proxy in
             let startPoint = point(at: 0, in: proxy.size)
             let topPoint = point(at: 0.58, in: proxy.size)
-            let impactPoint = point(at: 0.90, in: proxy.size)
+            let impactPoint = point(at: 1, in: proxy.size)
             let impactActive = isPlaying && state.motionProgress >= 0.90 && state.motionProgress <= 0.94
 
             ZStack {
@@ -784,25 +784,25 @@ private struct GarageGuidedSwingTimeline: View {
     private func point(at progress: Double, in size: CGSize) -> CGPoint {
         let progress = min(max(progress, 0), 1)
         let start = CGPoint(x: size.width * 0.09, y: size.height * 0.72)
-        let control = CGPoint(x: size.width * 0.52, y: size.height * 0.02)
-        let impact = CGPoint(x: size.width * 0.86, y: size.height * 0.66)
-        let followThroughControl = CGPoint(x: size.width * 0.93, y: size.height * 0.80)
-        let finish = CGPoint(x: size.width * 0.95, y: size.height * 0.88)
+        let top = CGPoint(x: size.width * 0.52, y: size.height * 0.18)
+        let backswingControl = CGPoint(x: size.width * 0.24, y: size.height * 0.18)
+        let downswingControl = CGPoint(x: size.width * 0.78, y: size.height * 0.18)
+        let impact = CGPoint(x: size.width * 0.91, y: size.height * 0.72)
 
-        if progress <= 0.90 {
-            let t = progress / 0.90
+        if progress <= 0.58 {
+            let t = progress / 0.58
             let inverse = 1 - t
             return CGPoint(
-                x: (inverse * inverse * start.x) + (2 * inverse * t * control.x) + (t * t * impact.x),
-                y: (inverse * inverse * start.y) + (2 * inverse * t * control.y) + (t * t * impact.y)
+                x: (inverse * inverse * start.x) + (2 * inverse * t * backswingControl.x) + (t * t * top.x),
+                y: (inverse * inverse * start.y) + (2 * inverse * t * backswingControl.y) + (t * t * top.y)
             )
         }
 
-        let t = (progress - 0.90) / 0.10
+        let t = (progress - 0.58) / 0.42
         let inverse = 1 - t
         return CGPoint(
-            x: (inverse * inverse * impact.x) + (2 * inverse * t * followThroughControl.x) + (t * t * finish.x),
-            y: (inverse * inverse * impact.y) + (2 * inverse * t * followThroughControl.y) + (t * t * finish.y)
+            x: (inverse * inverse * top.x) + (2 * inverse * t * downswingControl.x) + (t * t * impact.x),
+            y: (inverse * inverse * top.y) + (2 * inverse * t * downswingControl.y) + (t * t * impact.y)
         )
     }
 }
@@ -920,7 +920,7 @@ private final class GarageGuidedSwingArcView: UIView {
         activeArcLayer.path = path.cgPath
         impactPulseLayer.bounds = CGRect(x: 0, y: 0, width: 58, height: 58)
         impactPulseLayer.path = UIBezierPath(ovalIn: impactPulseLayer.bounds).cgPath
-        impactPulseLayer.position = point(at: 0.90, in: bounds.size)
+        impactPulseLayer.position = point(at: 1, in: bounds.size)
 
         if trackingNode.animation(forKey: "garageGuidedSwingPosition") == nil {
             trackingNode.position = point(at: 0, in: bounds.size)
@@ -936,6 +936,7 @@ private final class GarageGuidedSwingArcView: UIView {
         baseArcLayer.strokeColor = mintTextColor.withAlphaComponent(restingAlpha).cgColor
         activeArcLayer.strokeColor = UIColor.white.cgColor
         activeArcGradient.opacity = configuration.isPlaying && configuration.isResting == false ? 1 : 0
+        trackingNode.opacity = configuration.isPlaying && configuration.isResting == false ? 1 : 0
         trackingNode.backgroundColor = (
             configuration.isResting
                 ? mintTextColor.withAlphaComponent(0.36)
@@ -956,28 +957,18 @@ private final class GarageGuidedSwingArcView: UIView {
             return
         }
 
-        let keyTimes = motionKeyTimes(configuration: configuration, duration: duration)
         let positionAnimation = CAKeyframeAnimation(keyPath: "position")
-        positionAnimation.path = kineticPath(in: bounds.size).cgPath
-        positionAnimation.keyTimes = keyTimes
-        positionAnimation.timingFunctions = [
-            CAMediaTimingFunction(name: .easeIn),
-            CAMediaTimingFunction(name: .easeInEaseOut),
-            CAMediaTimingFunction(controlPoints: 0.65, 0.0, 0.95, 0.35),
-            CAMediaTimingFunction(name: .linear),
-            CAMediaTimingFunction(name: .easeOut)
-        ]
+        positionAnimation.values = sampledMotionPoints(configuration: configuration, duration: duration)
         positionAnimation.duration = duration
-        positionAnimation.calculationMode = .cubic
+        positionAnimation.calculationMode = .linear
         positionAnimation.isRemovedOnCompletion = false
         positionAnimation.fillMode = .forwards
         trackingNode.add(positionAnimation, forKey: "garageGuidedSwingPosition")
 
         let trailAnimation = CAKeyframeAnimation(keyPath: "strokeEnd")
-        trailAnimation.values = [0.0, 0.58, 0.62, 0.90, 0.93, 1.0]
-        trailAnimation.keyTimes = keyTimes
-        trailAnimation.timingFunctions = positionAnimation.timingFunctions
+        trailAnimation.values = sampledMotionProgress(configuration: configuration, duration: duration)
         trailAnimation.duration = duration
+        trailAnimation.calculationMode = .linear
         trailAnimation.isRemovedOnCompletion = false
         trailAnimation.fillMode = .forwards
         activeArcLayer.add(trailAnimation, forKey: "garageGuidedSwingTrail")
@@ -1006,8 +997,8 @@ private final class GarageGuidedSwingArcView: UIView {
             NSValue(cgPoint: point(at: 0, in: bounds.size)),
             NSValue(cgPoint: point(at: 0.58, in: bounds.size)),
             NSValue(cgPoint: point(at: 0.62, in: bounds.size)),
-            NSValue(cgPoint: point(at: 0.90, in: bounds.size)),
-            NSValue(cgPoint: point(at: 0.93, in: bounds.size)),
+            NSValue(cgPoint: point(at: 1, in: bounds.size)),
+            NSValue(cgPoint: point(at: 1, in: bounds.size)),
             NSValue(cgPoint: point(at: 1, in: bounds.size))
         ]
         animation.keyTimes = motionKeyTimes(configuration: configuration, duration: duration)
@@ -1018,7 +1009,7 @@ private final class GarageGuidedSwingArcView: UIView {
         trackingNode.add(animation, forKey: "garageGuidedSwingPosition")
 
         let trailAnimation = CAKeyframeAnimation(keyPath: "strokeEnd")
-        trailAnimation.values = [0.0, 0.58, 0.62, 0.90, 0.93, 1.0]
+        trailAnimation.values = [0.0, 0.58, 0.62, 1.0, 1.0, 1.0]
         trailAnimation.keyTimes = animation.keyTimes
         trailAnimation.duration = duration
         trailAnimation.calculationMode = .discrete
@@ -1053,36 +1044,77 @@ private final class GarageGuidedSwingArcView: UIView {
     private func kineticPath(in size: CGSize) -> UIBezierPath {
         let path = UIBezierPath()
         path.move(to: point(at: 0, in: size))
-        path.addQuadCurve(to: point(at: 0.58, in: size), controlPoint: CGPoint(x: size.width * 0.24, y: size.height * 0.20))
-        path.addQuadCurve(to: point(at: 0.62, in: size), controlPoint: CGPoint(x: size.width * 0.55, y: size.height * 0.02))
-        path.addQuadCurve(to: point(at: 0.90, in: size), controlPoint: CGPoint(x: size.width * 0.76, y: size.height * 0.22))
-        path.addQuadCurve(to: point(at: 0.93, in: size), controlPoint: CGPoint(x: size.width * 0.88, y: size.height * 0.70))
-        path.addQuadCurve(to: point(at: 1, in: size), controlPoint: CGPoint(x: size.width * 0.93, y: size.height * 0.80))
+        path.addQuadCurve(to: point(at: 0.58, in: size), controlPoint: CGPoint(x: size.width * 0.24, y: size.height * 0.18))
+        path.addQuadCurve(to: point(at: 1, in: size), controlPoint: CGPoint(x: size.width * 0.78, y: size.height * 0.18))
         return path
+    }
+
+    private func sampledMotionPoints(configuration: Configuration, duration: TimeInterval) -> [NSValue] {
+        sampledMotionProgress(configuration: configuration, duration: duration).map {
+            NSValue(cgPoint: point(at: CGFloat(truncating: $0), in: bounds.size))
+        }
+    }
+
+    private func sampledMotionProgress(configuration: Configuration, duration: TimeInterval) -> [NSNumber] {
+        let sampleCount = 120
+        return (0...sampleCount).map { sample in
+            let elapsed = duration * Double(sample) / Double(sampleCount)
+            return NSNumber(value: visualProgress(at: elapsed, configuration: configuration))
+        }
+    }
+
+    private func visualProgress(at elapsed: TimeInterval, configuration: Configuration) -> Double {
+        let recipe = configuration.recipe
+        let bpm = configuration.appliedBPM
+        let takeawayEnd = recipe.takeawayDuration(for: bpm)
+        let pauseEnd = takeawayEnd + recipe.pauseDuration(for: bpm)
+        let impactStart = recipe.swingDuration(for: bpm)
+        let followThroughEnd = impactStart + recipe.impactDuration + recipe.followThroughDuration
+
+        if elapsed < takeawayEnd {
+            return 0.58 * smoothstep(elapsed / max(takeawayEnd, 0.01))
+        }
+        if elapsed < pauseEnd {
+            let progress = (elapsed - takeawayEnd) / max(pauseEnd - takeawayEnd, 0.01)
+            return 0.58 + (0.04 * smoothstep(progress))
+        }
+        if elapsed < impactStart {
+            let progress = (elapsed - pauseEnd) / max(impactStart - pauseEnd, 0.01)
+            return 0.62 + (0.38 * pow(min(max(progress, 0), 1), 2.35))
+        }
+        if elapsed < followThroughEnd {
+            return 1
+        }
+        return 1
+    }
+
+    private func smoothstep(_ value: Double) -> Double {
+        let value = min(max(value, 0), 1)
+        return value * value * (3 - (2 * value))
     }
 
     private func point(at progress: CGFloat, in size: CGSize) -> CGPoint {
         let progress = min(max(progress, 0), 1)
         let start = CGPoint(x: size.width * 0.09, y: size.height * 0.72)
-        let control = CGPoint(x: size.width * 0.52, y: size.height * 0.02)
-        let impact = CGPoint(x: size.width * 0.86, y: size.height * 0.66)
-        let followThroughControl = CGPoint(x: size.width * 0.93, y: size.height * 0.80)
-        let finish = CGPoint(x: size.width * 0.95, y: size.height * 0.88)
+        let top = CGPoint(x: size.width * 0.52, y: size.height * 0.18)
+        let backswingControl = CGPoint(x: size.width * 0.24, y: size.height * 0.18)
+        let downswingControl = CGPoint(x: size.width * 0.78, y: size.height * 0.18)
+        let impact = CGPoint(x: size.width * 0.91, y: size.height * 0.72)
 
-        if progress <= 0.90 {
-            let t = progress / 0.90
+        if progress <= 0.58 {
+            let t = progress / 0.58
             let inverse = 1 - t
             return CGPoint(
-                x: (inverse * inverse * start.x) + (2 * inverse * t * control.x) + (t * t * impact.x),
-                y: (inverse * inverse * start.y) + (2 * inverse * t * control.y) + (t * t * impact.y)
+                x: (inverse * inverse * start.x) + (2 * inverse * t * backswingControl.x) + (t * t * top.x),
+                y: (inverse * inverse * start.y) + (2 * inverse * t * backswingControl.y) + (t * t * top.y)
             )
         }
 
-        let t = (progress - 0.90) / 0.10
+        let t = (progress - 0.58) / 0.42
         let inverse = 1 - t
         return CGPoint(
-            x: (inverse * inverse * impact.x) + (2 * inverse * t * followThroughControl.x) + (t * t * finish.x),
-            y: (inverse * inverse * impact.y) + (2 * inverse * t * followThroughControl.y) + (t * t * finish.y)
+            x: (inverse * inverse * top.x) + (2 * inverse * t * downswingControl.x) + (t * t * impact.x),
+            y: (inverse * inverse * top.y) + (2 * inverse * t * downswingControl.y) + (t * t * impact.y)
         )
     }
 
