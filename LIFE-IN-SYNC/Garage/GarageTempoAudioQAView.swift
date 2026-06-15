@@ -153,7 +153,7 @@ struct GarageTempoAudioQAView: View {
 
     private var guidedControls: some View {
         VStack(spacing: 12) {
-            ForEach(GarageGuidedSwingProfile.allCases) { profile in
+            ForEach(GarageGuidedSwingProfile.listeningOrder) { profile in
                 qaChoice(title: profile.title, selected: guidedProfile == profile) {
                     guidedProfile = profile
                     previewGuided(profile)
