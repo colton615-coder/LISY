@@ -43,6 +43,27 @@ struct GarageTempoBuilderTests {
         #expect(Set(assetNames).count == assetNames.count)
     }
 
+    @Test func tourWhipKeepsExplicitLoadedSilenceAtTop() {
+        let top = TempoSoundIdentityProfile.tourWhip.eventPlan[.top]
+
+        #expect(top.assetName == "tour_whip_loaded_silence")
+        #expect(top.silenceWindow == 0...1)
+    }
+
+    @Test func guidedIdentityImpactsOwnTheStrongestPhaseGain() {
+        for profile in TempoSoundIdentityProfile.allCases {
+            let plan = profile.eventPlan
+            let supportingGains = [
+                plan[.build].assetGain,
+                plan[.top].assetGain,
+                plan[.downswing].assetGain,
+                plan[.tail].assetGain
+            ]
+
+            #expect(plan[.impact].assetGain > supportingGains.max()!)
+        }
+    }
+
     @Test func hapticScheduleContainsOneTopAndOneImpactEvent() {
         let recipe = ElasticSlingshotRecipe()
         let offsets = GarageTempoHapticSchedule.guidedLandmarkOffsets(recipe: recipe, beatsPerMinute: 60)

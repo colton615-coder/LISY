@@ -220,14 +220,14 @@
     {
       "profile_id": "tourWhip",
       "display_name": "Tour Whip identity assets",
-      "file_name": "tour_whip_tension.wav, tour_whip_air.wav, tour_whip_leather_crack.wav, tour_whip_snap_tail.wav",
+      "file_name": "tour_whip_tension.wav, tour_whip_loaded_silence.wav, tour_whip_air.wav, tour_whip_leather_crack.wav, tour_whip_snap_tail.wav",
       "source_library": "LIFE-IN-SYNC generated audio",
       "source_url": "local://LIFE-IN-SYNC/Garage/Metronome_Audio/",
       "source_author": "LIFE-IN-SYNC",
       "license": "Project-owned",
       "attribution_required": false,
-      "duration_seconds": 1.31,
-      "notes": "Remastered original tension, air whip, leather crack, and snapped tail textures with stronger body and softened high-frequency edges."
+      "duration_seconds": 2.195,
+      "notes": "Maximum-impact rebuild with tightening leather force, explicit loaded silence, violent aerodynamic crack, hard leather impact, and snapped tail."
     },
     {
       "profile_id": "heavySteel",
@@ -238,8 +238,8 @@
       "source_author": "LIFE-IN-SYNC",
       "license": "Project-owned",
       "attribution_required": false,
-      "duration_seconds": 2.19,
-      "notes": "Remastered original mechanical pressure, lock, drop, forged strike, and metal resonance textures with stronger impact and controlled decay."
+      "duration_seconds": 2.275,
+      "notes": "Maximum-impact rebuild with industrial pressure, forged lock, falling metal mass, anvil-grade strike, and short steel resonance."
     },
     {
       "profile_id": "digitalVector",
@@ -250,8 +250,8 @@
       "source_author": "LIFE-IN-SYNC",
       "license": "Project-owned",
       "attribution_required": false,
-      "duration_seconds": 1.57,
-      "notes": "Remastered original stepped sequence, digital lock, pitching pulse, transient, and gated tail textures with rounded gates and reduced harshness."
+      "duration_seconds": 2.135,
+      "notes": "Maximum-impact rebuild with escalating machine steps, hard gated lock, accelerating data strike, surgical transient, and clipped shutdown tail."
     },
     {
       "profile_id": "glassLine",
@@ -262,8 +262,8 @@
       "source_author": "LIFE-IN-SYNC",
       "license": "Project-owned",
       "attribution_required": false,
-      "duration_seconds": 3.01,
-      "notes": "Original crystalline rise, held glass resonance, smooth pitch dive, controlled ping, and short shimmer tail."
+      "duration_seconds": 2.215,
+      "notes": "Maximum-impact rebuild with stressed crystal rise, hard glass lock, fracture dive, breaking-glass strike, and scattered shard tail."
     },
     {
       "profile_id": "airCut",
@@ -274,8 +274,8 @@
       "source_author": "LIFE-IN-SYNC",
       "license": "Project-owned",
       "attribution_required": false,
-      "duration_seconds": 2.84,
-      "notes": "Original filtered wind, near-silent pressure drop, accelerating whoosh, compact air burst, and fast air tail."
+      "duration_seconds": 2.155,
+      "notes": "Maximum-impact rebuild with compressed pressure, decisive vacuum drop, high-speed rush, explosive air burst, and immediate pressure release."
     },
     {
       "profile_id": "rangeWood",
@@ -286,8 +286,8 @@
       "source_author": "LIFE-IN-SYNC",
       "license": "Project-owned",
       "attribution_required": false,
-      "duration_seconds": 2.70,
-      "notes": "Original warm hardwood resonance, muted knock, dry sweep, substantial hardwood strike, and short wooden body tail."
+      "duration_seconds": 2.215,
+      "notes": "Maximum-impact rebuild with flexing hardwood, dense wooden lock, dry club-speed sweep, heavy hardwood strike, and cabinet-body tail."
     }
   ]
 }

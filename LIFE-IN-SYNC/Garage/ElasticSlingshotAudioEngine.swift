@@ -420,68 +420,68 @@ enum TempoSoundIdentityProfile: String, CaseIterable, Identifiable {
         case .tourWhip:
             return TempoSoundEventPlan(
                 phases: [
-                    .build: .init(assetName: "tour_whip_tension", assetGain: 0.62, synthesisGain: 0.06, pitch: .rising(from: 165, to: 720), attack: 0.05, release: 0.18, silenceWindow: nil),
-                    .top: .init(assetName: nil, assetGain: 0, synthesisGain: 0, pitch: .silent, attack: 0, release: 0, silenceWindow: 0...1),
-                    .downswing: .init(assetName: "tour_whip_air", assetGain: 0.86, synthesisGain: 0.04, pitch: .rising(from: 280, to: 980), attack: 0.01, release: 0.12, silenceWindow: nil),
-                    .impact: .init(assetName: "tour_whip_leather_crack", assetGain: 1.05, synthesisGain: 0.03, pitch: .fixed(1_400), attack: 0, release: 0.08, silenceWindow: nil),
-                    .tail: .init(assetName: "tour_whip_snap_tail", assetGain: 0.68, synthesisGain: 0.02, pitch: .descending(from: 460, to: 160), attack: 0, release: 0.78, silenceWindow: nil)
+                    .build: .init(assetName: "tour_whip_tension", assetGain: 0.90, synthesisGain: 0.025, pitch: .rising(from: 165, to: 720), attack: 0.025, release: 0.08, silenceWindow: nil),
+                    .top: .init(assetName: "tour_whip_loaded_silence", assetGain: 0, synthesisGain: 0, pitch: .silent, attack: 0, release: 0, silenceWindow: 0...1),
+                    .downswing: .init(assetName: "tour_whip_air", assetGain: 1.10, synthesisGain: 0.025, pitch: .rising(from: 280, to: 980), attack: 0.005, release: 0.06, silenceWindow: nil),
+                    .impact: .init(assetName: "tour_whip_leather_crack", assetGain: 1.38, synthesisGain: 0.015, pitch: .fixed(1_400), attack: 0, release: 0, silenceWindow: nil),
+                    .tail: .init(assetName: "tour_whip_snap_tail", assetGain: 0.78, synthesisGain: 0.01, pitch: .descending(from: 460, to: 160), attack: 0, release: 0.90, silenceWindow: nil)
                 ],
-                outputGain: 0.98
+                outputGain: 1.08
             )
         case .heavySteel:
             return TempoSoundEventPlan(
                 phases: [
-                    .build: .init(assetName: "heavy_steel_pressure", assetGain: 0.72, synthesisGain: 0.08, pitch: .descending(from: 145, to: 58), attack: 0.12, release: 0.08, silenceWindow: nil),
-                    .top: .init(assetName: "heavy_steel_lock", assetGain: 0.82, synthesisGain: 0.04, pitch: .fixed(280), attack: 0, release: 0.52, silenceWindow: nil),
-                    .downswing: .init(assetName: "heavy_steel_drop", assetGain: 0.82, synthesisGain: 0.06, pitch: .descending(from: 170, to: 46), attack: 0.02, release: 0.18, silenceWindow: nil),
-                    .impact: .init(assetName: "heavy_steel_forged_strike", assetGain: 1.02, synthesisGain: 0.04, pitch: .fixed(360), attack: 0, release: 0.22, silenceWindow: nil),
-                    .tail: .init(assetName: "heavy_steel_resonance", assetGain: 0.78, synthesisGain: 0.04, pitch: .descending(from: 300, to: 105), attack: 0, release: 0.64, silenceWindow: nil)
+                    .build: .init(assetName: "heavy_steel_pressure", assetGain: 0.94, synthesisGain: 0.03, pitch: .descending(from: 145, to: 58), attack: 0.05, release: 0.05, silenceWindow: nil),
+                    .top: .init(assetName: "heavy_steel_lock", assetGain: 1.18, synthesisGain: 0.02, pitch: .fixed(280), attack: 0, release: 0, silenceWindow: nil),
+                    .downswing: .init(assetName: "heavy_steel_drop", assetGain: 1.12, synthesisGain: 0.025, pitch: .descending(from: 170, to: 46), attack: 0.005, release: 0.08, silenceWindow: nil),
+                    .impact: .init(assetName: "heavy_steel_forged_strike", assetGain: 1.42, synthesisGain: 0.015, pitch: .fixed(360), attack: 0, release: 0, silenceWindow: nil),
+                    .tail: .init(assetName: "heavy_steel_resonance", assetGain: 0.84, synthesisGain: 0.015, pitch: .descending(from: 300, to: 105), attack: 0, release: 0.84, silenceWindow: nil)
                 ],
-                outputGain: 0.94
+                outputGain: 1.06
             )
         case .glassLine:
             return TempoSoundEventPlan(
                 phases: [
-                    .build: .init(assetName: "glass_line_crystal_rise", assetGain: 0.62, synthesisGain: 0.05, pitch: .rising(from: 520, to: 1_280), attack: 0.08, release: 0.16, silenceWindow: nil),
-                    .top: .init(assetName: "glass_line_suspension", assetGain: 0.58, synthesisGain: 0.04, pitch: .fixed(1_080), attack: 0.02, release: 0.30, silenceWindow: nil),
-                    .downswing: .init(assetName: "glass_line_pitch_dive", assetGain: 0.66, synthesisGain: 0.05, pitch: .descending(from: 1_020, to: 310), attack: 0.01, release: 0.14, silenceWindow: nil),
-                    .impact: .init(assetName: "glass_line_ping", assetGain: 0.82, synthesisGain: 0.025, pitch: .fixed(1_560), attack: 0, release: 0.16, silenceWindow: nil),
-                    .tail: .init(assetName: "glass_line_shimmer_tail", assetGain: 0.54, synthesisGain: 0.035, pitch: .descending(from: 1_120, to: 620), attack: 0, release: 0.80, silenceWindow: nil)
+                    .build: .init(assetName: "glass_line_crystal_rise", assetGain: 0.92, synthesisGain: 0.02, pitch: .rising(from: 520, to: 1_280), attack: 0.035, release: 0.06, silenceWindow: nil),
+                    .top: .init(assetName: "glass_line_suspension", assetGain: 1.12, synthesisGain: 0.015, pitch: .fixed(1_080), attack: 0, release: 0, silenceWindow: nil),
+                    .downswing: .init(assetName: "glass_line_pitch_dive", assetGain: 1.14, synthesisGain: 0.02, pitch: .descending(from: 1_020, to: 310), attack: 0.005, release: 0.06, silenceWindow: nil),
+                    .impact: .init(assetName: "glass_line_ping", assetGain: 1.40, synthesisGain: 0.01, pitch: .fixed(1_560), attack: 0, release: 0, silenceWindow: nil),
+                    .tail: .init(assetName: "glass_line_shimmer_tail", assetGain: 0.76, synthesisGain: 0.01, pitch: .descending(from: 1_120, to: 620), attack: 0, release: 0.92, silenceWindow: nil)
                 ],
-                outputGain: 0.84
+                outputGain: 1.04
             )
         case .airCut:
             return TempoSoundEventPlan(
                 phases: [
-                    .build: .init(assetName: "air_cut_filtered_wind", assetGain: 0.64, synthesisGain: 0.045, pitch: .rising(from: 120, to: 440), attack: 0.14, release: 0.16, silenceWindow: nil),
-                    .top: .init(assetName: "air_cut_pressure_drop", assetGain: 0.24, synthesisGain: 0.012, pitch: .descending(from: 260, to: 110), attack: 0.05, release: 0.56, silenceWindow: nil),
-                    .downswing: .init(assetName: "air_cut_whoosh", assetGain: 0.72, synthesisGain: 0.055, pitch: .rising(from: 180, to: 920), attack: 0.04, release: 0.10, silenceWindow: nil),
-                    .impact: .init(assetName: "air_cut_air_burst", assetGain: 0.78, synthesisGain: 0.03, pitch: .fixed(780), attack: 0, release: 0.13, silenceWindow: nil),
-                    .tail: .init(assetName: "air_cut_tail", assetGain: 0.48, synthesisGain: 0.025, pitch: .descending(from: 520, to: 150), attack: 0, release: 0.88, silenceWindow: nil)
+                    .build: .init(assetName: "air_cut_filtered_wind", assetGain: 0.96, synthesisGain: 0.02, pitch: .rising(from: 120, to: 440), attack: 0.05, release: 0.06, silenceWindow: nil),
+                    .top: .init(assetName: "air_cut_pressure_drop", assetGain: 1.10, synthesisGain: 0.008, pitch: .descending(from: 260, to: 110), attack: 0, release: 0, silenceWindow: nil),
+                    .downswing: .init(assetName: "air_cut_whoosh", assetGain: 1.20, synthesisGain: 0.025, pitch: .rising(from: 180, to: 920), attack: 0.005, release: 0.05, silenceWindow: nil),
+                    .impact: .init(assetName: "air_cut_air_burst", assetGain: 1.44, synthesisGain: 0.01, pitch: .fixed(780), attack: 0, release: 0, silenceWindow: nil),
+                    .tail: .init(assetName: "air_cut_tail", assetGain: 0.70, synthesisGain: 0.01, pitch: .descending(from: 520, to: 150), attack: 0, release: 0.94, silenceWindow: nil)
                 ],
-                outputGain: 0.86
+                outputGain: 1.06
             )
         case .digitalVector:
             return TempoSoundEventPlan(
                 phases: [
-                    .build: .init(assetName: "digital_vector_steps", assetGain: 0.68, synthesisGain: 0.08, pitch: .stepped(values: [196, 247, 330, 440, 587]), attack: 0.01, release: 0.05, silenceWindow: nil),
-                    .top: .init(assetName: "digital_vector_lock", assetGain: 0.78, synthesisGain: 0.06, pitch: .fixed(660), attack: 0, release: 0.34, silenceWindow: nil),
-                    .downswing: .init(assetName: "digital_vector_pulse", assetGain: 0.74, synthesisGain: 0.09, pitch: .stepped(values: [587, 494, 392, 294]), attack: 0, release: 0.08, silenceWindow: nil),
-                    .impact: .init(assetName: "digital_vector_transient", assetGain: 0.95, synthesisGain: 0.06, pitch: .fixed(1_250), attack: 0, release: 0.07, silenceWindow: nil),
-                    .tail: .init(assetName: "digital_vector_tail", assetGain: 0.65, synthesisGain: 0.06, pitch: .stepped(values: [660, 494, 330, 220]), attack: 0, release: 0.72, silenceWindow: nil)
+                    .build: .init(assetName: "digital_vector_steps", assetGain: 0.96, synthesisGain: 0.03, pitch: .stepped(values: [196, 247, 330, 440, 587]), attack: 0.005, release: 0.025, silenceWindow: nil),
+                    .top: .init(assetName: "digital_vector_lock", assetGain: 1.18, synthesisGain: 0.025, pitch: .fixed(660), attack: 0, release: 0, silenceWindow: nil),
+                    .downswing: .init(assetName: "digital_vector_pulse", assetGain: 1.16, synthesisGain: 0.035, pitch: .stepped(values: [587, 494, 392, 294]), attack: 0, release: 0.035, silenceWindow: nil),
+                    .impact: .init(assetName: "digital_vector_transient", assetGain: 1.42, synthesisGain: 0.025, pitch: .fixed(1_250), attack: 0, release: 0, silenceWindow: nil),
+                    .tail: .init(assetName: "digital_vector_tail", assetGain: 0.78, synthesisGain: 0.02, pitch: .stepped(values: [660, 494, 330, 220]), attack: 0, release: 0.90, silenceWindow: nil)
                 ],
-                outputGain: 0.92
+                outputGain: 1.06
             )
         case .rangeWood:
             return TempoSoundEventPlan(
                 phases: [
-                    .build: .init(assetName: "range_wood_resonance", assetGain: 0.68, synthesisGain: 0.05, pitch: .rising(from: 125, to: 205), attack: 0.07, release: 0.18, silenceWindow: nil),
-                    .top: .init(assetName: "range_wood_muted_knock", assetGain: 0.72, synthesisGain: 0.035, pitch: .fixed(245), attack: 0, release: 0.54, silenceWindow: nil),
-                    .downswing: .init(assetName: "range_wood_dry_sweep", assetGain: 0.64, synthesisGain: 0.045, pitch: .descending(from: 220, to: 135), attack: 0.02, release: 0.16, silenceWindow: nil),
-                    .impact: .init(assetName: "range_wood_hardwood_strike", assetGain: 0.92, synthesisGain: 0.035, pitch: .fixed(285), attack: 0, release: 0.20, silenceWindow: nil),
-                    .tail: .init(assetName: "range_wood_tail", assetGain: 0.62, synthesisGain: 0.035, pitch: .descending(from: 230, to: 115), attack: 0, release: 0.72, silenceWindow: nil)
+                    .build: .init(assetName: "range_wood_resonance", assetGain: 0.94, synthesisGain: 0.02, pitch: .rising(from: 125, to: 205), attack: 0.035, release: 0.06, silenceWindow: nil),
+                    .top: .init(assetName: "range_wood_muted_knock", assetGain: 1.16, synthesisGain: 0.015, pitch: .fixed(245), attack: 0, release: 0, silenceWindow: nil),
+                    .downswing: .init(assetName: "range_wood_dry_sweep", assetGain: 1.10, synthesisGain: 0.02, pitch: .descending(from: 220, to: 135), attack: 0.005, release: 0.06, silenceWindow: nil),
+                    .impact: .init(assetName: "range_wood_hardwood_strike", assetGain: 1.42, synthesisGain: 0.015, pitch: .fixed(285), attack: 0, release: 0, silenceWindow: nil),
+                    .tail: .init(assetName: "range_wood_tail", assetGain: 0.80, synthesisGain: 0.01, pitch: .descending(from: 230, to: 115), attack: 0, release: 0.88, silenceWindow: nil)
                 ],
-                outputGain: 0.90
+                outputGain: 1.06
             )
         }
     }
@@ -955,16 +955,16 @@ private final class ElasticSlingshotRenderState {
         } else {
             switch phase(for: relativeFrame, configuration: configuration) {
             case let .takeback(progress):
-                rawSample = guidedIdentitySample(phase: .build, progress: progress, profile: configuration.soundProfile)
+                rawSample = guidedIdentitySample(phase: .build, progress: progress, duration: configuration.takebackDuration, profile: configuration.soundProfile)
             case let .pause(progress):
-                rawSample = guidedIdentitySample(phase: .top, progress: progress, profile: configuration.soundProfile)
+                rawSample = guidedIdentitySample(phase: .top, progress: progress, duration: configuration.pauseDuration, profile: configuration.soundProfile)
             case let .downswing(progress):
-                rawSample = guidedIdentitySample(phase: .downswing, progress: progress, profile: configuration.soundProfile)
+                rawSample = guidedIdentitySample(phase: .downswing, progress: progress, duration: configuration.downswingDuration, profile: configuration.soundProfile)
             case let .impact(progress):
                 debugLogImpactIfNeeded(at: relativeFrame, configuration: configuration)
-                rawSample = guidedIdentitySample(phase: .impact, progress: progress, profile: configuration.soundProfile)
+                rawSample = guidedIdentitySample(phase: .impact, progress: progress, duration: elasticSlingshotImpactDuration, profile: configuration.soundProfile)
             case let .followThrough(progress):
-                rawSample = guidedIdentitySample(phase: .tail, progress: progress, profile: configuration.soundProfile)
+                rawSample = guidedIdentitySample(phase: .tail, progress: progress, duration: configuration.recipe.followThroughDuration, profile: configuration.soundProfile)
             case .loopDelay, .finished:
                 rawSample = 0
             }
@@ -1213,6 +1213,7 @@ private final class ElasticSlingshotRenderState {
     private func guidedIdentitySample(
         phase: TempoSoundPhase,
         progress: Double,
+        duration: TimeInterval,
         profile: TempoSoundIdentityProfile
     ) -> Double {
         let progress = min(max(progress, 0), 1)
@@ -1227,7 +1228,12 @@ private final class ElasticSlingshotRenderState {
             attack: phasePlan.attack,
             release: phasePlan.release
         )
-        let asset = identityAssetSample(name: phasePlan.assetName, progress: progress) * phasePlan.assetGain
+        let asset = identityAssetSample(
+            name: phasePlan.assetName,
+            phase: phase,
+            progress: progress,
+            duration: duration
+        ) * phasePlan.assetGain
         let generated: Double
 
         switch profile {
@@ -1248,9 +1254,22 @@ private final class ElasticSlingshotRenderState {
         return impactSoftLimit((asset + (generated * phasePlan.synthesisGain)) * envelope * plan.outputGain)
     }
 
-    private func identityAssetSample(name: String?, progress: Double) -> Double {
+    private func identityAssetSample(
+        name: String?,
+        phase: TempoSoundPhase,
+        progress: Double,
+        duration: TimeInterval
+    ) -> Double {
         guard let name, let sample = identitySamples[name], sample.isEmpty == false else { return 0 }
-        let index = min(Int(progress * Double(sample.count)), sample.count - 1)
+        let index: Int
+        if phase == .top || phase == .impact {
+            // Preserve the native attack of short landmarks instead of stretching them across the phase.
+            let elapsedFrames = Int(progress * duration * sampleRate)
+            guard elapsedFrames < sample.count else { return 0 }
+            index = elapsedFrames
+        } else {
+            index = min(Int(progress * Double(sample.count)), sample.count - 1)
+        }
         return Double(sample[index])
     }
 
@@ -1528,7 +1547,7 @@ private final class ElasticSlingshotRenderState {
     }
 
     private func impactSoftLimit(_ sample: Double) -> Double {
-        tanh(sample * 1.45) / 1.45
+        tanh(sample * 1.35) * 0.855
     }
 
     private func clear(data: UnsafeMutablePointer<Float>, frameCount: Int) {
