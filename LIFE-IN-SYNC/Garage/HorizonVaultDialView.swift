@@ -830,9 +830,13 @@ private struct GarageGuidedSwingArc: UIViewRepresentable {
 }
 
 private final class GarageGuidedSwingArcView: UIView {
+    private let ambientArcLayer = CAShapeLayer()
     private let baseArcLayer = CAShapeLayer()
+    private let readyArcGradient = CAGradientLayer()
+    private let readyArcLayer = CAShapeLayer()
     private let activeArcGradient = CAGradientLayer()
     private let activeArcLayer = CAShapeLayer()
+    private let impactTargetLayer = CAShapeLayer()
     private let impactPulseLayer = CAShapeLayer()
     private let trackingNode = CALayer()
     private var configuration: Configuration?
@@ -845,24 +849,61 @@ private final class GarageGuidedSwingArcView: UIView {
         isUserInteractionEnabled = false
         backgroundColor = .clear
 
+        ambientArcLayer.fillColor = UIColor.clear.cgColor
+        ambientArcLayer.strokeColor = emeraldColor.withAlphaComponent(0.22).cgColor
+        ambientArcLayer.lineCap = .round
+        ambientArcLayer.lineWidth = 18
+        ambientArcLayer.shadowColor = emeraldColor.cgColor
+        ambientArcLayer.shadowOpacity = 0.30
+        ambientArcLayer.shadowRadius = 14
+        layer.addSublayer(ambientArcLayer)
+
         baseArcLayer.fillColor = UIColor.clear.cgColor
         baseArcLayer.lineCap = .round
-        baseArcLayer.lineWidth = 3
+        baseArcLayer.lineWidth = 5
         layer.addSublayer(baseArcLayer)
+
+        readyArcLayer.fillColor = UIColor.clear.cgColor
+        readyArcLayer.strokeColor = UIColor.white.cgColor
+        readyArcLayer.lineCap = .round
+        readyArcLayer.lineWidth = 9
+        readyArcGradient.colors = [
+            emeraldColor.withAlphaComponent(0.78).cgColor,
+            mintTextColor.withAlphaComponent(0.72).cgColor,
+            goldColor.withAlphaComponent(0.88).cgColor
+        ]
+        readyArcGradient.locations = [0, 0.58, 1]
+        readyArcGradient.startPoint = CGPoint(x: 0, y: 0.5)
+        readyArcGradient.endPoint = CGPoint(x: 1, y: 0.5)
+        readyArcGradient.mask = readyArcLayer
+        layer.addSublayer(readyArcGradient)
 
         activeArcLayer.fillColor = UIColor.clear.cgColor
         activeArcLayer.lineCap = .round
-        activeArcLayer.lineWidth = 5
+        activeArcLayer.lineWidth = 12
         activeArcLayer.strokeEnd = 0
-        activeArcGradient.colors = [emeraldColor.cgColor, goldColor.cgColor]
+        activeArcGradient.colors = [
+            emeraldColor.cgColor,
+            mintTextColor.cgColor,
+            goldColor.cgColor
+        ]
+        activeArcGradient.locations = [0, 0.58, 1]
         activeArcGradient.startPoint = CGPoint(x: 0, y: 0.5)
         activeArcGradient.endPoint = CGPoint(x: 1, y: 0.5)
         activeArcGradient.mask = activeArcLayer
         layer.addSublayer(activeArcGradient)
 
+        impactTargetLayer.fillColor = UIColor.clear.cgColor
+        impactTargetLayer.strokeColor = goldColor.withAlphaComponent(0.46).cgColor
+        impactTargetLayer.lineWidth = 2
+        impactTargetLayer.shadowColor = goldColor.cgColor
+        impactTargetLayer.shadowOpacity = 0.24
+        impactTargetLayer.shadowRadius = 12
+        layer.addSublayer(impactTargetLayer)
+
         impactPulseLayer.fillColor = UIColor.clear.cgColor
         impactPulseLayer.strokeColor = goldColor.cgColor
-        impactPulseLayer.lineWidth = 4
+        impactPulseLayer.lineWidth = 5
         impactPulseLayer.opacity = 0
         layer.addSublayer(impactPulseLayer)
 
@@ -913,12 +954,20 @@ private final class GarageGuidedSwingArcView: UIView {
     private func applyPath() {
         guard bounds.width > 0, bounds.height > 0 else { return }
         let path = kineticPath(in: bounds.size)
+        ambientArcLayer.frame = bounds
+        ambientArcLayer.path = path.cgPath
         baseArcLayer.frame = bounds
         baseArcLayer.path = path.cgPath
+        readyArcGradient.frame = bounds
+        readyArcLayer.frame = bounds
+        readyArcLayer.path = path.cgPath
         activeArcGradient.frame = bounds
         activeArcLayer.frame = bounds
         activeArcLayer.path = path.cgPath
-        impactPulseLayer.bounds = CGRect(x: 0, y: 0, width: 58, height: 58)
+        impactTargetLayer.bounds = CGRect(x: 0, y: 0, width: 38, height: 38)
+        impactTargetLayer.path = UIBezierPath(ovalIn: impactTargetLayer.bounds).cgPath
+        impactTargetLayer.position = point(at: 1, in: bounds.size)
+        impactPulseLayer.bounds = CGRect(x: 0, y: 0, width: 72, height: 72)
         impactPulseLayer.path = UIBezierPath(ovalIn: impactPulseLayer.bounds).cgPath
         impactPulseLayer.position = point(at: 1, in: bounds.size)
 
@@ -932,18 +981,22 @@ private final class GarageGuidedSwingArcView: UIView {
 
     private func applyAppearance() {
         guard let configuration else { return }
-        let restingAlpha: CGFloat = configuration.isResting ? 0.12 : 0.28
+        let restingAlpha: CGFloat = configuration.isResting ? 0.12 : 0.24
+        ambientArcLayer.opacity = configuration.isResting ? 0.38 : 0.72
         baseArcLayer.strokeColor = mintTextColor.withAlphaComponent(restingAlpha).cgColor
         activeArcLayer.strokeColor = UIColor.white.cgColor
+        readyArcGradient.opacity = configuration.isResting ? 0.16 : (configuration.isPlaying ? 0.24 : 0.48)
         activeArcGradient.opacity = configuration.isPlaying && configuration.isResting == false ? 1 : 0
+        impactTargetLayer.opacity = configuration.isResting ? 0.18 : (configuration.isPlaying ? 0.72 : 0.46)
         trackingNode.opacity = configuration.isPlaying && configuration.isResting == false ? 1 : 0
         trackingNode.backgroundColor = (
             configuration.isResting
                 ? mintTextColor.withAlphaComponent(0.36)
                 : goldColor
         ).cgColor
-        trackingNode.shadowOpacity = configuration.isResting ? 0 : 0.42
-        trackingNode.bounds.size = configuration.reduceMotion ? CGSize(width: 15, height: 15) : CGSize(width: 17, height: 17)
+        trackingNode.shadowOpacity = configuration.isResting ? 0 : 0.58
+        trackingNode.shadowRadius = 20
+        trackingNode.bounds.size = configuration.reduceMotion ? CGSize(width: 17, height: 17) : CGSize(width: 20, height: 20)
         trackingNode.cornerRadius = trackingNode.bounds.width / 2
     }
 
