@@ -579,7 +579,6 @@ private struct ElasticSlingshotVoiceState {
     var oscillatorPhase = 0.0
     var secondaryPhase = 0.0
     var lastRelativeFrame: AVAudioFramePosition = -1
-    var lastImpactDebugLogKey = ""
     var noiseSeed: UInt64 = 0x9E37_79B9_7F4A_7C15
 
     mutating func resetIfNeeded(relativeFrame: AVAudioFramePosition) {
@@ -590,7 +589,6 @@ private struct ElasticSlingshotVoiceState {
 
         oscillatorPhase = 0
         secondaryPhase = 0
-        lastImpactDebugLogKey = ""
         lastRelativeFrame = relativeFrame
     }
 
@@ -936,18 +934,16 @@ private final class ElasticSlingshotRenderState {
             }
         }
 
+        if snapshot.isPlaying {
+            let lastRenderedFrame = startFrame + AVAudioFramePosition(max(outputCount - 1, 0))
+            updatePlaybackProgress(at: lastRenderedFrame, configuration: snapshot)
+        }
+
         return noErr
     }
 
     private func sampleValue(at frame: AVAudioFramePosition, configuration: ElasticSlingshotRenderConfiguration) -> Double {
         let relativeFrame = max(frame - configuration.baseFrame, 0)
-        let totalFramesForProgress = max(frames(for: configuration.totalDuration), 1)
-        let loopFramesForProgress = max(frames(for: configuration.loopDuration), totalFramesForProgress)
-        let cycleFrameForProgress = configuration.mode == .continuous ? (relativeFrame % loopFramesForProgress) : relativeFrame
-
-        lock.lock()
-        currentLoopProgress = Double(cycleFrameForProgress) / Double(loopFramesForProgress)
-        lock.unlock()
 
         if appliedResetToken != configuration.resetToken {
             voiceState = ElasticSlingshotVoiceState()
@@ -968,7 +964,6 @@ private final class ElasticSlingshotRenderState {
             case let .downswing(progress):
                 rawSample = guidedIdentitySample(phase: .downswing, progress: progress, duration: configuration.downswingDuration, profile: configuration.soundProfile)
             case let .impact(progress):
-                debugLogImpactIfNeeded(at: relativeFrame, configuration: configuration)
                 rawSample = guidedIdentitySample(phase: .impact, progress: progress, duration: elasticSlingshotImpactDuration, profile: configuration.soundProfile)
             case let .followThrough(progress):
                 rawSample = guidedIdentitySample(phase: .tail, progress: progress, duration: configuration.recipe.followThroughDuration, profile: configuration.soundProfile)
@@ -979,6 +974,20 @@ private final class ElasticSlingshotRenderState {
 
         let guideSample = slowTempoGuideSample(at: relativeFrame, configuration: configuration)
         return (rawSample + guideSample) * playbackEnvelope(at: frame, configuration: configuration)
+    }
+
+    private func updatePlaybackProgress(
+        at frame: AVAudioFramePosition,
+        configuration: ElasticSlingshotRenderConfiguration
+    ) {
+        let relativeFrame = max(frame - configuration.baseFrame, 0)
+        let totalFrames = max(frames(for: configuration.totalDuration), 1)
+        let loopFrames = max(frames(for: configuration.loopDuration), totalFrames)
+        let cycleFrame = configuration.mode == .continuous ? (relativeFrame % loopFrames) : relativeFrame
+
+        lock.lock()
+        currentLoopProgress = Double(cycleFrame) / Double(loopFrames)
+        lock.unlock()
     }
 
     private func phase(for relativeFrame: AVAudioFramePosition, configuration: ElasticSlingshotRenderConfiguration) -> ElasticSlingshotPhase {
@@ -1189,32 +1198,6 @@ private final class ElasticSlingshotRenderState {
     ) -> Double? {
         guard cycleFrame >= eventFrame, cycleFrame < eventFrame + durationFrames else { return nil }
         return Double(cycleFrame - eventFrame) / Double(max(durationFrames, 1))
-    }
-
-    private func debugLogImpactIfNeeded(
-        at relativeFrame: AVAudioFramePosition,
-        configuration: ElasticSlingshotRenderConfiguration
-    ) {
-        let impactDurationFrames = max(frames(for: elasticSlingshotImpactDuration), 1)
-        let loopFrames = max(frames(for: configuration.loopDuration), impactDurationFrames)
-        let cycleIndex: AVAudioFramePosition
-
-        switch configuration.mode {
-        case .continuous:
-            cycleIndex = relativeFrame / loopFrames
-        case .oneCycle:
-            cycleIndex = 0
-        }
-
-        let key = [
-            "\(configuration.resetToken)",
-            "\(cycleIndex)",
-            configuration.soundProfile.rawValue
-        ].joined(separator: ":")
-
-        guard voiceState.lastImpactDebugLogKey != key else { return }
-        voiceState.lastImpactDebugLogKey = key
-        print("[TempoAudio] guided impact profile=\(configuration.soundProfile.rawValue) mode=\(configuration.mode.debugName)")
     }
 
     private func guidedIdentitySample(
