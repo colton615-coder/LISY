@@ -354,10 +354,17 @@ enum GarageGuidedSwingProfile: String, CaseIterable, Identifiable {
     static let listeningOrder: [Self] = [.tourWhip, .heavySteel, .glassLine, .airCut, .digitalVector, .rangeWood]
 
     static func migrated(from rawValue: String) -> Self {
-        Self(rawValue: rawValue) ?? switch rawValue {
-        case "mass", "deepStrike": .heavySteel
-        case "vector", "sharpPulse": .digitalVector
-        default: .tourWhip
+        if let profile = Self(rawValue: rawValue) {
+            return profile
+        }
+
+        switch rawValue {
+        case "mass", "deepStrike":
+            return .heavySteel
+        case "vector", "sharpPulse":
+            return .digitalVector
+        default:
+            return .tourWhip
         }
     }
 }
