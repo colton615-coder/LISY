@@ -1331,7 +1331,45 @@ private final class ElasticSlingshotRenderState {
             toneDecayRate: parameters.decayRate
         )
 
-        return impactSoftLimit(shapedSample)
+        let transient = guidedImpactTransient(progress: progress, profile: profile)
+        return impactSoftLimit(shapedSample + transient)
+    }
+
+    private func guidedImpactTransient(progress: Double, profile: ElasticSlingshotSoundProfile) -> Double {
+        let clickProfile: GarageMetronomeClickProfile
+        let gain: Double
+
+        switch profile {
+        case .elastic:
+            clickProfile = .crispMarker
+            gain = 0.48
+        case .glass:
+            clickProfile = .glassPing
+            gain = 0.52
+        case .gravity:
+            clickProfile = .lowPunch
+            gain = 0.58
+        case .pulse:
+            clickProfile = .digitalPulse
+            gain = 0.50
+        case .airframe:
+            clickProfile = .softAir
+            gain = 0.46
+        case .storm:
+            clickProfile = .impactKnock
+            gain = 0.60
+        case .reed:
+            clickProfile = .rangeStick
+            gain = 0.48
+        case .rubber:
+            clickProfile = .mutedTap
+            gain = 0.50
+        }
+
+        guard let sample = metronomeSamples[clickProfile] else { return 0 }
+        let frame = Int(progress * elasticSlingshotImpactDuration * sampleRate)
+        guard sample.indices.contains(frame) else { return 0 }
+        return Double(sample[frame]) * gain
     }
 
     private func followThroughSample(progress: Double, profile: ElasticSlingshotSoundProfile) -> Double {

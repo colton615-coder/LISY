@@ -834,6 +834,8 @@ private final class GarageGuidedSwingArcView: UIView {
     private let baseArcLayer = CAShapeLayer()
     private let readyArcGradient = CAGradientLayer()
     private let readyArcLayer = CAShapeLayer()
+    private let deliveryArcGradient = CAGradientLayer()
+    private let deliveryArcLayer = CAShapeLayer()
     private let activeArcGradient = CAGradientLayer()
     private let activeArcLayer = CAShapeLayer()
     private let impactTargetLayer = CAShapeLayer()
@@ -877,6 +879,21 @@ private final class GarageGuidedSwingArcView: UIView {
         readyArcGradient.endPoint = CGPoint(x: 1, y: 0.5)
         readyArcGradient.mask = readyArcLayer
         layer.addSublayer(readyArcGradient)
+
+        deliveryArcLayer.fillColor = UIColor.clear.cgColor
+        deliveryArcLayer.strokeColor = UIColor.white.cgColor
+        deliveryArcLayer.lineCap = .round
+        deliveryArcLayer.lineWidth = 15
+        deliveryArcLayer.strokeStart = 0.58
+        deliveryArcGradient.colors = [
+            mintTextColor.withAlphaComponent(0.34).cgColor,
+            goldColor.withAlphaComponent(0.92).cgColor
+        ]
+        deliveryArcGradient.locations = [0.58, 1]
+        deliveryArcGradient.startPoint = CGPoint(x: 0, y: 0.5)
+        deliveryArcGradient.endPoint = CGPoint(x: 1, y: 0.5)
+        deliveryArcGradient.mask = deliveryArcLayer
+        layer.addSublayer(deliveryArcGradient)
 
         activeArcLayer.fillColor = UIColor.clear.cgColor
         activeArcLayer.lineCap = .round
@@ -961,6 +978,9 @@ private final class GarageGuidedSwingArcView: UIView {
         readyArcGradient.frame = bounds
         readyArcLayer.frame = bounds
         readyArcLayer.path = path.cgPath
+        deliveryArcGradient.frame = bounds
+        deliveryArcLayer.frame = bounds
+        deliveryArcLayer.path = path.cgPath
         activeArcGradient.frame = bounds
         activeArcLayer.frame = bounds
         activeArcLayer.path = path.cgPath
@@ -986,6 +1006,7 @@ private final class GarageGuidedSwingArcView: UIView {
         baseArcLayer.strokeColor = mintTextColor.withAlphaComponent(restingAlpha).cgColor
         activeArcLayer.strokeColor = UIColor.white.cgColor
         readyArcGradient.opacity = configuration.isResting ? 0.16 : (configuration.isPlaying ? 0.24 : 0.48)
+        deliveryArcGradient.opacity = configuration.isResting ? 0.10 : (configuration.isPlaying ? 0.34 : 0.58)
         activeArcGradient.opacity = configuration.isPlaying && configuration.isResting == false ? 1 : 0
         impactTargetLayer.opacity = configuration.isResting ? 0.18 : (configuration.isPlaying ? 0.72 : 0.46)
         trackingNode.opacity = configuration.isPlaying && configuration.isResting == false ? 1 : 0
@@ -1040,7 +1061,7 @@ private final class GarageGuidedSwingArcView: UIView {
         let group = CAAnimationGroup()
         group.animations = [opacity, scale]
         group.beginTime = impactPulseLayer.convertTime(CACurrentMediaTime(), from: nil) + delay
-        group.duration = 0.38
+        group.duration = 0.28
         impactPulseLayer.add(group, forKey: "garageGuidedSwingImpact")
     }
 
@@ -1129,11 +1150,11 @@ private final class GarageGuidedSwingArcView: UIView {
         }
         if elapsed < pauseEnd {
             let progress = (elapsed - takeawayEnd) / max(pauseEnd - takeawayEnd, 0.01)
-            return 0.58 + (0.04 * smoothstep(progress))
+            return 0.58 + (0.02 * smoothstep(progress))
         }
         if elapsed < impactStart {
             let progress = (elapsed - pauseEnd) / max(impactStart - pauseEnd, 0.01)
-            return 0.62 + (0.38 * pow(min(max(progress, 0), 1), 2.35))
+            return 0.60 + (0.40 * pow(min(max(progress, 0), 1), 2.75))
         }
         if elapsed < followThroughEnd {
             return 1
@@ -1151,7 +1172,7 @@ private final class GarageGuidedSwingArcView: UIView {
         let start = CGPoint(x: size.width * 0.09, y: size.height * 0.72)
         let top = CGPoint(x: size.width * 0.52, y: size.height * 0.18)
         let backswingControl = CGPoint(x: size.width * 0.24, y: size.height * 0.18)
-        let downswingControl = CGPoint(x: size.width * 0.78, y: size.height * 0.18)
+        let downswingControl = CGPoint(x: size.width * 0.82, y: size.height * 0.22)
         let impact = CGPoint(x: size.width * 0.91, y: size.height * 0.72)
 
         if progress <= 0.58 {
