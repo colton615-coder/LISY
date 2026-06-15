@@ -1385,7 +1385,7 @@ private struct GarageTempoControlRoom: View {
     ]
 
     private let guidedSoundGroups: [(title: String, profiles: [GarageGuidedSwingProfile])] = [
-        ("Prototype Identities", GarageGuidedSwingProfile.prototypeIdentities)
+        ("Sound Identities", GarageGuidedSwingProfile.listeningOrder)
     ]
 
     var body: some View {

@@ -311,7 +311,10 @@ enum GarageMetronomeClickProfile: String, CaseIterable, Identifiable {
 enum GarageGuidedSwingProfile: String, CaseIterable, Identifiable {
     case tourWhip
     case heavySteel
+    case glassLine
+    case airCut
     case digitalVector
+    case rangeWood
 
     var id: String { rawValue }
 
@@ -319,7 +322,10 @@ enum GarageGuidedSwingProfile: String, CaseIterable, Identifiable {
         switch self {
         case .tourWhip: "Tour Whip"
         case .heavySteel: "Heavy Steel"
+        case .glassLine: "Glass Line"
+        case .airCut: "Air Cut"
         case .digitalVector: "Digital Vector"
+        case .rangeWood: "Range Wood"
         }
     }
 
@@ -327,7 +333,10 @@ enum GarageGuidedSwingProfile: String, CaseIterable, Identifiable {
         switch self {
         case .tourWhip: "Taut rise, suspended top, fast air whip."
         case .heavySteel: "Low pressure, metallic lock, forged strike."
+        case .glassLine: "Crystalline rise, held glass, precise ping."
+        case .airCut: "Wide wind, pressure drop, accelerating air burst."
         case .digitalVector: "Stepped build, gated lock, electronic transient."
+        case .rangeWood: "Warm hardwood body, muted knock, dry strike."
         }
     }
 
@@ -335,13 +344,14 @@ enum GarageGuidedSwingProfile: String, CaseIterable, Identifiable {
         switch self {
         case .tourWhip: .tourWhip
         case .heavySteel: .heavySteel
+        case .glassLine: .glassLine
+        case .airCut: .airCut
         case .digitalVector: .digitalVector
+        case .rangeWood: .rangeWood
         }
     }
 
-    static let prototypeIdentities: [Self] = [.tourWhip, .heavySteel, .digitalVector]
-    static let cleanAndPrecise: [Self] = [.tourWhip, .digitalVector]
-    static let weightAndAir: [Self] = [.heavySteel]
+    static let listeningOrder: [Self] = [.tourWhip, .heavySteel, .glassLine, .airCut, .digitalVector, .rangeWood]
 
     static func migrated(from rawValue: String) -> Self {
         Self(rawValue: rawValue) ?? switch rawValue {
@@ -398,7 +408,10 @@ struct TempoSoundEventPlan: Equatable {
 enum TempoSoundIdentityProfile: String, CaseIterable, Identifiable {
     case tourWhip
     case heavySteel
+    case glassLine
+    case airCut
     case digitalVector
+    case rangeWood
 
     var id: String { rawValue }
 
@@ -426,6 +439,28 @@ enum TempoSoundIdentityProfile: String, CaseIterable, Identifiable {
                 ],
                 outputGain: 0.94
             )
+        case .glassLine:
+            return TempoSoundEventPlan(
+                phases: [
+                    .build: .init(assetName: "glass_line_crystal_rise", assetGain: 0.62, synthesisGain: 0.05, pitch: .rising(from: 520, to: 1_280), attack: 0.08, release: 0.16, silenceWindow: nil),
+                    .top: .init(assetName: "glass_line_suspension", assetGain: 0.58, synthesisGain: 0.04, pitch: .fixed(1_080), attack: 0.02, release: 0.30, silenceWindow: nil),
+                    .downswing: .init(assetName: "glass_line_pitch_dive", assetGain: 0.66, synthesisGain: 0.05, pitch: .descending(from: 1_020, to: 310), attack: 0.01, release: 0.14, silenceWindow: nil),
+                    .impact: .init(assetName: "glass_line_ping", assetGain: 0.82, synthesisGain: 0.025, pitch: .fixed(1_560), attack: 0, release: 0.16, silenceWindow: nil),
+                    .tail: .init(assetName: "glass_line_shimmer_tail", assetGain: 0.54, synthesisGain: 0.035, pitch: .descending(from: 1_120, to: 620), attack: 0, release: 0.80, silenceWindow: nil)
+                ],
+                outputGain: 0.84
+            )
+        case .airCut:
+            return TempoSoundEventPlan(
+                phases: [
+                    .build: .init(assetName: "air_cut_filtered_wind", assetGain: 0.64, synthesisGain: 0.045, pitch: .rising(from: 120, to: 440), attack: 0.14, release: 0.16, silenceWindow: nil),
+                    .top: .init(assetName: "air_cut_pressure_drop", assetGain: 0.24, synthesisGain: 0.012, pitch: .descending(from: 260, to: 110), attack: 0.05, release: 0.56, silenceWindow: nil),
+                    .downswing: .init(assetName: "air_cut_whoosh", assetGain: 0.72, synthesisGain: 0.055, pitch: .rising(from: 180, to: 920), attack: 0.04, release: 0.10, silenceWindow: nil),
+                    .impact: .init(assetName: "air_cut_air_burst", assetGain: 0.78, synthesisGain: 0.03, pitch: .fixed(780), attack: 0, release: 0.13, silenceWindow: nil),
+                    .tail: .init(assetName: "air_cut_tail", assetGain: 0.48, synthesisGain: 0.025, pitch: .descending(from: 520, to: 150), attack: 0, release: 0.88, silenceWindow: nil)
+                ],
+                outputGain: 0.86
+            )
         case .digitalVector:
             return TempoSoundEventPlan(
                 phases: [
@@ -436,6 +471,17 @@ enum TempoSoundIdentityProfile: String, CaseIterable, Identifiable {
                     .tail: .init(assetName: "digital_vector_tail", assetGain: 0.65, synthesisGain: 0.06, pitch: .stepped(values: [660, 494, 330, 220]), attack: 0, release: 0.72, silenceWindow: nil)
                 ],
                 outputGain: 0.92
+            )
+        case .rangeWood:
+            return TempoSoundEventPlan(
+                phases: [
+                    .build: .init(assetName: "range_wood_resonance", assetGain: 0.68, synthesisGain: 0.05, pitch: .rising(from: 125, to: 205), attack: 0.07, release: 0.18, silenceWindow: nil),
+                    .top: .init(assetName: "range_wood_muted_knock", assetGain: 0.72, synthesisGain: 0.035, pitch: .fixed(245), attack: 0, release: 0.54, silenceWindow: nil),
+                    .downswing: .init(assetName: "range_wood_dry_sweep", assetGain: 0.64, synthesisGain: 0.045, pitch: .descending(from: 220, to: 135), attack: 0.02, release: 0.16, silenceWindow: nil),
+                    .impact: .init(assetName: "range_wood_hardwood_strike", assetGain: 0.92, synthesisGain: 0.035, pitch: .fixed(285), attack: 0, release: 0.20, silenceWindow: nil),
+                    .tail: .init(assetName: "range_wood_tail", assetGain: 0.62, synthesisGain: 0.035, pitch: .descending(from: 230, to: 115), attack: 0, release: 0.72, silenceWindow: nil)
+                ],
+                outputGain: 0.90
             )
         }
     }
@@ -1189,8 +1235,14 @@ private final class ElasticSlingshotRenderState {
             generated = tourWhipGeneratedSample(phase: phase, progress: progress, pitch: phasePlan.pitch)
         case .heavySteel:
             generated = heavySteelGeneratedSample(phase: phase, progress: progress, pitch: phasePlan.pitch)
+        case .glassLine:
+            generated = glassLineGeneratedSample(phase: phase, progress: progress, pitch: phasePlan.pitch)
+        case .airCut:
+            generated = airCutGeneratedSample(phase: phase, progress: progress, pitch: phasePlan.pitch)
         case .digitalVector:
             generated = digitalVectorGeneratedSample(phase: phase, progress: progress, pitch: phasePlan.pitch)
+        case .rangeWood:
+            generated = rangeWoodGeneratedSample(phase: phase, progress: progress, pitch: phasePlan.pitch)
         }
 
         return impactSoftLimit((asset + (generated * phasePlan.synthesisGain)) * envelope * plan.outputGain)
@@ -1286,6 +1338,66 @@ private final class ElasticSlingshotRenderState {
         }
     }
 
+    private func glassLineGeneratedSample(
+        phase: TempoSoundPhase,
+        progress: Double,
+        pitch: TempoSoundPitchBehavior
+    ) -> Double {
+        let frequency = identityFrequency(pitch, progress: progress)
+        switch phase {
+        case .build:
+            return pureSynthTone(frequency: frequency, envelope: smoothstep(progress), brightness: 1.22, shimmer: 0.24)
+        case .top:
+            return pureSynthTone(frequency: frequency, envelope: 0.72 + (0.28 * exp(-4 * progress)), brightness: 1.12, shimmer: 0.30)
+        case .downswing:
+            return pureSynthTone(frequency: frequency, envelope: 1, brightness: 1.04, shimmer: 0.18)
+        case .impact:
+            return glassResonanceTone(frequency: frequency, envelope: exp(-18 * progress), shimmer: 0.34)
+        case .tail:
+            return glassResonanceTone(frequency: frequency, envelope: 1 - smoothstep(progress), shimmer: 0.28)
+        }
+    }
+
+    private func airCutGeneratedSample(
+        phase: TempoSoundPhase,
+        progress: Double,
+        pitch: TempoSoundPitchBehavior
+    ) -> Double {
+        let frequency = identityFrequency(pitch, progress: progress)
+        switch phase {
+        case .build:
+            return airframeTone(frequency: frequency, envelope: smoothstep(progress), air: 0.20 + (0.12 * progress))
+        case .top:
+            return airframeTone(frequency: frequency, envelope: 0.12 * (1 - smoothstep(progress)), air: 0.08)
+        case .downswing:
+            return airframeTone(frequency: frequency, envelope: 0.62 + (0.38 * smoothstep(progress)), air: 0.18 + (0.16 * progress))
+        case .impact:
+            return tanh((voiceState.nextNoiseSample() * 0.58) + sin(voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)) * 0.12)
+        case .tail:
+            return airframeTone(frequency: frequency, envelope: pow(1 - progress, 2.4), air: 0.18 * (1 - progress))
+        }
+    }
+
+    private func rangeWoodGeneratedSample(
+        phase: TempoSoundPhase,
+        progress: Double,
+        pitch: TempoSoundPitchBehavior
+    ) -> Double {
+        let frequency = identityFrequency(pitch, progress: progress)
+        switch phase {
+        case .build:
+            return woodBodyTone(frequency: frequency, envelope: 0.58 + (0.42 * smoothstep(progress)), strike: 0.02)
+        case .top:
+            return woodBodyTone(frequency: frequency, envelope: exp(-8 * progress), strike: 0.22)
+        case .downswing:
+            return reedTone(frequency: frequency, envelope: 0.72 + (0.28 * progress), bite: 0.08)
+        case .impact:
+            return woodBodyTone(frequency: frequency, envelope: exp(-14 * progress), strike: 0.42)
+        case .tail:
+            return woodBodyTone(frequency: frequency, envelope: 1 - smoothstep(progress), strike: 0.04)
+        }
+    }
+
 
     private func analogBandTone(frequency: Double, envelope: Double, drive: Double, noiseAmount: Double) -> Double {
         let primaryPhase = voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)
@@ -1304,6 +1416,16 @@ private final class ElasticSlingshotRenderState {
         let tone = sin(phase) * 0.72 + sin(shimmerPhase) * shimmer
 
         return tone * envelope * 0.24
+    }
+
+    private func glassResonanceTone(frequency: Double, envelope: Double, shimmer: Double) -> Double {
+        let adjustedFrequency = max(frequency, 320)
+        let phase = voiceState.advanceOscillator(frequency: adjustedFrequency, sampleRate: sampleRate)
+        let secondaryPhase = voiceState.advanceSecondary(frequency: adjustedFrequency * 2.41, sampleRate: sampleRate)
+        let body = sin(phase) * 0.54
+        let upper = sin(secondaryPhase) * min(max(shimmer, 0), 0.36)
+
+        return tanh((body + upper) * 0.92) * envelope * 0.18
     }
 
     private func flowWaveTone(frequency: Double, envelope: Double) -> Double {
@@ -1353,6 +1475,16 @@ private final class ElasticSlingshotRenderState {
         let reed = sin(phase) + (sin(phase * 2) * min(max(bite, 0), 0.35)) + (sin(secondaryPhase) * 0.05)
 
         return tanh(reed * 1.08) * envelope * 0.17
+    }
+
+    private func woodBodyTone(frequency: Double, envelope: Double, strike: Double) -> Double {
+        let adjustedFrequency = max(frequency, 90)
+        let phase = voiceState.advanceOscillator(frequency: adjustedFrequency, sampleRate: sampleRate)
+        let secondaryPhase = voiceState.advanceSecondary(frequency: adjustedFrequency * 2.82, sampleRate: sampleRate)
+        let body = sin(phase) * 0.64 + sin(secondaryPhase) * 0.16
+        let contact = voiceState.nextNoiseSample() * min(max(strike, 0), 0.45)
+
+        return tanh((body + contact) * 1.12) * envelope * 0.20
     }
 
     private func gravityTone(frequency: Double, envelope: Double, progress: Double) -> Double {

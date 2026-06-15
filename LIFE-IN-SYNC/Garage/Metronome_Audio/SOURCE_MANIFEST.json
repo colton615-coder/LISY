@@ -252,6 +252,42 @@
       "attribution_required": false,
       "duration_seconds": 1.57,
       "notes": "Remastered original stepped sequence, digital lock, pitching pulse, transient, and gated tail textures with rounded gates and reduced harshness."
+    },
+    {
+      "profile_id": "glassLine",
+      "display_name": "Glass Line identity assets",
+      "file_name": "glass_line_crystal_rise.wav, glass_line_suspension.wav, glass_line_pitch_dive.wav, glass_line_ping.wav, glass_line_shimmer_tail.wav",
+      "source_library": "LIFE-IN-SYNC generated audio",
+      "source_url": "local://LIFE-IN-SYNC/Garage/Metronome_Audio/",
+      "source_author": "LIFE-IN-SYNC",
+      "license": "Project-owned",
+      "attribution_required": false,
+      "duration_seconds": 3.01,
+      "notes": "Original crystalline rise, held glass resonance, smooth pitch dive, controlled ping, and short shimmer tail."
+    },
+    {
+      "profile_id": "airCut",
+      "display_name": "Air Cut identity assets",
+      "file_name": "air_cut_filtered_wind.wav, air_cut_pressure_drop.wav, air_cut_whoosh.wav, air_cut_air_burst.wav, air_cut_tail.wav",
+      "source_library": "LIFE-IN-SYNC generated audio",
+      "source_url": "local://LIFE-IN-SYNC/Garage/Metronome_Audio/",
+      "source_author": "LIFE-IN-SYNC",
+      "license": "Project-owned",
+      "attribution_required": false,
+      "duration_seconds": 2.84,
+      "notes": "Original filtered wind, near-silent pressure drop, accelerating whoosh, compact air burst, and fast air tail."
+    },
+    {
+      "profile_id": "rangeWood",
+      "display_name": "Range Wood identity assets",
+      "file_name": "range_wood_resonance.wav, range_wood_muted_knock.wav, range_wood_dry_sweep.wav, range_wood_hardwood_strike.wav, range_wood_tail.wav",
+      "source_library": "LIFE-IN-SYNC generated audio",
+      "source_url": "local://LIFE-IN-SYNC/Garage/Metronome_Audio/",
+      "source_author": "LIFE-IN-SYNC",
+      "license": "Project-owned",
+      "attribution_required": false,
+      "duration_seconds": 2.70,
+      "notes": "Original warm hardwood resonance, muted knock, dry sweep, substantial hardwood strike, and short wooden body tail."
     }
   ]
 }

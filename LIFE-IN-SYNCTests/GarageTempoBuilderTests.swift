@@ -27,10 +27,20 @@ struct GarageTempoBuilderTests {
     }
 
     @Test func guidedSoundGroupsContainEveryProfileExactlyOnce() {
-        let grouped = GarageGuidedSwingProfile.cleanAndPrecise + GarageGuidedSwingProfile.weightAndAir
+        let grouped = GarageGuidedSwingProfile.listeningOrder
 
         #expect(Set(grouped).count == GarageGuidedSwingProfile.allCases.count)
         #expect(grouped.count == GarageGuidedSwingProfile.allCases.count)
+    }
+
+    @Test func guidedSoundIdentitiesOwnEveryPhaseAndAsset() {
+        let phases: [TempoSoundPhase] = [.build, .top, .downswing, .impact, .tail]
+        let assetNames = TempoSoundIdentityProfile.allCases.flatMap { profile in
+            phases.compactMap { profile.eventPlan[$0].assetName }
+        }
+
+        #expect(assetNames.count == TempoSoundIdentityProfile.allCases.count * phases.count)
+        #expect(Set(assetNames).count == assetNames.count)
     }
 
     @Test func hapticScheduleContainsOneTopAndOneImpactEvent() {
