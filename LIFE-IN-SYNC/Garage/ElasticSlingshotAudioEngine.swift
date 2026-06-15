@@ -4,9 +4,6 @@ import Foundation
 
 private let elasticSlingshotStopFadeDuration: TimeInterval = 0.09
 private let elasticSlingshotImpactDuration: TimeInterval = 0.08
-private let elasticSlingshotToneReleaseFrames: AVAudioFramePosition = 2
-private let elasticSlingshotAnchorPulseDuration: TimeInterval = 0.07
-private let elasticSlingshotSubdivisionTickDuration: TimeInterval = 0.035
 
 struct ElasticSlingshotRecipe: Equatable {
     var tempoRatio: ElasticSlingshotTempoRatio = .tour
@@ -312,106 +309,139 @@ enum GarageMetronomeClickProfile: String, CaseIterable, Identifiable {
 }
 
 enum GarageGuidedSwingProfile: String, CaseIterable, Identifiable {
-    case tension
-    case vector
-    case mass
-    case sharpPulse
-    case airStrike
-    case deepStrike
+    case tourWhip
+    case heavySteel
+    case digitalVector
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .tension: "Clean Pulse"
-        case .vector: "Glass Tick"
-        case .mass: "Low Punch"
-        case .sharpPulse: "Sharp Pulse"
-        case .airStrike: "Air Strike"
-        case .deepStrike: "Deep Strike"
+        case .tourWhip: "Tour Whip"
+        case .heavySteel: "Heavy Steel"
+        case .digitalVector: "Digital Vector"
         }
     }
 
     var character: String {
         switch self {
-        case .tension: "Sharp, precise build with a clean strike."
-        case .vector: "Bright, tight build with a precise strike."
-        case .mass: "Deeper build with a compact impact."
-        case .sharpPulse: "Clean digital build with a firm strike."
-        case .airStrike: "Light, clean rise with a crisp impact."
-        case .deepStrike: "Low pressure build with a strong impact."
+        case .tourWhip: "Taut rise, suspended top, fast air whip."
+        case .heavySteel: "Low pressure, metallic lock, forged strike."
+        case .digitalVector: "Stepped build, gated lock, electronic transient."
         }
     }
 
-    var engineProfile: ElasticSlingshotSoundProfile {
+    var engineProfile: TempoSoundIdentityProfile {
         switch self {
-        case .tension: .elastic
-        case .vector: .glass
-        case .mass: .gravity
-        case .sharpPulse: .pulse
-        case .airStrike: .airframe
-        case .deepStrike: .storm
+        case .tourWhip: .tourWhip
+        case .heavySteel: .heavySteel
+        case .digitalVector: .digitalVector
         }
     }
 
-    static let cleanAndPrecise: [Self] = [.tension, .vector, .sharpPulse]
-    static let weightAndAir: [Self] = [.mass, .airStrike, .deepStrike]
+    static let prototypeIdentities: [Self] = [.tourWhip, .heavySteel, .digitalVector]
+    static let cleanAndPrecise: [Self] = [.tourWhip, .digitalVector]
+    static let weightAndAir: [Self] = [.heavySteel]
+
+    static func migrated(from rawValue: String) -> Self {
+        Self(rawValue: rawValue) ?? switch rawValue {
+        case "mass", "deepStrike": .heavySteel
+        case "vector", "sharpPulse": .digitalVector
+        default: .tourWhip
+        }
+    }
 }
 
-enum ElasticSlingshotSoundProfile: String, CaseIterable, Identifiable {
-    case elastic
-    case storm
-    case airframe
-    case reed
-    case pulse
-    case gravity
-    case glass
-    case rubber
+enum TempoSoundPhase: Hashable {
+    case build
+    case top
+    case downswing
+    case impact
+    case tail
+}
+
+enum TempoSoundPitchBehavior: Equatable {
+    case rising(from: Double, to: Double)
+    case descending(from: Double, to: Double)
+    case stepped(values: [Double])
+    case fixed(Double)
+    case silent
+}
+
+struct TempoSoundPhasePlan: Equatable {
+    let assetName: String?
+    let assetGain: Double
+    let synthesisGain: Double
+    let pitch: TempoSoundPitchBehavior
+    let attack: Double
+    let release: Double
+    let silenceWindow: ClosedRange<Double>?
+}
+
+struct TempoSoundEventPlan: Equatable {
+    let phases: [TempoSoundPhase: TempoSoundPhasePlan]
+    let outputGain: Double
+
+    subscript(_ phase: TempoSoundPhase) -> TempoSoundPhasePlan {
+        phases[phase] ?? TempoSoundPhasePlan(
+            assetName: nil,
+            assetGain: 0,
+            synthesisGain: 0,
+            pitch: .silent,
+            attack: 0,
+            release: 0,
+            silenceWindow: nil
+        )
+    }
+}
+
+enum TempoSoundIdentityProfile: String, CaseIterable, Identifiable {
+    case tourWhip
+    case heavySteel
+    case digitalVector
 
     var id: String { rawValue }
 
-    var title: String {
+    var eventPlan: TempoSoundEventPlan {
         switch self {
-        case .elastic:
-            return "Elastic"
-        case .storm:
-            return "Storm"
-        case .airframe:
-            return "Airframe"
-        case .reed:
-            return "Reed"
-        case .pulse:
-            return "Pulse"
-        case .gravity:
-            return "Gravity"
-        case .glass:
-            return "Glass"
-        case .rubber:
-            return "Rubber"
-        }
-    }
-
-    var description: String {
-        switch self {
-        case .elastic:
-            return "Smooth stretch, calm release, sharp snap."
-        case .storm:
-            return "Low pressure build, thunder body, bright strike."
-        case .airframe:
-            return "Breathy lift, clean trail, crisp snap."
-        case .reed:
-            return "Controlled reed texture with playful edge."
-        case .pulse:
-            return "Modern rhythm pressure with surgical impact."
-        case .gravity:
-            return "Deep load, soft fall, bright strike."
-        case .glass:
-            return "Clean shimmer, tight top, precise snap."
-        case .rubber:
-            return "Elastic training feel without toy energy."
+        case .tourWhip:
+            return TempoSoundEventPlan(
+                phases: [
+                    .build: .init(assetName: "tour_whip_tension", assetGain: 0.62, synthesisGain: 0.06, pitch: .rising(from: 165, to: 720), attack: 0.05, release: 0.18, silenceWindow: nil),
+                    .top: .init(assetName: nil, assetGain: 0, synthesisGain: 0, pitch: .silent, attack: 0, release: 0, silenceWindow: 0...1),
+                    .downswing: .init(assetName: "tour_whip_air", assetGain: 0.86, synthesisGain: 0.04, pitch: .rising(from: 280, to: 980), attack: 0.01, release: 0.12, silenceWindow: nil),
+                    .impact: .init(assetName: "tour_whip_leather_crack", assetGain: 1.05, synthesisGain: 0.03, pitch: .fixed(1_400), attack: 0, release: 0.08, silenceWindow: nil),
+                    .tail: .init(assetName: "tour_whip_snap_tail", assetGain: 0.68, synthesisGain: 0.02, pitch: .descending(from: 460, to: 160), attack: 0, release: 0.78, silenceWindow: nil)
+                ],
+                outputGain: 0.98
+            )
+        case .heavySteel:
+            return TempoSoundEventPlan(
+                phases: [
+                    .build: .init(assetName: "heavy_steel_pressure", assetGain: 0.72, synthesisGain: 0.08, pitch: .descending(from: 145, to: 58), attack: 0.12, release: 0.08, silenceWindow: nil),
+                    .top: .init(assetName: "heavy_steel_lock", assetGain: 0.82, synthesisGain: 0.04, pitch: .fixed(280), attack: 0, release: 0.52, silenceWindow: nil),
+                    .downswing: .init(assetName: "heavy_steel_drop", assetGain: 0.82, synthesisGain: 0.06, pitch: .descending(from: 170, to: 46), attack: 0.02, release: 0.18, silenceWindow: nil),
+                    .impact: .init(assetName: "heavy_steel_forged_strike", assetGain: 1.02, synthesisGain: 0.04, pitch: .fixed(360), attack: 0, release: 0.22, silenceWindow: nil),
+                    .tail: .init(assetName: "heavy_steel_resonance", assetGain: 0.78, synthesisGain: 0.04, pitch: .descending(from: 300, to: 105), attack: 0, release: 0.64, silenceWindow: nil)
+                ],
+                outputGain: 0.94
+            )
+        case .digitalVector:
+            return TempoSoundEventPlan(
+                phases: [
+                    .build: .init(assetName: "digital_vector_steps", assetGain: 0.68, synthesisGain: 0.08, pitch: .stepped(values: [196, 247, 330, 440, 587]), attack: 0.01, release: 0.05, silenceWindow: nil),
+                    .top: .init(assetName: "digital_vector_lock", assetGain: 0.78, synthesisGain: 0.06, pitch: .fixed(660), attack: 0, release: 0.34, silenceWindow: nil),
+                    .downswing: .init(assetName: "digital_vector_pulse", assetGain: 0.74, synthesisGain: 0.09, pitch: .stepped(values: [587, 494, 392, 294]), attack: 0, release: 0.08, silenceWindow: nil),
+                    .impact: .init(assetName: "digital_vector_transient", assetGain: 0.95, synthesisGain: 0.06, pitch: .fixed(1_250), attack: 0, release: 0.07, silenceWindow: nil),
+                    .tail: .init(assetName: "digital_vector_tail", assetGain: 0.65, synthesisGain: 0.06, pitch: .stepped(values: [660, 494, 330, 220]), attack: 0, release: 0.72, silenceWindow: nil)
+                ],
+                outputGain: 0.92
+            )
         }
     }
 }
+
+typealias ElasticSlingshotSoundProfile = TempoSoundIdentityProfile
 
 private enum ElasticSlingshotPlaybackMode {
     case continuous
@@ -429,7 +459,7 @@ private enum ElasticSlingshotPlaybackMode {
 
 private enum ElasticSlingshotPhase {
     case takeback(progress: Double)
-    case pause(releaseGain: Double)
+    case pause(progress: Double)
     case downswing(progress: Double)
     case impact(progress: Double)
     case followThrough(progress: Double)
@@ -536,56 +566,6 @@ private struct ElasticSlingshotVoiceState {
     }
 }
 
-private struct ElasticSlingshotImpactToneParameters {
-    let frequency: Double
-    let secondaryMultiplier: Double
-    let noiseAmount: Double
-    let drive: Double
-    let gain: Double
-    let decayRate: Double
-    let bend: Double
-    let tremoloDepth: Double
-    let primaryMix: Double
-    let secondaryMix: Double
-    let bodyMix: Double
-    let waveform: ElasticSlingshotImpactWaveform
-
-    init(
-        frequency: Double,
-        secondaryMultiplier: Double,
-        noiseAmount: Double,
-        drive: Double,
-        gain: Double,
-        decayRate: Double = 10.2,
-        bend: Double = 0,
-        tremoloDepth: Double = 0,
-        primaryMix: Double = 0.62,
-        secondaryMix: Double = 0.24,
-        bodyMix: Double = 0.16,
-        waveform: ElasticSlingshotImpactWaveform
-    ) {
-        self.frequency = frequency
-        self.secondaryMultiplier = secondaryMultiplier
-        self.noiseAmount = noiseAmount
-        self.drive = drive
-        self.gain = gain
-        self.decayRate = decayRate
-        self.bend = bend
-        self.tremoloDepth = tremoloDepth
-        self.primaryMix = primaryMix
-        self.secondaryMix = secondaryMix
-        self.bodyMix = bodyMix
-        self.waveform = waveform
-    }
-}
-
-private enum ElasticSlingshotImpactWaveform {
-    case sine
-    case square
-    case click
-    case noise
-}
-
 private enum GarageTempoOutputRouteFamily {
     case speaker
     case headphones
@@ -650,14 +630,61 @@ private struct GarageMetronomeSampleLibrary {
     }
 }
 
+private struct TempoSoundAssetLibrary {
+    let samplesByName: [String: [Float]]
+
+    static func load() -> Self {
+        let names = Set(
+            TempoSoundIdentityProfile.allCases.flatMap { identity in
+                identity.eventPlan.phases.values.compactMap(\.assetName)
+            }
+        )
+        let samples = names.reduce(into: [String: [Float]]()) { result, name in
+            guard let url = sampleURL(for: name), let sample = loadSample(at: url) else {
+#if DEBUG
+                print("[TempoAudio] Missing guided identity asset: \(name).wav")
+#endif
+                return
+            }
+            result[name] = sample
+        }
+#if DEBUG
+        print("[TempoAudio] Loaded \(samples.count)/\(names.count) guided identity assets.")
+#endif
+        return Self(samplesByName: samples)
+    }
+
+    private static func sampleURL(for name: String) -> URL? {
+        Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "Metronome_Audio")
+            ?? Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "Garage/Metronome_Audio")
+            ?? Bundle.main.url(forResource: name, withExtension: "wav")
+    }
+
+    private static func loadSample(at url: URL) -> [Float]? {
+        do {
+            let file = try AVAudioFile(forReading: url, commonFormat: .pcmFormatFloat32, interleaved: false)
+            let capacity = AVAudioFrameCount(file.length)
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: capacity) else {
+                return nil
+            }
+            try file.read(into: buffer)
+            guard let channelData = buffer.floatChannelData?[0] else { return nil }
+            return Array(UnsafeBufferPointer(start: channelData, count: Int(buffer.frameLength)))
+        } catch {
+            return nil
+        }
+    }
+}
+
 private final class ElasticSlingshotRenderState {
     private let lock = NSLock()
     private let sampleRate: Double
     private let metronomeSamples: [GarageMetronomeClickProfile: [Float]]
+    private let identitySamples: [String: [Float]]
     private var configuration = ElasticSlingshotRenderConfiguration(
         beatsPerMinute: 75,
         recipe: ElasticSlingshotRecipe(),
-        soundProfile: .elastic,
+        soundProfile: .tourWhip,
         metronomeStartProfile: .woodblock,
         metronomeImpactProfile: .brightSignal,
         outputRouteFamily: .headphones,
@@ -676,9 +703,14 @@ private final class ElasticSlingshotRenderState {
     private var voiceState = ElasticSlingshotVoiceState()
     private var appliedResetToken = 0
 
-    init(sampleRate: Double, metronomeSamples: [GarageMetronomeClickProfile: [Float]]) {
+    init(
+        sampleRate: Double,
+        metronomeSamples: [GarageMetronomeClickProfile: [Float]],
+        identitySamples: [String: [Float]]
+    ) {
         self.sampleRate = sampleRate
         self.metronomeSamples = metronomeSamples
+        self.identitySamples = identitySamples
     }
 
     func getLoopProgress() -> Double {
@@ -872,27 +904,28 @@ private final class ElasticSlingshotRenderState {
         voiceState.resetIfNeeded(relativeFrame: relativeFrame)
 
         let rawSample: Double
-        switch phase(for: relativeFrame, configuration: configuration) {
-        case let .takeback(progress):
-            rawSample = configuration.instrumentMode == .metronome ? 0 : takebackSample(progress: progress, profile: configuration.soundProfile)
-        case let .pause(releaseGain):
-            rawSample = configuration.instrumentMode == .metronome ? 0 : pauseSample(releaseGain: releaseGain, profile: configuration.soundProfile)
-        case let .downswing(progress):
-            rawSample = configuration.instrumentMode == .metronome ? 0 : downswingTrailSample(progress: progress, profile: configuration.soundProfile)
-        case let .impact(progress):
-            debugLogImpactIfNeeded(at: relativeFrame, configuration: configuration)
-            rawSample = configuration.instrumentMode == .metronome ? 0 : impactSample(progress: progress, profile: configuration.soundProfile)
-        case let .followThrough(progress):
-            rawSample = configuration.instrumentMode == .metronome ? 0 : followThroughSample(progress: progress, profile: configuration.soundProfile)
-        case .loopDelay:
+        if configuration.instrumentMode == .metronome {
             rawSample = 0
-        case .finished:
-            rawSample = 0
+        } else {
+            switch phase(for: relativeFrame, configuration: configuration) {
+            case let .takeback(progress):
+                rawSample = guidedIdentitySample(phase: .build, progress: progress, profile: configuration.soundProfile)
+            case let .pause(progress):
+                rawSample = guidedIdentitySample(phase: .top, progress: progress, profile: configuration.soundProfile)
+            case let .downswing(progress):
+                rawSample = guidedIdentitySample(phase: .downswing, progress: progress, profile: configuration.soundProfile)
+            case let .impact(progress):
+                debugLogImpactIfNeeded(at: relativeFrame, configuration: configuration)
+                rawSample = guidedIdentitySample(phase: .impact, progress: progress, profile: configuration.soundProfile)
+            case let .followThrough(progress):
+                rawSample = guidedIdentitySample(phase: .tail, progress: progress, profile: configuration.soundProfile)
+            case .loopDelay, .finished:
+                rawSample = 0
+            }
         }
 
-        let cueSample = buildCueSample(at: relativeFrame, configuration: configuration)
         let guideSample = slowTempoGuideSample(at: relativeFrame, configuration: configuration)
-        return (rawSample + cueSample + guideSample) * playbackEnvelope(at: frame, configuration: configuration)
+        return (rawSample + guideSample) * playbackEnvelope(at: frame, configuration: configuration)
     }
 
     private func phase(for relativeFrame: AVAudioFramePosition, configuration: ElasticSlingshotRenderConfiguration) -> ElasticSlingshotPhase {
@@ -922,9 +955,8 @@ private final class ElasticSlingshotRenderState {
         }
 
         if cycleFrame < pauseEndFrame {
-            let framesUntilDownswing = pauseEndFrame - cycleFrame
-            let releaseProgress = min(Double(framesUntilDownswing) / Double(max(elasticSlingshotToneReleaseFrames, 1)), 1)
-            return .pause(releaseGain: releaseProgress)
+            let pauseFrame = cycleFrame - takebackFrames
+            return .pause(progress: Double(pauseFrame) / Double(max(pauseFrames, 1)))
         }
 
         if cycleFrame < totalFrames {
@@ -1097,52 +1129,6 @@ private final class ElasticSlingshotRenderState {
         return tanh(sample * 1.28) / 1.28
     }
 
-    private func buildCueSample(
-        at relativeFrame: AVAudioFramePosition,
-        configuration: ElasticSlingshotRenderConfiguration
-    ) -> Double {
-        guard configuration.instrumentMode == .build else { return 0 }
-
-        let loopFrames = max(frames(for: configuration.loopDuration), 1)
-        let cycleFrame = configuration.mode == .continuous ? relativeFrame % loopFrames : relativeFrame
-        let totalFrames = max(frames(for: configuration.totalDuration), 1)
-        guard cycleFrame < totalFrames else { return 0 }
-
-        let startFrames = max(frames(for: elasticSlingshotAnchorPulseDuration), 1)
-        if let progress = eventProgress(cycleFrame: cycleFrame, eventFrame: 0, durationFrames: startFrames) {
-            return startAnchorPulseSample(progress: progress, profile: configuration.soundProfile)
-        }
-
-        let topFrame = max(frames(for: configuration.takebackDuration), 1)
-        let topFrames = max(frames(for: 0.055), 1)
-        if let progress = eventProgress(cycleFrame: cycleFrame, eventFrame: topFrame, durationFrames: topFrames) {
-            return topAnchorPulseSample(progress: progress, profile: configuration.soundProfile)
-        }
-
-        return 0
-    }
-
-    private func buildResetPulseBed(
-        at relativeFrame: AVAudioFramePosition,
-        configuration: ElasticSlingshotRenderConfiguration
-    ) -> Double {
-        let loopFrames = max(frames(for: configuration.loopDuration), 1)
-        let cycleFrame = relativeFrame % loopFrames
-        let swingFrames = max(frames(for: configuration.totalDuration), 1)
-        guard cycleFrame >= swingFrames else { return 0 }
-
-        let restFrame = cycleFrame - swingFrames
-        let restFrames = max(loopFrames - swingFrames, 1)
-        let pulseIntervalFrames = max(frames(for: max(configuration.slowTempoLogic.anchorInterval * 0.5, 0.25)), 1)
-        let pulseFrame = restFrame % pulseIntervalFrames
-        let pulseProgress = Double(pulseFrame) / Double(pulseIntervalFrames)
-        let restProgress = Double(restFrame) / Double(restFrames)
-        let envelope = exp(-10 * pulseProgress) * (0.55 + (0.45 * restProgress))
-        let phase = voiceState.advanceSecondary(frequency: 112, sampleRate: sampleRate)
-
-        return sin(phase) * envelope * 0.045
-    }
-
     private func eventProgress(
         cycleFrame: AVAudioFramePosition,
         eventFrame: AVAudioFramePosition,
@@ -1178,216 +1164,128 @@ private final class ElasticSlingshotRenderState {
         print("[TempoAudio] guided impact profile=\(configuration.soundProfile.rawValue) mode=\(configuration.mode.debugName)")
     }
 
-    private func takebackSample(progress: Double, profile: ElasticSlingshotSoundProfile) -> Double {
+    private func guidedIdentitySample(
+        phase: TempoSoundPhase,
+        progress: Double,
+        profile: TempoSoundIdentityProfile
+    ) -> Double {
         let progress = min(max(progress, 0), 1)
-        let frequency = pitchFrequency(for: .takeback(progress: progress))
-        let envelope = attackEnvelope(progress: progress, attack: attack(for: profile)) * loadGain(for: profile)
-
-        switch profile {
-        case .elastic:
-            return analogBandTone(
-                frequency: frequency,
-                envelope: envelope,
-                drive: drive(for: profile),
-                noiseAmount: 0.018 * progress
-            )
-        case .storm:
-            return stormTone(frequency: frequency * 0.58, envelope: envelope, progress: progress)
-        case .airframe:
-            return airframeTone(frequency: frequency * 0.82, envelope: envelope, air: 0.18 + (0.10 * progress))
-        case .reed:
-            return reedTone(frequency: frequency * 0.66, envelope: envelope, bite: 0.22)
-        case .pulse:
-            return modernPulseTone(frequency: frequency * 1.12, envelope: envelope)
-        case .gravity:
-            return gravityTone(frequency: frequency * 0.46, envelope: envelope, progress: progress)
-        case .glass:
-            return pureSynthTone(
-                frequency: frequency * 1.34,
-                envelope: envelope,
-                brightness: brightness(for: profile),
-                shimmer: 0.09
-            )
-        case .rubber:
-            return rubberTone(frequency: frequency * 0.72, envelope: envelope, progress: progress)
-        }
-    }
-
-    private func pauseSample(releaseGain: Double, profile: ElasticSlingshotSoundProfile) -> Double {
-        let releaseGain = min(max(releaseGain, 0), 1)
-        let frequency = pitchFrequency(for: .pause(releaseGain: releaseGain))
-        let envelope = topHoldGain(for: profile) * releaseGain
-
-        switch profile {
-        case .elastic:
-            return analogBandTone(
-                frequency: frequency,
-                envelope: envelope,
-                drive: drive(for: profile),
-                noiseAmount: 0
-            )
-        case .storm:
-            return stormTone(frequency: frequency * 0.58, envelope: envelope, progress: 1)
-        case .airframe:
-            return airframeTone(frequency: frequency * 0.82, envelope: envelope, air: 0.22)
-        case .reed:
-            return reedTone(frequency: frequency * 0.66, envelope: envelope, bite: 0.16)
-        case .pulse:
-            return modernPulseTone(frequency: frequency * 1.12, envelope: envelope)
-        case .gravity:
-            return gravityTone(frequency: frequency * 0.46, envelope: envelope, progress: 1)
-        case .glass:
-            return pureSynthTone(
-                frequency: frequency * 1.34,
-                envelope: envelope,
-                brightness: brightness(for: profile),
-                shimmer: 0.09
-            )
-        case .rubber:
-            return rubberTone(frequency: frequency * 0.72, envelope: envelope, progress: 1)
-        }
-    }
-
-    private func downswingTrailSample(progress: Double, profile: ElasticSlingshotSoundProfile) -> Double {
-        let progress = min(max(progress, 0), 1)
-        let trailEnvelope = downswingTrailGain(for: profile) * (1 - smoothstep(progress)) * 0.42
-        let frequency = exponentialRamp(from: 440, to: 180, progress: progress)
-
-        switch profile {
-        case .elastic:
-            return flowWaveTone(frequency: frequency * 0.82, envelope: trailEnvelope)
-        case .storm:
-            return stormTone(frequency: frequency * 0.52, envelope: trailEnvelope * 0.86, progress: 1 - progress)
-        case .airframe:
-            return airframeTone(frequency: frequency * 0.74, envelope: trailEnvelope, air: 0.26)
-        case .reed:
-            return reedTone(frequency: frequency * 0.64, envelope: trailEnvelope * 0.72, bite: 0.08)
-        case .pulse:
-            return modernPulseTone(frequency: frequency * 1.08, envelope: trailEnvelope * 0.66)
-        case .gravity:
-            return gravityTone(frequency: frequency * 0.42, envelope: trailEnvelope * 0.82, progress: 1 - progress)
-        case .glass:
-            return pureSynthTone(frequency: frequency * 1.42, envelope: trailEnvelope * 0.62, brightness: 1.22, shimmer: 0.04)
-        case .rubber:
-            return rubberTone(frequency: frequency * 0.76, envelope: trailEnvelope, progress: 1 - progress)
-        }
-    }
-
-    private func startAnchorPulseSample(progress: Double, profile: ElasticSlingshotSoundProfile) -> Double {
-        let progress = min(max(progress, 0), 1)
-        let envelope = exp(-18 * progress)
-        let body = sin(progress * Double.pi * 18)
-        let edge = sin(progress * Double.pi * 31) * 0.28
-
-        return (body + edge) * envelope * anchorPulseGain(for: profile)
-    }
-
-    private func topAnchorPulseSample(progress: Double, profile: ElasticSlingshotSoundProfile) -> Double {
-        let progress = min(max(progress, 0), 1)
-        let envelope = exp(-12 * progress)
-        let body = sin(progress * Double.pi * 13)
-        let lift = sin(progress * Double.pi * 21) * 0.18
-
-        return (body + lift) * envelope * topPulseGain(for: profile)
-    }
-
-    private func subdivisionTickSample(progress: Double, profile: ElasticSlingshotSoundProfile) -> Double {
-        let progress = min(max(progress, 0), 1)
-        let envelope = exp(-24 * progress)
-        let tick = sin(progress * Double.pi * 29)
-        let air = sin(progress * Double.pi * 43) * 0.14
-
-        return (tick + air) * envelope * subdivisionTickGain(for: profile)
-    }
-
-    private func impactSample(progress: Double, profile: ElasticSlingshotSoundProfile) -> Double {
-        let progress = min(max(progress, 0), 1)
-        let parameters = impactParameters(for: profile)
-        let bentFrequency = max(parameters.frequency * pow(2, parameters.bend * (1 - progress)), 40)
-        let snapPhase = voiceState.advanceOscillator(frequency: bentFrequency, sampleRate: sampleRate)
-        let tickPhase = voiceState.advanceSecondary(
-            frequency: bentFrequency * parameters.secondaryMultiplier,
-            sampleRate: sampleRate
-        )
-        let noise = voiceState.nextNoiseSample()
-
-        let primary: Double
-        switch parameters.waveform {
-        case .sine:
-            primary = sin(snapPhase) * parameters.primaryMix
-        case .square:
-            primary = (sin(snapPhase) >= 0 ? parameters.primaryMix : -parameters.primaryMix)
-        case .click:
-            primary = sin(snapPhase) * parameters.primaryMix + sin(tickPhase) * parameters.secondaryMix
-        case .noise:
-            primary = noise * parameters.primaryMix + sin(snapPhase) * parameters.secondaryMix
+        let plan = profile.eventPlan
+        let phasePlan = plan[phase]
+        if phasePlan.silenceWindow?.contains(progress) == true {
+            return 0
         }
 
-        let body = sin(tickPhase) * parameters.bodyMix
-        let burst = noise * parameters.noiseAmount
-        let tremolo = 1 - parameters.tremoloDepth + (parameters.tremoloDepth * abs(sin(tickPhase * 0.5)))
-        let shapedSample = tanh((primary + body + burst) * parameters.drive) * parameters.gain * tremolo * impactEnvelope(
+        let envelope = identityEnvelope(
             progress: progress,
-            toneDecayRate: parameters.decayRate
+            attack: phasePlan.attack,
+            release: phasePlan.release
         )
-
-        let transient = guidedImpactTransient(progress: progress, profile: profile)
-        return impactSoftLimit(shapedSample + transient)
-    }
-
-    private func guidedImpactTransient(progress: Double, profile: ElasticSlingshotSoundProfile) -> Double {
-        let clickProfile: GarageMetronomeClickProfile
-        let gain: Double
+        let asset = identityAssetSample(name: phasePlan.assetName, progress: progress) * phasePlan.assetGain
+        let generated: Double
 
         switch profile {
-        case .elastic:
-            clickProfile = .crispMarker
-            gain = 0.48
-        case .glass:
-            clickProfile = .glassPing
-            gain = 0.52
-        case .gravity:
-            clickProfile = .lowPunch
-            gain = 0.58
-        case .pulse:
-            clickProfile = .digitalPulse
-            gain = 0.50
-        case .airframe:
-            clickProfile = .softAir
-            gain = 0.46
-        case .storm:
-            clickProfile = .impactKnock
-            gain = 0.60
-        case .reed:
-            clickProfile = .rangeStick
-            gain = 0.48
-        case .rubber:
-            clickProfile = .mutedTap
-            gain = 0.50
+        case .tourWhip:
+            generated = tourWhipGeneratedSample(phase: phase, progress: progress, pitch: phasePlan.pitch)
+        case .heavySteel:
+            generated = heavySteelGeneratedSample(phase: phase, progress: progress, pitch: phasePlan.pitch)
+        case .digitalVector:
+            generated = digitalVectorGeneratedSample(phase: phase, progress: progress, pitch: phasePlan.pitch)
         }
 
-        guard let sample = metronomeSamples[clickProfile] else { return 0 }
-        let frame = Int(progress * elasticSlingshotImpactDuration * sampleRate)
-        guard sample.indices.contains(frame) else { return 0 }
-        return Double(sample[frame]) * gain
+        return impactSoftLimit((asset + (generated * phasePlan.synthesisGain)) * envelope * plan.outputGain)
     }
 
-    private func followThroughSample(progress: Double, profile: ElasticSlingshotSoundProfile) -> Double {
-        let progress = min(max(progress, 0), 1)
-        let envelope = pow(1 - smoothstep(progress), 2) * 0.16
-        let frequency = exponentialRamp(from: 210, to: 92, progress: progress)
+    private func identityAssetSample(name: String?, progress: Double) -> Double {
+        guard let name, let sample = identitySamples[name], sample.isEmpty == false else { return 0 }
+        let index = min(Int(progress * Double(sample.count)), sample.count - 1)
+        return Double(sample[index])
+    }
 
-        switch profile {
-        case .storm, .gravity:
-            return gravityTone(frequency: frequency * 0.56, envelope: envelope, progress: progress)
-        case .airframe, .glass:
-            return airframeTone(frequency: frequency * 1.18, envelope: envelope, air: 0.18)
-        case .reed, .rubber:
-            return flowWaveTone(frequency: frequency * 0.78, envelope: envelope)
-        case .elastic, .pulse:
-            return pureSynthTone(frequency: frequency, envelope: envelope, brightness: 0.54, shimmer: 0.02)
+    private func identityEnvelope(progress: Double, attack: Double, release: Double) -> Double {
+        let attackGain = attack > 0 ? min(progress / attack, 1) : 1
+        let releaseStart = max(1 - release, 0)
+        let releaseGain = release > 0 && progress > releaseStart
+            ? max((1 - progress) / release, 0)
+            : 1
+        return min(attackGain, releaseGain)
+    }
+
+    private func identityFrequency(_ behavior: TempoSoundPitchBehavior, progress: Double) -> Double {
+        switch behavior {
+        case let .rising(from, to), let .descending(from, to):
+            return exponentialRamp(from: from, to: to, progress: progress)
+        case let .stepped(values):
+            guard values.isEmpty == false else { return 0 }
+            let index = min(Int(progress * Double(values.count)), values.count - 1)
+            return values[index]
+        case let .fixed(value):
+            return value
+        case .silent:
+            return 0
         }
     }
+
+    private func tourWhipGeneratedSample(
+        phase: TempoSoundPhase,
+        progress: Double,
+        pitch: TempoSoundPitchBehavior
+    ) -> Double {
+        let frequency = identityFrequency(pitch, progress: progress)
+        switch phase {
+        case .build:
+            return analogBandTone(frequency: frequency, envelope: 0.58 + (0.42 * progress), drive: 1.12, noiseAmount: 0.025 * progress)
+        case .top:
+            return 0
+        case .downswing:
+            return airframeTone(frequency: frequency, envelope: 1, air: 0.34 + (0.20 * progress))
+        case .impact:
+            return tanh((voiceState.nextNoiseSample() * 0.72) + sin(voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)) * 0.36)
+        case .tail:
+            return flowWaveTone(frequency: frequency, envelope: 1 - smoothstep(progress))
+        }
+    }
+
+    private func heavySteelGeneratedSample(
+        phase: TempoSoundPhase,
+        progress: Double,
+        pitch: TempoSoundPitchBehavior
+    ) -> Double {
+        let frequency = identityFrequency(pitch, progress: progress)
+        switch phase {
+        case .build:
+            return gravityTone(frequency: frequency, envelope: 0.62 + (0.38 * progress), progress: progress)
+        case .top:
+            return pureSynthTone(frequency: frequency, envelope: exp(-7 * progress), brightness: 1.8, shimmer: 0.20)
+        case .downswing:
+            return stormTone(frequency: frequency, envelope: 0.72 + (0.28 * progress), progress: 1 - progress)
+        case .impact:
+            return tanh(gravityTone(frequency: frequency, envelope: 1, progress: progress) * 3.2)
+        case .tail:
+            return pureSynthTone(frequency: frequency, envelope: 1 - smoothstep(progress), brightness: 1.22, shimmer: 0.24)
+        }
+    }
+
+    private func digitalVectorGeneratedSample(
+        phase: TempoSoundPhase,
+        progress: Double,
+        pitch: TempoSoundPitchBehavior
+    ) -> Double {
+        let frequency = identityFrequency(pitch, progress: progress)
+        let gateCount = phase == .build ? 10.0 : 7.0
+        let gate = (progress * gateCount).truncatingRemainder(dividingBy: 1) < 0.58 ? 1.0 : 0.0
+        switch phase {
+        case .build, .downswing:
+            return modernPulseTone(frequency: frequency, envelope: gate)
+        case .top:
+            return modernPulseTone(frequency: frequency, envelope: exp(-11 * progress))
+        case .impact:
+            return tanh(modernPulseTone(frequency: frequency, envelope: 1) * 2.8)
+        case .tail:
+            return pureSynthTone(frequency: frequency, envelope: gate * (1 - smoothstep(progress)), brightness: 1.36, shimmer: 0.14)
+        }
+    }
+
 
     private func analogBandTone(frequency: Double, envelope: Double, drive: Double, noiseAmount: Double) -> Double {
         let primaryPhase = voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)
@@ -1422,10 +1320,10 @@ private final class ElasticSlingshotRenderState {
         let adjustedFrequency = max(frequency, 120)
         let phase = voiceState.advanceOscillator(frequency: adjustedFrequency, sampleRate: sampleRate)
         let secondaryPhase = voiceState.advanceSecondary(frequency: adjustedFrequency * 2.62, sampleRate: sampleRate)
-        let pulse = sin(phase) >= 0 ? 0.68 : -0.68
-        let edge = sin(secondaryPhase) * 0.18
+        let pulse = sin(phase) >= 0 ? 0.50 : -0.50
+        let edge = sin(secondaryPhase) * 0.08
 
-        return tanh(pulse + edge) * envelope * 0.20
+        return tanh((pulse + edge) * 0.84) * envelope * 0.20
     }
 
     private func stormTone(frequency: Double, envelope: Double, progress: Double) -> Double {
@@ -1476,24 +1374,9 @@ private final class ElasticSlingshotRenderState {
         return tanh(stretch * 1.34) * envelope * 0.21
     }
 
-    private func pitchFrequency(for phase: ElasticSlingshotPhase) -> Double {
-        switch phase {
-        case let .takeback(progress):
-            return exponentialRamp(from: 220, to: 880, progress: pow(min(max(progress, 0), 1), 1.08))
-        case .pause(_):
-            return 880
-        case .downswing(_), .impact(_), .followThrough(_), .loopDelay, .finished:
-            return 0
-        }
-    }
-
     private func exponentialRamp(from start: Double, to end: Double, progress: Double) -> Double {
         let progress = min(max(progress, 0), 1)
         return start * pow(end / start, progress)
-    }
-
-    private func attackEnvelope(progress: Double, attack: Double) -> Double {
-        min(progress / max(attack, 0.001), 1)
     }
 
     private func playbackEnvelope(at frame: AVAudioFramePosition, configuration: ElasticSlingshotRenderConfiguration) -> Double {
@@ -1510,161 +1393,6 @@ private final class ElasticSlingshotRenderState {
     private func smoothstep(_ value: Double) -> Double {
         let value = min(max(value, 0), 1)
         return value * value * (3 - 2 * value)
-    }
-
-    private func drive(for profile: ElasticSlingshotSoundProfile) -> Double {
-        switch profile {
-        case .elastic, .rubber:
-            return 1.08
-        case .storm, .gravity:
-            return 1.32
-        case .reed:
-            return 1.12
-        case .airframe, .glass:
-            return 0.82
-        case .pulse:
-            return 1.0
-        }
-    }
-
-    private func brightness(for profile: ElasticSlingshotSoundProfile) -> Double {
-        switch profile {
-        case .glass:
-            return 1.34
-        case .airframe:
-            return 1.08
-        case .pulse:
-            return 1.22
-        case .reed:
-            return 0.92
-        case .elastic, .storm, .gravity, .rubber:
-            return 1.0
-        }
-    }
-
-    private func attack(for profile: ElasticSlingshotSoundProfile) -> Double {
-        switch profile {
-        case .pulse, .glass:
-            return 0.018
-        case .airframe:
-            return 0.075
-        case .gravity, .storm:
-            return 0.055
-        case .reed:
-            return 0.032
-        case .elastic, .rubber:
-            return 0.045
-        }
-    }
-
-    private func loadGain(for profile: ElasticSlingshotSoundProfile) -> Double {
-        switch profile {
-        case .storm, .gravity:
-            return 0.92
-        case .airframe:
-            return 0.78
-        case .glass:
-            return 0.74
-        case .reed:
-            return 0.82
-        case .pulse:
-            return 0.86
-        case .elastic, .rubber:
-            return 0.88
-        }
-    }
-
-    private func topHoldGain(for profile: ElasticSlingshotSoundProfile) -> Double {
-        switch profile {
-        case .storm, .gravity:
-            return 0.74
-        case .airframe, .glass:
-            return 0.58
-        case .reed, .pulse:
-            return 0.66
-        case .elastic, .rubber:
-            return 0.70
-        }
-    }
-
-    private func downswingTrailGain(for profile: ElasticSlingshotSoundProfile) -> Double {
-        switch profile {
-        case .airframe:
-            return 0.62
-        case .elastic, .rubber:
-            return 0.54
-        case .storm, .gravity:
-            return 0.44
-        case .reed, .glass:
-            return 0.36
-        case .pulse:
-            return 0.30
-        }
-    }
-
-    private func anchorPulseGain(for profile: ElasticSlingshotSoundProfile) -> Double {
-        switch profile {
-        case .storm, .gravity:
-            return 0.20
-        case .airframe, .glass:
-            return 0.14
-        case .reed, .pulse:
-            return 0.16
-        case .elastic, .rubber:
-            return 0.18
-        }
-    }
-
-    private func topPulseGain(for profile: ElasticSlingshotSoundProfile) -> Double {
-        switch profile {
-        case .storm, .gravity:
-            return 0.25
-        case .airframe, .glass:
-            return 0.18
-        case .reed, .pulse:
-            return 0.21
-        case .elastic, .rubber:
-            return 0.23
-        }
-    }
-
-    private func subdivisionTickGain(for profile: ElasticSlingshotSoundProfile) -> Double {
-        switch profile {
-        case .storm, .gravity:
-            return 0.055
-        case .airframe, .glass:
-            return 0.042
-        case .reed, .pulse:
-            return 0.048
-        case .elastic, .rubber:
-            return 0.050
-        }
-    }
-
-    private func impactParameters(for profile: ElasticSlingshotSoundProfile) -> ElasticSlingshotImpactToneParameters {
-        switch profile {
-        case .elastic:
-            return ElasticSlingshotImpactToneParameters(frequency: 1_720, secondaryMultiplier: 2.28, noiseAmount: 0.08, drive: 1.18, gain: 0.64, decayRate: 24.0, primaryMix: 0.72, secondaryMix: 0.18, bodyMix: 0.08, waveform: .click)
-        case .storm:
-            return ElasticSlingshotImpactToneParameters(frequency: 620, secondaryMultiplier: 2.12, noiseAmount: 0.18, drive: 1.42, gain: 0.62, decayRate: 18.0, bend: -0.04, primaryMix: 0.68, secondaryMix: 0.10, bodyMix: 0.28, waveform: .click)
-        case .airframe:
-            return ElasticSlingshotImpactToneParameters(frequency: 2_260, secondaryMultiplier: 1.84, noiseAmount: 0.16, drive: 0.86, gain: 0.52, decayRate: 26.0, primaryMix: 0.58, secondaryMix: 0.12, bodyMix: 0.02, waveform: .noise)
-        case .reed:
-            return ElasticSlingshotImpactToneParameters(frequency: 1_180, secondaryMultiplier: 2.04, noiseAmount: 0.03, drive: 1.10, gain: 0.54, decayRate: 21.0, primaryMix: 0.64, secondaryMix: 0.18, bodyMix: 0.06, waveform: .square)
-        case .pulse:
-            return ElasticSlingshotImpactToneParameters(frequency: 1_520, secondaryMultiplier: 2.96, noiseAmount: 0.04, drive: 1.18, gain: 0.58, decayRate: 28.0, tremoloDepth: 0.10, primaryMix: 0.68, secondaryMix: 0.10, bodyMix: 0.08, waveform: .square)
-        case .gravity:
-            return ElasticSlingshotImpactToneParameters(frequency: 540, secondaryMultiplier: 2.26, noiseAmount: 0.08, drive: 1.36, gain: 0.64, decayRate: 17.0, bend: -0.06, primaryMix: 0.72, secondaryMix: 0.10, bodyMix: 0.30, waveform: .sine)
-        case .glass:
-            return ElasticSlingshotImpactToneParameters(frequency: 2_760, secondaryMultiplier: 2.18, noiseAmount: 0.02, drive: 0.82, gain: 0.52, decayRate: 31.0, primaryMix: 0.62, secondaryMix: 0.22, bodyMix: 0.02, waveform: .sine)
-        case .rubber:
-            return ElasticSlingshotImpactToneParameters(frequency: 980, secondaryMultiplier: 2.42, noiseAmount: 0.04, drive: 1.28, gain: 0.60, decayRate: 22.0, bend: 0.08, primaryMix: 0.70, secondaryMix: 0.14, bodyMix: 0.12, waveform: .click)
-        }
-    }
-
-    private func impactEnvelope(progress: Double, toneDecayRate: Double) -> Double {
-        let progress = min(max(progress, 0), 1)
-        return exp(-toneDecayRate * progress)
     }
 
     private func impactSoftLimit(_ sample: Double) -> Double {
@@ -1698,9 +1426,11 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
 
     init() {
         let sampleLibrary = GarageMetronomeSampleLibrary.load()
+        let identityLibrary = TempoSoundAssetLibrary.load()
         let renderState = ElasticSlingshotRenderState(
             sampleRate: sampleRate,
-            metronomeSamples: sampleLibrary.samplesByProfile
+            metronomeSamples: sampleLibrary.samplesByProfile,
+            identitySamples: identityLibrary.samplesByName
         )
         self.renderState = renderState
         self.sourceNode = AVAudioSourceNode { _, timestamp, frameCount, audioBufferList in

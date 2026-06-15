@@ -6,7 +6,7 @@ struct GarageTempoAudioQAView: View {
     @StateObject private var audioEngine = ElasticSlingshotAudioEngine()
     @State private var mode = GarageTempoInstrumentMode.metronome
     @State private var clickProfile = GarageMetronomeClickProfile.woodblock
-    @State private var guidedProfile = GarageGuidedSwingProfile.tension
+    @State private var guidedProfile = GarageGuidedSwingProfile.tourWhip
     @State private var beatsPerMinute = 60.0
     @State private var guidedClicksEnabled = false
     @State private var restInterval = 5.0

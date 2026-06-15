@@ -14,7 +14,7 @@ struct GarageTempoBuilderView: View {
     @AppStorage("garage.tempoBuilder.bpm") private var guidedSwingBPM = 60.0
     @AppStorage("garage.tempoBuilder.metronomeStartSound") private var startClickRawValue = GarageMetronomeClickProfile.woodblock.rawValue
     @AppStorage("garage.tempoBuilder.metronomeImpactSound") private var impactClickRawValue = GarageMetronomeClickProfile.brightSignal.rawValue
-    @AppStorage("garage.tempoBuilder.guidedSound") private var guidedRawValue = GarageGuidedSwingProfile.tension.rawValue
+    @AppStorage("garage.tempoBuilder.guidedSound") private var guidedRawValue = GarageGuidedSwingProfile.tourWhip.rawValue
     @AppStorage("garage.tempoBuilder.restInterval") private var restInterval = 5.0
     @AppStorage("garage.tempoBuilder.haptics") private var hapticsEnabled = true
 
@@ -37,7 +37,7 @@ struct GarageTempoBuilderView: View {
     }
 
     private var selectedGuidedSound: GarageGuidedSwingProfile {
-        GarageGuidedSwingProfile(rawValue: guidedRawValue) ?? .tension
+        GarageGuidedSwingProfile.migrated(from: guidedRawValue)
     }
 
     private var recipe: ElasticSlingshotRecipe {
@@ -62,7 +62,7 @@ struct GarageTempoBuilderView: View {
     var body: some View {
         tempoContent
             .onAppear {
-                migrateSavedClickSound()
+                migrateSavedSounds()
                 clampSavedTempos()
             }
             .onChange(of: selectedPage) { _, _ in
@@ -187,8 +187,9 @@ struct GarageTempoBuilderView: View {
         session.synchronizeReadyBPM(activeSavedBPM)
     }
 
-    private func migrateSavedClickSound() {
+    private func migrateSavedSounds() {
         startClickRawValue = GarageMetronomeClickProfile.migrated(from: startClickRawValue).rawValue
+        guidedRawValue = GarageGuidedSwingProfile.migrated(from: guidedRawValue).rawValue
     }
 
     private func close() {
@@ -1373,7 +1374,7 @@ private struct GarageTempoControlRoom: View {
     }
 
     private var selectedGuidedSound: GarageGuidedSwingProfile {
-        GarageGuidedSwingProfile(rawValue: selectedGuidedRawValue) ?? .tension
+        GarageGuidedSwingProfile.migrated(from: selectedGuidedRawValue)
     }
 
     private let metronomeSoundGroups: [(title: String, profiles: [GarageMetronomeClickProfile])] = [
@@ -1384,8 +1385,7 @@ private struct GarageTempoControlRoom: View {
     ]
 
     private let guidedSoundGroups: [(title: String, profiles: [GarageGuidedSwingProfile])] = [
-        ("Clean & Precise", GarageGuidedSwingProfile.cleanAndPrecise),
-        ("Weight & Air", GarageGuidedSwingProfile.weightAndAir)
+        ("Prototype Identities", GarageGuidedSwingProfile.prototypeIdentities)
     ]
 
     var body: some View {

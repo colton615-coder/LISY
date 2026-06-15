@@ -216,6 +216,42 @@
       "attribution_required": false,
       "duration_seconds": 0.12,
       "notes": "Purpose-built narrow electronic pulse; no third-party sample."
+    },
+    {
+      "profile_id": "tourWhip",
+      "display_name": "Tour Whip identity assets",
+      "file_name": "tour_whip_tension.wav, tour_whip_air.wav, tour_whip_leather_crack.wav, tour_whip_snap_tail.wav",
+      "source_library": "LIFE-IN-SYNC generated audio",
+      "source_url": "local://LIFE-IN-SYNC/Garage/Metronome_Audio/",
+      "source_author": "LIFE-IN-SYNC",
+      "license": "Project-owned",
+      "attribution_required": false,
+      "duration_seconds": 1.31,
+      "notes": "Remastered original tension, air whip, leather crack, and snapped tail textures with stronger body and softened high-frequency edges."
+    },
+    {
+      "profile_id": "heavySteel",
+      "display_name": "Heavy Steel identity assets",
+      "file_name": "heavy_steel_pressure.wav, heavy_steel_lock.wav, heavy_steel_drop.wav, heavy_steel_forged_strike.wav, heavy_steel_resonance.wav",
+      "source_library": "LIFE-IN-SYNC generated audio",
+      "source_url": "local://LIFE-IN-SYNC/Garage/Metronome_Audio/",
+      "source_author": "LIFE-IN-SYNC",
+      "license": "Project-owned",
+      "attribution_required": false,
+      "duration_seconds": 2.19,
+      "notes": "Remastered original mechanical pressure, lock, drop, forged strike, and metal resonance textures with stronger impact and controlled decay."
+    },
+    {
+      "profile_id": "digitalVector",
+      "display_name": "Digital Vector identity assets",
+      "file_name": "digital_vector_steps.wav, digital_vector_lock.wav, digital_vector_pulse.wav, digital_vector_transient.wav, digital_vector_tail.wav",
+      "source_library": "LIFE-IN-SYNC generated audio",
+      "source_url": "local://LIFE-IN-SYNC/Garage/Metronome_Audio/",
+      "source_author": "LIFE-IN-SYNC",
+      "license": "Project-owned",
+      "attribution_required": false,
+      "duration_seconds": 1.57,
+      "notes": "Remastered original stepped sequence, digital lock, pitching pulse, transient, and gated tail textures with rounded gates and reduced harshness."
     }
   ]
 }
