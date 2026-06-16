@@ -421,13 +421,13 @@ enum TempoSoundIdentityProfile: String, CaseIterable, Identifiable {
         case .tourWhip, .heavySteel, .glassLine, .airCut, .digitalVector, .rangeWood:
             return TempoSoundEventPlan(
                 phases: [
-                    .build: .init(assetName: nil, assetGain: 0, synthesisGain: 1, pitch: .rising(from: 88, to: 174), attack: 0.22, release: 0.16, silenceWindow: nil),
+                    .build: .init(assetName: nil, assetGain: 0, synthesisGain: 0, pitch: .silent, attack: 0, release: 0, silenceWindow: 0...1),
                     .top: .init(assetName: nil, assetGain: 0, synthesisGain: 0, pitch: .silent, attack: 0, release: 0, silenceWindow: 0...1),
-                    .downswing: .init(assetName: nil, assetGain: 0, synthesisGain: 1, pitch: .rising(from: 160, to: 430), attack: 0.04, release: 0.18, silenceWindow: nil),
-                    .impact: .init(assetName: nil, assetGain: 0, synthesisGain: 1, pitch: .fixed(245), attack: 0, release: 0.72, silenceWindow: nil),
-                    .tail: .init(assetName: nil, assetGain: 0, synthesisGain: 1, pitch: .descending(from: 150, to: 72), attack: 0, release: 1, silenceWindow: nil)
+                    .downswing: .init(assetName: nil, assetGain: 0, synthesisGain: 0, pitch: .silent, attack: 0, release: 0, silenceWindow: 0...1),
+                    .impact: .init(assetName: nil, assetGain: 0, synthesisGain: 1, pitch: .fixed(156), attack: 0, release: 0.82, silenceWindow: nil),
+                    .tail: .init(assetName: nil, assetGain: 0, synthesisGain: 0, pitch: .silent, attack: 0, release: 0, silenceWindow: 0...1)
                 ],
-                outputGain: 0.72
+                outputGain: 0.58
             )
         }
     }
@@ -1223,53 +1223,24 @@ private final class ElasticSlingshotRenderState {
         let frequency = identityFrequency(pitch, progress: progress)
         switch phase {
         case .build:
-            return guidedPressureRiseTone(frequency: frequency, progress: progress)
+            return 0
         case .top:
             return 0
         case .downswing:
-            return guidedDownswingCueTone(frequency: frequency, progress: progress)
+            return 0
         case .impact:
             return guidedImpactMarkerTone(frequency: frequency, progress: progress)
         case .tail:
-            return guidedTailTone(frequency: frequency, progress: progress)
+            return 0
         }
-    }
-
-    private func guidedPressureRiseTone(frequency: Double, progress: Double) -> Double {
-        let phase = voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)
-        let lowerPhase = voiceState.advanceSecondary(frequency: frequency * 0.48, sampleRate: sampleRate)
-        let lift = smoothstep(progress)
-        let body = (sin(phase) * 0.28) + (sin(lowerPhase) * 0.16)
-        let air = voiceState.nextNoiseSample() * 0.012 * lift
-
-        return tanh(body + air) * lift * 0.13
-    }
-
-    private func guidedDownswingCueTone(frequency: Double, progress: Double) -> Double {
-        let phase = voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)
-        let upperPhase = voiceState.advanceSecondary(frequency: frequency * 1.62, sampleRate: sampleRate)
-        let acceleration = smoothstep(progress)
-        let air = voiceState.nextNoiseSample() * 0.030 * acceleration
-        let tone = (sin(phase) * 0.18) + (sin(upperPhase) * 0.035) + air
-
-        return tanh(tone) * (0.42 + (0.58 * acceleration)) * 0.18
     }
 
     private func guidedImpactMarkerTone(frequency: Double, progress: Double) -> Double {
         let phase = voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)
-        let upperPhase = voiceState.advanceSecondary(frequency: frequency * 2.05, sampleRate: sampleRate)
-        let decay = exp(-42 * progress)
-        let body = (sin(phase) * 0.44) + (sin(upperPhase) * 0.12)
-        let transient = voiceState.nextNoiseSample() * 0.12 * exp(-95 * progress)
+        let decay = exp(-34 * progress)
+        let transient = voiceState.nextNoiseSample() * 0.045 * exp(-90 * progress)
 
-        return tanh(body + transient) * decay * 0.30
-    }
-
-    private func guidedTailTone(frequency: Double, progress: Double) -> Double {
-        let phase = voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)
-        let tail = pow(max(1 - progress, 0), 3.2)
-
-        return sin(phase) * tail * 0.045
+        return tanh((sin(phase) * 0.34) + transient) * decay * 0.22
     }
 
     private func exponentialRamp(from start: Double, to end: Double, progress: Double) -> Double {
