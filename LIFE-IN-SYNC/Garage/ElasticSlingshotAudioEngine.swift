@@ -421,13 +421,13 @@ enum TempoSoundIdentityProfile: String, CaseIterable, Identifiable {
         case .tourWhip, .heavySteel, .glassLine, .airCut, .digitalVector, .rangeWood:
             return TempoSoundEventPlan(
                 phases: [
-                    .build: .init(assetName: nil, assetGain: 0, synthesisGain: 0, pitch: .silent, attack: 0, release: 0, silenceWindow: 0...1),
+                    .build: .init(assetName: nil, assetGain: 0, synthesisGain: 1, pitch: .rising(from: 220, to: 330), attack: 0.12, release: 0.24, silenceWindow: nil),
                     .top: .init(assetName: nil, assetGain: 0, synthesisGain: 0, pitch: .silent, attack: 0, release: 0, silenceWindow: 0...1),
-                    .downswing: .init(assetName: nil, assetGain: 0, synthesisGain: 0, pitch: .silent, attack: 0, release: 0, silenceWindow: 0...1),
-                    .impact: .init(assetName: nil, assetGain: 0, synthesisGain: 1, pitch: .fixed(156), attack: 0, release: 0.82, silenceWindow: nil),
+                    .downswing: .init(assetName: nil, assetGain: 0, synthesisGain: 1, pitch: .rising(from: 360, to: 540), attack: 0.02, release: 0.20, silenceWindow: nil),
+                    .impact: .init(assetName: nil, assetGain: 0, synthesisGain: 1, pitch: .fixed(420), attack: 0, release: 0.78, silenceWindow: nil),
                     .tail: .init(assetName: nil, assetGain: 0, synthesisGain: 0, pitch: .silent, attack: 0, release: 0, silenceWindow: 0...1)
                 ],
-                outputGain: 0.58
+                outputGain: 0.96
             )
         }
     }
@@ -1223,11 +1223,11 @@ private final class ElasticSlingshotRenderState {
         let frequency = identityFrequency(pitch, progress: progress)
         switch phase {
         case .build:
-            return 0
+            return guidedLoadTone(frequency: frequency, progress: progress)
         case .top:
             return 0
         case .downswing:
-            return 0
+            return guidedReleaseTone(frequency: frequency, progress: progress)
         case .impact:
             return guidedImpactMarkerTone(frequency: frequency, progress: progress)
         case .tail:
@@ -1235,12 +1235,32 @@ private final class ElasticSlingshotRenderState {
         }
     }
 
+    private func guidedLoadTone(frequency: Double, progress: Double) -> Double {
+        let phase = voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)
+        let lowerPhase = voiceState.advanceSecondary(frequency: frequency * 0.5, sampleRate: sampleRate)
+        let lift = smoothstep(progress)
+        let tone = (sin(phase) * 0.22) + (sin(lowerPhase) * 0.10)
+
+        return tanh(tone) * lift * 0.34
+    }
+
+    private func guidedReleaseTone(frequency: Double, progress: Double) -> Double {
+        let phase = voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)
+        let upperPhase = voiceState.advanceSecondary(frequency: frequency * 1.5, sampleRate: sampleRate)
+        let acceleration = smoothstep(progress)
+        let tone = (sin(phase) * 0.24) + (sin(upperPhase) * 0.06)
+
+        return tanh(tone) * (0.35 + (0.65 * acceleration)) * 0.40
+    }
+
     private func guidedImpactMarkerTone(frequency: Double, progress: Double) -> Double {
         let phase = voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)
-        let decay = exp(-34 * progress)
-        let transient = voiceState.nextNoiseSample() * 0.045 * exp(-90 * progress)
+        let lowerPhase = voiceState.advanceSecondary(frequency: frequency * 0.5, sampleRate: sampleRate)
+        let decay = exp(-38 * progress)
+        let transient = voiceState.nextNoiseSample() * 0.08 * exp(-95 * progress)
+        let body = (sin(phase) * 0.42) + (sin(lowerPhase) * 0.18)
 
-        return tanh((sin(phase) * 0.34) + transient) * decay * 0.22
+        return tanh(body + transient) * decay * 0.56
     }
 
     private func exponentialRamp(from start: Double, to end: Double, progress: Double) -> Double {
