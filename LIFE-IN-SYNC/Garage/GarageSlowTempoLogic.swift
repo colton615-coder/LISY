@@ -29,19 +29,23 @@ struct GarageSlowTempoLogic: Equatable {
     }
 
     var topTimestamp: TimeInterval {
-        anchorInterval
+        takeawayDuration(for: .tour)
     }
 
     var impactTimestamp: TimeInterval {
         swingDuration
     }
 
+    func takeawayDuration(for tempoRatio: ElasticSlingshotTempoRatio) -> TimeInterval {
+        swingDuration * tempoRatio.backswingMotionFraction
+    }
+
     func topHoldDuration(for tempoRatio: ElasticSlingshotTempoRatio) -> TimeInterval {
-        anchorInterval * tempoRatio.topHoldBeatFraction
+        swingDuration * tempoRatio.topSetMotionFraction
     }
 
     func downswingDuration(for tempoRatio: ElasticSlingshotTempoRatio) -> TimeInterval {
-        max(anchorInterval - topHoldDuration(for: tempoRatio), 0.05)
+        max(swingDuration - takeawayDuration(for: tempoRatio) - topHoldDuration(for: tempoRatio), 0.05)
     }
 
     var tempoTitle: String {

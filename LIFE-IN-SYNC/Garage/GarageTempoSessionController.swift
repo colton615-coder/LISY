@@ -315,9 +315,6 @@ final class GarageTempoSessionController: ObservableObject {
             guard Task.isCancelled == false else { return }
             countdownValue = value
             speaker.speak(value)
-            if latestConfiguration?.hapticsEnabled == true {
-                haptics.trigger(.light)
-            }
             announce("\(value)")
             await sleep(seconds: 1)
         }

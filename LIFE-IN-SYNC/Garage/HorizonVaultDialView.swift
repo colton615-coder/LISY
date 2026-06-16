@@ -1404,6 +1404,7 @@ private struct GarageTempoIconButton: View {
     }
 }
 
+@MainActor
 private struct GarageTempoControlRoom: View {
     @Environment(\.dismiss) private var dismiss
     let page: GarageTempoPage
@@ -1415,7 +1416,9 @@ private struct GarageTempoControlRoom: View {
     @Binding var hapticsEnabled: Bool
     let recipe: ElasticSlingshotRecipe
     @StateObject private var previewEngine = ElasticSlingshotAudioEngine()
+    @StateObject private var previewSpeaker = GarageTempoCountdownSpeaker()
     @State private var showsSoundChoices = false
+    @State private var previewTask: Task<Void, Never>?
 
     private var selectedStartSound: GarageMetronomeClickProfile {
         GarageMetronomeClickProfile.migrated(from: selectedStartRawValue)
@@ -1480,7 +1483,11 @@ private struct GarageTempoControlRoom: View {
                 .padding(.bottom, 28)
             }
         }
-        .onDisappear { previewEngine.stop() }
+        .onDisappear {
+            previewTask?.cancel()
+            previewSpeaker.stop()
+            previewEngine.stop()
+        }
     }
 
     @ViewBuilder
@@ -1516,15 +1523,7 @@ private struct GarageTempoControlRoom: View {
                 GarageTempoReadbackRow(title: "Guided Cue", value: selectedGuidedSound.title)
                 GarageTempoSettingsDivider()
                 GarageTempoActionRow(title: "Preview Guided Swing", systemImage: "play.fill") {
-                    previewEngine.playOneCycle(
-                        beatsPerMinute: beatsPerMinute,
-                        recipe: recipe,
-                        soundProfile: selectedGuidedSound.engineProfile,
-                        metronomeStartProfile: selectedStartSound,
-                        metronomeImpactProfile: selectedImpactSound,
-                        guidedClicksEnabled: false,
-                        instrumentMode: .build
-                    )
+                    startGuidedPreview()
                 }
             }
 
@@ -1562,6 +1561,56 @@ private struct GarageTempoControlRoom: View {
             .padding(.top, 14)
             .padding(.bottom, 6)
             .accessibilityIdentifier("\(identifierPrefix)-sound-group-\(title)")
+    }
+
+    private func startGuidedPreview() {
+        previewTask?.cancel()
+        previewSpeaker.stop()
+        previewEngine.stop()
+
+        let previewBPM = beatsPerMinute
+        let previewRecipe = recipe
+        let guidedProfile = selectedGuidedSound.engineProfile
+        let startProfile = selectedStartSound
+        let impactProfile = selectedImpactSound
+        let shouldPlayHaptics = hapticsEnabled
+        let hapticOffsets = GarageTempoHapticSchedule.guidedLandmarkOffsets(
+            recipe: previewRecipe,
+            beatsPerMinute: previewBPM
+        )
+
+        previewTask = Task { @MainActor in
+            for value in [3, 2, 1] {
+                guard Task.isCancelled == false else { return }
+                previewSpeaker.speak(value)
+                await previewSleep(seconds: 1)
+            }
+            guard Task.isCancelled == false else { return }
+
+            previewEngine.playOneCycle(
+                beatsPerMinute: previewBPM,
+                recipe: previewRecipe,
+                soundProfile: guidedProfile,
+                metronomeStartProfile: startProfile,
+                metronomeImpactProfile: impactProfile,
+                guidedClicksEnabled: false,
+                instrumentMode: .build
+            )
+
+            guard shouldPlayHaptics else { return }
+            let haptics = GarageTempoHapticScheduler()
+            await previewSleep(seconds: hapticOffsets[0])
+            guard Task.isCancelled == false else { return }
+            haptics.trigger(.light)
+            await previewSleep(seconds: hapticOffsets[1] - hapticOffsets[0])
+            guard Task.isCancelled == false else { return }
+            haptics.trigger(.rigid)
+        }
+    }
+
+    private func previewSleep(seconds: TimeInterval) async {
+        let nanoseconds = UInt64(max(seconds, 0) * 1_000_000_000)
+        try? await Task.sleep(nanoseconds: nanoseconds)
     }
 
     private func toggleSoundChoices() {
