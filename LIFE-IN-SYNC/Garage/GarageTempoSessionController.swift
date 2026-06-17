@@ -111,7 +111,7 @@ final class GarageTempoCountdownSpeaker: ObservableObject, GarageTempoCountdownS
         utterance.voice = preferredVoice
         utterance.rate = 0.43
         utterance.pitchMultiplier = 0.96
-        utterance.volume = 0.86
+        utterance.volume = 0.96
         utterance.preUtteranceDelay = 0.04
         synthesizer.speak(utterance)
     }
@@ -126,7 +126,22 @@ final class GarageTempoHapticScheduler: GarageTempoHapticScheduling {
     func trigger(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
         let generator = UIImpactFeedbackGenerator(style: style)
         generator.prepare()
-        generator.impactOccurred()
+        generator.impactOccurred(intensity: impactIntensity(for: style))
+    }
+
+    private func impactIntensity(for style: UIImpactFeedbackGenerator.FeedbackStyle) -> CGFloat {
+        switch style {
+        case .light:
+            return 0.48
+        case .medium:
+            return 0.70
+        case .heavy, .rigid:
+            return 1.0
+        case .soft:
+            return 0.58
+        @unknown default:
+            return 0.72
+        }
     }
 }
 
@@ -364,7 +379,7 @@ final class GarageTempoSessionController: ObservableObject {
             guard let self else { return }
             await sleep(seconds: offsets[0])
             guard Task.isCancelled == false else { return }
-            haptics.trigger(.light)
+            haptics.trigger(.medium)
             await sleep(seconds: offsets[1] - offsets[0])
             guard Task.isCancelled == false else { return }
             haptics.trigger(.rigid)

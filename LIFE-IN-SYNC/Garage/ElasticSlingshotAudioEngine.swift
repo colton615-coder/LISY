@@ -448,12 +448,12 @@ enum TempoSoundIdentityProfile: String, CaseIterable, Identifiable {
             return TempoSoundEventPlan(
                 phases: [
                     .build: .init(assetName: nil, assetGain: 0, synthesisGain: 0.76, pitch: .rising(from: 155, to: 315), attack: 0.08, release: 0.24, silenceWindow: nil),
-                    .top: .init(assetName: nil, assetGain: 0, synthesisGain: 0.54, pitch: .fixed(640), attack: 0, release: 0.42, silenceWindow: nil),
-                    .downswing: .init(assetName: nil, assetGain: 0, synthesisGain: 0.82, pitch: .rising(from: 440, to: 930), attack: 0.01, release: 0.09, silenceWindow: nil),
-                    .impact: .init(assetName: nil, assetGain: 0, synthesisGain: 0.88, pitch: .fixed(880), attack: 0, release: 0.52, silenceWindow: nil),
+                    .top: .init(assetName: nil, assetGain: 0, synthesisGain: 0.66, pitch: .fixed(680), attack: 0, release: 0.38, silenceWindow: nil),
+                    .downswing: .init(assetName: nil, assetGain: 0, synthesisGain: 0.92, pitch: .rising(from: 420, to: 980), attack: 0.01, release: 0.08, silenceWindow: nil),
+                    .impact: .init(assetName: nil, assetGain: 0, synthesisGain: 1.0, pitch: .fixed(920), attack: 0, release: 0.48, silenceWindow: nil),
                     .tail: .init(assetName: nil, assetGain: 0, synthesisGain: 0, pitch: .silent, attack: 0, release: 0, silenceWindow: 0...1)
                 ],
-                outputGain: 0.70
+                outputGain: 0.84
             )
         }
     }
@@ -1032,7 +1032,7 @@ private final class ElasticSlingshotRenderState {
                 cycleFrame: clickFrame,
                 eventFrame: 0,
                 duration: 0.034,
-                gain: 1,
+                gain: 1.10,
                 profile: configuration.metronomeStartProfile,
                 routeFamily: configuration.outputRouteFamily
             )
@@ -1054,7 +1054,7 @@ private final class ElasticSlingshotRenderState {
         if sampleFrame >= 0,
            let sample = metronomeSamples[profile],
            Int(sampleFrame) < sample.count {
-            let routeGain = routeFamily == .speaker ? 1.0 : 0.92
+            let routeGain = routeFamily == .speaker ? 1.08 : 0.98
             return Double(sample[Int(sampleFrame)]) * gain * routeGain
         }
 
@@ -1258,7 +1258,7 @@ private final class ElasticSlingshotRenderState {
         let bedLift = pow(smoothstep(bedProgress), 1.35)
         let bed = ((sin(phase) * 0.13) + (sin(lowerPhase) * 0.06)) * bedLift
 
-        return tanh(addressPulse + bed) * 0.27
+        return tanh(addressPulse + bed) * 0.31
     }
 
     private func guidedAddressPulse(phase: Double, progress: Double) -> Double {
@@ -1271,11 +1271,11 @@ private final class ElasticSlingshotRenderState {
     private func guidedTopSetMarkerTone(frequency: Double, progress: Double) -> Double {
         let phase = voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)
         let upperPhase = voiceState.advanceSecondary(frequency: frequency * 1.45, sampleRate: sampleRate)
-        let transient = voiceState.nextNoiseSample() * 0.018 * exp(-88 * progress)
-        let suspension = ((sin(phase) * 0.09) + (sin(upperPhase) * 0.025)) * (1 - (0.36 * smoothstep(progress)))
+        let transient = voiceState.nextNoiseSample() * 0.026 * exp(-96 * progress)
+        let suspension = ((sin(phase) * 0.11) + (sin(upperPhase) * 0.035)) * (1 - (0.36 * smoothstep(progress)))
         let marker = suspension + transient
 
-        return tanh(marker) * 0.30
+        return tanh(marker) * 0.36
     }
 
     private func guidedReleaseTone(frequency: Double, progress: Double) -> Double {
@@ -1285,17 +1285,17 @@ private final class ElasticSlingshotRenderState {
         let pressure = 0.14 + (0.74 * acceleration)
         let tone = (sin(phase) * 0.21) + (sin(upperPhase) * 0.06)
 
-        return tanh(tone * (1.02 + (0.68 * acceleration))) * pressure * 0.38
+        return tanh(tone * (1.08 + (0.74 * acceleration))) * pressure * 0.42
     }
 
     private func guidedImpactMarkerTone(frequency: Double, progress: Double) -> Double {
         let phase = voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)
         let upperPhase = voiceState.advanceSecondary(frequency: frequency * 1.54, sampleRate: sampleRate)
         let decay = exp(-58 * progress)
-        let transient = voiceState.nextNoiseSample() * 0.11 * exp(-118 * progress)
-        let body = (sin(phase) * 0.24) + (sin(upperPhase) * 0.09)
+        let transient = voiceState.nextNoiseSample() * 0.16 * exp(-128 * progress)
+        let body = (sin(phase) * 0.30) + (sin(upperPhase) * 0.12)
 
-        return tanh((body + transient) * 0.96) * decay * 0.48
+        return tanh((body + transient) * 1.08) * decay * 0.58
     }
 
     private func normalizedSegment(_ value: Double, start: Double, end: Double) -> Double {

@@ -53,7 +53,7 @@ struct GarageSlowTempoLogic: Equatable {
     }
 
     var trainingMapText: String {
-        "Start → Load → Impact"
+        "Address → Top → Impact"
     }
 
     var subdivisionText: String {
@@ -68,14 +68,14 @@ struct GarageSlowTempoLogic: Equatable {
         [
             GarageSlowTempoLandmark(
                 beat: 1,
-                title: "Start",
-                cue: "Start the move.",
+                title: "Address",
+                cue: "Start smooth.",
                 isTransition: false
             ),
             GarageSlowTempoLandmark(
                 beat: 2,
-                title: "Load",
-                cue: "Hold the load.",
+                title: "Top",
+                cue: "Set the top.",
                 isTransition: true
             ),
             GarageSlowTempoLandmark(

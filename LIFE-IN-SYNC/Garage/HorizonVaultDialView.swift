@@ -770,7 +770,7 @@ private struct GarageGuidedSwingTimeline: View {
             let startPoint = point(at: 0, in: proxy.size)
             let topPoint = point(at: 0.58, in: proxy.size)
             let impactPoint = point(at: 1, in: proxy.size)
-            let impactActive = isPlaying && state.motionProgress >= 0.90 && state.motionProgress <= 0.94
+            let impactActive = isPlaying && state.motionProgress >= 0.88
 
             ZStack {
                 GarageGuidedSwingArc(
@@ -781,7 +781,7 @@ private struct GarageGuidedSwingTimeline: View {
                     recipe: recipe
                 )
 
-                GarageGuidedSwingLandmark(title: "Start", isActive: state.activeBeat == 1 && isResting == false, alignment: .center)
+                GarageGuidedSwingLandmark(title: "Address", isActive: state.activeBeat == 1 && isResting == false, alignment: .center)
                     .position(x: startPoint.x, y: startPoint.y + 30)
                 GarageGuidedSwingLandmark(title: "Top", isActive: state.activeBeat == 2 && isResting == false, alignment: .center)
                     .position(x: topPoint.x, y: topPoint.y - 26)
@@ -885,27 +885,27 @@ private final class GarageGuidedSwingArcView: UIView {
         backgroundColor = .clear
 
         ambientArcLayer.fillColor = UIColor.clear.cgColor
-        ambientArcLayer.strokeColor = emeraldColor.withAlphaComponent(0.18).cgColor
+        ambientArcLayer.strokeColor = emeraldColor.withAlphaComponent(0.24).cgColor
         ambientArcLayer.lineCap = .round
-        ambientArcLayer.lineWidth = 13
+        ambientArcLayer.lineWidth = 18
         ambientArcLayer.shadowColor = emeraldColor.cgColor
-        ambientArcLayer.shadowOpacity = 0.18
-        ambientArcLayer.shadowRadius = 10
+        ambientArcLayer.shadowOpacity = 0.26
+        ambientArcLayer.shadowRadius = 16
         layer.addSublayer(ambientArcLayer)
 
         baseArcLayer.fillColor = UIColor.clear.cgColor
         baseArcLayer.lineCap = .round
-        baseArcLayer.lineWidth = 3
+        baseArcLayer.lineWidth = 5
         layer.addSublayer(baseArcLayer)
 
         readyArcLayer.fillColor = UIColor.clear.cgColor
         readyArcLayer.strokeColor = UIColor.white.cgColor
         readyArcLayer.lineCap = .round
-        readyArcLayer.lineWidth = 6
+        readyArcLayer.lineWidth = 8
         readyArcGradient.colors = [
-            emeraldColor.withAlphaComponent(0.70).cgColor,
-            mintTextColor.withAlphaComponent(0.50).cgColor,
-            goldColor.withAlphaComponent(0.72).cgColor
+            emeraldColor.withAlphaComponent(0.78).cgColor,
+            mintTextColor.withAlphaComponent(0.62).cgColor,
+            goldColor.withAlphaComponent(0.84).cgColor
         ]
         readyArcGradient.locations = [0, 0.58, 1]
         readyArcGradient.startPoint = CGPoint(x: 0, y: 0.5)
@@ -916,11 +916,11 @@ private final class GarageGuidedSwingArcView: UIView {
         deliveryArcLayer.fillColor = UIColor.clear.cgColor
         deliveryArcLayer.strokeColor = UIColor.white.cgColor
         deliveryArcLayer.lineCap = .round
-        deliveryArcLayer.lineWidth = 11
+        deliveryArcLayer.lineWidth = 13
         deliveryArcLayer.strokeStart = 0.58
         deliveryArcGradient.colors = [
-            mintTextColor.withAlphaComponent(0.22).cgColor,
-            goldColor.withAlphaComponent(0.82).cgColor
+            mintTextColor.withAlphaComponent(0.30).cgColor,
+            goldColor.withAlphaComponent(0.94).cgColor
         ]
         deliveryArcGradient.locations = [0.58, 1]
         deliveryArcGradient.startPoint = CGPoint(x: 0, y: 0.5)
@@ -930,7 +930,7 @@ private final class GarageGuidedSwingArcView: UIView {
 
         activeArcLayer.fillColor = UIColor.clear.cgColor
         activeArcLayer.lineCap = .round
-        activeArcLayer.lineWidth = 8
+        activeArcLayer.lineWidth = 10
         activeArcLayer.strokeEnd = 0
         activeArcGradient.colors = [
             emeraldColor.cgColor,
@@ -944,25 +944,25 @@ private final class GarageGuidedSwingArcView: UIView {
         layer.addSublayer(activeArcGradient)
 
         impactTargetLayer.fillColor = UIColor.clear.cgColor
-        impactTargetLayer.strokeColor = goldColor.withAlphaComponent(0.40).cgColor
-        impactTargetLayer.lineWidth = 2
+        impactTargetLayer.strokeColor = goldColor.withAlphaComponent(0.62).cgColor
+        impactTargetLayer.lineWidth = 2.5
         impactTargetLayer.shadowColor = goldColor.cgColor
-        impactTargetLayer.shadowOpacity = 0.18
-        impactTargetLayer.shadowRadius = 10
+        impactTargetLayer.shadowOpacity = 0.28
+        impactTargetLayer.shadowRadius = 14
         layer.addSublayer(impactTargetLayer)
 
         impactPulseLayer.fillColor = UIColor.clear.cgColor
         impactPulseLayer.strokeColor = goldColor.cgColor
-        impactPulseLayer.lineWidth = 4
+        impactPulseLayer.lineWidth = 5
         impactPulseLayer.opacity = 0
         layer.addSublayer(impactPulseLayer)
 
-        trackingNode.bounds = CGRect(x: 0, y: 0, width: 14, height: 14)
-        trackingNode.cornerRadius = 7
+        trackingNode.bounds = CGRect(x: 0, y: 0, width: 15, height: 15)
+        trackingNode.cornerRadius = 7.5
         trackingNode.backgroundColor = goldColor.cgColor
         trackingNode.shadowColor = goldColor.cgColor
-        trackingNode.shadowOpacity = 0.34
-        trackingNode.shadowRadius = 12
+        trackingNode.shadowOpacity = 0.48
+        trackingNode.shadowRadius = 16
         layer.addSublayer(trackingNode)
     }
 
@@ -1017,10 +1017,10 @@ private final class GarageGuidedSwingArcView: UIView {
         activeArcGradient.frame = bounds
         activeArcLayer.frame = bounds
         activeArcLayer.path = path.cgPath
-        impactTargetLayer.bounds = CGRect(x: 0, y: 0, width: 34, height: 34)
+        impactTargetLayer.bounds = CGRect(x: 0, y: 0, width: 40, height: 40)
         impactTargetLayer.path = UIBezierPath(ovalIn: impactTargetLayer.bounds).cgPath
         impactTargetLayer.position = point(at: 1, in: bounds.size)
-        impactPulseLayer.bounds = CGRect(x: 0, y: 0, width: 62, height: 62)
+        impactPulseLayer.bounds = CGRect(x: 0, y: 0, width: 72, height: 72)
         impactPulseLayer.path = UIBezierPath(ovalIn: impactPulseLayer.bounds).cgPath
         impactPulseLayer.position = point(at: 1, in: bounds.size)
 
@@ -1034,23 +1034,23 @@ private final class GarageGuidedSwingArcView: UIView {
 
     private func applyAppearance() {
         guard let configuration else { return }
-        let restingAlpha: CGFloat = configuration.isResting ? 0.10 : 0.20
-        ambientArcLayer.opacity = configuration.isResting ? 0.28 : 0.58
+        let restingAlpha: CGFloat = configuration.isResting ? 0.12 : 0.28
+        ambientArcLayer.opacity = configuration.isResting ? 0.30 : 0.68
         baseArcLayer.strokeColor = mintTextColor.withAlphaComponent(restingAlpha).cgColor
         activeArcLayer.strokeColor = UIColor.white.cgColor
-        readyArcGradient.opacity = configuration.isResting ? 0.12 : (configuration.isPlaying ? 0.20 : 0.40)
-        deliveryArcGradient.opacity = configuration.isResting ? 0.08 : (configuration.isPlaying ? 0.30 : 0.50)
+        readyArcGradient.opacity = configuration.isResting ? 0.14 : (configuration.isPlaying ? 0.24 : 0.48)
+        deliveryArcGradient.opacity = configuration.isResting ? 0.10 : (configuration.isPlaying ? 0.42 : 0.62)
         activeArcGradient.opacity = configuration.isPlaying && configuration.isResting == false ? 1 : 0
-        impactTargetLayer.opacity = configuration.isResting ? 0.16 : (configuration.isPlaying ? 0.66 : 0.42)
+        impactTargetLayer.opacity = configuration.isResting ? 0.20 : (configuration.isPlaying ? 0.86 : 0.58)
         trackingNode.opacity = configuration.isPlaying && configuration.isResting == false ? 1 : 0
         trackingNode.backgroundColor = (
             configuration.isResting
                 ? mintTextColor.withAlphaComponent(0.36)
                 : goldColor
         ).cgColor
-        trackingNode.shadowOpacity = configuration.isResting ? 0 : 0.46
-        trackingNode.shadowRadius = 14
-        trackingNode.bounds.size = configuration.reduceMotion ? CGSize(width: 14, height: 14) : CGSize(width: 17, height: 17)
+        trackingNode.shadowOpacity = configuration.isResting ? 0 : 0.58
+        trackingNode.shadowRadius = 18
+        trackingNode.bounds.size = configuration.reduceMotion ? CGSize(width: 15, height: 15) : CGSize(width: 18, height: 18)
         trackingNode.cornerRadius = trackingNode.bounds.width / 2
     }
 
@@ -1084,17 +1084,17 @@ private final class GarageGuidedSwingArcView: UIView {
 
     private func startImpactPulse(after delay: TimeInterval) {
         let opacity = CAKeyframeAnimation(keyPath: "opacity")
-        opacity.values = [0, 0.92, 0]
+        opacity.values = [0, 1, 0]
         opacity.keyTimes = [0, 0.22, 1]
 
         let scale = CAKeyframeAnimation(keyPath: "transform.scale")
-        scale.values = [0.3, 1, 1.35]
+        scale.values = [0.42, 1, 1.50]
         scale.keyTimes = [0, 0.35, 1]
 
         let group = CAAnimationGroup()
         group.animations = [opacity, scale]
         group.beginTime = impactPulseLayer.convertTime(CACurrentMediaTime(), from: nil) + delay
-        group.duration = 0.28
+        group.duration = 0.34
         impactPulseLayer.add(group, forKey: "garageGuidedSwingImpact")
     }
 
@@ -1163,7 +1163,7 @@ private final class GarageGuidedSwingArcView: UIView {
     }
 
     private func sampledMotionProgress(configuration: Configuration, duration: TimeInterval) -> [NSNumber] {
-        let sampleCount = 120
+        let sampleCount = 180
         return (0...sampleCount).map { sample in
             let elapsed = duration * Double(sample) / Double(sampleCount)
             return NSNumber(value: visualProgress(at: elapsed, configuration: configuration))
@@ -1187,7 +1187,7 @@ private final class GarageGuidedSwingArcView: UIView {
         }
         if elapsed < impactStart {
             let progress = (elapsed - pauseEnd) / max(impactStart - pauseEnd, 0.01)
-            return 0.60 + (0.40 * pow(min(max(progress, 0), 1), 2.75))
+            return 0.60 + (0.40 * pow(min(max(progress, 0), 1), 2.15))
         }
         if elapsed < followThroughEnd {
             return 1
@@ -1241,14 +1241,21 @@ private struct GarageGuidedSwingLandmark: View {
 
     var body: some View {
         VStack(alignment: alignment, spacing: 4) {
-            Circle()
-                .fill(isActive ? GaragePremiumPalette.gold : GaragePremiumPalette.mintText.opacity(0.34))
-                .frame(width: 8, height: 8)
-                .shadow(color: GaragePremiumPalette.gold.opacity(isActive ? 0.42 : 0), radius: 10)
+            ZStack {
+                Circle()
+                    .stroke(isActive ? GaragePremiumPalette.gold.opacity(0.58) : GaragePremiumPalette.mintText.opacity(0.18), lineWidth: 1.5)
+                    .frame(width: isActive ? 18 : 15, height: isActive ? 18 : 15)
+
+                Circle()
+                    .fill(isActive ? GaragePremiumPalette.gold : GaragePremiumPalette.mintText.opacity(0.44))
+                    .frame(width: isActive ? 8 : 6, height: isActive ? 8 : 6)
+            }
+            .shadow(color: GaragePremiumPalette.gold.opacity(isActive ? 0.52 : 0), radius: 12)
 
             Text(title)
-                .font(.system(size: 10, weight: isActive ? .bold : .semibold, design: .rounded))
-                .foregroundStyle(isActive ? GaragePremiumPalette.gold : GarageProTheme.textSecondary)
+                .font(.system(size: 10, weight: isActive ? .heavy : .semibold, design: .rounded))
+                .tracking(0.8)
+                .foregroundStyle(isActive ? GaragePremiumPalette.gold : GarageProTheme.textSecondary.opacity(0.84))
         }
         .animation(.easeInOut(duration: 0.18), value: isActive)
     }
@@ -1601,7 +1608,7 @@ private struct GarageTempoControlRoom: View {
             let haptics = GarageTempoHapticScheduler()
             await previewSleep(seconds: hapticOffsets[0])
             guard Task.isCancelled == false else { return }
-            haptics.trigger(.light)
+            haptics.trigger(.medium)
             await previewSleep(seconds: hapticOffsets[1] - hapticOffsets[0])
             guard Task.isCancelled == false else { return }
             haptics.trigger(.rigid)
