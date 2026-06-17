@@ -447,13 +447,13 @@ enum TempoSoundIdentityProfile: String, CaseIterable, Identifiable {
         case .tourWhip, .heavySteel, .glassLine, .airCut, .digitalVector, .rangeWood:
             return TempoSoundEventPlan(
                 phases: [
-                    .build: .init(assetName: nil, assetGain: 0, synthesisGain: 0.76, pitch: .rising(from: 155, to: 315), attack: 0.08, release: 0.24, silenceWindow: nil),
-                    .top: .init(assetName: nil, assetGain: 0, synthesisGain: 0.66, pitch: .fixed(680), attack: 0, release: 0.38, silenceWindow: nil),
-                    .downswing: .init(assetName: nil, assetGain: 0, synthesisGain: 0.92, pitch: .rising(from: 420, to: 980), attack: 0.01, release: 0.08, silenceWindow: nil),
-                    .impact: .init(assetName: nil, assetGain: 0, synthesisGain: 1.0, pitch: .fixed(920), attack: 0, release: 0.48, silenceWindow: nil),
+                    .build: .init(assetName: nil, assetGain: 0, synthesisGain: 0.96, pitch: .rising(from: 155, to: 315), attack: 0.08, release: 0.24, silenceWindow: nil),
+                    .top: .init(assetName: nil, assetGain: 0, synthesisGain: 0.88, pitch: .fixed(680), attack: 0, release: 0.38, silenceWindow: nil),
+                    .downswing: .init(assetName: nil, assetGain: 0, synthesisGain: 1.14, pitch: .rising(from: 420, to: 980), attack: 0.01, release: 0.08, silenceWindow: nil),
+                    .impact: .init(assetName: nil, assetGain: 0, synthesisGain: 1.26, pitch: .fixed(920), attack: 0, release: 0.48, silenceWindow: nil),
                     .tail: .init(assetName: nil, assetGain: 0, synthesisGain: 0, pitch: .silent, attack: 0, release: 0, silenceWindow: 0...1)
                 ],
-                outputGain: 0.84
+                outputGain: 1.18
             )
         }
     }
@@ -895,7 +895,7 @@ private final class ElasticSlingshotRenderState {
             for frameOffset in 0..<outputCount {
                 let absoluteFrame = startFrame + AVAudioFramePosition(frameOffset)
                 let sample = sampleValue(at: absoluteFrame, configuration: snapshot)
-                data[frameOffset] = Float(max(min(sample, 0.86), -0.86))
+                data[frameOffset] = Float(max(min(sample, 0.96), -0.96))
             }
         }
 
@@ -1032,7 +1032,7 @@ private final class ElasticSlingshotRenderState {
                 cycleFrame: clickFrame,
                 eventFrame: 0,
                 duration: 0.034,
-                gain: 1.10,
+                gain: 1.35,
                 profile: configuration.metronomeStartProfile,
                 routeFamily: configuration.outputRouteFamily
             )
@@ -1054,7 +1054,7 @@ private final class ElasticSlingshotRenderState {
         if sampleFrame >= 0,
            let sample = metronomeSamples[profile],
            Int(sampleFrame) < sample.count {
-            let routeGain = routeFamily == .speaker ? 1.08 : 0.98
+            let routeGain = routeFamily == .speaker ? 1.20 : 1.06
             return Double(sample[Int(sampleFrame)]) * gain * routeGain
         }
 
@@ -1258,7 +1258,7 @@ private final class ElasticSlingshotRenderState {
         let bedLift = pow(smoothstep(bedProgress), 1.35)
         let bed = ((sin(phase) * 0.13) + (sin(lowerPhase) * 0.06)) * bedLift
 
-        return tanh(addressPulse + bed) * 0.31
+        return tanh(addressPulse + bed) * 0.40
     }
 
     private func guidedAddressPulse(phase: Double, progress: Double) -> Double {
@@ -1275,7 +1275,7 @@ private final class ElasticSlingshotRenderState {
         let suspension = ((sin(phase) * 0.11) + (sin(upperPhase) * 0.035)) * (1 - (0.36 * smoothstep(progress)))
         let marker = suspension + transient
 
-        return tanh(marker) * 0.36
+        return tanh(marker) * 0.48
     }
 
     private func guidedReleaseTone(frequency: Double, progress: Double) -> Double {
@@ -1285,7 +1285,7 @@ private final class ElasticSlingshotRenderState {
         let pressure = 0.14 + (0.74 * acceleration)
         let tone = (sin(phase) * 0.21) + (sin(upperPhase) * 0.06)
 
-        return tanh(tone * (1.08 + (0.74 * acceleration))) * pressure * 0.42
+        return tanh(tone * (1.12 + (0.82 * acceleration))) * pressure * 0.54
     }
 
     private func guidedImpactMarkerTone(frequency: Double, progress: Double) -> Double {
@@ -1295,7 +1295,7 @@ private final class ElasticSlingshotRenderState {
         let transient = voiceState.nextNoiseSample() * 0.16 * exp(-128 * progress)
         let body = (sin(phase) * 0.30) + (sin(upperPhase) * 0.12)
 
-        return tanh((body + transient) * 1.08) * decay * 0.58
+        return tanh((body + transient) * 1.22) * decay * 0.72
     }
 
     private func normalizedSegment(_ value: Double, start: Double, end: Double) -> Double {
@@ -1325,7 +1325,7 @@ private final class ElasticSlingshotRenderState {
     }
 
     private func impactSoftLimit(_ sample: Double) -> Double {
-        tanh(sample * 1.35) * 0.855
+        tanh(sample * 1.72) * 0.96
     }
 
     private func clear(data: UnsafeMutablePointer<Float>, frameCount: Int) {

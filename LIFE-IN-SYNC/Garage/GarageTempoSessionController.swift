@@ -111,7 +111,7 @@ final class GarageTempoCountdownSpeaker: ObservableObject, GarageTempoCountdownS
         utterance.voice = preferredVoice
         utterance.rate = 0.43
         utterance.pitchMultiplier = 0.96
-        utterance.volume = 0.96
+        utterance.volume = 1.0
         utterance.preUtteranceDelay = 0.04
         synthesizer.speak(utterance)
     }
