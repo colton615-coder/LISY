@@ -447,13 +447,13 @@ enum TempoSoundIdentityProfile: String, CaseIterable, Identifiable {
         case .tourWhip, .heavySteel, .glassLine, .airCut, .digitalVector, .rangeWood:
             return TempoSoundEventPlan(
                 phases: [
-                    .build: .init(assetName: nil, assetGain: 0, synthesisGain: 0.96, pitch: .rising(from: 155, to: 315), attack: 0.08, release: 0.24, silenceWindow: nil),
-                    .top: .init(assetName: nil, assetGain: 0, synthesisGain: 0.88, pitch: .fixed(680), attack: 0, release: 0.38, silenceWindow: nil),
-                    .downswing: .init(assetName: nil, assetGain: 0, synthesisGain: 1.14, pitch: .rising(from: 420, to: 980), attack: 0.01, release: 0.08, silenceWindow: nil),
-                    .impact: .init(assetName: nil, assetGain: 0, synthesisGain: 1.26, pitch: .fixed(920), attack: 0, release: 0.48, silenceWindow: nil),
+                    .build: .init(assetName: "tour_whip_tension", assetGain: 1.08, synthesisGain: 0.52, pitch: .rising(from: 96, to: 285), attack: 0.03, release: 0.18, silenceWindow: nil),
+                    .top: .init(assetName: "tour_whip_loaded_silence", assetGain: 0.92, synthesisGain: 0.46, pitch: .fixed(430), attack: 0, release: 0.58, silenceWindow: nil),
+                    .downswing: .init(assetName: "tour_whip_air", assetGain: 1.08, synthesisGain: 0.66, pitch: .rising(from: 300, to: 760), attack: 0, release: 0.06, silenceWindow: nil),
+                    .impact: .init(assetName: "impact_knock", assetGain: 1.42, synthesisGain: 0.44, pitch: .fixed(520), attack: 0, release: 0.28, silenceWindow: nil),
                     .tail: .init(assetName: nil, assetGain: 0, synthesisGain: 0, pitch: .silent, attack: 0, release: 0, silenceWindow: 0...1)
                 ],
-                outputGain: 1.18
+                outputGain: 1.05
             )
         }
     }
