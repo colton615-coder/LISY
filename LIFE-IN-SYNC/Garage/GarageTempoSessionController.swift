@@ -39,16 +39,12 @@ struct GarageTempoHapticSchedule {
         recipe.slowTempoLogic(for: beatsPerMinute).anchorInterval
     }
 
-    static func guidedLandmarkOffsets(recipe: ElasticSlingshotRecipe, beatsPerMinute: Double) -> [TimeInterval] {
-        let top = recipe.takeawayDuration(for: beatsPerMinute)
-        let impact = top + recipe.pauseDuration(for: beatsPerMinute) + recipe.downswingDuration(for: beatsPerMinute)
-        return [top, impact]
-    }
 }
 
 @MainActor
 protocol GarageTempoAudioControlling: AnyObject {
     var playbackState: ElasticSlingshotPlaybackState { get }
+    func prepare() -> Bool
     func start(
         beatsPerMinute: Double,
         recipe: ElasticSlingshotRecipe,
@@ -65,7 +61,9 @@ protocol GarageTempoAudioControlling: AnyObject {
         metronomeStartProfile: GarageMetronomeClickProfile,
         metronomeImpactProfile: GarageMetronomeClickProfile,
         guidedClicksEnabled: Bool,
-        instrumentMode: GarageTempoInstrumentMode
+        instrumentMode: GarageTempoInstrumentMode,
+        guidedCycleSchedule: GarageGuidedSwingCycleSchedule?,
+        cycleToken: UInt64
     )
     func update(
         beatsPerMinute: Double,
@@ -78,6 +76,7 @@ protocol GarageTempoAudioControlling: AnyObject {
     )
     func stop()
     func currentPlaybackProgress() -> Double
+    func currentGuidedCycleSnapshot() -> GarageGuidedSwingCycleSnapshot?
 }
 
 @MainActor
@@ -152,6 +151,7 @@ final class GarageTempoSessionController: ObservableObject {
     @Published private(set) var countdownValue: Int?
     @Published private(set) var restProgress = 0.0
     @Published private(set) var hasPendingTempo = false
+    @Published private(set) var guidedCycleSchedule: GarageGuidedSwingCycleSchedule?
 
     private let audio: GarageTempoAudioControlling
     private let speaker: GarageTempoCountdownSpeaking
@@ -161,6 +161,8 @@ final class GarageTempoSessionController: ObservableObject {
     private var playbackTask: Task<Void, Never>?
     private var hapticTask: Task<Void, Never>?
     private var interruptionCancellable: AnyCancellable?
+    private var activeGuidedCycleToken: UInt64?
+    private var nextGuidedCycleToken: UInt64 = 1
 
     init(
         audio: GarageTempoAudioControlling,
@@ -265,6 +267,17 @@ final class GarageTempoSessionController: ObservableObject {
         audio.currentPlaybackProgress()
     }
 
+    func currentGuidedCycleSnapshot() -> GarageGuidedSwingCycleSnapshot? {
+        guard
+            let activeGuidedCycleToken,
+            let snapshot = audio.currentGuidedCycleSnapshot(),
+            snapshot.token == activeGuidedCycleToken
+        else {
+            return nil
+        }
+        return snapshot
+    }
+
     private func startMetronome(_ configuration: GarageTempoSessionConfiguration) {
         audio.start(
             beatsPerMinute: appliedBPM,
@@ -287,6 +300,10 @@ final class GarageTempoSessionController: ObservableObject {
     private func startGuidedSequence() {
         playbackTask = Task { @MainActor [weak self] in
             guard let self else { return }
+            guard audio.prepare() else {
+                state = .ready
+                return
+            }
             await runGuidedCountIn()
             guard Task.isCancelled == false else { return }
 
@@ -296,7 +313,13 @@ final class GarageTempoSessionController: ObservableObject {
                 hasPendingTempo = false
                 countdownValue = nil
                 restProgress = 0
-                state = .playing
+                let schedule = GarageGuidedSwingCycleSchedule(
+                    recipe: configuration.recipe,
+                    beatsPerMinute: appliedBPM
+                )
+                let cycleToken = makeGuidedCycleToken()
+                activeGuidedCycleToken = cycleToken
+                guidedCycleSchedule = schedule
                 audio.playOneCycle(
                     beatsPerMinute: appliedBPM,
                     recipe: configuration.recipe,
@@ -304,19 +327,32 @@ final class GarageTempoSessionController: ObservableObject {
                     metronomeStartProfile: configuration.startClick,
                     metronomeImpactProfile: configuration.impactClick,
                     guidedClicksEnabled: false,
-                    instrumentMode: .build
+                    instrumentMode: .build,
+                    guidedCycleSchedule: schedule,
+                    cycleToken: cycleToken
                 )
                 guard audio.playbackState == .playing else {
                     stop()
                     return
                 }
-                scheduleGuidedHaptics(configuration)
-                await sleep(seconds: configuration.recipe.guidedMotionDuration(for: appliedBPM))
+                state = .playing
+                let completed = await monitorGuidedCycle(
+                    token: cycleToken,
+                    schedule: schedule,
+                    hapticsEnabled: configuration.hapticsEnabled
+                )
                 guard Task.isCancelled == false else { return }
+                guard completed, activeGuidedCycleToken == cycleToken else { return }
+                activeGuidedCycleToken = nil
+                guidedCycleSchedule = nil
                 state = .resting
                 announce("Rest")
                 await runRestCountdown(seconds: configuration.recipe.restInterval)
                 guard Task.isCancelled == false else { return }
+                guard audio.prepare() else {
+                    state = .ready
+                    return
+                }
                 await runGuidedCountIn()
                 guard Task.isCancelled == false else { return }
             }
@@ -368,22 +404,40 @@ final class GarageTempoSessionController: ObservableObject {
         }
     }
 
-    private func scheduleGuidedHaptics(_ configuration: GarageTempoSessionConfiguration) {
-        hapticTask?.cancel()
-        guard configuration.hapticsEnabled else { return }
-        let offsets = GarageTempoHapticSchedule.guidedLandmarkOffsets(
-            recipe: configuration.recipe,
-            beatsPerMinute: appliedBPM
-        )
-        hapticTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            await sleep(seconds: offsets[0])
-            guard Task.isCancelled == false else { return }
-            haptics.trigger(.medium)
-            await sleep(seconds: offsets[1] - offsets[0])
-            guard Task.isCancelled == false else { return }
-            haptics.trigger(.rigid)
+    private func monitorGuidedCycle(
+        token: UInt64,
+        schedule: GarageGuidedSwingCycleSchedule,
+        hapticsEnabled: Bool
+    ) async -> Bool {
+        var firedTop = false
+        var firedImpact = false
+
+        while Task.isCancelled == false, activeGuidedCycleToken == token {
+            guard let snapshot = audio.currentGuidedCycleSnapshot(), snapshot.token == token else {
+                await sleep(seconds: 0.005)
+                continue
+            }
+
+            if hapticsEnabled, firedTop == false, snapshot.elapsedTime >= schedule.topOffset {
+                firedTop = true
+                haptics.trigger(.medium)
+            }
+            if hapticsEnabled, firedImpact == false, snapshot.elapsedTime >= schedule.impactOffset {
+                firedImpact = true
+                haptics.trigger(.rigid)
+            }
+            if snapshot.isComplete {
+                return true
+            }
+            await sleep(seconds: 0.005)
         }
+        return false
+    }
+
+    private func makeGuidedCycleToken() -> UInt64 {
+        let token = nextGuidedCycleToken
+        nextGuidedCycleToken &+= 1
+        return token
     }
 
     private func cancelScheduledWork() {
@@ -391,6 +445,8 @@ final class GarageTempoSessionController: ObservableObject {
         playbackTask = nil
         hapticTask?.cancel()
         hapticTask = nil
+        activeGuidedCycleToken = nil
+        guidedCycleSchedule = nil
         speaker.stop()
         countdownValue = nil
         restProgress = 0

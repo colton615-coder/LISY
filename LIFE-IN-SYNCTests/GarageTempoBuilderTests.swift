@@ -6,9 +6,15 @@ struct GarageTempoBuilderTests {
     @Test func guidedMotionProgressIsMonotonicThroughFollowThrough() {
         let recipe = ElasticSlingshotRecipe()
         let logic = recipe.slowTempoLogic(for: 60)
+        let schedule = GarageGuidedSwingCycleSchedule(recipe: recipe, beatsPerMinute: 60)
         let duration = recipe.guidedMotionDuration(for: 60)
         let samples = stride(from: 0.0, through: duration, by: 0.02).map {
-            logic.visualState(elapsedTime: $0, isPlaying: true, recipe: recipe).motionProgress
+            logic.visualState(
+                elapsedTime: $0,
+                isPlaying: true,
+                recipe: recipe,
+                schedule: schedule
+            ).motionProgress
         }
 
         #expect(zip(samples, samples.dropFirst()).allSatisfy { $0 <= $1 })
@@ -66,11 +72,12 @@ struct GarageTempoBuilderTests {
 
     @Test func hapticScheduleContainsOneTopAndOneImpactEvent() {
         let recipe = ElasticSlingshotRecipe()
-        let offsets = GarageTempoHapticSchedule.guidedLandmarkOffsets(recipe: recipe, beatsPerMinute: 60)
+        let schedule = GarageGuidedSwingCycleSchedule(recipe: recipe, beatsPerMinute: 60)
 
-        #expect(offsets.count == 2)
-        #expect(offsets[0] == recipe.takeawayDuration(for: 60))
-        #expect(offsets[1] == recipe.swingDuration(for: 60))
+        #expect(schedule.topOffset == recipe.takeawayDuration(for: 60))
+        #expect(schedule.downswingOffset == schedule.topOffset + recipe.pauseDuration(for: 60))
+        #expect(schedule.impactOffset == recipe.swingDuration(for: 60))
+        #expect(schedule.completionOffset == recipe.guidedMotionDuration(for: 60))
         #expect(GarageTempoHapticSchedule.metronomeBeatInterval(recipe: recipe, beatsPerMinute: 60) == 1)
     }
 
@@ -126,7 +133,7 @@ struct GarageTempoBuilderTests {
             page: page,
             beatsPerMinute: beatsPerMinute,
             recipe: ElasticSlingshotRecipe(),
-            guidedSound: .tension,
+            guidedSound: .tourWhip,
             startClick: .woodblock,
             impactClick: .brightSignal,
             hapticsEnabled: false
@@ -139,6 +146,10 @@ private final class GarageTempoAudioMock: GarageTempoAudioControlling {
     var playbackState = ElasticSlingshotPlaybackState.stopped
     var stopCount = 0
     var updateCount = 0
+
+    func prepare() -> Bool {
+        true
+    }
 
     func start(
         beatsPerMinute: Double,
@@ -159,7 +170,9 @@ private final class GarageTempoAudioMock: GarageTempoAudioControlling {
         metronomeStartProfile: GarageMetronomeClickProfile,
         metronomeImpactProfile: GarageMetronomeClickProfile,
         guidedClicksEnabled: Bool,
-        instrumentMode: GarageTempoInstrumentMode
+        instrumentMode: GarageTempoInstrumentMode,
+        guidedCycleSchedule: GarageGuidedSwingCycleSchedule?,
+        cycleToken: UInt64
     ) {
         playbackState = .playing
     }
@@ -183,6 +196,10 @@ private final class GarageTempoAudioMock: GarageTempoAudioControlling {
 
     func currentPlaybackProgress() -> Double {
         0
+    }
+
+    func currentGuidedCycleSnapshot() -> GarageGuidedSwingCycleSnapshot? {
+        nil
     }
 }
 

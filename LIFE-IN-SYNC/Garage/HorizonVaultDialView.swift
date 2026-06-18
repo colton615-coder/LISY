@@ -167,7 +167,8 @@ struct GarageTempoBuilderView: View {
             countdownValue: session.countdownValue,
             restProgress: session.restProgress,
             hasPendingTempo: session.hasPendingTempo,
-            playbackProgress: session.currentPlaybackProgress,
+            activeCycleSchedule: session.guidedCycleSchedule,
+            cycleSnapshot: session.currentGuidedCycleSnapshot,
             onStart: { session.start(sessionConfiguration) },
             onRestart: { session.restartGuidedSwing(sessionConfiguration) },
             onStop: session.stop
@@ -407,7 +408,8 @@ private struct GarageGuidedSwingPage: View {
     let countdownValue: Int?
     let restProgress: Double
     let hasPendingTempo: Bool
-    let playbackProgress: () -> Double
+    let activeCycleSchedule: GarageGuidedSwingCycleSchedule?
+    let cycleSnapshot: () -> GarageGuidedSwingCycleSnapshot?
     let onStart: () -> Void
     let onRestart: () -> Void
     let onStop: () -> Void
@@ -423,16 +425,22 @@ private struct GarageGuidedSwingPage: View {
 
             Spacer(minLength: 10)
 
-            GarageGuidedSwingTimeline(
-                state: visualState(progress: playbackProgress()),
-                isPlaying: isPlaying,
-                isResting: sessionState == .resting || sessionState == .countingIn,
-                reduceMotion: reduceMotion,
-                countdownValue: countdownValue,
-                restProgress: restProgress,
-                appliedBPM: appliedBPM,
-                recipe: recipe
-            )
+            TimelineView(.animation(minimumInterval: reduceMotion ? 0.10 : 1 / 60, paused: isPlaying == false)) { _ in
+                let schedule = activeCycleSchedule ?? GarageGuidedSwingCycleSchedule(
+                    recipe: recipe,
+                    beatsPerMinute: appliedBPM
+                )
+                let snapshot = cycleSnapshot()
+                GarageGuidedSwingTimeline(
+                    state: visualState(snapshot: snapshot, schedule: schedule),
+                    schedule: schedule,
+                    isPlaying: isPlaying,
+                    isResting: sessionState == .resting || sessionState == .countingIn,
+                    reduceMotion: reduceMotion,
+                    countdownValue: countdownValue,
+                    restProgress: restProgress
+                )
+            }
             .frame(maxWidth: .infinity)
             .frame(height: min(max(timelineHeight, 205), 275))
 
@@ -469,12 +477,16 @@ private struct GarageGuidedSwingPage: View {
         }
     }
 
-    private func visualState(progress: Double) -> GarageSlowTempoVisualState {
-        let elapsed = max(progress, 0) * recipe.guidedMotionDuration(for: appliedBPM)
+    private func visualState(
+        snapshot: GarageGuidedSwingCycleSnapshot?,
+        schedule: GarageGuidedSwingCycleSchedule
+    ) -> GarageSlowTempoVisualState {
+        let elapsed = snapshot?.elapsedTime ?? schedule.addressOffset
         return recipe.slowTempoLogic(for: appliedBPM).visualState(
             elapsedTime: elapsed,
             isPlaying: isPlaying,
-            recipe: recipe
+            recipe: recipe,
+            schedule: schedule
         )
     }
 }
@@ -757,28 +769,29 @@ private struct GarageMetronomeScale: View {
 
 private struct GarageGuidedSwingTimeline: View {
     let state: GarageSlowTempoVisualState
+    let schedule: GarageGuidedSwingCycleSchedule
     let isPlaying: Bool
     let isResting: Bool
     let reduceMotion: Bool
     let countdownValue: Int?
     let restProgress: Double
-    let appliedBPM: Double
-    let recipe: ElasticSlingshotRecipe
 
     var body: some View {
         GeometryReader { proxy in
             let startPoint = point(at: 0, in: proxy.size)
-            let topPoint = point(at: 0.58, in: proxy.size)
+            let topPoint = point(at: GarageGuidedSwingCycleSchedule.topArcProgress, in: proxy.size)
             let impactPoint = point(at: 1, in: proxy.size)
-            let impactActive = isPlaying && state.motionProgress >= 0.88
+            let impactActive = isPlaying && state.elapsedInCycle >= schedule.impactOffset
 
             ZStack {
                 GarageGuidedSwingArc(
                     isPlaying: isPlaying,
                     isResting: isResting,
                     reduceMotion: reduceMotion,
-                    appliedBPM: appliedBPM,
-                    recipe: recipe
+                    motionProgress: reduceMotion
+                        ? schedule.reducedMotionProgress(at: state.elapsedInCycle)
+                        : state.motionProgress,
+                    impactPulseProgress: schedule.impactPulseProgress(at: state.elapsedInCycle)
                 )
 
                 GarageGuidedSwingLandmark(title: "Address", isActive: state.activeBeat == 1 && isResting == false, alignment: .center)
@@ -822,8 +835,8 @@ private struct GarageGuidedSwingTimeline: View {
         let downswingControl = CGPoint(x: size.width * 0.78, y: size.height * 0.18)
         let impact = CGPoint(x: size.width * 0.91, y: size.height * 0.72)
 
-        if progress <= 0.58 {
-            let t = progress / 0.58
+        if progress <= GarageGuidedSwingCycleSchedule.topArcProgress {
+            let t = progress / GarageGuidedSwingCycleSchedule.topArcProgress
             let inverse = 1 - t
             return CGPoint(
                 x: (inverse * inverse * start.x) + (2 * inverse * t * backswingControl.x) + (t * t * top.x),
@@ -831,7 +844,8 @@ private struct GarageGuidedSwingTimeline: View {
             )
         }
 
-        let t = (progress - 0.58) / 0.42
+        let t = (progress - GarageGuidedSwingCycleSchedule.topArcProgress)
+            / (1 - GarageGuidedSwingCycleSchedule.topArcProgress)
         let inverse = 1 - t
         return CGPoint(
             x: (inverse * inverse * top.x) + (2 * inverse * t * downswingControl.x) + (t * t * impact.x),
@@ -844,8 +858,8 @@ private struct GarageGuidedSwingArc: UIViewRepresentable {
     let isPlaying: Bool
     let isResting: Bool
     let reduceMotion: Bool
-    let appliedBPM: Double
-    let recipe: ElasticSlingshotRecipe
+    let motionProgress: Double
+    let impactPulseProgress: Double
 
     func makeUIView(context: Context) -> GarageGuidedSwingArcView {
         GarageGuidedSwingArcView()
@@ -856,8 +870,8 @@ private struct GarageGuidedSwingArc: UIViewRepresentable {
             isPlaying: isPlaying,
             isResting: isResting,
             reduceMotion: reduceMotion,
-            appliedBPM: appliedBPM,
-            recipe: recipe
+            motionProgress: motionProgress,
+            impactPulseProgress: impactPulseProgress
         )
     }
 }
@@ -907,7 +921,7 @@ private final class GarageGuidedSwingArcView: UIView {
             mintTextColor.withAlphaComponent(0.62).cgColor,
             goldColor.withAlphaComponent(0.84).cgColor
         ]
-        readyArcGradient.locations = [0, 0.58, 1]
+        readyArcGradient.locations = [0, NSNumber(value: GarageGuidedSwingCycleSchedule.topArcProgress), 1]
         readyArcGradient.startPoint = CGPoint(x: 0, y: 0.5)
         readyArcGradient.endPoint = CGPoint(x: 1, y: 0.5)
         readyArcGradient.mask = readyArcLayer
@@ -917,12 +931,12 @@ private final class GarageGuidedSwingArcView: UIView {
         deliveryArcLayer.strokeColor = UIColor.white.cgColor
         deliveryArcLayer.lineCap = .round
         deliveryArcLayer.lineWidth = 13
-        deliveryArcLayer.strokeStart = 0.58
+        deliveryArcLayer.strokeStart = CGFloat(GarageGuidedSwingCycleSchedule.topArcProgress)
         deliveryArcGradient.colors = [
             mintTextColor.withAlphaComponent(0.30).cgColor,
             goldColor.withAlphaComponent(0.94).cgColor
         ]
-        deliveryArcGradient.locations = [0.58, 1]
+        deliveryArcGradient.locations = [NSNumber(value: GarageGuidedSwingCycleSchedule.topArcProgress), 1]
         deliveryArcGradient.startPoint = CGPoint(x: 0, y: 0.5)
         deliveryArcGradient.endPoint = CGPoint(x: 1, y: 0.5)
         deliveryArcGradient.mask = deliveryArcLayer
@@ -937,7 +951,7 @@ private final class GarageGuidedSwingArcView: UIView {
             mintTextColor.cgColor,
             goldColor.cgColor
         ]
-        activeArcGradient.locations = [0, 0.58, 1]
+        activeArcGradient.locations = [0, NSNumber(value: GarageGuidedSwingCycleSchedule.topArcProgress), 1]
         activeArcGradient.startPoint = CGPoint(x: 0, y: 0.5)
         activeArcGradient.endPoint = CGPoint(x: 1, y: 0.5)
         activeArcGradient.mask = activeArcLayer
@@ -980,25 +994,18 @@ private final class GarageGuidedSwingArcView: UIView {
         isPlaying: Bool,
         isResting: Bool,
         reduceMotion: Bool,
-        appliedBPM: Double,
-        recipe: ElasticSlingshotRecipe
+        motionProgress: Double,
+        impactPulseProgress: Double
     ) {
-        let newConfiguration = Configuration(
+        configuration = Configuration(
             isPlaying: isPlaying,
             isResting: isResting,
             reduceMotion: reduceMotion,
-            appliedBPM: appliedBPM,
-            recipe: recipe
+            motionProgress: motionProgress,
+            impactPulseProgress: impactPulseProgress
         )
-        let shouldStartCycle = configuration?.isPlaying != true && isPlaying
-        configuration = newConfiguration
         applyAppearance()
-
-        if shouldStartCycle {
-            startMotionCycle()
-        } else if isPlaying == false {
-            stopMotion(at: 0)
-        }
+        applyProgress()
     }
 
     private func applyPath() {
@@ -1024,12 +1031,7 @@ private final class GarageGuidedSwingArcView: UIView {
         impactPulseLayer.path = UIBezierPath(ovalIn: impactPulseLayer.bounds).cgPath
         impactPulseLayer.position = point(at: 1, in: bounds.size)
 
-        if trackingNode.animation(forKey: "garageGuidedSwingPosition") == nil {
-            trackingNode.position = point(at: 0, in: bounds.size)
-            if configuration?.isPlaying == true {
-                startMotionCycle()
-            }
-        }
+        applyProgress()
     }
 
     private func applyAppearance() {
@@ -1054,150 +1056,35 @@ private final class GarageGuidedSwingArcView: UIView {
         trackingNode.cornerRadius = trackingNode.bounds.width / 2
     }
 
-    private func startMotionCycle() {
+    private func applyProgress() {
         guard let configuration, bounds.width > 0, bounds.height > 0 else { return }
-        stopMotion(at: 0)
-        let duration = configuration.recipe.guidedMotionDuration(for: configuration.appliedBPM)
+        let progress = configuration.isPlaying ? CGFloat(configuration.motionProgress) : 0
+        let pulseProgress = min(max(configuration.impactPulseProgress, 0), 1)
+        let pulseOpacity = pulseProgress <= 0.22
+            ? pulseProgress / 0.22
+            : 1 - ((pulseProgress - 0.22) / 0.78)
+        let pulseScale = 0.42 + (1.08 * pulseProgress)
 
-        guard configuration.reduceMotion == false else {
-            startReducedMotionCycle(configuration: configuration, duration: duration)
-            return
-        }
-
-        let positionAnimation = CAKeyframeAnimation(keyPath: "position")
-        positionAnimation.values = sampledMotionPoints(configuration: configuration, duration: duration)
-        positionAnimation.duration = duration
-        positionAnimation.calculationMode = .linear
-        positionAnimation.isRemovedOnCompletion = false
-        positionAnimation.fillMode = .forwards
-        trackingNode.add(positionAnimation, forKey: "garageGuidedSwingPosition")
-
-        let trailAnimation = CAKeyframeAnimation(keyPath: "strokeEnd")
-        trailAnimation.values = sampledMotionProgress(configuration: configuration, duration: duration)
-        trailAnimation.duration = duration
-        trailAnimation.calculationMode = .linear
-        trailAnimation.isRemovedOnCompletion = false
-        trailAnimation.fillMode = .forwards
-        activeArcLayer.add(trailAnimation, forKey: "garageGuidedSwingTrail")
-        startImpactPulse(after: configuration.recipe.swingDuration(for: configuration.appliedBPM))
-    }
-
-    private func startImpactPulse(after delay: TimeInterval) {
-        let opacity = CAKeyframeAnimation(keyPath: "opacity")
-        opacity.values = [0, 1, 0]
-        opacity.keyTimes = [0, 0.22, 1]
-
-        let scale = CAKeyframeAnimation(keyPath: "transform.scale")
-        scale.values = [0.42, 1, 1.50]
-        scale.keyTimes = [0, 0.35, 1]
-
-        let group = CAAnimationGroup()
-        group.animations = [opacity, scale]
-        group.beginTime = impactPulseLayer.convertTime(CACurrentMediaTime(), from: nil) + delay
-        group.duration = 0.34
-        impactPulseLayer.add(group, forKey: "garageGuidedSwingImpact")
-    }
-
-    private func startReducedMotionCycle(configuration: Configuration, duration: TimeInterval) {
-        let animation = CAKeyframeAnimation(keyPath: "position")
-        animation.values = [
-            NSValue(cgPoint: point(at: 0, in: bounds.size)),
-            NSValue(cgPoint: point(at: 0.58, in: bounds.size)),
-            NSValue(cgPoint: point(at: 0.62, in: bounds.size)),
-            NSValue(cgPoint: point(at: 1, in: bounds.size)),
-            NSValue(cgPoint: point(at: 1, in: bounds.size)),
-            NSValue(cgPoint: point(at: 1, in: bounds.size))
-        ]
-        animation.keyTimes = motionKeyTimes(configuration: configuration, duration: duration)
-        animation.duration = duration
-        animation.calculationMode = .discrete
-        animation.isRemovedOnCompletion = false
-        animation.fillMode = .forwards
-        trackingNode.add(animation, forKey: "garageGuidedSwingPosition")
-
-        let trailAnimation = CAKeyframeAnimation(keyPath: "strokeEnd")
-        trailAnimation.values = [0.0, 0.58, 0.62, 1.0, 1.0, 1.0]
-        trailAnimation.keyTimes = animation.keyTimes
-        trailAnimation.duration = duration
-        trailAnimation.calculationMode = .discrete
-        trailAnimation.isRemovedOnCompletion = false
-        trailAnimation.fillMode = .forwards
-        activeArcLayer.add(trailAnimation, forKey: "garageGuidedSwingTrail")
-    }
-
-    private func stopMotion(at progress: CGFloat) {
-        trackingNode.removeAnimation(forKey: "garageGuidedSwingPosition")
-        activeArcLayer.removeAnimation(forKey: "garageGuidedSwingTrail")
-        impactPulseLayer.removeAnimation(forKey: "garageGuidedSwingImpact")
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         trackingNode.position = point(at: progress, in: bounds.size)
         activeArcLayer.strokeEnd = progress
+        impactPulseLayer.opacity = Float(min(max(pulseOpacity, 0), 1))
+        impactPulseLayer.setAffineTransform(
+            CGAffineTransform(scaleX: CGFloat(pulseScale), y: CGFloat(pulseScale))
+        )
         CATransaction.commit()
-    }
-
-    private func motionKeyTimes(configuration: Configuration, duration: TimeInterval) -> [NSNumber] {
-        let recipe = configuration.recipe
-        let bpm = configuration.appliedBPM
-        let takeawayEnd = recipe.takeawayDuration(for: bpm)
-        let pauseEnd = takeawayEnd + recipe.pauseDuration(for: bpm)
-        let impactStart = recipe.swingDuration(for: bpm)
-        let impactEnd = recipe.swingDuration(for: bpm) + recipe.impactDuration
-        return [0, takeawayEnd, pauseEnd, impactStart, impactEnd, duration].map {
-            NSNumber(value: min(max($0 / max(duration, 0.01), 0), 1))
-        }
     }
 
     private func kineticPath(in size: CGSize) -> UIBezierPath {
         let path = UIBezierPath()
         path.move(to: point(at: 0, in: size))
-        path.addQuadCurve(to: point(at: 0.58, in: size), controlPoint: CGPoint(x: size.width * 0.24, y: size.height * 0.18))
+        path.addQuadCurve(
+            to: point(at: CGFloat(GarageGuidedSwingCycleSchedule.topArcProgress), in: size),
+            controlPoint: CGPoint(x: size.width * 0.24, y: size.height * 0.18)
+        )
         path.addQuadCurve(to: point(at: 1, in: size), controlPoint: CGPoint(x: size.width * 0.78, y: size.height * 0.18))
         return path
-    }
-
-    private func sampledMotionPoints(configuration: Configuration, duration: TimeInterval) -> [NSValue] {
-        sampledMotionProgress(configuration: configuration, duration: duration).map {
-            NSValue(cgPoint: point(at: CGFloat(truncating: $0), in: bounds.size))
-        }
-    }
-
-    private func sampledMotionProgress(configuration: Configuration, duration: TimeInterval) -> [NSNumber] {
-        let sampleCount = 180
-        return (0...sampleCount).map { sample in
-            let elapsed = duration * Double(sample) / Double(sampleCount)
-            return NSNumber(value: visualProgress(at: elapsed, configuration: configuration))
-        }
-    }
-
-    private func visualProgress(at elapsed: TimeInterval, configuration: Configuration) -> Double {
-        let recipe = configuration.recipe
-        let bpm = configuration.appliedBPM
-        let takeawayEnd = recipe.takeawayDuration(for: bpm)
-        let pauseEnd = takeawayEnd + recipe.pauseDuration(for: bpm)
-        let impactStart = recipe.swingDuration(for: bpm)
-        let followThroughEnd = impactStart + recipe.impactDuration + recipe.followThroughDuration
-
-        if elapsed < takeawayEnd {
-            return 0.58 * smoothstep(elapsed / max(takeawayEnd, 0.01))
-        }
-        if elapsed < pauseEnd {
-            let progress = (elapsed - takeawayEnd) / max(pauseEnd - takeawayEnd, 0.01)
-            return 0.58 + (0.02 * smoothstep(progress))
-        }
-        if elapsed < impactStart {
-            let progress = (elapsed - pauseEnd) / max(impactStart - pauseEnd, 0.01)
-            return 0.60 + (0.40 * pow(min(max(progress, 0), 1), 2.15))
-        }
-        if elapsed < followThroughEnd {
-            return 1
-        }
-        return 1
-    }
-
-    private func smoothstep(_ value: Double) -> Double {
-        let value = min(max(value, 0), 1)
-        return value * value * (3 - (2 * value))
     }
 
     private func point(at progress: CGFloat, in size: CGSize) -> CGPoint {
@@ -1208,8 +1095,9 @@ private final class GarageGuidedSwingArcView: UIView {
         let downswingControl = CGPoint(x: size.width * 0.82, y: size.height * 0.22)
         let impact = CGPoint(x: size.width * 0.91, y: size.height * 0.72)
 
-        if progress <= 0.58 {
-            let t = progress / 0.58
+        let topProgress = CGFloat(GarageGuidedSwingCycleSchedule.topArcProgress)
+        if progress <= topProgress {
+            let t = progress / topProgress
             let inverse = 1 - t
             return CGPoint(
                 x: (inverse * inverse * start.x) + (2 * inverse * t * backswingControl.x) + (t * t * top.x),
@@ -1217,7 +1105,7 @@ private final class GarageGuidedSwingArcView: UIView {
             )
         }
 
-        let t = (progress - 0.58) / 0.42
+        let t = (progress - topProgress) / (1 - topProgress)
         let inverse = 1 - t
         return CGPoint(
             x: (inverse * inverse * top.x) + (2 * inverse * t * downswingControl.x) + (t * t * impact.x),
@@ -1229,8 +1117,8 @@ private final class GarageGuidedSwingArcView: UIView {
         let isPlaying: Bool
         let isResting: Bool
         let reduceMotion: Bool
-        let appliedBPM: Double
-        let recipe: ElasticSlingshotRecipe
+        let motionProgress: Double
+        let impactPulseProgress: Double
     }
 }
 
@@ -1426,6 +1314,7 @@ private struct GarageTempoControlRoom: View {
     @StateObject private var previewSpeaker = GarageTempoCountdownSpeaker()
     @State private var showsSoundChoices = false
     @State private var previewTask: Task<Void, Never>?
+    @State private var previewCycleToken: UInt64 = 1
 
     private var selectedStartSound: GarageMetronomeClickProfile {
         GarageMetronomeClickProfile.migrated(from: selectedStartRawValue)
@@ -1581,10 +1470,12 @@ private struct GarageTempoControlRoom: View {
         let startProfile = selectedStartSound
         let impactProfile = selectedImpactSound
         let shouldPlayHaptics = hapticsEnabled
-        let hapticOffsets = GarageTempoHapticSchedule.guidedLandmarkOffsets(
+        let schedule = GarageGuidedSwingCycleSchedule(
             recipe: previewRecipe,
             beatsPerMinute: previewBPM
         )
+        let cycleToken = previewCycleToken
+        previewCycleToken &+= 1
 
         previewTask = Task { @MainActor in
             for value in [3, 2, 1] {
@@ -1601,17 +1492,34 @@ private struct GarageTempoControlRoom: View {
                 metronomeStartProfile: startProfile,
                 metronomeImpactProfile: impactProfile,
                 guidedClicksEnabled: false,
-                instrumentMode: .build
+                instrumentMode: .build,
+                guidedCycleSchedule: schedule,
+                cycleToken: cycleToken
             )
 
             guard shouldPlayHaptics else { return }
             let haptics = GarageTempoHapticScheduler()
-            await previewSleep(seconds: hapticOffsets[0])
-            guard Task.isCancelled == false else { return }
-            haptics.trigger(.medium)
-            await previewSleep(seconds: hapticOffsets[1] - hapticOffsets[0])
-            guard Task.isCancelled == false else { return }
-            haptics.trigger(.rigid)
+            var firedTop = false
+            var firedImpact = false
+            while Task.isCancelled == false {
+                guard
+                    let snapshot = previewEngine.currentGuidedCycleSnapshot(),
+                    snapshot.token == cycleToken
+                else {
+                    await previewSleep(seconds: 0.005)
+                    continue
+                }
+                if firedTop == false, snapshot.elapsedTime >= schedule.topOffset {
+                    firedTop = true
+                    haptics.trigger(.medium)
+                }
+                if firedImpact == false, snapshot.elapsedTime >= schedule.impactOffset {
+                    firedImpact = true
+                    haptics.trigger(.rigid)
+                }
+                if snapshot.isComplete { return }
+                await previewSleep(seconds: 0.005)
+            }
         }
     }
 

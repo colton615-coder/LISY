@@ -1,5 +1,76 @@
 import Foundation
 
+struct GarageGuidedSwingCycleSchedule: Equatable {
+    static let topArcProgress = 0.58
+    static let downswingArcProgress = 0.62
+
+    let addressOffset: TimeInterval
+    let topOffset: TimeInterval
+    let downswingOffset: TimeInterval
+    let impactOffset: TimeInterval
+    let completionOffset: TimeInterval
+    let impactDuration: TimeInterval
+
+    init(recipe: ElasticSlingshotRecipe, beatsPerMinute: Double) {
+        addressOffset = 0
+        topOffset = recipe.takeawayDuration(for: beatsPerMinute)
+        downswingOffset = topOffset + recipe.pauseDuration(for: beatsPerMinute)
+        impactOffset = recipe.swingDuration(for: beatsPerMinute)
+        completionOffset = recipe.guidedMotionDuration(for: beatsPerMinute)
+        impactDuration = recipe.impactDuration
+    }
+
+    func elapsedTime(for progress: Double) -> TimeInterval {
+        min(max(progress, 0), 1) * completionOffset
+    }
+
+    func cycleProgress(at elapsedTime: TimeInterval) -> Double {
+        min(max(elapsedTime / max(completionOffset, 0.01), 0), 1)
+    }
+
+    func motionProgress(at elapsedTime: TimeInterval) -> Double {
+        if elapsedTime < topOffset {
+            return Self.topArcProgress * smoothstep(elapsedTime / max(topOffset, 0.01))
+        }
+        if elapsedTime < downswingOffset {
+            let progress = (elapsedTime - topOffset) / max(downswingOffset - topOffset, 0.01)
+            return Self.topArcProgress
+                + ((Self.downswingArcProgress - Self.topArcProgress) * smoothstep(progress))
+        }
+        if elapsedTime < impactOffset {
+            let progress = (elapsedTime - downswingOffset) / max(impactOffset - downswingOffset, 0.01)
+            return Self.downswingArcProgress
+                + ((1 - Self.downswingArcProgress) * pow(min(max(progress, 0), 1), 2.35))
+        }
+        return 1
+    }
+
+    func reducedMotionProgress(at elapsedTime: TimeInterval) -> Double {
+        if elapsedTime < topOffset { return 0 }
+        if elapsedTime < downswingOffset { return Self.topArcProgress }
+        if elapsedTime < impactOffset { return Self.downswingArcProgress }
+        return 1
+    }
+
+    func impactPulseProgress(at elapsedTime: TimeInterval) -> Double {
+        let pulseDuration = min(max(completionOffset - impactOffset, impactDuration), 0.34)
+        guard elapsedTime >= impactOffset, pulseDuration > 0 else { return 0 }
+        return min(max((elapsedTime - impactOffset) / pulseDuration, 0), 1)
+    }
+
+    private func smoothstep(_ value: Double) -> Double {
+        let value = min(max(value, 0), 1)
+        return value * value * (3 - (2 * value))
+    }
+}
+
+struct GarageGuidedSwingCycleSnapshot: Equatable {
+    let token: UInt64
+    let elapsedTime: TimeInterval
+    let progress: Double
+    let isComplete: Bool
+}
+
 struct GarageSlowTempoLogic: Equatable {
     static let defaultAnchorBPM = 60.0
     static let defaultSubdivisionMultiplier = 2
@@ -87,7 +158,12 @@ struct GarageSlowTempoLogic: Equatable {
         ]
     }
 
-    func visualState(elapsedTime: TimeInterval, isPlaying: Bool, recipe: ElasticSlingshotRecipe) -> GarageSlowTempoVisualState {
+    func visualState(
+        elapsedTime: TimeInterval,
+        isPlaying: Bool,
+        recipe: ElasticSlingshotRecipe,
+        schedule: GarageGuidedSwingCycleSchedule
+    ) -> GarageSlowTempoVisualState {
         guard isPlaying else {
             return GarageSlowTempoVisualState(
                 elapsedInCycle: 0,
@@ -102,30 +178,35 @@ struct GarageSlowTempoLogic: Equatable {
             )
         }
 
-        let swingDuration = max(recipe.swingDuration(for: anchorBPM), 0.1)
+        let swingDuration = max(schedule.impactOffset, 0.1)
         let cycleDuration = max(recipe.loopDuration(for: anchorBPM), swingDuration)
         let elapsedInCycle = elapsedTime.truncatingRemainder(dividingBy: cycleDuration)
-        let impactEndTimestamp = swingDuration + recipe.impactDuration
-        let followThroughEndTimestamp = impactEndTimestamp + recipe.followThroughDuration
+        let impactEndTimestamp = schedule.impactOffset + schedule.impactDuration
         let activeBeat: Int
         let nextIndex: Int
         let phaseLabel: String
         let phaseCue: String
         let isResting: Bool
 
-        if elapsedInCycle < recipe.takeawayDuration(for: anchorBPM) {
+        if elapsedInCycle < schedule.topOffset {
             activeBeat = 1
             nextIndex = 1
-            phaseLabel = landmarks[0].title
+            phaseLabel = elapsedInCycle <= 0.08 ? landmarks[0].title : "Backswing"
             phaseCue = landmarks[0].cue
             isResting = false
-        } else if elapsedInCycle < swingDuration {
+        } else if elapsedInCycle < schedule.downswingOffset {
             activeBeat = 2
             nextIndex = 2
             phaseLabel = landmarks[1].title
             phaseCue = recipe.tempoRatio.feelLine
             isResting = false
-        } else if elapsedInCycle < followThroughEndTimestamp {
+        } else if elapsedInCycle < schedule.impactOffset {
+            activeBeat = 2
+            nextIndex = 2
+            phaseLabel = "Downswing"
+            phaseCue = "Release clean."
+            isResting = false
+        } else if elapsedInCycle < schedule.completionOffset {
             activeBeat = 3
             nextIndex = 0
             phaseLabel = elapsedInCycle < impactEndTimestamp ? landmarks[2].title : "Follow Through"
@@ -143,52 +224,15 @@ struct GarageSlowTempoLogic: Equatable {
 
         return GarageSlowTempoVisualState(
             elapsedInCycle: elapsedInCycle,
-            cycleProgress: min(max(elapsedInCycle / swingDuration, 0), 1),
+            cycleProgress: schedule.cycleProgress(at: elapsedInCycle),
             activeBeat: activeBeat,
             activeLandmark: activeLandmark,
             nextLandmark: landmarks[nextIndex],
             phaseLabel: phaseLabel,
             phaseCue: phaseCue,
             isResting: isResting,
-            motionProgress: motionProgress(
-                elapsedTime: elapsedInCycle,
-                recipe: recipe
-            )
+            motionProgress: schedule.motionProgress(at: elapsedInCycle)
         )
-    }
-
-    private func motionProgress(elapsedTime: TimeInterval, recipe: ElasticSlingshotRecipe) -> Double {
-        let takeawayEnd = recipe.takeawayDuration(for: anchorBPM)
-        let pauseEnd = takeawayEnd + recipe.pauseDuration(for: anchorBPM)
-        let impactStart = recipe.swingDuration(for: anchorBPM)
-        let impactEnd = impactStart + recipe.impactDuration
-        let followThroughEnd = impactEnd + recipe.followThroughDuration
-
-        if elapsedTime < takeawayEnd {
-            return 0.58 * smoothstep(elapsedTime / max(takeawayEnd, 0.01))
-        }
-        if elapsedTime < pauseEnd {
-            let progress = (elapsedTime - takeawayEnd) / max(pauseEnd - takeawayEnd, 0.01)
-            return 0.58 + (0.04 * smoothstep(progress))
-        }
-        if elapsedTime < impactStart {
-            let progress = (elapsedTime - pauseEnd) / max(impactStart - pauseEnd, 0.01)
-            return 0.62 + (0.28 * pow(min(max(progress, 0), 1), 2.35))
-        }
-        if elapsedTime < impactEnd {
-            let progress = (elapsedTime - impactStart) / max(recipe.impactDuration, 0.01)
-            return 0.90 + (0.03 * progress)
-        }
-        if elapsedTime < followThroughEnd {
-            let progress = (elapsedTime - impactEnd) / max(recipe.followThroughDuration, 0.01)
-            return 0.93 + (0.07 * (1 - pow(1 - min(max(progress, 0), 1), 3)))
-        }
-        return 1
-    }
-
-    private func smoothstep(_ value: Double) -> Double {
-        let value = min(max(value, 0), 1)
-        return value * value * (3 - (2 * value))
     }
 }
 

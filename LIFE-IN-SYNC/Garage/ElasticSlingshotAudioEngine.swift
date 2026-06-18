@@ -501,9 +501,11 @@ private struct ElasticSlingshotRenderConfiguration {
     var fadeOutStartFrame: AVAudioFramePosition?
     var alignsBaseFrameOnNextRender: Bool
     var resetToken: Int
+    var guidedCycleSchedule: GarageGuidedSwingCycleSchedule?
+    var guidedCycleToken: UInt64
 
     var totalDuration: TimeInterval {
-        recipe.swingDuration(for: beatsPerMinute)
+        guidedCycleSchedule?.impactOffset ?? recipe.swingDuration(for: beatsPerMinute)
     }
 
     var slowTempoLogic: GarageSlowTempoLogic {
@@ -511,15 +513,21 @@ private struct ElasticSlingshotRenderConfiguration {
     }
 
     var takebackDuration: TimeInterval {
-        recipe.takeawayDuration(for: beatsPerMinute)
+        guidedCycleSchedule?.topOffset ?? recipe.takeawayDuration(for: beatsPerMinute)
     }
 
     var pauseDuration: TimeInterval {
-        recipe.pauseDuration(for: beatsPerMinute)
+        guard let guidedCycleSchedule else {
+            return recipe.pauseDuration(for: beatsPerMinute)
+        }
+        return guidedCycleSchedule.downswingOffset - guidedCycleSchedule.topOffset
     }
 
     var downswingDuration: TimeInterval {
-        recipe.downswingDuration(for: beatsPerMinute)
+        guard let guidedCycleSchedule else {
+            return recipe.downswingDuration(for: beatsPerMinute)
+        }
+        return guidedCycleSchedule.impactOffset - guidedCycleSchedule.downswingOffset
     }
 
     var loadReleaseTimestamp: TimeInterval {
@@ -535,7 +543,7 @@ private struct ElasticSlingshotRenderConfiguration {
         case .continuous:
             return recipe.loopDuration(for: beatsPerMinute)
         case .oneCycle:
-            return recipe.guidedMotionDuration(for: beatsPerMinute)
+            return guidedCycleSchedule?.completionOffset ?? recipe.guidedMotionDuration(for: beatsPerMinute)
         }
     }
 }
@@ -712,10 +720,13 @@ private final class ElasticSlingshotRenderState {
         isPlaying: false,
         fadeOutStartFrame: nil,
         alignsBaseFrameOnNextRender: false,
-        resetToken: 0
+        resetToken: 0,
+        guidedCycleSchedule: nil,
+        guidedCycleToken: 0
     )
     private var latestFrame: AVAudioFramePosition = 0
     private var currentLoopProgress: Double = 0.0
+    private var guidedCycleSnapshot: GarageGuidedSwingCycleSnapshot?
     private var voiceState = ElasticSlingshotVoiceState()
     private var appliedResetToken = 0
 
@@ -733,6 +744,12 @@ private final class ElasticSlingshotRenderState {
         lock.lock()
         defer { lock.unlock() }
         return currentLoopProgress
+    }
+
+    func getGuidedCycleSnapshot() -> GarageGuidedSwingCycleSnapshot? {
+        lock.lock()
+        defer { lock.unlock() }
+        return guidedCycleSnapshot
     }
 
     func setOutputRouteFamily(_ routeFamily: GarageTempoOutputRouteFamily) {
@@ -813,7 +830,9 @@ private final class ElasticSlingshotRenderState {
         metronomeImpactProfile: GarageMetronomeClickProfile,
         guidedClicksEnabled: Bool,
         instrumentMode: GarageTempoInstrumentMode,
-        mode: ElasticSlingshotPlaybackMode
+        mode: ElasticSlingshotPlaybackMode,
+        guidedCycleSchedule: GarageGuidedSwingCycleSchedule? = nil,
+        guidedCycleToken: UInt64 = 0
     ) {
         lock.lock()
         configuration = ElasticSlingshotRenderConfiguration(
@@ -831,8 +850,18 @@ private final class ElasticSlingshotRenderState {
             isPlaying: true,
             fadeOutStartFrame: nil,
             alignsBaseFrameOnNextRender: true,
-            resetToken: configuration.resetToken + 1
+            resetToken: configuration.resetToken + 1,
+            guidedCycleSchedule: guidedCycleSchedule,
+            guidedCycleToken: guidedCycleToken
         )
+        guidedCycleSnapshot = guidedCycleSchedule.map {
+            GarageGuidedSwingCycleSnapshot(
+                token: guidedCycleToken,
+                elapsedTime: $0.addressOffset,
+                progress: 0,
+                isComplete: false
+            )
+        }
         lock.unlock()
     }
 
@@ -853,6 +882,7 @@ private final class ElasticSlingshotRenderState {
         configuration.isPlaying = false
         configuration.fadeOutStartFrame = nil
         configuration.alignsBaseFrameOnNextRender = false
+        guidedCycleSnapshot = nil
         lock.unlock()
     }
 
@@ -952,6 +982,15 @@ private final class ElasticSlingshotRenderState {
 
         lock.lock()
         currentLoopProgress = Double(cycleFrame) / Double(loopFrames)
+        if let schedule = configuration.guidedCycleSchedule {
+            let elapsedTime = min(Double(relativeFrame) / sampleRate, schedule.completionOffset)
+            guidedCycleSnapshot = GarageGuidedSwingCycleSnapshot(
+                token: configuration.guidedCycleToken,
+                elapsedTime: elapsedTime,
+                progress: schedule.cycleProgress(at: elapsedTime),
+                isComplete: relativeFrame >= frames(for: schedule.completionOffset)
+            )
+        }
         lock.unlock()
     }
 
@@ -1374,6 +1413,16 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
             }
     }
 
+    @discardableResult
+    func prepare() -> Bool {
+        previewStopTask?.cancel()
+        previewStopTask = nil
+        fadeStopTask?.cancel()
+        fadeStopTask = nil
+        renderState.silence()
+        return prepareIfNeeded()
+    }
+
     func start(
         beatsPerMinute: Double,
         recipe: ElasticSlingshotRecipe,
@@ -1409,7 +1458,9 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
         metronomeStartProfile: GarageMetronomeClickProfile,
         metronomeImpactProfile: GarageMetronomeClickProfile,
         guidedClicksEnabled: Bool,
-        instrumentMode: GarageTempoInstrumentMode
+        instrumentMode: GarageTempoInstrumentMode,
+        guidedCycleSchedule: GarageGuidedSwingCycleSchedule? = nil,
+        cycleToken: UInt64 = 0
     ) {
         previewStopTask?.cancel()
         previewStopTask = nil
@@ -1425,14 +1476,16 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
             metronomeImpactProfile: metronomeImpactProfile,
             guidedClicksEnabled: guidedClicksEnabled,
             instrumentMode: instrumentMode,
-            mode: .oneCycle
+            mode: .oneCycle,
+            guidedCycleSchedule: guidedCycleSchedule,
+            guidedCycleToken: cycleToken
         )
         playbackState = .playing
         statusText = "Previewing"
 
         let previewDuration = instrumentMode == .metronome
             ? 0.30
-            : recipe.guidedMotionDuration(for: beatsPerMinute) + 0.08
+            : (guidedCycleSchedule?.completionOffset ?? recipe.guidedMotionDuration(for: beatsPerMinute)) + 0.08
         previewStopTask = Task { [weak self] in
             let nanoseconds = UInt64(max(previewDuration, 0.1) * 1_000_000_000)
             try? await Task.sleep(nanoseconds: nanoseconds)
@@ -1494,6 +1547,10 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
 
     func currentPlaybackProgress() -> Double {
         renderState.getLoopProgress()
+    }
+
+    func currentGuidedCycleSnapshot() -> GarageGuidedSwingCycleSnapshot? {
+        renderState.getGuidedCycleSnapshot()
     }
 
     private func updateOutputRouteFamily() {
