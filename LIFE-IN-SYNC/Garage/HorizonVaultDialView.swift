@@ -214,7 +214,7 @@ private struct GarageTempoTopBar: View {
     var body: some View {
         ZStack {
             Text("Tempo Builder")
-                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .font(.system(size: 18, weight: .semibold, design: .rounded))
                 .foregroundStyle(GarageProTheme.textPrimary)
 
             HStack(spacing: 8) {
@@ -255,17 +255,17 @@ private struct GarageTempoPageSelector: View {
                     }
                 } label: {
                     Text(page.title)
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundStyle(page == selectedPage ? Color.white : GaragePremiumPalette.mintText.opacity(0.66))
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(page == selectedPage ? Color.white : GaragePremiumPalette.mintText.opacity(0.62))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 32)
+                        .frame(height: 36)
                         .background {
                             if page == selectedPage {
-                                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                                    .fill(Color.black.opacity(0.78))
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(GaragePremiumPalette.emeraldGlass.opacity(0.86))
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: 11, style: .continuous)
-                                            .stroke(GaragePremiumPalette.gold.opacity(0.42), lineWidth: 1)
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                            .stroke(GaragePremiumPalette.gold.opacity(0.70), lineWidth: 1)
                                     )
                                     .matchedGeometryEffect(id: "selectedTempoPage", in: namespace)
                             }
@@ -278,13 +278,13 @@ private struct GarageTempoPageSelector: View {
             }
         }
         .padding(4)
-        .background(Color.black.opacity(0.26), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-        .background(GaragePremiumPalette.emeraldDeep.opacity(0.58), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .background(Color.black.opacity(0.24), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(GaragePremiumPalette.emeraldDeep.opacity(0.64), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 17, style: .continuous)
-                .stroke(GaragePremiumPalette.mintText.opacity(0.12), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(GaragePremiumPalette.mintText.opacity(0.14), lineWidth: 1)
         )
-        .frame(height: 40)
+        .frame(height: 44)
         .disabled(controlsEnabled == false)
         .opacity(controlsEnabled ? 1 : 0.68)
     }
@@ -326,6 +326,8 @@ private struct GarageMetronomePage: View {
             GarageTempoSessionControls(
                 state: sessionState,
                 reduceMotion: reduceMotion,
+                readyTitle: "Start",
+                prominentReadyAction: false,
                 onStart: onStart,
                 onStop: onStop
             )
@@ -413,53 +415,68 @@ private struct GarageGuidedSwingPage: View {
     let onStart: () -> Void
     let onRestart: () -> Void
     let onStop: () -> Void
-    @ScaledMetric(relativeTo: .largeTitle) private var bpmFontSize = 64
-    @ScaledMetric(relativeTo: .body) private var timelineHeight = 230
+    @ScaledMetric(relativeTo: .largeTitle) private var bpmFontSize = 74
 
     private var isPlaying: Bool { sessionState == .playing }
 
     var body: some View {
-        VStack(spacing: 0) {
-            GarageTempoStatusLine(text: statusText, isHighlighted: hasPendingTempo || sessionState == .countingIn)
-                .padding(.top, 12)
+        GeometryReader { proxy in
+            let compactHeight = proxy.size.height < 590
+            let arcHeight = min(
+                max(proxy.size.height * (compactHeight ? 0.38 : 0.42), compactHeight ? 196 : 232),
+                compactHeight ? 226 : 308
+            )
 
-            Spacer(minLength: 10)
-
-            TimelineView(.animation(minimumInterval: reduceMotion ? 0.10 : 1 / 60, paused: isPlaying == false)) { _ in
-                let schedule = activeCycleSchedule ?? GarageGuidedSwingCycleSchedule(
-                    recipe: recipe,
-                    beatsPerMinute: appliedBPM
+            VStack(spacing: 0) {
+                GarageGuidedSwingStatusLine(
+                    text: statusText,
+                    state: sessionState,
+                    isPending: hasPendingTempo
                 )
-                let snapshot = cycleSnapshot()
-                GarageGuidedSwingTimeline(
-                    state: visualState(snapshot: snapshot, schedule: schedule),
-                    schedule: schedule,
-                    isPlaying: isPlaying,
-                    isResting: sessionState == .resting || sessionState == .countingIn,
+                .padding(.top, compactHeight ? 8 : 12)
+
+                Spacer(minLength: compactHeight ? 4 : 8)
+
+                TimelineView(.animation(minimumInterval: reduceMotion ? 0.10 : 1 / 60, paused: isPlaying == false)) { _ in
+                    let schedule = activeCycleSchedule ?? GarageGuidedSwingCycleSchedule(
+                        recipe: recipe,
+                        beatsPerMinute: appliedBPM
+                    )
+                    let snapshot = cycleSnapshot()
+                    GarageGuidedSwingTimeline(
+                        state: visualState(snapshot: snapshot, schedule: schedule),
+                        schedule: schedule,
+                        isPlaying: isPlaying,
+                        isResting: sessionState == .resting || sessionState == .countingIn,
+                        reduceMotion: reduceMotion,
+                        countdownValue: countdownValue,
+                        restProgress: restProgress
+                    )
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: arcHeight)
+                .layoutPriority(1)
+
+                Spacer(minLength: compactHeight ? 4 : 10)
+
+                GarageGuidedTempoDeck(
+                    beatsPerMinute: $beatsPerMinute,
+                    bpmFontSize: compactHeight ? min(bpmFontSize, 64) : bpmFontSize,
+                    compactHeight: compactHeight
+                )
+
+                GarageTempoSessionControls(
+                    state: sessionState,
                     reduceMotion: reduceMotion,
-                    countdownValue: countdownValue,
-                    restProgress: restProgress
+                    readyTitle: "Start Guided Swing",
+                    prominentReadyAction: true,
+                    onStart: onStart,
+                    onRestart: onRestart,
+                    onStop: onStop
                 )
+                .padding(.top, compactHeight ? 8 : 12)
+                .padding(.bottom, compactHeight ? 6 : 10)
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: min(max(timelineHeight, 205), 275))
-
-            Spacer(minLength: 14)
-
-            GarageGuidedTempoDeck(
-                beatsPerMinute: $beatsPerMinute,
-                bpmFontSize: bpmFontSize
-            )
-
-            GarageTempoSessionControls(
-                state: sessionState,
-                reduceMotion: reduceMotion,
-                onStart: onStart,
-                onRestart: onRestart,
-                onStop: onStop
-            )
-            .padding(.top, 12)
-            .padding(.bottom, 10)
         }
     }
 
@@ -473,7 +490,7 @@ private struct GarageGuidedSwingPage: View {
         case .playing:
             return "Follow the build to impact."
         case .ready:
-            return "Ready for count-in."
+            return "Ready to train"
         }
     }
 
@@ -494,34 +511,41 @@ private struct GarageGuidedSwingPage: View {
 private struct GarageGuidedTempoDeck: View {
     @Binding var beatsPerMinute: Double
     let bpmFontSize: CGFloat
+    let compactHeight: Bool
     private var range: ClosedRange<Double> { GarageSlowTempoLogic.consumerBPMRange }
 
     var body: some View {
-        VStack(spacing: 9) {
-            HStack(alignment: .lastTextBaseline, spacing: 8) {
-                Text("\(Int(beatsPerMinute.rounded()))")
-                    .font(.system(size: bpmFontSize, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(GarageProTheme.textPrimary)
+        VStack(spacing: compactHeight ? 6 : 10) {
+            HStack(spacing: compactHeight ? 16 : 22) {
+                stepButton(systemImage: "minus", adjustment: -1, disabled: beatsPerMinute <= range.lowerBound)
 
-                Text("BPM")
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .foregroundStyle(GaragePremiumPalette.gold)
-                    .padding(.bottom, 10)
+                HStack(alignment: .lastTextBaseline, spacing: 7) {
+                    Text("\(Int(beatsPerMinute.rounded()))")
+                        .font(.system(size: bpmFontSize, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+
+                    Text("BPM")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundStyle(GaragePremiumPalette.gold)
+                        .padding(.bottom, compactHeight ? 7 : 10)
+                }
+                .foregroundStyle(GarageProTheme.textPrimary)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(Int(beatsPerMinute.rounded())) beats per minute, saved swing tempo")
+
+                stepButton(systemImage: "plus", adjustment: 1, disabled: beatsPerMinute >= range.upperBound)
             }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(Int(beatsPerMinute.rounded())) beats per minute, saved swing tempo")
 
             VStack(spacing: 8) {
                 HStack {
-                    Text("TEMPO SPEED")
+                    Text("TEMPO")
                         .font(.system(size: 10, weight: .bold, design: .rounded))
                         .tracking(1.4)
                         .foregroundStyle(GarageProTheme.textSecondary.opacity(0.82))
 
                     Spacer()
 
-                    Text("\(Int(range.lowerBound))-\(Int(range.upperBound))")
+                    Text("\(Int(range.lowerBound))–\(Int(range.upperBound)) BPM")
                         .font(.system(size: 10, weight: .bold, design: .rounded))
                         .foregroundStyle(GaragePremiumPalette.mintText.opacity(0.58))
                 }
@@ -531,14 +555,30 @@ private struct GarageGuidedTempoDeck: View {
                     .accessibilityLabel("Guided Swing tempo")
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(Color.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .background(GaragePremiumPalette.emeraldDeep.opacity(0.72), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.vertical, compactHeight ? 9 : 12)
+            .background(Color.black.opacity(0.24), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(GaragePremiumPalette.emeraldDeep.opacity(0.68), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(GaragePremiumPalette.mintText.opacity(0.10), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(GaragePremiumPalette.mintText.opacity(0.12), lineWidth: 1)
             )
         }
+    }
+
+    private func stepButton(systemImage: String, adjustment: Double, disabled: Bool) -> some View {
+        Button {
+            beatsPerMinute = min(max(beatsPerMinute + adjustment, range.lowerBound), range.upperBound)
+        } label: {
+            Image(systemName: systemImage)
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(disabled ? GarageProTheme.textSecondary.opacity(0.46) : GaragePremiumPalette.gold)
+                .frame(width: 46, height: 46)
+                .background(Color.black.opacity(0.22), in: Circle())
+                .overlay(Circle().stroke(GaragePremiumPalette.mintText.opacity(0.14), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .accessibilityLabel(adjustment > 0 ? "Increase Guided Swing tempo by one" : "Decrease Guided Swing tempo by one")
     }
 }
 
@@ -767,6 +807,54 @@ private struct GarageMetronomeScale: View {
     }
 }
 
+private enum GarageGuidedSwingArcGeometry {
+    static func point(at progress: CGFloat, in size: CGSize) -> CGPoint {
+        let progress = min(max(progress, 0), 1)
+        let start = CGPoint(x: size.width * 0.07, y: size.height * 0.80)
+        let top = CGPoint(x: size.width * 0.50, y: size.height * 0.10)
+        let backswingControl = CGPoint(x: size.width * 0.20, y: size.height * 0.08)
+        let downswingControl = CGPoint(x: size.width * 0.80, y: size.height * 0.08)
+        let impact = CGPoint(x: size.width * 0.93, y: size.height * 0.80)
+        let topProgress = CGFloat(GarageGuidedSwingCycleSchedule.topArcProgress)
+
+        if progress <= topProgress {
+            let t = progress / topProgress
+            let inverse = 1 - t
+            return CGPoint(
+                x: (inverse * inverse * start.x) + (2 * inverse * t * backswingControl.x) + (t * t * top.x),
+                y: (inverse * inverse * start.y) + (2 * inverse * t * backswingControl.y) + (t * t * top.y)
+            )
+        }
+
+        let t = (progress - topProgress) / (1 - topProgress)
+        let inverse = 1 - t
+        return CGPoint(
+            x: (inverse * inverse * top.x) + (2 * inverse * t * downswingControl.x) + (t * t * impact.x),
+            y: (inverse * inverse * top.y) + (2 * inverse * t * downswingControl.y) + (t * t * impact.y)
+        )
+    }
+
+    static func path(in size: CGSize) -> UIBezierPath {
+        let path = UIBezierPath()
+        path.move(to: point(at: 0, in: size))
+        path.addQuadCurve(
+            to: point(at: CGFloat(GarageGuidedSwingCycleSchedule.topArcProgress), in: size),
+            controlPoint: CGPoint(x: size.width * 0.20, y: size.height * 0.08)
+        )
+        path.addQuadCurve(
+            to: point(at: 1, in: size),
+            controlPoint: CGPoint(x: size.width * 0.80, y: size.height * 0.08)
+        )
+        return path
+    }
+}
+
+private struct GarageGuidedSwingGuideArc: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path(GarageGuidedSwingArcGeometry.path(in: rect.size).cgPath)
+    }
+}
+
 private struct GarageGuidedSwingTimeline: View {
     let state: GarageSlowTempoVisualState
     let schedule: GarageGuidedSwingCycleSchedule
@@ -778,12 +866,32 @@ private struct GarageGuidedSwingTimeline: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let startPoint = point(at: 0, in: proxy.size)
-            let topPoint = point(at: GarageGuidedSwingCycleSchedule.topArcProgress, in: proxy.size)
-            let impactPoint = point(at: 1, in: proxy.size)
+            let startPoint = GarageGuidedSwingArcGeometry.point(at: 0, in: proxy.size)
+            let topPoint = GarageGuidedSwingArcGeometry.point(
+                at: CGFloat(GarageGuidedSwingCycleSchedule.topArcProgress),
+                in: proxy.size
+            )
+            let impactPoint = GarageGuidedSwingArcGeometry.point(at: 1, in: proxy.size)
             let impactActive = isPlaying && state.elapsedInCycle >= schedule.impactOffset
 
             ZStack {
+                ForEach([0.76, 0.84, 0.92], id: \.self) { scale in
+                    GarageGuidedSwingGuideArc()
+                        .stroke(
+                            GaragePremiumPalette.mintText.opacity(isResting ? 0.025 : 0.045),
+                            style: StrokeStyle(lineWidth: 1, lineCap: .round)
+                        )
+                        .scaleEffect(x: CGFloat(scale), y: CGFloat(scale), anchor: .bottom)
+                }
+                .accessibilityHidden(true)
+
+                Image(systemName: "figure.golf")
+                    .symbolRenderingMode(.monochrome)
+                    .font(.system(size: min(proxy.size.width * 0.17, 58), weight: .ultraLight))
+                    .foregroundStyle(GaragePremiumPalette.mintText.opacity(isResting ? 0.045 : 0.085))
+                    .position(x: proxy.size.width * 0.50, y: proxy.size.height * 0.64)
+                    .accessibilityHidden(true)
+
                 GarageGuidedSwingArc(
                     isPlaying: isPlaying,
                     isResting: isResting,
@@ -824,32 +932,6 @@ private struct GarageGuidedSwingTimeline: View {
         .accessibilityLabel(
             countdownValue.map { "Guided swing countdown, \($0)" }
                 ?? (isResting ? "Guided swing resting" : (isPlaying ? "Guided swing running, \(state.phaseLabel)" : "Guided swing ready"))
-        )
-    }
-
-    private func point(at progress: Double, in size: CGSize) -> CGPoint {
-        let progress = min(max(progress, 0), 1)
-        let start = CGPoint(x: size.width * 0.09, y: size.height * 0.72)
-        let top = CGPoint(x: size.width * 0.52, y: size.height * 0.18)
-        let backswingControl = CGPoint(x: size.width * 0.24, y: size.height * 0.18)
-        let downswingControl = CGPoint(x: size.width * 0.78, y: size.height * 0.18)
-        let impact = CGPoint(x: size.width * 0.91, y: size.height * 0.72)
-
-        if progress <= GarageGuidedSwingCycleSchedule.topArcProgress {
-            let t = progress / GarageGuidedSwingCycleSchedule.topArcProgress
-            let inverse = 1 - t
-            return CGPoint(
-                x: (inverse * inverse * start.x) + (2 * inverse * t * backswingControl.x) + (t * t * top.x),
-                y: (inverse * inverse * start.y) + (2 * inverse * t * backswingControl.y) + (t * t * top.y)
-            )
-        }
-
-        let t = (progress - GarageGuidedSwingCycleSchedule.topArcProgress)
-            / (1 - GarageGuidedSwingCycleSchedule.topArcProgress)
-        let inverse = 1 - t
-        return CGPoint(
-            x: (inverse * inverse * top.x) + (2 * inverse * t * downswingControl.x) + (t * t * impact.x),
-            y: (inverse * inverse * top.y) + (2 * inverse * t * downswingControl.y) + (t * t * impact.y)
         )
     }
 }
@@ -901,10 +983,10 @@ private final class GarageGuidedSwingArcView: UIView {
         ambientArcLayer.fillColor = UIColor.clear.cgColor
         ambientArcLayer.strokeColor = emeraldColor.withAlphaComponent(0.24).cgColor
         ambientArcLayer.lineCap = .round
-        ambientArcLayer.lineWidth = 18
+        ambientArcLayer.lineWidth = 14
         ambientArcLayer.shadowColor = emeraldColor.cgColor
-        ambientArcLayer.shadowOpacity = 0.26
-        ambientArcLayer.shadowRadius = 16
+        ambientArcLayer.shadowOpacity = 0.18
+        ambientArcLayer.shadowRadius = 12
         layer.addSublayer(ambientArcLayer)
 
         baseArcLayer.fillColor = UIColor.clear.cgColor
@@ -915,7 +997,7 @@ private final class GarageGuidedSwingArcView: UIView {
         readyArcLayer.fillColor = UIColor.clear.cgColor
         readyArcLayer.strokeColor = UIColor.white.cgColor
         readyArcLayer.lineCap = .round
-        readyArcLayer.lineWidth = 8
+        readyArcLayer.lineWidth = 7
         readyArcGradient.colors = [
             emeraldColor.withAlphaComponent(0.78).cgColor,
             mintTextColor.withAlphaComponent(0.62).cgColor,
@@ -930,7 +1012,7 @@ private final class GarageGuidedSwingArcView: UIView {
         deliveryArcLayer.fillColor = UIColor.clear.cgColor
         deliveryArcLayer.strokeColor = UIColor.white.cgColor
         deliveryArcLayer.lineCap = .round
-        deliveryArcLayer.lineWidth = 13
+        deliveryArcLayer.lineWidth = 11
         deliveryArcLayer.strokeStart = CGFloat(GarageGuidedSwingCycleSchedule.topArcProgress)
         deliveryArcGradient.colors = [
             mintTextColor.withAlphaComponent(0.30).cgColor,
@@ -944,7 +1026,7 @@ private final class GarageGuidedSwingArcView: UIView {
 
         activeArcLayer.fillColor = UIColor.clear.cgColor
         activeArcLayer.lineCap = .round
-        activeArcLayer.lineWidth = 10
+        activeArcLayer.lineWidth = 9
         activeArcLayer.strokeEnd = 0
         activeArcGradient.colors = [
             emeraldColor.cgColor,
@@ -1010,7 +1092,7 @@ private final class GarageGuidedSwingArcView: UIView {
 
     private func applyPath() {
         guard bounds.width > 0, bounds.height > 0 else { return }
-        let path = kineticPath(in: bounds.size)
+        let path = GarageGuidedSwingArcGeometry.path(in: bounds.size)
         ambientArcLayer.frame = bounds
         ambientArcLayer.path = path.cgPath
         baseArcLayer.frame = bounds
@@ -1026,10 +1108,10 @@ private final class GarageGuidedSwingArcView: UIView {
         activeArcLayer.path = path.cgPath
         impactTargetLayer.bounds = CGRect(x: 0, y: 0, width: 40, height: 40)
         impactTargetLayer.path = UIBezierPath(ovalIn: impactTargetLayer.bounds).cgPath
-        impactTargetLayer.position = point(at: 1, in: bounds.size)
-        impactPulseLayer.bounds = CGRect(x: 0, y: 0, width: 72, height: 72)
+        impactTargetLayer.position = GarageGuidedSwingArcGeometry.point(at: 1, in: bounds.size)
+        impactPulseLayer.bounds = CGRect(x: 0, y: 0, width: 68, height: 68)
         impactPulseLayer.path = UIBezierPath(ovalIn: impactPulseLayer.bounds).cgPath
-        impactPulseLayer.position = point(at: 1, in: bounds.size)
+        impactPulseLayer.position = GarageGuidedSwingArcGeometry.point(at: 1, in: bounds.size)
 
         applyProgress()
     }
@@ -1067,50 +1149,13 @@ private final class GarageGuidedSwingArcView: UIView {
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        trackingNode.position = point(at: progress, in: bounds.size)
+        trackingNode.position = GarageGuidedSwingArcGeometry.point(at: progress, in: bounds.size)
         activeArcLayer.strokeEnd = progress
         impactPulseLayer.opacity = Float(min(max(pulseOpacity, 0), 1))
         impactPulseLayer.setAffineTransform(
             CGAffineTransform(scaleX: CGFloat(pulseScale), y: CGFloat(pulseScale))
         )
         CATransaction.commit()
-    }
-
-    private func kineticPath(in size: CGSize) -> UIBezierPath {
-        let path = UIBezierPath()
-        path.move(to: point(at: 0, in: size))
-        path.addQuadCurve(
-            to: point(at: CGFloat(GarageGuidedSwingCycleSchedule.topArcProgress), in: size),
-            controlPoint: CGPoint(x: size.width * 0.24, y: size.height * 0.18)
-        )
-        path.addQuadCurve(to: point(at: 1, in: size), controlPoint: CGPoint(x: size.width * 0.78, y: size.height * 0.18))
-        return path
-    }
-
-    private func point(at progress: CGFloat, in size: CGSize) -> CGPoint {
-        let progress = min(max(progress, 0), 1)
-        let start = CGPoint(x: size.width * 0.09, y: size.height * 0.72)
-        let top = CGPoint(x: size.width * 0.52, y: size.height * 0.18)
-        let backswingControl = CGPoint(x: size.width * 0.24, y: size.height * 0.18)
-        let downswingControl = CGPoint(x: size.width * 0.82, y: size.height * 0.22)
-        let impact = CGPoint(x: size.width * 0.91, y: size.height * 0.72)
-
-        let topProgress = CGFloat(GarageGuidedSwingCycleSchedule.topArcProgress)
-        if progress <= topProgress {
-            let t = progress / topProgress
-            let inverse = 1 - t
-            return CGPoint(
-                x: (inverse * inverse * start.x) + (2 * inverse * t * backswingControl.x) + (t * t * top.x),
-                y: (inverse * inverse * start.y) + (2 * inverse * t * backswingControl.y) + (t * t * top.y)
-            )
-        }
-
-        let t = (progress - topProgress) / (1 - topProgress)
-        let inverse = 1 - t
-        return CGPoint(
-            x: (inverse * inverse * top.x) + (2 * inverse * t * downswingControl.x) + (t * t * impact.x),
-            y: (inverse * inverse * top.y) + (2 * inverse * t * downswingControl.y) + (t * t * impact.y)
-        )
     }
 
     private struct Configuration: Equatable {
@@ -1127,25 +1172,62 @@ private struct GarageGuidedSwingLandmark: View {
     let isActive: Bool
     let alignment: HorizontalAlignment
 
+    private var accentColor: Color {
+        title == "Address" ? GaragePremiumPalette.mintText : GaragePremiumPalette.gold
+    }
+
     var body: some View {
         VStack(alignment: alignment, spacing: 4) {
             ZStack {
                 Circle()
-                    .stroke(isActive ? GaragePremiumPalette.gold.opacity(0.58) : GaragePremiumPalette.mintText.opacity(0.18), lineWidth: 1.5)
+                    .stroke(isActive ? accentColor.opacity(0.62) : GaragePremiumPalette.mintText.opacity(0.18), lineWidth: 1.5)
                     .frame(width: isActive ? 18 : 15, height: isActive ? 18 : 15)
 
                 Circle()
-                    .fill(isActive ? GaragePremiumPalette.gold : GaragePremiumPalette.mintText.opacity(0.44))
+                    .fill(isActive ? accentColor : GaragePremiumPalette.mintText.opacity(0.44))
                     .frame(width: isActive ? 8 : 6, height: isActive ? 8 : 6)
             }
-            .shadow(color: GaragePremiumPalette.gold.opacity(isActive ? 0.52 : 0), radius: 12)
+            .shadow(color: accentColor.opacity(isActive ? 0.34 : 0), radius: 9)
 
-            Text(title)
+            Text(title.uppercased())
                 .font(.system(size: 10, weight: isActive ? .heavy : .semibold, design: .rounded))
-                .tracking(0.8)
-                .foregroundStyle(isActive ? GaragePremiumPalette.gold : GarageProTheme.textSecondary.opacity(0.84))
+                .tracking(1.5)
+                .foregroundStyle(isActive ? accentColor : GarageProTheme.textSecondary.opacity(0.84))
         }
         .animation(.easeInOut(duration: 0.18), value: isActive)
+    }
+}
+
+private struct GarageGuidedSwingStatusLine: View {
+    let text: String
+    let state: GarageTempoSessionState
+    let isPending: Bool
+
+    private var color: Color {
+        if isPending || state == .countingIn { return GaragePremiumPalette.gold }
+        if state == .playing { return GaragePremiumPalette.mintText }
+        return GaragePremiumPalette.emerald
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(color)
+                .frame(width: 7, height: 7)
+
+            Text(text)
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(color.opacity(0.92))
+                .lineLimit(1)
+                .minimumScaleFactor(0.84)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 20)
+        .transaction { transaction in
+            transaction.animation = nil
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(text)
     }
 }
 
@@ -1170,19 +1252,23 @@ private struct GarageTempoStatusLine: View {
 private struct GarageTempoSessionControls: View {
     let state: GarageTempoSessionState
     let reduceMotion: Bool
+    let readyTitle: String
+    let prominentReadyAction: Bool
     let onStart: () -> Void
     var onRestart: (() -> Void)?
     let onStop: () -> Void
 
     private var isActive: Bool { state != .ready }
     private var supportsRestart: Bool { onRestart != nil }
+    private var usesProminentReadyStyle: Bool { prominentReadyAction && isActive == false }
 
     var body: some View {
         HStack(spacing: 10) {
             Button(action: primaryAction) {
                 GarageTempoActionLabel(
                     title: primaryTitle,
-                    systemImage: primarySystemImage
+                    systemImage: primarySystemImage,
+                    usesDarkText: usesProminentReadyStyle
                 )
                 .font(.system(size: 17, weight: .bold, design: .rounded))
                 .transaction { transaction in
@@ -1192,22 +1278,42 @@ private struct GarageTempoSessionControls: View {
                 .frame(height: 56)
                 .background {
                     ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 15, style: .continuous)
-                            .fill(Color.black.opacity(isActive ? 0.72 : 0.82))
-                        RoundedRectangle(cornerRadius: 15, style: .continuous)
-                            .fill(GaragePremiumPalette.emeraldDeep.opacity(0.58))
+                        if usesProminentReadyStyle {
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [GaragePremiumPalette.gold, GaragePremiumPalette.goldDeep],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                        } else {
+                            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                .fill(Color.black.opacity(isActive ? 0.72 : 0.82))
+                            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                .fill(GaragePremiumPalette.emeraldDeep.opacity(0.58))
+                        }
                         RoundedRectangle(cornerRadius: 15, style: .continuous)
                             .stroke(
-                                isActive ? GaragePremiumPalette.mintText.opacity(0.18) : GaragePremiumPalette.gold.opacity(0.50),
+                                usesProminentReadyStyle
+                                    ? GaragePremiumPalette.gold.opacity(0.72)
+                                    : (isActive ? GaragePremiumPalette.mintText.opacity(0.18) : GaragePremiumPalette.gold.opacity(0.50)),
                                 lineWidth: 1
                             )
                         RoundedRectangle(cornerRadius: 2, style: .continuous)
                             .fill(GaragePremiumPalette.gold)
                             .frame(width: 4, height: 28)
                             .padding(.leading, 14)
-                            .opacity(isActive ? 0 : 1)
+                            .opacity(usesProminentReadyStyle ? 0 : (isActive ? 0 : 1))
                     }
-                    .shadow(color: isActive ? .clear : GaragePremiumPalette.gold.opacity(0.12), radius: 14, x: 0, y: 6)
+                    .shadow(
+                        color: usesProminentReadyStyle
+                            ? GaragePremiumPalette.gold.opacity(0.20)
+                            : (isActive ? .clear : GaragePremiumPalette.gold.opacity(0.12)),
+                        radius: 12,
+                        x: 0,
+                        y: 6
+                    )
                 }
             }
             .buttonStyle(.plain)
@@ -1233,7 +1339,7 @@ private struct GarageTempoSessionControls: View {
 
     private var primaryTitle: String {
         if supportsRestart, isActive { return "Restart Swing" }
-        return isActive ? "Stop" : "Start"
+        return isActive ? "Stop" : readyTitle
     }
 
     private var primarySystemImage: String {
@@ -1260,17 +1366,22 @@ private struct GarageTempoSessionControls: View {
 private struct GarageTempoActionLabel: View {
     let title: String
     let systemImage: String
-    private var isStart: Bool { title == "Start" }
+    let usesDarkText: Bool
+    private var usesGoldIcon: Bool { usesDarkText == false && title == "Start" }
 
     var body: some View {
         HStack(spacing: 9) {
             Image(systemName: systemImage)
                 .font(.system(size: 15, weight: .black))
-                .foregroundStyle(isStart ? GaragePremiumPalette.gold : Color.white.opacity(0.88))
+                .foregroundStyle(
+                    usesDarkText
+                        ? GaragePremiumPalette.emeraldDeep
+                        : (usesGoldIcon ? GaragePremiumPalette.gold : Color.white.opacity(0.88))
+                )
                 .frame(width: 18)
 
             Text(title)
-                .foregroundStyle(isStart ? GarageProTheme.textPrimary : Color.white.opacity(0.92))
+                .foregroundStyle(usesDarkText ? GaragePremiumPalette.emeraldDeep : Color.white.opacity(0.92))
         }
         .offset(x: -2)
     }
