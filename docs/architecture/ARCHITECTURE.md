@@ -4,12 +4,13 @@
 - Authority: highest technical boundary document after the canonical product spec
 - Use when: deciding structure, routing, module ownership, persistence, or Garage analysis rules
 - If conflict, this beats: plans, briefs, runbooks, and archived design documents
-- Last reviewed: 2026-04-19
+- Last reviewed: 2026-06-17
 
 ## Fast Truth
 - Build one native SwiftUI app with one shared shell and eight module roots.
 - Keep SwiftData and local files as the primary data layer for v1.
 - Offline-first is the default for non-AI behavior.
+- No account, cloud-sync, or backend implementation is part of current v1 work.
 - Dashboard summarizes and routes; modules own their operational surfaces.
 - Garage analysis is on-device, deterministic, and 2D-first in the current codebase.
 - AI is a translation and assistance layer, never the primary measurement engine.
@@ -23,7 +24,7 @@ The architecture must support:
 - one shared app shell
 - eight distinct modules
 - local-first persistence
-- selective backend/API use where justified
+- complete local operation for current v1 scope without backend or account infrastructure
 - module-specific visual identity with one consistent system structure
 - safe AI boundaries
 
@@ -46,7 +47,8 @@ The architecture must avoid:
 - Shared theme tokens, spacing, typography, and surface rules must anchor the UI.
 - Modules may express atmosphere, but must not invent incompatible interaction laws.
 - Premium surfaces should rely on layered materials, tactile depth, subtle inset/raised treatment, and restrained motion.
-- Electric cyan should mark primary cues, active state, or trust-critical emphasis rather than broad decoration.
+- Garage should use restrained emerald, black, and warm-gold emphasis for primary actions, active state, and timing-critical cues.
+- Sport-tech expression must remain Apple-native and restrained; avoid neon cockpit styling, gamer-dashboard clutter, cheap glow, and effects that compete with the task.
 - Avoid default `List`, `Form`, or flat grouped-system styling on flagship module surfaces when a custom module surface exists.
 - Shell-level navigation and hierarchy should stay visually consistent even as module mood changes.
 
@@ -79,7 +81,7 @@ The app contains:
 - one global slide-out module menu
 - eight feature modules
 - shared persistence and utility services
-- optional AI and backend services
+- optional advisory AI service boundaries without making core features network-dependent
 
 High-level shape:
 
@@ -268,7 +270,7 @@ Temporary runtime state examples:
 - Persist core user data locally first.
 - Use SwiftData for primary structured persistence in v1.
 - Use local file storage only where heavier assets are required.
-- Backend persistence is optional and must not become the only source of truth for core local flows.
+- Backend persistence is not part of current v1 work. Any future exception requires explicit approval and must not replace local ownership.
 
 Recommended local persistence by module:
 - Capital Core: expenses, categories, budgets, financial summaries
@@ -280,19 +282,18 @@ Recommended local persistence by module:
 - Bible Study: passages, questions, notes, study history
 - Supply List: items, categories, purchased state, recent history
 
-## 9. Backend and AI service strategy
-No backend is required for:
+## 9. External Services And AI Strategy
+No backend, account system, or cloud-sync layer is part of current v1 implementation. Core behavior includes:
 - shell navigation
 - dashboard aggregation
 - local persistence flows
 - current Garage deterministic analysis and review pipeline
 
-Optional external services may support:
-- AI-generated content across modules
-- future Garage enrichment or remote processing if explicitly introduced later
+Advisory AI may be introduced only through an explicitly approved, user-triggered surface. It must not create a general backend permission or make local features network-dependent.
 
 Rule:
-- the app must remain functional for local features when external services are unavailable
+- the app must remain functional for local features without accounts, backend services, or external availability
+- future backend, remote-processing, or cloud-sync work requires a separate architecture decision and explicit user approval
 
 ## 10. AI architecture
 AI is a service layer, not the source of truth for everything.

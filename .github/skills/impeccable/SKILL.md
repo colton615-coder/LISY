@@ -9,6 +9,19 @@ license: Apache 2.0
 
 Designs and iterates production-grade frontend interfaces. Real working code, committed design choices, exceptional craft.
 
+## LIFE-IN-SYNC Scope Override
+
+For this native SwiftUI repository, `AGENTS.md`, `PRODUCT.md`, `DESIGN.md`, and the canonical documents under `docs/` override web-oriented guidance in this skill.
+
+- Do not translate CSS, browser, React, Tailwind, web-font, icon-package, or JavaScript-library advice into SwiftUI work.
+- Use native SwiftUI controls, SF Symbols, Apple typography, and existing project tokens and components.
+- Do not add third-party packages, browser tooling, web architecture, or app-wide design abstractions unless explicitly approved.
+- Do not run a simulator, browser visual pass, screenshots, Computer Use, or visual QA unless the current task explicitly requests it.
+- For Garage, preserve the restrained emerald/black/gold language and reject neon cockpit styling, cheap glow, and gamer-dashboard clutter.
+- If this skill conflicts with a current LIFE-IN-SYNC feature contract, follow the feature contract and report the conflict rather than blending directions.
+
+The web-specific references remain valid only for web targets. They are not implementation instructions for LIFE-IN-SYNC.
+
 ## Setup
 
 You MUST do these steps before proceeding:

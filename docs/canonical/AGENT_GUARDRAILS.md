@@ -20,14 +20,14 @@ This file is not a feature spec. It is a guardrail layer for agent behavior.
 
 When product materials conflict, use this order:
 
-1. `docs/canonical/CANONICAL_PRODUCT_SPEC.md`
-2. `docs/architecture/ARCHITECTURE.md`
-3. Current implementation in the app codebase
-4. Supporting docs in `docs/`
-5. Explicit user instruction in the current task
-6. Legacy briefs, notes, exports, or archived planning material
+1. Explicit instructions in the current user-approved task, within its stated scope
+2. `docs/canonical/CANONICAL_PRODUCT_SPEC.md`
+3. `docs/architecture/ARCHITECTURE.md`
+4. Current implementation in the app codebase
+5. Current supporting docs in `docs/`
+6. Legacy, superseded, or archived planning material
 
-Legacy files are not authoritative when they conflict with the canonical spec.
+Current task instructions may deliberately supersede an older product detail without granting permission for unrelated architecture, persistence, or navigation changes. Legacy and superseded files are never authoritative when they conflict with a current task or canonical product rules.
 
 `life-in-sync-source.txt` must not be treated as a migration requirement, implementation checklist, or active product mandate.
 

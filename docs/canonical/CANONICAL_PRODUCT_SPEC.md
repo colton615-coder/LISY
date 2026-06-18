@@ -4,7 +4,7 @@
 - Authority: highest product source of truth for the native app
 - Use when: deciding scope, module ownership, UX truth, or AI boundaries
 - If conflict, this beats: every non-canonical document in the repo
-- Last reviewed: 2026-04-19
+- Last reviewed: 2026-06-17
 
 ## Fast Truth
 - LIFE IN SYNC is a native SwiftUI + SwiftData app for one user on one device.
@@ -13,6 +13,7 @@
 - Dashboard summarizes and routes; modules own their real workflows.
 - AI is optional, advisory, and never allowed to silently write user data.
 - Garage is measured-analysis-first for swing review and practice-first for execution tools: deterministic on-device 2D analysis, optional coaching interpretation, and focused local practice services.
+- Tempo Builder is a Garage-local two-mode practice service: Guided Swing and Metronome keep separate tempo behavior and separate saved BPM values.
 - Flagship surfaces should feel dark, tactile, and premium, not like default system scaffolding.
 - If a lower-priority doc implies web, cloud-first, or unsupported biomechanics certainty, ignore it.
 
@@ -41,8 +42,9 @@ This document defines the product truth that Phase 2 builds on.
 ## Design Truth
 - The app should feel quietly premium, tool-first, and native.
 - Flagship surfaces should use dark layered materials, tactile depth, and restrained motion.
-- Electric cyan should emphasize primary cues, not wash secondary controls.
+- Garage uses restrained emerald, black, and warm-gold emphasis. Accent color marks primary actions, current state, and timing-critical cues rather than washing whole surfaces.
 - Visual hierarchy should come from layout, spacing, typography, and surface depth before decorative effects.
+- Garage may carry controlled sport-tech energy, but cheap glow, gamer-dashboard clutter, neon cockpit styling, and overbuilt effects are not product direction.
 - Avoid generic default iOS chrome on flagship module surfaces when a custom module surface is intended.
 
 ## Canonical App Structure
@@ -306,6 +308,7 @@ V1 baseline depth is required for:
 - review checkpoints and overlays
 - save notes and history
 - reanalyze or surface fallback states honestly when review assets are missing or degraded
+- enter Tempo Builder and use Guided Swing or a separate steady-click Metronome without synchronizing their saved BPM values
 
 ## Explicit V1 Exclusions
 These are out of scope unless this file is updated:
@@ -348,11 +351,12 @@ Disallowed by default:
 
 ## Source Hierarchy
 Use this order when making decisions:
-1. `docs/canonical/CANONICAL_PRODUCT_SPEC.md`
-2. `docs/architecture/ARCHITECTURE.md`
-3. `docs/canonical/IMPLEMENTATION_CONTRACT.md`
-4. supporting docs under `docs/`
-5. archived docs only for historical context
+1. Explicit instructions in the current user-approved task, within its stated scope
+2. `docs/canonical/CANONICAL_PRODUCT_SPEC.md`
+3. `docs/architecture/ARCHITECTURE.md`
+4. `docs/canonical/IMPLEMENTATION_CONTRACT.md`
+5. current supporting docs under `docs/`
+6. archived or explicitly superseded docs only for historical context
 
 ## Change Control
 Before changing:

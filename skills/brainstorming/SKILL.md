@@ -1,11 +1,13 @@
 ---
 name: brainstorming
-description: Design-first workflow for turning ideas into approved specs before implementation. Use before creating a feature, component, behavior change, or other creative work that needs clarification, alternatives, a written design, and explicit approval before coding.
+description: Design-first workflow for turning unclear or high-impact ideas into approved specs before implementation. Use for exploratory features, architecture, navigation, persistence, audio/session behavior, multi-screen flows, or major redesigns that require decisions before coding. Do not use as a mandatory gate for small fixes or already-approved implementation work.
 ---
 
 # Brainstorming
 
-Use this skill to turn a rough idea into an approved design and written spec before implementation.
+Use this skill to turn a rough or materially ambiguous idea into an approved design and written spec before implementation.
+
+Do not invoke it merely because work changes UI or behavior. Small fixes and implementation of an already-approved contract should follow the repository's normal inspect, implement, and verify workflow.
 
 ## Hard Gate
 
@@ -15,7 +17,7 @@ Do not write code, scaffold files, change behavior, or invoke implementation-ori
 2. The user has approved it.
 3. The written spec has been reviewed by the user.
 
-This applies even when the request looks small.
+This applies only when the request is genuinely exploratory or affects architecture, navigation, persistence, data models, audio/session behavior, app-wide styling, multi-screen flows, or a major redesign. It does not block surgical fixes, documentation maintenance, or implementation explicitly approved by the user.
 
 ## Workflow
 
@@ -32,8 +34,9 @@ Complete these steps in order.
 
    If the user accepts, read [visual-companion.md](./visual-companion.md) before continuing.
 
-3. Ask clarifying questions one at a time.
+3. Ask focused clarifying questions.
    Prefer multiple-choice questions when practical.
+   Batch related decisions when the user requests rapid-fire questions or when one compact set will reduce unnecessary turns.
    Focus on purpose, constraints, non-goals, and success criteria.
    If the request is too large for one spec, stop and help the user decompose it into smaller projects. Then brainstorm only the first slice.
 
@@ -46,7 +49,7 @@ Complete these steps in order.
    Cover the pieces that matter: architecture, components, data flow, failure handling, and testing.
    For non-trivial work, present the design in sections and confirm each section before moving on.
 
-6. Write the design doc.
+6. Write the design doc after the user approves the direction.
    Save it to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` unless the user asked for a different location.
 
 7. Self-review the spec and fix issues inline.
@@ -59,9 +62,9 @@ Complete these steps in order.
 8. Ask the user to review the written spec.
    Use this exact prompt:
 
-   `Spec written and committed to <path>. Please review it and let me know if you want to make any changes before we start writing out the implementation plan.`
+   `Spec written at <path>. Please review it and let me know if you want to make any changes before we start writing out the implementation plan.`
 
-   Wait for approval. If changes are requested, update the spec and repeat the self-review.
+   Wait for approval. If changes are requested, update the spec and repeat the self-review. Do not commit unless the user explicitly asks for a commit.
 
 9. Transition to planning.
    If a `writing-plans` skill is available, invoke it after the user approves the spec.
@@ -69,7 +72,7 @@ Complete these steps in order.
 
 ## Working Style
 
-- Ask only one question per message.
+- Keep questions focused; batch related decisions when that is more efficient or explicitly requested.
 - Keep momentum, but do not skip validation steps.
 - Be ruthless about YAGNI.
 - Prefer small, well-bounded units with clear interfaces.

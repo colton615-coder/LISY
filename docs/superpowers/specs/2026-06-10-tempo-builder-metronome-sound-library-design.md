@@ -1,12 +1,17 @@
 # Tempo Builder Metronome Sound Library Design
 
-- Status: awaiting user review
+- Status: superseded inventory and interaction design; retained for historical sound-quality rationale
 - Scope: Garage Tempo Builder Metronome sound library only
 - Date: 2026-06-10
 - Owner surfaces:
   - `LIFE-IN-SYNC/Garage/ElasticSlingshotAudioEngine.swift`
   - `LIFE-IN-SYNC/Garage/HorizonVaultDialView.swift`
 - Product input: completed Grill Me session and June 9 screen-recording audit
+
+> **Superseded — do not implement this document as the current library inventory or UI contract.**
+> The live source now defines 18 Metronome click profiles in four groups and exposes Click Sound through the shared, mode-aware Control Room. Runtime audio quality and route-specific behavior were not reverified during the documentation pass. The active product behavior is defined by `2026-06-08-tempo-builder-two-service-design.md`: Metronome remains a separate steady-click mode, click choice changes timbre only, and it must not become a fixed Start / Top / Impact golf cycle.
+
+The ten-sound taxonomy, two-family layout, persistent bottom selection bar, and exact completion checklist below describe the historical implementation slice. They are not current requirements. Preserve only the durable principles: precise beat onset, concrete name-true sounds, non-overlapping preview behavior, explicit user selection, local/offline operation, and no cadence reset on route or sound changes.
 
 ## Objective
 

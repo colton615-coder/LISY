@@ -1,6 +1,6 @@
 # Tempo Builder Two-Service Design
 
-- Status: awaiting user review
+- Status: active Tempo Builder product contract; audio synchronization work remains proposed and unverified
 - Scope: Garage module only
 - Date: 2026-06-08
 - Owner surface: live Garage Tempo Builder
@@ -10,8 +10,8 @@
 
 Tempo Builder becomes a focused two-service training tool:
 
-1. `Guided Swing` is the default premium rhythm trainer.
-2. `Metronome` is a secondary steady-click trainer.
+1. `Guided Swing` is the premium swing-rhythm trainer.
+2. `Metronome` is the separate steady-click trainer.
 
 Each service owns its own saved BPM and running behavior. The shared experience remains direct: set tempo, press Start, follow the rhythm, swing.
 
@@ -28,7 +28,9 @@ This design follows:
 - Existing live route:
   - `GarageView.swift -> GarageNavigationDestination.tempoBuilder -> GarageTempoBuilderView()`
 
-The questionnaire's latest explicit direction supersedes the older one-personal-tempo product plan. Guided Swing and Metronome now intentionally retain separate saved BPM values.
+This contract supersedes one-personal-tempo plans, fixed `3:1` Metronome cycle plans, physical-metronome centerpiece plans, generated-only Guided Swing plans, and exaggerated multi-identity sound targets. Guided Swing and Metronome intentionally retain separate saved BPM values and separate timing behavior.
+
+The approved Guided Swing audio and arc behavior below is an implementation target. This document does not claim that final audio assets, arc synchronization, device listening, or runtime behavior have already been verified.
 
 ## Current Live Implementation
 
@@ -39,24 +41,13 @@ The active implementation already has useful foundations:
 - `GarageSlowTempoLogic.swift` supplies Guided Swing visual timing.
 - `GarageHomeTabView.swift` owns the Garage Home Tempo Builder preview.
 
-Current conflicts to remove:
-
-- Garage Home hardcodes `60 BPM`.
-- Guided Swing and Metronome share `garage.tempoBuilder.bpm`.
-- Metronome appears before Guided Swing in page ordering.
-- Guided Swing still supports background clicks.
-- Guided Swing uses the J-arc.
-- Main pages expose sound selection.
-- Metronome's BPM slider is disabled while running.
-- The current primary button only supports Start/Stop, not Pause/Resume/Stop.
-- Control Room is a partial-height sheet with shared rows.
-- Running engine updates currently reset timing immediately rather than at the next complete cycle boundary.
+Implementation details must be re-checked against the live route before coding. Historical observations in older Tempo Builder specs are not current requirements.
 
 ## Locked Product Decisions
 
 ### Shared
 
-- Guided Swing is the first and default page.
+- Guided Swing and Metronome remain swipeable modes; page ordering is not an audio or architecture contract.
 - The user can swipe once between Guided Swing and Metronome.
 - Each page displays only its own BPM.
 - BPM adjustments auto-save locally and show a brief `Tempo saved` toast.
@@ -70,10 +61,10 @@ Current conflicts to remove:
 
 ### Guided Swing
 
-- Guided Swing uses a thin horizontal Start -> Top -> Impact timeline.
-- A glowing marker follows shared recipe timing.
-- Impact receives a restrained pulse/flash.
-- Guided Swing uses a continuous generated build that climaxes into impact.
+- Guided Swing uses a restrained swing arc with Address, Backswing, Top, Downswing, and Impact landmarks.
+- The arc owns phase timing. Audio and haptics obey the arc's phase boundaries.
+- Visual emphasis is restrained; avoid cheap glow, neon HUD treatment, and decorative motion unrelated to timing.
+- Guided Swing follows the audio UX target `smooth load -> clean transition -> crisp strike`.
 - Guided Swing has no background clicks.
 - Start and Resume use three clean audio ticks before the first build begins.
 - The three-tick cue is audio-first because the golfer may be looking at the ball. It does not add a setup screen or spoken coaching.
@@ -82,8 +73,9 @@ Current conflicts to remove:
 
 - Metronome starts and resumes immediately.
 - Metronome plays one steady click per beat.
-- It has no count-in, accents, subdivisions, build sound, impact crash, or public click-sound picker.
-- Its main visual is a classic restrained pendulum.
+- It has no count-in, accents, subdivisions, build sound, or impact crash.
+- Click selection may remain available through Metronome-specific Control Room rows, but it changes timbre only and never cadence.
+- Its main visual is a minimal beat indicator, not a required physical-metronome centerpiece.
 
 ## Persistence And Compatibility
 
@@ -122,7 +114,6 @@ The obsolete `garage.tempoBuilder.guidedClicks` value may remain stored for comp
 ### Tempo Builder Shell
 
 - Keep the current Garage-local top bar and swipeable `TabView`.
-- Page order is `Guided Swing`, then `Metronome`.
 - Use a compact segmented/page indicator that clearly communicates the active service.
 - Keep Swing Capture secondary.
 - Control Room opens full-screen and receives the active service.
@@ -136,7 +127,7 @@ Hierarchy:
 2. `Set your swing tempo. Press Start and follow the build to impact.`
 3. prominent saved BPM
 4. horizontal BPM slider
-5. thin Start / Top / Impact timeline
+5. restrained swing arc with Address / Backswing / Top / Downswing / Impact landmarks
 6. dominant Start button
 7. Control Room access in the top bar
 
@@ -146,31 +137,30 @@ Do not show Sound Style, rest timing, Preview Guided Swing, background clicks, o
 
 - Keep the BPM readout and slider visible.
 - Show Pause and Stop as separate actions.
-- Timeline marker follows the currently applied playback BPM, not an uncommitted slider value.
+- Arc marker follows the currently applied playback BPM, not an uncommitted slider value.
 - Slider changes auto-save immediately but show `Applies next swing` until the next cycle boundary.
-- At the next full-cycle boundary, audio and timeline timing adopt the new BPM together.
+- At the next full-cycle boundary, arc timing and audio scheduling adopt the new BPM together.
 - Pause immediately silences audio, cancels pending haptics, and resets the marker to Start.
 - Resume begins a fresh three-tick cue, then starts a new full swing cycle.
 - Stop immediately silences audio and returns to ready state.
 
-### Guided Swing Timeline
+### Guided Swing Arc
 
-- Thin horizontal base line with Start, Top, and Impact landmarks only.
-- Start-to-Top occupies the larger visual/time portion.
-- Top-to-Impact occupies the shorter, faster portion.
-- The moving marker uses the same recipe timing as generated audio.
-- During rest, the marker returns to Start and waits there.
-- Impact uses a short gold pulse and restrained glow.
-- Reduce Motion keeps landmark state changes but removes traveling/glow animation.
+- The arc presents Address, Backswing, Top, Downswing, and Impact as one connected motion.
+- Backswing occupies the longer loading portion; Downswing is shorter and accelerates into Impact.
+- Arc phase boundaries are the timing source of truth. Audio scheduling consumes those boundaries rather than maintaining a separate audio-led approximation.
+- During rest, the marker returns to Address and waits there.
+- Impact may use a short restrained gold pulse, but the screen must not become a neon cockpit.
+- Reduce Motion keeps phase and landmark state changes while removing nonessential travel and glow.
 
 ### Metronome Ready And Running States
 
 - Title: `Metronome`
 - Support: `Steady click training.`
 - Show its own saved BPM and horizontal slider.
-- Use the existing pendulum direction, simplified so it reads as a classic metronome.
+- Use a minimal beat indicator that communicates steady cadence without introducing a physical-instrument centerpiece.
 - Start begins steady clicks immediately.
-- Pause immediately stops audio/haptics and centers the pendulum.
+- Pause immediately stops audio/haptics and resets the beat indicator.
 - Resume immediately restarts steady clicks.
 - Stop immediately returns to ready state.
 - Running BPM changes apply on the next click boundary rather than cutting or restarting the current click.
@@ -210,18 +200,25 @@ The engine must expose boundary-safe timing updates rather than resetting its re
 
 ### Guided Swing Cycle
 
-- One continuous generated tonal build through takeaway and transition.
-- Faster release into a clear impact crash.
+- Address: soft start marker.
+- Backswing: noticeable but restrained synthesized rising/load texture.
+- Top: polished or imported local clean transition cue.
+- Downswing: synthesized quick acceleration/release texture.
+- Impact: polished or imported local crisp premium strike.
 - Silence during configured rest/reset.
-- One selected sound style controls the complete build and impact character.
-- Preserve generated DSP and the separate live-loop versus one-cycle preview paths.
+- Synthesized audio owns continuous motion texture because it must follow arc timing precisely.
+- Polished or imported local assets may own landmark cues such as Top and Impact.
+- Any imported local asset must be bundled, licensed, and available offline.
+- Preserve local-first playback and separate live-loop versus one-cycle preview paths where they remain part of the live implementation.
+- Do not revive eight sound skins, six exaggerated identities, maximum-impact/listening-fatigue targets, or generated-only restrictions as active requirements.
 
 ### Metronome Cycle
 
 - One steady generated click per beat.
 - No first-beat accent.
 - No subdivisions or additional cue layers.
-- Existing click synthesis may remain internal, but public Metronome sound selection is removed for this pass.
+- Metronome is not a fixed `3:1` Start / Top / Impact golf cycle.
+- Click selection may remain available through Metronome-specific rows in the shared Control Room.
 
 ### Immediate Stop Contract
 
@@ -265,31 +262,28 @@ The list must exclude novelty profiles and must not expose separate Start, Top, 
 ### Metronome Rows
 
 1. Active Metronome BPM readback
-2. Preview Click
-3. Haptics
+2. Click Sound
+3. Preview behavior where supported by the current sound-library interaction
+4. Haptics
 
-Do not expose accent, subdivision, build, impact, rest, or click-library controls.
+Do not expose separate Start and Impact identities, subdivisions, build, impact, or rest controls. A click library changes timbre only; it must not change cadence.
 
-## Sound Library Copy
+## Sound Direction
 
-Rename public Guided Swing styles toward concrete sound descriptions. Final names should be selected from the existing premium generated profiles after listening QA. Recommended direction:
+Guided Swing is one coherent premium motion-and-landmark grammar, not an active target for eight skins or six exaggerated identities. Any retained choices must support the same arc-led timing and `smooth load -> clean transition -> crisp strike` hierarchy.
 
-- `Clean Pulse` - Sharp, precise build with a clean strike.
-- `Low Punch` - Deeper build with a compact impact.
-- `Glass Tick` - Bright, tight build with a precise strike.
-
-Do not publish profiles that sound playful, cartoon-like, sci-fi-heavy, distracting, or novelty-driven.
+Metronome click names should remain concrete and name-true. Neither mode should publish playful, cartoon-like, sci-fi-heavy, distracting, or novelty sounds.
 
 ## File Ownership And Expected Changes
 
 - `LIFE-IN-SYNC/Garage/GarageHomeTabView.swift`
   - Saved Guided Swing BPM readback and Home copy/chip cleanup.
 - `LIFE-IN-SYNC/Garage/HorizonVaultDialView.swift`
-  - Two-service state, separate BPM bindings, page order, horizontal timeline, main controls, toast, full-screen Control Room, and sound list presentation.
+  - Two-service state, separate BPM bindings, swing arc, main controls, toast, shared Control Room, and sound list presentation.
 - `LIFE-IN-SYNC/Garage/ElasticSlingshotAudioEngine.swift`
   - Guided Swing count-in, no Guided Swing background clicks, boundary-safe BPM updates, immediate pause/stop behavior, and steady Metronome contract.
 - `LIFE-IN-SYNC/Garage/GarageSlowTempoLogic.swift`
-  - Only if needed to expose a clean shared Start / Top / Impact progress model.
+  - Only if needed to expose clean Address / Backswing / Top / Downswing / Impact arc timing.
 - `LIFE-IN-SYNC/Garage/GarageTempoAudioQAView.swift`
   - Only if compilation or focused listening verification requires contract alignment.
 
@@ -301,24 +295,23 @@ Do not modify `GarageTempoWizard.swift`; it is not the live routed screen.
 
 - Add separate saved Metronome BPM.
 - Make Home read the saved Guided Swing BPM.
-- Put Guided Swing first.
 - Add ready/count-in/playing/paused state.
 - Add saved versus applied BPM handling and saved-feedback toast.
 
 ### Phase 2: Main UI
 
-- Replace Guided Swing J-arc with the horizontal timeline.
+- Align the Guided Swing arc with the approved five-landmark timing grammar.
 - Keep sliders visible while running.
 - Add Pause/Resume/Stop controls.
 - Remove main-screen sound controls.
-- Refine Metronome pendulum and page indicator.
+- Refine the Metronome beat indicator and page indicator without introducing a physical-instrument centerpiece.
 
 ### Phase 3: Control Room
 
 - Convert to full-screen custom grouped settings.
 - Add active-page-specific rows.
 - Move Guided Swing sound, rest, preview, and haptics into Control Room.
-- Remove Guided Swing background-click UI and Metronome sound-library UI.
+- Remove Guided Swing background-click UI and keep Metronome click selection mode-specific.
 
 ### Phase 4: Audio And Haptics
 
@@ -331,28 +324,28 @@ Do not modify `GarageTempoWizard.swift`; it is not the live routed screen.
 ### Phase 5: Verification And Tuning
 
 - Verify persistence, pause/resume/stop, page switching, and next-cycle BPM behavior.
-- Listen to all public Guided Swing styles and remove or rename weak profiles.
+- Verify the Guided Swing motion texture and landmark cues against the approved arc-led grammar.
 - Check outdoor-relevant contrast and Reduce Motion behavior.
 
 ## Acceptance Criteria
 
 - Garage Home and Guided Swing show the same saved Guided Swing BPM.
 - Guided Swing and Metronome retain separate saved BPM values.
-- Guided Swing is the first/default page.
 - Each page shows only its own BPM.
 - No visible Full Swing, Short Game, Putting, club, or ratio controls appear.
-- Guided Swing main screen uses a thin Start / Top / Impact timeline with a moving marker and clear impact pulse.
+- Guided Swing uses an arc-led Address / Backswing / Top / Downswing / Impact model with restrained visual emphasis.
 - Guided Swing has no background clicks.
 - Guided Swing Start and Resume use three clean ticks before a fresh build cycle.
 - Metronome Start and Resume begin steady clicks immediately.
 - Metronome has no accents, subdivisions, build, or impact crash.
+- Metronome is never described or implemented as a fixed golf-swing cycle.
 - Both BPM sliders remain visible and editable while running.
 - Running BPM changes apply at the next safe boundary without resetting the active swing/click.
 - BPM changes auto-save and show `Tempo saved`.
 - Guided Swing pending changes show `Applies next swing`.
 - Pause immediately stops audio/haptics and resets the visual.
 - Stop immediately returns to ready without a summary or save prompt.
-- Control Room opens full-screen and shows only active-service rows.
+- Shared Control Room shows only active-service rows.
 - Main pages do not expose Sound Style, rest timing, or preview controls.
 - No SwiftData schema, routing, shell, or unrelated Garage changes are introduced.
 
@@ -392,6 +385,7 @@ Do not modify `GarageTempoWizard.swift`; it is not the live routed screen.
 - No tempo synchronization between services.
 - No session summary or analytics.
 - No separate Start, Top, and Impact sound customization.
-- No Metronome accent, subdivision, or sound-library expansion.
+- No Metronome accent, subdivision, or fixed golf-cycle behavior.
+- No speculative calibration, spoken detection, backend, account, or cloud work.
+- No third-party packages without explicit approval.
 - No unrelated Garage cleanup.
-

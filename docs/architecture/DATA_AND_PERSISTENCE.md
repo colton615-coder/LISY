@@ -6,14 +6,16 @@
 ## Persistence Direction
 V1 is local-first.
 
-Use local persistence for all core user data. AI and external services must be optional layers on top of the local model, not replacements for it.
+Use local persistence for all core user data. V1 does not depend on accounts, backend services, cloud sync, remote processing, or external APIs.
 
 ## Data Principles
 - user-created records live locally first
 - the app should function without login
 - offline use is the default expectation for non-AI flows
+- AI is optional, advisory, user-triggered, and confirmation-gated
 - AI outputs are suggestions until the user confirms an action
 - destructive changes should be explicit
+- third-party packages require explicit approval
 
 ## Recommended Native Storage Shape
 Use SwiftData for primary persistence in v1.
@@ -53,12 +55,14 @@ AI may not:
 - bypass user review for imported or generated data
 
 ## Backend Boundary
-No backend is required for the app to provide core value in v1.
+V1 does not include:
+- account infrastructure
+- backend services
+- cloud sync or remote backup
+- remote Garage processing
+- external API dependencies for core features
 
-Backend or API usage should be limited to features that truly require it, such as:
-- optional AI providers
-- optional external analysis services for Garage
-- future sync or backup work after local-first flows are stable
+Any future backend, API, cloud-sync, account, backup, or remote-analysis exception is non-v1 work and requires explicit architecture approval before implementation. A future exception must preserve local ownership, offline access to core records, visible user control, and the advisory AI boundary.
 
 ## V1 Data Priorities
 Must persist:

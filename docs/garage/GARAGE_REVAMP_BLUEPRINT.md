@@ -1,9 +1,9 @@
 # Garage Revamp Blueprint
 
-- Status: active Garage refactor blueprint
+- Status: active Garage blueprint; Tempo Builder direction refreshed 2026-06-17
 - Scope: Garage module only
 - First pass: oversized swipe-card Home and primary navigation shells
-- Last updated: 2026-05-30
+- Last updated: 2026-06-17
 
 ## Purpose
 
@@ -22,41 +22,43 @@ The module should feel like a premium golf practice command center, not a stacke
 - Garage Home uses a horizontally swipeable oversized card deck.
 - The visible Home choices are Drill Plans, Tempo Builder, and Journal.
 - Drill Plans starts with the environment decision: Net, Range, Putting Green.
-- Tempo Builder is a standalone rhythm rehearsal service with one stable timing engine and selectable premium sound skins.
+- Tempo Builder is a standalone rhythm rehearsal service with separate Guided Swing and steady-click Metronome modes.
 - Journal starts as a golf memory system shell.
 - Existing Garage practice systems stay preserved unless a later approved pass removes or replaces them.
 
 ## Tempo Builder Flow
 
-Tempo Builder is a Garage-local practice instrument, not a generic metronome and not a swing-analysis replacement.
+Tempo Builder is a Garage-local practice instrument, not a swing-analysis replacement. Guided Swing is the premium swing-rhythm trainer; Metronome is the separate steady-click trainer.
 
 Core contract:
 
-- The timing engine stays singular and stable across all sound packs.
-- BPM, ratio, pause, setup delay, loop timing, and fine-tuning logic behave identically no matter which sound pack is selected.
-- Sound packs are skins over the same tempo logic, not separate training modes.
-- Every sound pack follows the same full swing shape: takeaway load, top tension, soft downswing trail, bright impact snap.
-- The audio priority is coachable first, premium second, fun third.
-- Sound pack selection is available from the main cockpit through a compact one-tap selector sheet.
-- Browsing sound packs does not autoplay. Each pack exposes an explicit preview action.
-- Pack descriptions use one short plain-English feel line.
-
-Initial sound-pack direction:
-
-- Elastic: smooth stretch, calm release, sharp snap.
-- Storm: low pressure build, thunder body, bright strike.
-- Airframe: breathy lift, clean trail, crisp snap.
-- Reed: controlled reed texture with playful edge, not cheap novelty.
-- Pulse: modern rhythm pressure with surgical impact.
-- Gravity: deep load, soft fall, bright strike.
-- Glass: clean shimmer, tight top, precise snap.
-- Rubber: elastic training feel without toy energy.
+- Guided Swing and Metronome retain separate saved BPM values and do not silently synchronize.
+- Control Room remains a shared tuning pattern, with rows that change for the active mode.
+- Metronome stays one steady click per beat. It is not a fixed Start / Top / Impact golf cycle.
+- Guided Swing uses a Sport-Tech + Luxury direction: precise, athletic, polished, and restrained.
+- The swing arc is the timing authority for Guided Swing. Audio follows the arc rather than driving an independent approximation.
+- Guided Swing audio targets `smooth load -> clean transition -> crisp strike`.
+- Address uses a soft start marker.
+- Backswing uses a noticeable but restrained synthesized rising/load texture.
+- Top uses a polished or imported local clean transition cue.
+- Downswing uses a synthesized quick acceleration/release texture.
+- Impact uses a polished or imported local crisp premium strike.
+- Synthesized audio owns continuous motion texture because it must follow arc timing precisely.
+- Polished or imported local assets may own landmark cues such as Top and Impact.
+- This audio direction is an approved implementation target, not a claim that final synchronization, assets, or listening QA are complete.
+- Main practice surfaces stay focused on active mode, BPM, Start/Stop, rhythm visual, and tuning access.
 
 Do not turn this into:
 
-- a separate tempo engine per pack
 - a noisy soundboard
-- a preset system that changes the user's timing logic
+- one shared timing behavior or saved BPM across both modes
+- a fixed `3:1` Start / silent Top / Impact Metronome cycle
+- an eight-skin or six-identity expansion target
+- generated-only audio that forbids polished local landmark assets
+- audio-led visual timing
+- a neon cockpit, physical-metronome centerpiece, or gamer dashboard
+- maximum-impact sound design that accepts listening fatigue
+- speculative calibration, spoken detection, or swing-recognition work
 - hidden persistence or SwiftData schema work
 - real-time swing coaching claims
 
@@ -125,7 +127,7 @@ Do not introduce:
 - Each environment opens its Environment Drill Plans screen.
 - Each Environment Drill Plans screen contains Saved Routines, Generate New Routine, and Build My Own.
 - Tempo Builder Start opens a clean Tempo Builder screen.
-- Tempo Builder keeps one timing/fine-tuning model while allowing multiple premium sound skins.
+- Tempo Builder keeps Guided Swing and steady-click Metronome behavior distinct, retains separate BPM memory, and uses the shared mode-aware Control Room pattern.
 - Journal New Entry and Archive open clean Journal screens.
 - No SwiftData migration is introduced.
 - Existing Garage premium code remains available for future passes.
