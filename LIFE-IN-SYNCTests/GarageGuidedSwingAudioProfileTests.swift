@@ -5,6 +5,14 @@ struct GarageGuidedSwingAudioProfileTests {
     @Test func powerTourIsTheDefaultProfile() {
         #expect(GarageGuidedSwingAudioProfileLibrary.defaultProfile.id == .powerTour)
         #expect(GarageGuidedSwingAudioProfileLibrary.profile(for: .powerTour).displayName == "Power Tour")
+        #expect(GarageGuidedSwingProfile.migrated(from: "tourWhip").audioProfileID == .powerTour)
+    }
+
+    @Test func scaffoldProfilesMapToDistinctGeneratedEngineProfiles() {
+        let engineProfiles = GarageGuidedSwingProfile.listeningOrder.map(\.engineProfile)
+
+        #expect(Set(engineProfiles).count == GarageGuidedSwingAudioProfileID.allCases.count)
+        #expect(engineProfiles == [.powerTour, .heavyCoil, .whipLine])
     }
 
     @Test func profileIDsAreUniqueAndComplete() {

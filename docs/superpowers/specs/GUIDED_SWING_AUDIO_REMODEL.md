@@ -1,6 +1,6 @@
 # Guided Swing Audio Remodel
 
-- Status: approved direction; Phase 2 profile scaffold implemented; sound implementation pending
+- Status: approved direction; Phase 3 native placeholders implemented; final sound approval pending
 - Scope: Garage Tempo Builder Guided Swing audio only
 - Date: 2026-06-18
 - Owner surface: live `GarageTempoBuilderView` flow
@@ -182,6 +182,12 @@ Scaffold status as of 2026-06-18:
 Any persistence migration or behavior change must be reviewed before implementation.
 
 ### Phase 3: Build Native Placeholder Profiles
+
+Placeholder status as of 2026-06-18:
+
+- The existing Guided Swing renderer maps Power Tour, Heavy Coil, and Whip Line to distinct native generated phase plans.
+- The placeholders add no bundled assets and remain available through the existing DEBUG audio QA hook.
+- These sounds are tuning material only. They are not mastered, device-approved, or accepted as final audio.
 
 - Implement placeholder/generated profile layers using native Apple audio only.
 - Keep render-critical work allocation-free and free of logging or string construction.

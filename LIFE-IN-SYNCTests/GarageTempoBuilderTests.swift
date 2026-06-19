@@ -32,41 +32,32 @@ struct GarageTempoBuilderTests {
         #expect(grouped.count == GarageMetronomeClickProfile.allCases.count)
     }
 
-    @Test func guidedSoundGroupsContainEveryProfileExactlyOnce() {
-        let grouped = GarageGuidedSwingProfile.listeningOrder
+    @Test func guidedListeningOrderContainsEveryRemodeledProfileExactlyOnce() {
+        let grouped = GarageGuidedSwingProfile.listeningOrder.map(\.audioProfileID)
 
-        #expect(Set(grouped).count == GarageGuidedSwingProfile.allCases.count)
-        #expect(grouped.count == GarageGuidedSwingProfile.allCases.count)
+        #expect(Set(grouped).count == GarageGuidedSwingAudioProfileID.allCases.count)
+        #expect(grouped.count == GarageGuidedSwingAudioProfileID.allCases.count)
     }
 
-    @Test func guidedSoundIdentitiesOwnEveryPhaseAndAsset() {
+    @Test func guidedSoundIdentitiesUseGeneratedNativeLayers() {
         let phases: [TempoSoundPhase] = [.build, .top, .downswing, .impact, .tail]
-        let assetNames = TempoSoundIdentityProfile.allCases.flatMap { profile in
-            phases.compactMap { profile.eventPlan[$0].assetName }
+        for profile in TempoSoundIdentityProfile.allCases {
+            #expect(phases.allSatisfy { profile.eventPlan[$0].assetName == nil })
+            #expect(phases.allSatisfy { profile.eventPlan[$0].synthesisGain > 0 })
         }
-
-        #expect(assetNames.count == TempoSoundIdentityProfile.allCases.count * phases.count)
-        #expect(Set(assetNames).count == assetNames.count)
-    }
-
-    @Test func tourWhipKeepsExplicitLoadedSilenceAtTop() {
-        let top = TempoSoundIdentityProfile.tourWhip.eventPlan[.top]
-
-        #expect(top.assetName == "tour_whip_loaded_silence")
-        #expect(top.silenceWindow == 0...1)
     }
 
     @Test func guidedIdentityImpactsOwnTheStrongestPhaseGain() {
         for profile in TempoSoundIdentityProfile.allCases {
             let plan = profile.eventPlan
             let supportingGains = [
-                plan[.build].assetGain,
-                plan[.top].assetGain,
-                plan[.downswing].assetGain,
-                plan[.tail].assetGain
+                plan[.build].synthesisGain,
+                plan[.top].synthesisGain,
+                plan[.downswing].synthesisGain,
+                plan[.tail].synthesisGain
             ]
 
-            #expect(plan[.impact].assetGain > supportingGains.max()!)
+            #expect(plan[.impact].synthesisGain > supportingGains.max()!)
         }
     }
 

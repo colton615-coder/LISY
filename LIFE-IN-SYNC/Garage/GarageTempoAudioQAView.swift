@@ -80,7 +80,7 @@ struct GarageTempoAudioQAView: View {
                 .font(.system(size: 14, weight: .semibold, design: .rounded))
                 .foregroundStyle(GaragePremiumPalette.gold)
 
-            Text("\(mode == .metronome ? clickProfile.title : guidedProfile.title) · \(Int(beatsPerMinute)) BPM · \(audioEngine.outputRouteText)")
+            Text("\(mode == .metronome ? clickProfile.title : guidedProfile.audioProfile.displayName) · \(Int(beatsPerMinute)) BPM · \(audioEngine.outputRouteText)")
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .foregroundStyle(GarageProTheme.textPrimary)
 
@@ -154,7 +154,7 @@ struct GarageTempoAudioQAView: View {
     private var guidedControls: some View {
         VStack(spacing: 12) {
             ForEach(GarageGuidedSwingProfile.listeningOrder) { profile in
-                qaChoice(title: profile.title, selected: guidedProfile == profile) {
+                qaChoice(title: profile.audioProfile.displayName, selected: guidedProfile == profile) {
                     guidedProfile = profile
                     previewGuided(profile)
                 }
