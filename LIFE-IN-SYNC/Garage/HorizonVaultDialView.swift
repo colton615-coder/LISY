@@ -1527,9 +1527,34 @@ private struct GarageTempoControlRoom: View {
             }
         } else {
             GarageTempoSettingsGroup {
-                GarageTempoReadbackRow(title: "Guided Cue", value: selectedGuidedSound.title)
-                GarageTempoSettingsDivider()
-                GarageTempoActionRow(title: "Preview Guided Swing", systemImage: "play.fill") {
+                GarageTempoActionValueRow(
+                    title: "Sound Profile",
+                    value: selectedGuidedSound.audioProfile.displayName
+                ) {
+                    toggleSoundChoices()
+                }
+                if showsSoundChoices {
+                    GarageTempoSettingsDivider()
+                    VStack(spacing: 0) {
+                        ForEach(GarageGuidedSwingProfile.listeningOrder) { profile in
+                            GarageTempoSoundRow(
+                                title: profile.audioProfile.displayName,
+                                subtitle: profile.audioProfile.shortDescription,
+                                isSelected: selectedGuidedSound == profile,
+                                accessibilityHint: "Selects the Guided Swing sound profile"
+                            ) {
+                                selectedGuidedRawValue = profile.rawValue
+                            }
+                        }
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                } else {
+                    GarageTempoSettingsDivider()
+                }
+                GarageTempoActionRow(
+                    title: "Preview \(selectedGuidedSound.audioProfile.displayName)",
+                    systemImage: "play.fill"
+                ) {
                     startGuidedPreview()
                 }
             }

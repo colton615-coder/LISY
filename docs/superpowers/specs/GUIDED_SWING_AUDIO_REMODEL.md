@@ -1,6 +1,6 @@
 # Guided Swing Audio Remodel
 
-- Status: approved direction; Phase 3 native placeholders implemented; final sound approval pending
+- Status: approved direction; Phase 4 minimal profile selector implemented; final sound approval pending
 - Scope: Garage Tempo Builder Guided Swing audio only
 - Date: 2026-06-18
 - Owner surface: live `GarageTempoBuilderView` flow
@@ -186,7 +186,7 @@ Any persistence migration or behavior change must be reviewed before implementat
 Placeholder status as of 2026-06-18:
 
 - The existing Guided Swing renderer maps Power Tour, Heavy Coil, and Whip Line to distinct native generated phase plans.
-- The placeholders add no bundled assets and remain available through the existing DEBUG audio QA hook.
+- The placeholders add no bundled assets and are also available through the existing DEBUG audio QA hook.
 - These sounds are tuning material only. They are not mastered, device-approved, or accepted as final audio.
 
 - Implement placeholder/generated profile layers using native Apple audio only.
@@ -196,6 +196,12 @@ Placeholder status as of 2026-06-18:
 - Treat placeholders as tuning material, not final approved assets.
 
 ### Phase 4: Wire Profile Selection Conservatively
+
+Selection status as of 2026-06-18:
+
+- Guided Swing Control Room uses its existing settings-group pattern to select Power Tour, Heavy Coil, or Whip Line.
+- Selection persists through the existing `garage.tempoBuilder.guidedSound` key and legacy migration seam.
+- Preview plays the selected profile; the main Guided Swing training screen remains unchanged.
 
 - Wire profile selection only if the current Control Room already supports it or a minimal safe hook exists.
 - Do not add profile controls to the main Guided Swing screen.
