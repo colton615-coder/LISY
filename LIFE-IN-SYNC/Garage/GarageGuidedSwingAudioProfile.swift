@@ -1,4 +1,5 @@
 enum GarageGuidedSwingAudioProfileID: String, CaseIterable, Identifiable, Sendable {
+    case cleanAscendingRail
     case powerTour
     case heavyCoil
     case whipLine
@@ -52,6 +53,52 @@ struct GarageGuidedSwingAudioProfile: Identifiable, Equatable, Sendable {
 /// Directional metadata only. Future renderers must preserve headroom, build perceived loudness
 /// through mastering and dynamics control rather than clipping, and keep top, release, and impact distinct.
 enum GarageGuidedSwingAudioProfileLibrary {
+    static let cleanAscendingRail = GarageGuidedSwingAudioProfile(
+        id: .cleanAscendingRail,
+        displayName: "Clean Ascending Rail",
+        shortDescription: "Warm rise, quiet top, clean release.",
+        intent: "A memorable tonal tempo guide that teaches the swing rhythm without imitating physical impact materials.",
+        layers: [
+            GarageGuidedSwingAudioLayer(
+                role: .addressCue,
+                relativeIntensity: 0.12,
+                energyGuidance: "Barely present tonal onset.",
+                timingGuidance: "Blend into the rail without a separate click."
+            ),
+            GarageGuidedSwingAudioLayer(
+                role: .backswingPressureBuild,
+                relativeIntensity: 0.72,
+                energyGuidance: "Warm sine-led tone with a restrained harmonic shimmer.",
+                timingGuidance: "Rise smoothly and continuously through the full backswing."
+            ),
+            GarageGuidedSwingAudioLayer(
+                role: .topCheckpoint,
+                relativeIntensity: 0,
+                energyGuidance: "True silence.",
+                timingGuidance: "Leave the top hold empty so the transition is learned through space."
+            ),
+            GarageGuidedSwingAudioLayer(
+                role: .downswingRelease,
+                relativeIntensity: 0.48,
+                energyGuidance: "Short, clean tonal lift from the same harmonic family.",
+                timingGuidance: "Enter after the silent top hold and move directly toward impact."
+            ),
+            GarageGuidedSwingAudioLayer(
+                role: .impactStrike,
+                relativeIntensity: 0.64,
+                energyGuidance: "Compact bright resolution without a simulated object strike.",
+                timingGuidance: "Resolve at impact with a smooth attack and fast release."
+            ),
+            GarageGuidedSwingAudioLayer(
+                role: .finishTail,
+                relativeIntensity: 0,
+                energyGuidance: "Silent.",
+                timingGuidance: "Do not add a cinematic or material tail."
+            )
+        ],
+        isFinalMasteredAudio: false
+    )
+
     static let powerTour = GarageGuidedSwingAudioProfile(
         id: .powerTour,
         displayName: "Power Tour",
@@ -191,14 +238,18 @@ enum GarageGuidedSwingAudioProfileLibrary {
     )
 
     static let all: [GarageGuidedSwingAudioProfile] = [
+        cleanAscendingRail
+    ]
+
+    static let legacyProfiles: [GarageGuidedSwingAudioProfile] = [
         powerTour,
         heavyCoil,
         whipLine
     ]
 
-    static let defaultProfile = powerTour
+    static let defaultProfile = cleanAscendingRail
 
     static func profile(for id: GarageGuidedSwingAudioProfileID) -> GarageGuidedSwingAudioProfile {
-        all.first { $0.id == id } ?? defaultProfile
+        (all + legacyProfiles).first { $0.id == id } ?? defaultProfile
     }
 }

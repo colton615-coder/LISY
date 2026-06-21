@@ -1,10 +1,12 @@
 # Guided Swing Audio Remodel
 
-- Status: approved direction; Phase 4 minimal profile selector implemented; final sound approval pending
+- Status: superseded by `CLEAN_ASCENDING_RAIL_GUIDED_SWING_AUDIO.md`
 - Scope: Garage Tempo Builder Guided Swing audio only
 - Date: 2026-06-18
 - Owner surface: live `GarageTempoBuilderView` flow
-- Authority: source of truth for the Guided Swing audio identity remodel
+- Authority: historical record of the rejected physical/material direction
+
+> The Power Tour / Heavy Coil / Whip Line direction was rejected after listening review. Do not use this document to justify new material impacts, layered SFX collages, or app-facing profile variants.
 
 ## Authority And Boundaries
 

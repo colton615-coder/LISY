@@ -1,9 +1,11 @@
 # Guided Swing Physical Mock Audio V2 Design
 
-- Status: approved for mock-audio production
+- Status: rejected and superseded by `CLEAN_ASCENDING_RAIL_GUIDED_SWING_AUDIO.md`
 - Date: 2026-06-21
 - Scope: standalone Guided Swing listening previews only
-- App integration: explicitly out of scope until human selection
+- App integration: none; retained only as historical context
+
+> Listening review rejected the physical-material mock direction. Do not resume the 15-material set or use it as an implementation brief.
 
 ## Goal
 

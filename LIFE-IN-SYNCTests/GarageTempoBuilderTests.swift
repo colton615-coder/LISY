@@ -32,23 +32,25 @@ struct GarageTempoBuilderTests {
         #expect(grouped.count == GarageMetronomeClickProfile.allCases.count)
     }
 
-    @Test func guidedListeningOrderContainsEveryRemodeledProfileExactlyOnce() {
+    @Test func guidedListeningOrderContainsOnlyThePreferredProfile() {
         let grouped = GarageGuidedSwingProfile.listeningOrder.map(\.audioProfileID)
 
-        #expect(Set(grouped).count == GarageGuidedSwingAudioProfileID.allCases.count)
-        #expect(grouped.count == GarageGuidedSwingAudioProfileID.allCases.count)
+        #expect(grouped == [.cleanAscendingRail])
     }
 
     @Test func guidedSoundIdentitiesUseGeneratedNativeLayers() {
         let phases: [TempoSoundPhase] = [.build, .top, .downswing, .impact, .tail]
         for profile in TempoSoundIdentityProfile.allCases {
             #expect(phases.allSatisfy { profile.eventPlan[$0].assetName == nil })
-            #expect(phases.allSatisfy { profile.eventPlan[$0].synthesisGain > 0 })
         }
+
+        let rail = TempoSoundIdentityProfile.cleanAscendingRail.eventPlan
+        #expect([TempoSoundPhase.build, .downswing, .impact].allSatisfy { rail[$0].synthesisGain > 0 })
+        #expect([TempoSoundPhase.top, .tail].allSatisfy { rail[$0].synthesisGain == 0 })
     }
 
     @Test func guidedIdentityImpactsOwnTheStrongestPhaseGain() {
-        for profile in TempoSoundIdentityProfile.allCases {
+        for profile in [TempoSoundIdentityProfile.powerTour, .heavyCoil, .whipLine] {
             let plan = profile.eventPlan
             let supportingGains = [
                 plan[.build].synthesisGain,
@@ -59,6 +61,14 @@ struct GarageTempoBuilderTests {
 
             #expect(plan[.impact].synthesisGain > supportingGains.max()!)
         }
+    }
+
+    @Test func defaultTourRatioCreatesARealSilentTopPause() {
+        let recipe = ElasticSlingshotRecipe()
+        let pause = recipe.pauseDuration(for: 60)
+
+        #expect((0.12...0.22).contains(pause))
+        #expect(recipe.swingDuration(for: 60) == 2)
     }
 
     @Test func hapticScheduleContainsOneTopAndOneImpactEvent() {
@@ -124,7 +134,7 @@ struct GarageTempoBuilderTests {
             page: page,
             beatsPerMinute: beatsPerMinute,
             recipe: ElasticSlingshotRecipe(),
-            guidedSound: .tourWhip,
+            guidedSound: .cleanAscendingRail,
             startClick: .woodblock,
             impactClick: .brightSignal,
             hapticsEnabled: false

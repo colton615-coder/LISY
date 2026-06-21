@@ -168,7 +168,7 @@ enum ElasticSlingshotTempoRatio: String, CaseIterable, Identifiable {
         case .punchy:
             return 0.035
         case .tour:
-            return 0.04
+            return 0.08
         case .smooth:
             return 0.05
         }
@@ -335,6 +335,7 @@ enum GarageMetronomeClickProfile: String, CaseIterable, Identifiable {
 }
 
 enum GarageGuidedSwingProfile: String, CaseIterable, Identifiable {
+    case cleanAscendingRail
     case tourWhip
     case heavySteel
     case glassLine
@@ -346,6 +347,8 @@ enum GarageGuidedSwingProfile: String, CaseIterable, Identifiable {
 
     var audioProfileID: GarageGuidedSwingAudioProfileID {
         switch self {
+        case .cleanAscendingRail:
+            return .cleanAscendingRail
         case .tourWhip, .glassLine, .digitalVector, .rangeWood:
             return .powerTour
         case .heavySteel:
@@ -371,18 +374,25 @@ enum GarageGuidedSwingProfile: String, CaseIterable, Identifiable {
         TempoSoundIdentityProfile(audioProfileID: audioProfileID)
     }
 
-    static let listeningOrder: [Self] = [.tourWhip, .heavySteel, .airCut]
+    static let listeningOrder: [Self] = [.cleanAscendingRail]
+    static let legacyProfiles: [Self] = [.tourWhip, .heavySteel, .glassLine, .airCut, .digitalVector, .rangeWood]
 
     static func migrated(from rawValue: String) -> Self {
         switch rawValue {
-        case Self.tourWhip.rawValue, GarageGuidedSwingAudioProfileID.powerTour.rawValue:
-            return .tourWhip
-        case Self.heavySteel.rawValue, GarageGuidedSwingAudioProfileID.heavyCoil.rawValue:
-            return .heavySteel
-        case Self.airCut.rawValue, GarageGuidedSwingAudioProfileID.whipLine.rawValue:
-            return .airCut
+        case Self.cleanAscendingRail.rawValue, GarageGuidedSwingAudioProfileID.cleanAscendingRail.rawValue:
+            return .cleanAscendingRail
+        case Self.tourWhip.rawValue,
+             Self.heavySteel.rawValue,
+             Self.glassLine.rawValue,
+             Self.airCut.rawValue,
+             Self.digitalVector.rawValue,
+             Self.rangeWood.rawValue,
+             GarageGuidedSwingAudioProfileID.powerTour.rawValue,
+             GarageGuidedSwingAudioProfileID.heavyCoil.rawValue,
+             GarageGuidedSwingAudioProfileID.whipLine.rawValue:
+            return .cleanAscendingRail
         default:
-            return .tourWhip
+            return .cleanAscendingRail
         }
     }
 }
@@ -431,6 +441,7 @@ struct TempoSoundEventPlan: Equatable {
 }
 
 enum TempoSoundIdentityProfile: String, CaseIterable, Identifiable {
+    case cleanAscendingRail
     case powerTour
     case heavyCoil
     case whipLine
@@ -439,6 +450,8 @@ enum TempoSoundIdentityProfile: String, CaseIterable, Identifiable {
 
     init(audioProfileID: GarageGuidedSwingAudioProfileID) {
         switch audioProfileID {
+        case .cleanAscendingRail:
+            self = .cleanAscendingRail
         case .powerTour:
             self = .powerTour
         case .heavyCoil:
@@ -450,6 +463,17 @@ enum TempoSoundIdentityProfile: String, CaseIterable, Identifiable {
 
     var eventPlan: TempoSoundEventPlan {
         switch self {
+        case .cleanAscendingRail:
+            return TempoSoundEventPlan(
+                phases: [
+                    .build: .generated(gain: 0.82, pitch: .rising(from: 260, to: 520), attack: 0.055, release: 0.10),
+                    .top: .silent,
+                    .downswing: .generated(gain: 0.50, pitch: .rising(from: 520, to: 620), attack: 0.06, release: 0.70),
+                    .impact: .generated(gain: 0.62, pitch: .fixed(660), attack: 0.02, release: 0.94),
+                    .tail: .silent
+                ],
+                outputGain: 0.92
+            )
         case .powerTour:
             return TempoSoundEventPlan(
                 phases: [
@@ -504,6 +528,16 @@ private extension TempoSoundPhasePlan {
             silenceWindow: nil
         )
     }
+
+    static let silent = Self(
+        assetName: nil,
+        assetGain: 0,
+        synthesisGain: 0,
+        pitch: .silent,
+        attack: 0,
+        release: 0,
+        silenceWindow: 0...1
+    )
 }
 
 typealias ElasticSlingshotSoundProfile = TempoSoundIdentityProfile
@@ -634,6 +668,41 @@ private struct ElasticSlingshotVoiceState {
         }
 
         return phase
+    }
+}
+
+enum GarageCleanAscendingRailSynthesis {
+    static func sample(
+        phase: TempoSoundPhase,
+        progress: Double,
+        primaryPhase: Double,
+        harmonicPhase: Double,
+        isSpeaker: Bool
+    ) -> Double {
+        let progress = min(max(progress, 0), 1)
+        let routeGain = isSpeaker ? 1.04 : 1
+        let warmTone = (sin(primaryPhase) * 0.72) + (sin(harmonicPhase) * 0.11)
+
+        switch phase {
+        case .build:
+            let lift = 0.42 + (0.58 * smoothstep(progress))
+            let memorabilityPulse = 0.975 + (0.025 * sin(progress * .pi * 4))
+            return tanh(warmTone * 1.08) * lift * memorabilityPulse * 0.72 * routeGain
+        case .top, .tail:
+            return 0
+        case .downswing:
+            let compactEnvelope = pow(max(sin(.pi * progress), 0), 0.72)
+            return tanh(warmTone * 1.12) * compactEnvelope * 0.62 * routeGain
+        case .impact:
+            let attack = smoothstep(min(progress / 0.08, 1))
+            let decay = exp(-5.8 * progress)
+            return tanh(warmTone * 1.18) * attack * decay * 0.74 * routeGain
+        }
+    }
+
+    private static func smoothstep(_ value: Double) -> Double {
+        let value = min(max(value, 0), 1)
+        return value * value * (3 - (2 * value))
     }
 }
 
@@ -1326,6 +1395,18 @@ private final class ElasticSlingshotRenderState {
         isSpeaker: Bool
     ) -> Double {
         let frequency = identityFrequency(pitch, progress: progress)
+        if profile == .cleanAscendingRail {
+            let primaryPhase = voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)
+            let harmonicPhase = voiceState.advanceSecondary(frequency: frequency * 2, sampleRate: sampleRate)
+            return GarageCleanAscendingRailSynthesis.sample(
+                phase: phase,
+                progress: progress,
+                primaryPhase: primaryPhase,
+                harmonicPhase: harmonicPhase,
+                isSpeaker: isSpeaker
+            )
+        }
+
         switch phase {
         case .build:
             return guidedLoadTone(frequency: frequency, progress: progress, profile: profile, isSpeaker: isSpeaker)
@@ -1350,6 +1431,7 @@ private final class ElasticSlingshotRenderState {
         let addressProgress = normalizedSegment(progress, start: 0, end: 0.14)
         let bedProgress = normalizedSegment(progress, start: 0.075, end: 1)
         let character: (rise: Double, body: Double, support: Double, air: Double, supportRatio: Double, output: Double, speakerGain: Double) = switch profile {
+        case .cleanAscendingRail: (1, 0, 0, 0, 2, 0, 1)
         case .powerTour: (1.18, 0.24, 0.11, 0.018, 0.58, 0.74, 1.06)
         case .heavyCoil: (1.55, 0.20, 0.14, 0.010, 2.05, 0.80, 1.10)
         case .whipLine: (1.02, 0.18, 0.12, 0.032, 1.78, 0.70, 1.04)
@@ -1379,6 +1461,7 @@ private final class ElasticSlingshotRenderState {
     ) -> Double {
         let phase = voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)
         let character: (body: Double, upper: Double, transient: Double, ratio: Double, output: Double, speakerGain: Double) = switch profile {
+        case .cleanAscendingRail: (0, 0, 0, 2, 0, 1)
         case .powerTour: (0.23, 0.09, 0.11, 1.55, 0.74, 1.05)
         case .heavyCoil: (0.30, 0.13, 0.09, 2.20, 0.78, 1.08)
         case .whipLine: (0.14, 0.15, 0.16, 1.78, 0.65, 1.03)
@@ -1401,6 +1484,7 @@ private final class ElasticSlingshotRenderState {
     ) -> Double {
         let phase = voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)
         let character: (curve: Double, body: Double, upper: Double, air: Double, ratio: Double, output: Double, speakerGain: Double) = switch profile {
+        case .cleanAscendingRail: (0.5, 0, 0, 0, 2, 0, 1)
         case .powerTour: (0.50, 0.27, 0.11, 0.13, 1.62, 0.90, 1.05)
         case .heavyCoil: (0.66, 0.34, 0.11, 0.08, 1.95, 0.92, 1.08)
         case .whipLine: (0.34, 0.18, 0.19, 0.23, 2.10, 0.94, 1.02)
@@ -1423,6 +1507,7 @@ private final class ElasticSlingshotRenderState {
     ) -> Double {
         let phase = voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)
         let character: (decay: Double, body: Double, upper: Double, transient: Double, ratio: Double, output: Double, speakerGain: Double) = switch profile {
+        case .cleanAscendingRail: (54, 0, 0, 0, 2, 0, 1)
         case .powerTour: (54, 0.56, 0.20, 0.36, 1.65, 0.98, 1.05)
         case .heavyCoil: (42, 0.66, 0.20, 0.30, 2.20, 1.00, 1.08)
         case .whipLine: (72, 0.36, 0.28, 0.46, 2.35, 0.96, 1.02)
@@ -1444,6 +1529,7 @@ private final class ElasticSlingshotRenderState {
     ) -> Double {
         let phase = voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)
         let character: (decay: Double, tone: Double, air: Double) = switch profile {
+        case .cleanAscendingRail: (8, 0, 0)
         case .powerTour: (8.4, 0.08, 0.035)
         case .heavyCoil: (7.2, 0.11, 0.024)
         case .whipLine: (10.5, 0.05, 0.050)
