@@ -3,28 +3,38 @@ import Testing
 
 struct GarageGuidedSwingAudioProfileTests {
     @Test func cleanAscendingRailIsTheDefaultAndMigratesLegacySelections() {
-        #expect(GarageGuidedSwingAudioProfileLibrary.defaultProfile.id == .cleanAscendingRail)
-        #expect(GarageGuidedSwingAudioProfileLibrary.profile(for: .cleanAscendingRail).displayName == "Clean Ascending Rail")
+        #expect(GarageGuidedSwingAudioProfileLibrary.defaultProfile.id == .cleanAscendingRailWarm)
+        #expect(GarageGuidedSwingAudioProfileLibrary.profile(for: .cleanAscendingRailWarm).displayName == "Clean Ascending Rail Warm")
 
         for legacyProfile in GarageGuidedSwingProfile.legacyProfiles {
-            #expect(GarageGuidedSwingProfile.migrated(from: legacyProfile.rawValue) == .cleanAscendingRail)
+            #expect(GarageGuidedSwingProfile.migrated(from: legacyProfile.rawValue) == .cleanAscendingRailWarm)
         }
     }
 
-    @Test func onlyCleanAscendingRailIsAppFacing() {
-        #expect(GarageGuidedSwingProfile.listeningOrder == [.cleanAscendingRail])
-        #expect(GarageGuidedSwingProfile.listeningOrder.map(\.engineProfile) == [.cleanAscendingRail])
+    @Test func warmIsAppFacingAndQAContainsExactlyTwoTunedVariants() {
+        #expect(GarageGuidedSwingProfile.listeningOrder == [.cleanAscendingRailWarm])
+        #expect(GarageGuidedSwingProfile.qaListeningOrder == [.cleanAscendingRailWarm, .cleanAscendingRailLow])
+        #expect(GarageGuidedSwingProfile.qaListeningOrder.map(\.engineProfile) == [.cleanAscendingRailWarm, .cleanAscendingRailLow])
         #expect(GarageGuidedSwingProfile.legacyProfiles.contains(.tourWhip))
     }
 
-    @Test func cleanAscendingRailHasTrueSilentTopAndTail() {
-        let plan = TempoSoundIdentityProfile.cleanAscendingRail.eventPlan
+    @Test func tunedRailsKeepSilentTopAndTail() {
+        for profile in [TempoSoundIdentityProfile.cleanAscendingRailWarm, .cleanAscendingRailLow] {
+            let plan = profile.eventPlan
 
-        #expect(plan[.top].synthesisGain == 0)
-        #expect(plan[.top].silenceWindow == 0...1)
-        #expect(plan[.tail].synthesisGain == 0)
-        #expect(plan[.build].synthesisGain > plan[.downswing].synthesisGain)
-        #expect(plan[.impact].synthesisGain > 0)
+            #expect(plan[.top].synthesisGain == 0)
+            #expect(plan[.top].silenceWindow == 0...1)
+            #expect(plan[.tail].synthesisGain == 0)
+            #expect(plan[.build].synthesisGain > plan[.downswing].synthesisGain)
+            #expect(plan[.impact].synthesisGain > 0)
+        }
+    }
+
+    @Test func tunedRailsUseTheApprovedLowerRegisters() {
+        #expect(TempoSoundIdentityProfile.cleanAscendingRailWarm.eventPlan[.build].pitch == .rising(from: 180, to: 360))
+        #expect(TempoSoundIdentityProfile.cleanAscendingRailLow.eventPlan[.build].pitch == .rising(from: 140, to: 280))
+        #expect(TempoSoundIdentityProfile.cleanAscendingRailWarm.eventPlan[.impact].pitch == .fixed(300))
+        #expect(TempoSoundIdentityProfile.cleanAscendingRailLow.eventPlan[.impact].pitch == .fixed(230))
     }
 
     @Test func profileIDsAreUniqueAndComplete() {
@@ -65,7 +75,7 @@ struct GarageGuidedSwingAudioProfileTests {
                     phase: phase,
                     progress: progress,
                     primaryPhase: progress * .pi * 18,
-                    harmonicPhase: progress * .pi * 36,
+                    bodyPhase: progress * .pi * 9,
                     isSpeaker: true
                 )
             }

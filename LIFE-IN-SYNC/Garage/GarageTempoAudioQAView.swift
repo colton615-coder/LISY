@@ -6,9 +6,8 @@ struct GarageTempoAudioQAView: View {
     @StateObject private var audioEngine = ElasticSlingshotAudioEngine()
     @State private var mode = GarageTempoInstrumentMode.metronome
     @State private var clickProfile = GarageMetronomeClickProfile.woodblock
-    @State private var guidedProfile = GarageGuidedSwingProfile.cleanAscendingRail
+    @State private var guidedProfile = GarageGuidedSwingProfile.cleanAscendingRailWarm
     @State private var beatsPerMinute = 60.0
-    @State private var guidedClicksEnabled = false
     @State private var restInterval = 5.0
     @State private var showsSwingCapture = false
 
@@ -48,7 +47,6 @@ struct GarageTempoAudioQAView: View {
         .onChange(of: clickProfile) { _, _ in updateRunningAudio() }
         .onChange(of: guidedProfile) { _, _ in updateRunningAudio() }
         .onChange(of: beatsPerMinute) { _, _ in updateRunningAudio() }
-        .onChange(of: guidedClicksEnabled) { _, _ in updateRunningAudio() }
         .onChange(of: restInterval) { _, _ in updateRunningAudio() }
         .fullScreenCover(isPresented: $showsSwingCapture) {
             SwingCaptureView { _ in
@@ -153,17 +151,11 @@ struct GarageTempoAudioQAView: View {
 
     private var guidedControls: some View {
         VStack(spacing: 12) {
-            ForEach(GarageGuidedSwingProfile.listeningOrder) { profile in
+            ForEach(GarageGuidedSwingProfile.qaListeningOrder) { profile in
                 qaChoice(title: profile.audioProfile.displayName, selected: guidedProfile == profile) {
                     guidedProfile = profile
                     previewGuided(profile)
                 }
-            }
-
-            if guidedProfile != .cleanAscendingRail {
-                Toggle("Background rhythm clicks", isOn: $guidedClicksEnabled)
-                    .tint(GaragePremiumPalette.gold)
-                    .foregroundStyle(GarageProTheme.textPrimary)
             }
 
             Picker("Silent rest", selection: $restInterval) {
@@ -219,7 +211,7 @@ struct GarageTempoAudioQAView: View {
             soundProfile: guidedProfile.engineProfile,
             metronomeStartProfile: clickProfile,
             metronomeImpactProfile: clickProfile,
-            guidedClicksEnabled: mode == .build && guidedProfile != .cleanAscendingRail && guidedClicksEnabled,
+            guidedClicksEnabled: false,
             instrumentMode: mode
         )
     }
@@ -232,7 +224,7 @@ struct GarageTempoAudioQAView: View {
             soundProfile: guidedProfile.engineProfile,
             metronomeStartProfile: clickProfile,
             metronomeImpactProfile: clickProfile,
-            guidedClicksEnabled: mode == .build && guidedProfile != .cleanAscendingRail && guidedClicksEnabled,
+            guidedClicksEnabled: false,
             instrumentMode: mode
         )
     }
@@ -256,7 +248,7 @@ struct GarageTempoAudioQAView: View {
             soundProfile: profile.engineProfile,
             metronomeStartProfile: clickProfile,
             metronomeImpactProfile: clickProfile,
-            guidedClicksEnabled: profile != .cleanAscendingRail && guidedClicksEnabled,
+            guidedClicksEnabled: false,
             instrumentMode: .build
         )
     }

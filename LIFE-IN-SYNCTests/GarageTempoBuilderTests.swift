@@ -35,7 +35,7 @@ struct GarageTempoBuilderTests {
     @Test func guidedListeningOrderContainsOnlyThePreferredProfile() {
         let grouped = GarageGuidedSwingProfile.listeningOrder.map(\.audioProfileID)
 
-        #expect(grouped == [.cleanAscendingRail])
+        #expect(grouped == [.cleanAscendingRailWarm])
     }
 
     @Test func guidedSoundIdentitiesUseGeneratedNativeLayers() {
@@ -44,9 +44,11 @@ struct GarageTempoBuilderTests {
             #expect(phases.allSatisfy { profile.eventPlan[$0].assetName == nil })
         }
 
-        let rail = TempoSoundIdentityProfile.cleanAscendingRail.eventPlan
-        #expect([TempoSoundPhase.build, .downswing, .impact].allSatisfy { rail[$0].synthesisGain > 0 })
-        #expect([TempoSoundPhase.top, .tail].allSatisfy { rail[$0].synthesisGain == 0 })
+        for profile in [TempoSoundIdentityProfile.cleanAscendingRailWarm, .cleanAscendingRailLow] {
+            let rail = profile.eventPlan
+            #expect([TempoSoundPhase.build, .downswing, .impact].allSatisfy { rail[$0].synthesisGain > 0 })
+            #expect([TempoSoundPhase.top, .tail].allSatisfy { rail[$0].synthesisGain == 0 })
+        }
     }
 
     @Test func guidedIdentityImpactsOwnTheStrongestPhaseGain() {
@@ -134,7 +136,7 @@ struct GarageTempoBuilderTests {
             page: page,
             beatsPerMinute: beatsPerMinute,
             recipe: ElasticSlingshotRecipe(),
-            guidedSound: .cleanAscendingRail,
+            guidedSound: .cleanAscendingRailWarm,
             startClick: .woodblock,
             impactClick: .brightSignal,
             hapticsEnabled: false
