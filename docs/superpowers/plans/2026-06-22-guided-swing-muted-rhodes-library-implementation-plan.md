@@ -1,5 +1,7 @@
 # Guided Swing Muted Rhodes Library Implementation Plan
 
+> **Superseded:** Do not implement this plan. The current design authority is `docs/superpowers/specs/2026-06-22-guided-swing-premium-lift-hill-design.md`. A replacement implementation plan will be written only after that spec is approved.
+
 **Date:** 2026-06-22
 
 **Design authority:** `docs/superpowers/specs/2026-06-22-guided-swing-muted-rhodes-library-design.md`
