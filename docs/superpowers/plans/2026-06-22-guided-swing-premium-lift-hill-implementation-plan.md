@@ -6,6 +6,8 @@
 
 **Scope:** Replace the live procedural Guided Swing identity with one sample-backed Premium Lift Hill phrase: chain-lift backswing, slight exhale at the top, silent downswing, and the user-supplied golf-swing WAV aligned to impact.
 
+**Listening baseline:** Candidate 03 approved on 2026-06-22. See `docs/superpowers/specs/2026-06-22-guided-swing-premium-lift-hill-baseline.md`. Production integration remains gated on original-quality wind and exhale WAVs.
+
 ## Goal
 
 Deliver the approved phrase on the live Tempo Builder route without changing navigation, session scheduling, persistence keys, separate Guided Swing and Metronome BPM memory, count-in, rest, haptics, or Metronome audio.
