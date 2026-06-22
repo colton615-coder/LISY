@@ -1,57 +1,56 @@
 #if DEBUG
+import Foundation
 import Testing
 @testable import LIFE_IN_SYNC
 
 struct GuidedSwingInstrumentPhrasePreviewTests {
-    @Test func candidatesHaveFixedRankAndSourcingPriority() {
-        let candidates = GuidedSwingInstrumentPhraseCandidate.allCases
-
-        #expect(candidates.map(\.rank) == [1, 2, 3, 4, 5, 6])
-        #expect(candidates.map(\.sourcingPriority) == [.primary, .secondary, .secondary, .exploratory, .exploratory, .specOnly])
-        #expect(candidates.first == .mutedRhodes)
-    }
-
-    @Test func mutedRhodesUsesTheApprovedMusicalAndAssetContract() {
-        let candidate = GuidedSwingInstrumentPhraseCandidate.mutedRhodes
-
-        #expect(candidate.musicalMap == "A3 → C4 → D4 → silence → A3/D4")
-        #expect(candidate.requiredAssetNames == [
-            "muted_rhodes_01_A3",
-            "muted_rhodes_02_C4",
-            "muted_rhodes_03_D4",
-            "muted_rhodes_impact_A3_D4"
+    @Test func previewUsesExactlyFourNeutralSampleSlots() {
+        #expect(GuidedSwingSamplePreviewDefinition.title == "Muted Rhodes Timing Cue")
+        #expect(GuidedSwingSamplePreviewDefinition.slots.map(\.rawValue) == [
+            "backswing_01",
+            "backswing_02",
+            "backswing_03",
+            "impact_confirm"
         ])
     }
 
-    @Test func playableCandidatesUseTheFixedPhraseTiming() {
-        let playableCandidates = GuidedSwingInstrumentPhraseCandidate.allCases.filter { $0.isSpecOnly == false }
-
-        #expect(GuidedSwingInstrumentPhraseCandidate.eventOffsets == [0.00, 0.58, 1.16, 1.90])
-        #expect(GuidedSwingInstrumentPhraseCandidate.backswingEnd == 1.74)
-        #expect(GuidedSwingInstrumentPhraseCandidate.silentTopPause == 0.16)
-        let measuredPause = GuidedSwingInstrumentPhraseCandidate.eventOffsets.last! - GuidedSwingInstrumentPhraseCandidate.backswingEnd
-        #expect(abs(measuredPause - GuidedSwingInstrumentPhraseCandidate.silentTopPause) < 0.000_001)
-
-        for candidate in playableCandidates {
-            #expect(candidate.events.map(\.assetName) == candidate.requiredAssetNames)
-            #expect(candidate.events.map(\.offset) == GuidedSwingInstrumentPhraseCandidate.eventOffsets)
-            #expect(candidate.requiredAssetNames.count == 4)
-        }
+    @Test func previewUsesApprovedTimingAndSilentBoundary() {
+        #expect(GuidedSwingSamplePreviewDefinition.slots.map(\.offset) == [0.00, 0.58, 1.16, 1.90])
+        #expect(GuidedSwingSamplePreviewDefinition.backswingEnd == 1.74)
+        #expect(abs(GuidedSwingSamplePreviewDefinition.silentTopPause - 0.16) < 0.000_001)
     }
 
-    @Test func eachPlayableLaneHasItsApprovedMusicalMap() {
-        #expect(GuidedSwingInstrumentPhraseCandidate.feltPiano.musicalMap == "G3 → B3 → D4 → silence → G3/D4")
-        #expect(GuidedSwingInstrumentPhraseCandidate.rosewoodMarimba.musicalMap == "A3 → C4 → E4 → silence → A3")
-        #expect(GuidedSwingInstrumentPhraseCandidate.nylonGuitar.musicalMap == "E3 → G3 → B3 → silence → E3/B3")
-        #expect(GuidedSwingInstrumentPhraseCandidate.luxuryUIChime.musicalMap == "C4 → E4 → G4 → silence → C4")
+    @Test func missingOrUnreadableAssetsBlockPreview() {
+        let urls = Dictionary(uniqueKeysWithValues: GuidedSwingSamplePreviewDefinition.slots.map { slot in
+            (slot.rawValue, URL(fileURLWithPath: "/tmp/\(slot.rawValue).wav"))
+        })
+        let missingResolver = GuidedSwingSamplePreviewAssetResolver(
+            assetURL: { name in name == "impact_confirm" ? nil : urls[name] },
+            canDecode: { _ in true }
+        )
+        let unreadableResolver = GuidedSwingSamplePreviewAssetResolver(
+            assetURL: { urls[$0] },
+            canDecode: { $0.lastPathComponent != "backswing_02.wav" }
+        )
+
+        #expect(GuidedSwingSamplePreviewDefinition.canPreview(using: missingResolver) == false)
+        #expect(GuidedSwingSamplePreviewDefinition.states(using: missingResolver)[.impactConfirm] == .missing)
+        #expect(GuidedSwingSamplePreviewDefinition.canPreview(using: unreadableResolver) == false)
+        #expect(GuidedSwingSamplePreviewDefinition.states(using: unreadableResolver)[.backswing02] == .unreadable)
     }
 
-    @Test func humanRhythmRemainsSpecOnlyAndUnplayable() {
-        let candidate = GuidedSwingInstrumentPhraseCandidate.humanRhythm
+    @Test func allFourDecodableAssetsEnablePreview() {
+        let resolver = GuidedSwingSamplePreviewAssetResolver(
+            assetURL: { URL(fileURLWithPath: "/tmp/\($0).wav") },
+            canDecode: { _ in true }
+        )
 
-        #expect(candidate.sourcingPriority == .specOnly)
-        #expect(candidate.requiredAssetNames.isEmpty)
-        #expect(candidate.events.isEmpty)
+        #expect(GuidedSwingSamplePreviewDefinition.canPreview(using: resolver))
+        #expect(GuidedSwingSamplePreviewDefinition.states(using: resolver).values.allSatisfy { $0 == .present })
+    }
+
+    @Test func previewExplicitlyDisallowsGeneratedFallback() {
+        #expect(GuidedSwingSamplePreviewDefinition.allowsGeneratedFallback == false)
     }
 }
 #endif

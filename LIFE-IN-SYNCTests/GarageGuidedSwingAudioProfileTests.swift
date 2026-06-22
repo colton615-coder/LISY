@@ -6,16 +6,18 @@ struct GarageGuidedSwingAudioProfileTests {
         #expect(GarageGuidedSwingAudioProfileLibrary.defaultProfile.id == .cleanAscendingRailWarm)
         #expect(GarageGuidedSwingAudioProfileLibrary.profile(for: .cleanAscendingRailWarm).displayName == "Clean Ascending Rail Warm")
 
-        for legacyProfile in GarageGuidedSwingProfile.legacyProfiles {
-            #expect(GarageGuidedSwingProfile.migrated(from: legacyProfile.rawValue) == .cleanAscendingRailWarm)
+        let legacyRawValues = [
+            "cleanAscendingRail", "tourWhip", "heavySteel", "glassLine", "airCut",
+            "digitalVector", "rangeWood", "powerTour", "heavyCoil", "whipLine"
+        ]
+        for rawValue in legacyRawValues {
+            #expect(GarageGuidedSwingProfile.migrated(from: rawValue) == .cleanAscendingRailWarm)
         }
     }
 
-    @Test func warmIsAppFacingAndQAContainsExactlyTwoTunedVariants() {
-        #expect(GarageGuidedSwingProfile.listeningOrder == [.cleanAscendingRailWarm])
+    @Test func warmIsDefaultAndQAContainsExactlyTwoTunedVariants() {
         #expect(GarageGuidedSwingProfile.qaListeningOrder == [.cleanAscendingRailWarm, .cleanAscendingRailLow])
         #expect(GarageGuidedSwingProfile.qaListeningOrder.map(\.engineProfile) == [.cleanAscendingRailWarm, .cleanAscendingRailLow])
-        #expect(GarageGuidedSwingProfile.legacyProfiles.contains(.tourWhip))
     }
 
     @Test func tunedRailsKeepSilentTopAndTail() {

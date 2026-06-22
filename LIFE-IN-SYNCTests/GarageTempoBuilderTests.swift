@@ -32,10 +32,12 @@ struct GarageTempoBuilderTests {
         #expect(grouped.count == GarageMetronomeClickProfile.allCases.count)
     }
 
-    @Test func guidedListeningOrderContainsOnlyThePreferredProfile() {
-        let grouped = GarageGuidedSwingProfile.listeningOrder.map(\.audioProfileID)
-
-        #expect(grouped == [.cleanAscendingRailWarm])
+    @Test func guidedProfilesContainOnlyTheApprovedRails() {
+        #expect(GarageGuidedSwingProfile.allCases == [
+            .cleanAscendingRail,
+            .cleanAscendingRailWarm,
+            .cleanAscendingRailLow
+        ])
     }
 
     @Test func guidedSoundIdentitiesUseGeneratedNativeLayers() {
@@ -48,20 +50,6 @@ struct GarageTempoBuilderTests {
             let rail = profile.eventPlan
             #expect([TempoSoundPhase.build, .downswing, .impact].allSatisfy { rail[$0].synthesisGain > 0 })
             #expect([TempoSoundPhase.top, .tail].allSatisfy { rail[$0].synthesisGain == 0 })
-        }
-    }
-
-    @Test func guidedIdentityImpactsOwnTheStrongestPhaseGain() {
-        for profile in [TempoSoundIdentityProfile.powerTour, .heavyCoil, .whipLine] {
-            let plan = profile.eventPlan
-            let supportingGains = [
-                plan[.build].synthesisGain,
-                plan[.top].synthesisGain,
-                plan[.downswing].synthesisGain,
-                plan[.tail].synthesisGain
-            ]
-
-            #expect(plan[.impact].synthesisGain > supportingGains.max()!)
         }
     }
 

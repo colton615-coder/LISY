@@ -1,17 +1,14 @@
-# Guided Swing Instrument Phrase Preview Assets
+# Muted Rhodes Timing Cue Preview Assets
 
-This folder intentionally contains no audio yet. The existing repository assets do not provide clean, license-documented Rhodes, felt piano, rosewood marimba, nylon guitar, or premium UI-instrument sources.
+This DEBUG-only audition lane intentionally contains no audio. The user must manually source four legally usable, short, dry WAV files:
 
-Each playable candidate requires four mono WAV files. These names are the runtime contract:
+- `backswing_01.wav`
+- `backswing_02.wav`
+- `backswing_03.wav`
+- `impact_confirm.wav`
 
-- Muted Rhodes: `muted_rhodes_01_A3.wav`, `muted_rhodes_02_C4.wav`, `muted_rhodes_03_D4.wav`, `muted_rhodes_impact_A3_D4.wav`
-- Felt Piano: `felt_piano_01_G3.wav`, `felt_piano_02_B3.wav`, `felt_piano_03_D4.wav`, `felt_piano_impact_G3_D4.wav`
-- Rosewood Marimba: `rosewood_marimba_01_A3.wav`, `rosewood_marimba_02_C4.wav`, `rosewood_marimba_03_E4.wav`, `rosewood_marimba_impact_A3.wav`
-- Nylon Guitar: `nylon_guitar_01_E3.wav`, `nylon_guitar_02_G3.wav`, `nylon_guitar_03_B3.wav`, `nylon_guitar_impact_E3_B3.wav`
-- Luxury UI Chime: `luxury_ui_chime_01_C4.wav`, `luxury_ui_chime_02_E4.wav`, `luxury_ui_chime_03_G4.wav`, `luxury_ui_chime_impact_C4.wav`
+Use mono PCM at 44.1 or 48 kHz with conservative peaks and tightly trimmed tails. The preview schedules the backswing cues at 0.00, 0.58, and 1.16 seconds, stops lingering playback at 1.74 seconds, preserves 160 milliseconds of silence, and starts the impact confirmation at 1.90 seconds.
 
-Source in this order: Muted Rhodes first, Felt Piano second, and Rosewood Marimba third. Nylon Guitar and Luxury UI Chime remain exploratory. Human Rhythm is spec-only and requires no files.
+Before adding any WAV, record its actual source, author or library, original URL, license, required attribution, edits, and phrase role in `GUIDED_SWING_INSTRUMENT_SOURCE_MANIFEST.json`. Do not add files with unclear provenance.
 
-Use 44.1 kHz or 48 kHz PCM, short clean tails, conservative peaks, and no baked-in timing gaps. The preview player places the events at 0.00, 0.58, 1.16, and 1.90 seconds, leaving 160 milliseconds of true silence after the 1.74-second backswing window.
-
-Before adding a WAV, add its real source, author/library, license, original URL, edits, and role to `GUIDED_SWING_INSTRUMENT_SOURCE_MANIFEST.json`. The unique filename prevents a bundle-resource collision with the live Metronome manifest. Do not use a file with unclear provenance. Do not substitute an oscillator mock and relabel it as an instrument recording.
+Missing or unreadable files keep Preview disabled. There is no oscillator, generated, live-engine, or other audio fallback. This lane does not replace live Guided Swing.

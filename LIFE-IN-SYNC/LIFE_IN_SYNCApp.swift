@@ -11,7 +11,6 @@ struct LifeInSyncApp: App {
         let isRunningGarageAuthorityQA = ProcessInfo.processInfo.arguments.contains("GARAGE_DRILL_AUTHORITY_QA")
             || ProcessInfo.processInfo.arguments.contains("GARAGE_DRILL_AUTHORITY_QA_SUMMARY")
             || ProcessInfo.processInfo.arguments.contains("GARAGE_TEMPO_AUDIO_QA")
-            || ProcessInfo.processInfo.arguments.contains("GUIDED_SWING_INSTRUMENT_PREVIEW")
         #else
         let isRunningGarageAuthorityQA = false
         #endif

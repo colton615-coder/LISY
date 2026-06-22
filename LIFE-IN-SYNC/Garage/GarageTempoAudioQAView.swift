@@ -4,6 +4,7 @@ import SwiftUI
 @MainActor
 struct GarageTempoAudioQAView: View {
     @StateObject private var audioEngine = ElasticSlingshotAudioEngine()
+    @StateObject private var samplePreviewPlayer = GuidedSwingSamplePreviewPlayer()
     @State private var mode = GarageTempoInstrumentMode.metronome
     @State private var clickProfile = GarageMetronomeClickProfile.woodblock
     @State private var guidedProfile = GarageGuidedSwingProfile.cleanAscendingRailWarm
@@ -34,6 +35,10 @@ struct GarageTempoAudioQAView: View {
                         clickProfileGrid
                     } else {
                         guidedControls
+                        GuidedSwingSamplePreviewSection(
+                            player: samplePreviewPlayer,
+                            onPreviewStart: { audioEngine.stop() }
+                        )
                     }
 
                     transportControls
@@ -43,7 +48,10 @@ struct GarageTempoAudioQAView: View {
                 .padding(.bottom, 24)
             }
         }
-        .onChange(of: mode) { _, _ in updateRunningAudio() }
+        .onChange(of: mode) { _, _ in
+            samplePreviewPlayer.stop()
+            updateRunningAudio()
+        }
         .onChange(of: clickProfile) { _, _ in updateRunningAudio() }
         .onChange(of: guidedProfile) { _, _ in updateRunningAudio() }
         .onChange(of: beatsPerMinute) { _, _ in updateRunningAudio() }
@@ -56,6 +64,7 @@ struct GarageTempoAudioQAView: View {
             }
         }
         .onDisappear {
+            samplePreviewPlayer.stop()
             audioEngine.stop()
         }
     }
@@ -205,6 +214,7 @@ struct GarageTempoAudioQAView: View {
     }
 
     private func start() {
+        samplePreviewPlayer.stop()
         audioEngine.start(
             beatsPerMinute: beatsPerMinute,
             recipe: recipe,
@@ -230,6 +240,7 @@ struct GarageTempoAudioQAView: View {
     }
 
     private func preview(_ profile: GarageMetronomeClickProfile) {
+        samplePreviewPlayer.stop()
         audioEngine.playOneCycle(
             beatsPerMinute: beatsPerMinute,
             recipe: recipe,
@@ -242,6 +253,7 @@ struct GarageTempoAudioQAView: View {
     }
 
     private func previewGuided(_ profile: GarageGuidedSwingProfile) {
+        samplePreviewPlayer.stop()
         audioEngine.playOneCycle(
             beatsPerMinute: beatsPerMinute,
             recipe: recipe,

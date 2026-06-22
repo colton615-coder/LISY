@@ -11,10 +11,7 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             #if DEBUG
-            if LaunchAffirmationConfiguration.shouldRunGuidedSwingInstrumentPreview {
-                GuidedSwingInstrumentPhrasePreviewView()
-                    .transition(.opacity)
-            } else if LaunchAffirmationConfiguration.shouldRunGarageTempoAudioQA {
+            if LaunchAffirmationConfiguration.shouldRunGarageTempoAudioQA {
                 GarageTempoAudioQAView()
                     .transition(.opacity)
             } else if LaunchAffirmationConfiguration.shouldRunGarageAuthorityQA {
@@ -56,7 +53,6 @@ private enum LaunchAffirmationConfiguration {
     static let garageAuthorityQAArgument = "GARAGE_DRILL_AUTHORITY_QA"
     static let garageAuthorityQASummaryArgument = "GARAGE_DRILL_AUTHORITY_QA_SUMMARY"
     static let garageTempoAudioQAArgument = "GARAGE_TEMPO_AUDIO_QA"
-    static let guidedSwingInstrumentPreviewArgument = "GUIDED_SWING_INSTRUMENT_PREVIEW"
 
     static var shouldSkip: Bool {
         ProcessInfo.processInfo.arguments.contains(skipArgument)
@@ -72,9 +68,6 @@ private enum LaunchAffirmationConfiguration {
         ProcessInfo.processInfo.arguments.contains(garageTempoAudioQAArgument)
     }
 
-    static var shouldRunGuidedSwingInstrumentPreview: Bool {
-        ProcessInfo.processInfo.arguments.contains(guidedSwingInstrumentPreviewArgument)
-    }
     #endif
 }
 
