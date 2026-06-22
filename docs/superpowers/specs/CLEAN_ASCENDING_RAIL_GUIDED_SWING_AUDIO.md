@@ -1,8 +1,10 @@
 # Clean Ascending Rail Guided Swing Audio
 
-- Status: warm/low timbre tuning implemented; ten-swing physical-device approval pending
+- Status: rejected and superseded by `GUIDED_SWING_INSTRUMENT_PHRASE_PREVIEW.md`
 - Date: 2026-06-21
 - Scope: Garage Tempo Builder Guided Swing audio only
+
+> Physical iPhone listening rejected the continuous oscillator family even in the lower Warm and Low registers. Retain this document only as implementation history and saved-value compatibility context. Do not continue tuning the rail.
 
 ## Direction
 

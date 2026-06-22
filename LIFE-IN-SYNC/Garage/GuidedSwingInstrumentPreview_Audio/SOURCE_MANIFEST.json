@@ -1,0 +1,69 @@
+{
+  "status": "awaiting_approved_source_assets",
+  "license_ledger": "SOURCE_MANIFEST.json",
+  "timing": {
+    "event_offsets_seconds": [0.0, 0.58, 1.16, 1.90],
+    "backswing_end_seconds": 1.74,
+    "silent_top_pause_seconds": 0.16
+  },
+  "candidates": [
+    {
+      "id": "mutedRhodes",
+      "rank": 1,
+      "priority": "primary",
+      "status": "assets_missing",
+      "required_files": ["muted_rhodes_01_A3.wav", "muted_rhodes_02_C4.wav", "muted_rhodes_03_D4.wav", "muted_rhodes_impact_A3_D4.wav"],
+      "files": []
+    },
+    {
+      "id": "feltPiano",
+      "rank": 2,
+      "priority": "secondary",
+      "status": "assets_missing",
+      "required_files": ["felt_piano_01_G3.wav", "felt_piano_02_B3.wav", "felt_piano_03_D4.wav", "felt_piano_impact_G3_D4.wav"],
+      "files": []
+    },
+    {
+      "id": "rosewoodMarimba",
+      "rank": 3,
+      "priority": "secondary",
+      "status": "assets_missing",
+      "required_files": ["rosewood_marimba_01_A3.wav", "rosewood_marimba_02_C4.wav", "rosewood_marimba_03_E4.wav", "rosewood_marimba_impact_A3.wav"],
+      "files": []
+    },
+    {
+      "id": "nylonGuitar",
+      "rank": 4,
+      "priority": "exploratory",
+      "status": "assets_missing",
+      "required_files": ["nylon_guitar_01_E3.wav", "nylon_guitar_02_G3.wav", "nylon_guitar_03_B3.wav", "nylon_guitar_impact_E3_B3.wav"],
+      "files": []
+    },
+    {
+      "id": "luxuryUIChime",
+      "rank": 5,
+      "priority": "exploratory",
+      "status": "assets_missing",
+      "required_files": ["luxury_ui_chime_01_C4.wav", "luxury_ui_chime_02_E4.wav", "luxury_ui_chime_03_G4.wav", "luxury_ui_chime_impact_C4.wav"],
+      "files": []
+    },
+    {
+      "id": "humanRhythm",
+      "rank": 6,
+      "priority": "spec_only",
+      "status": "spec_only",
+      "required_files": [],
+      "files": []
+    }
+  ],
+  "required_file_fields": [
+    "file_name",
+    "source_library",
+    "source_url",
+    "source_author",
+    "license",
+    "attribution_required",
+    "edits",
+    "phrase_role"
+  ]
+}
