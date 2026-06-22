@@ -14,4 +14,4 @@ Source in this order: Muted Rhodes first, Felt Piano second, and Rosewood Marimb
 
 Use 44.1 kHz or 48 kHz PCM, short clean tails, conservative peaks, and no baked-in timing gaps. The preview player places the events at 0.00, 0.58, 1.16, and 1.90 seconds, leaving 160 milliseconds of true silence after the 1.74-second backswing window.
 
-Before adding a WAV, add its real source, author/library, license, original URL, edits, and role to `SOURCE_MANIFEST.json`. Do not use a file with unclear provenance. Do not substitute an oscillator mock and relabel it as an instrument recording.
+Before adding a WAV, add its real source, author/library, license, original URL, edits, and role to `GUIDED_SWING_INSTRUMENT_SOURCE_MANIFEST.json`. The unique filename prevents a bundle-resource collision with the live Metronome manifest. Do not use a file with unclear provenance. Do not substitute an oscillator mock and relabel it as an instrument recording.

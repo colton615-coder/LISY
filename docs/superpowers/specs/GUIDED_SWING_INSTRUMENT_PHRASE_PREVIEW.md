@@ -43,7 +43,7 @@ Do not build five complete sound systems before proving one lane. Source and tes
 
 ## Asset And License Gate
 
-The repository currently has no suitable instrument samples. Existing CC0 percussion recordings and project-generated physical identity files belong to rejected sound families. No candidate becomes playable until all four required WAVs are present and every source has a truthful manifest entry with author/library, original URL, license, edits, and phrase role.
+The repository currently has no suitable instrument samples. Existing CC0 percussion recordings and project-generated physical identity files belong to rejected sound families. No candidate becomes playable until all four required WAVs are present and every source has a truthful entry in `GUIDED_SWING_INSTRUMENT_SOURCE_MANIFEST.json` with author/library, original URL, license, edits, and phrase role.
 
 Audio should be mono PCM at 44.1 or 48 kHz, peak-safe, tightly trimmed, and mastered for repeated iPhone-speaker listening. Missing files must remain visibly unavailable; there is no procedural fallback.
 

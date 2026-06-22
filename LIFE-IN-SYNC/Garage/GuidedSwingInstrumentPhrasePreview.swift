@@ -1,5 +1,6 @@
 #if DEBUG
 import AVFoundation
+import Combine
 import SwiftUI
 
 enum GuidedSwingInstrumentPhraseCandidate: String, CaseIterable, Identifiable {

@@ -1,6 +1,6 @@
 {
   "status": "awaiting_approved_source_assets",
-  "license_ledger": "SOURCE_MANIFEST.json",
+  "license_ledger": "GUIDED_SWING_INSTRUMENT_SOURCE_MANIFEST.json",
   "timing": {
     "event_offsets_seconds": [0.0, 0.58, 1.16, 1.90],
     "backswing_end_seconds": 1.74,
