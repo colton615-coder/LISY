@@ -4,19 +4,15 @@ import Combine
 import SwiftUI
 
 enum GuidedSwingSamplePreviewSlot: String, CaseIterable, Identifiable, Sendable {
-    case backswing01 = "backswing_01"
-    case backswing02 = "backswing_02"
-    case backswing03 = "backswing_03"
-    case impactConfirm = "impact_confirm"
+    case backswingPremiumLiftHill = "backswing_premium_lift_hill"
+    case impactGolfSwing = "impact_golf_swing"
 
     var id: String { rawValue }
 
     var offset: TimeInterval {
         switch self {
-        case .backswing01: 0.00
-        case .backswing02: 0.58
-        case .backswing03: 1.16
-        case .impactConfirm: 1.90
+        case .backswingPremiumLiftHill: 0.00
+        case .impactGolfSwing: 2.00
         }
     }
 }
@@ -33,8 +29,8 @@ struct GuidedSwingSamplePreviewAssetResolver {
 
     static let bundled = Self(
         assetURL: { name in
-            Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "GuidedSwingInstrumentPreview_Audio")
-                ?? Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "Garage/GuidedSwingInstrumentPreview_Audio")
+            Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "GuidedSwing_Audio")
+                ?? Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "Garage/GuidedSwing_Audio")
                 ?? Bundle.main.url(forResource: name, withExtension: "wav")
         },
         canDecode: { url in
@@ -50,10 +46,10 @@ struct GuidedSwingSamplePreviewAssetResolver {
 }
 
 struct GuidedSwingSamplePreviewDefinition {
-    static let title = "Muted Rhodes Timing Cue"
+    static let title = "Premium Lift Hill"
     static let slots = GuidedSwingSamplePreviewSlot.allCases
-    static let backswingEnd: TimeInterval = 1.74
-    static let impactOffset: TimeInterval = 1.90
+    static let backswingEnd: TimeInterval = 1.50
+    static let impactOffset: TimeInterval = 2.00
     static let silentTopPause: TimeInterval = impactOffset - backswingEnd
     static let allowsGeneratedFallback = false
 
@@ -72,7 +68,7 @@ struct GuidedSwingSamplePreviewDefinition {
 final class GuidedSwingSamplePreviewPlayer: ObservableObject {
     @Published private(set) var slotStates: [GuidedSwingSamplePreviewSlot: GuidedSwingSamplePreviewAssetState] = [:]
     @Published private(set) var isPlaying = false
-    @Published private(set) var statusText = "Waiting for four source WAV files"
+    @Published private(set) var statusText = "Waiting for two production WAV files"
 
     private let resolver: GuidedSwingSamplePreviewAssetResolver
     private var players: [AVAudioPlayer] = []
@@ -90,7 +86,7 @@ final class GuidedSwingSamplePreviewPlayer: ObservableObject {
     func refreshAvailability() {
         slotStates = GuidedSwingSamplePreviewDefinition.states(using: resolver)
         if isPlaying == false {
-            statusText = canPreview ? "Four samples ready" : "Samples missing or unreadable"
+            statusText = canPreview ? "Two samples ready" : "Samples missing or unreadable"
         }
     }
 
@@ -128,17 +124,15 @@ final class GuidedSwingSamplePreviewPlayer: ObservableObject {
         previewTask = Task { [weak self] in
             guard let self else { return }
 
-            guard await playBackswingSlot(.backswing01, after: 0) else { return }
-            guard await playBackswingSlot(.backswing02, after: 0.58) else { return }
-            guard await playBackswingSlot(.backswing03, after: 0.58) else { return }
+            guard await playBackswingSlot(.backswingPremiumLiftHill, after: 0) else { return }
 
-            await sleep(seconds: GuidedSwingSamplePreviewDefinition.backswingEnd - 1.16)
+            await sleep(seconds: GuidedSwingSamplePreviewDefinition.backswingEnd)
             guard Task.isCancelled == false else { return }
             stopPlayers()
 
             await sleep(seconds: GuidedSwingSamplePreviewDefinition.silentTopPause)
             guard Task.isCancelled == false else { return }
-            guard playSlot(.impactConfirm) else { return }
+            guard playSlot(.impactGolfSwing) else { return }
 
             await sleep(seconds: 0.50)
             guard Task.isCancelled == false else { return }
@@ -215,7 +209,7 @@ struct GuidedSwingSamplePreviewSection: View {
                 slotRow(slot)
             }
 
-            Text("Three dry backswing cues over 1.74s, 160ms forced silence, then one compact impact confirmation.")
+            Text("Chain lift to 1.50s, exact silence to 2.00s, then the supplied golf-swing WAV.")
                 .font(.system(size: 11, weight: .medium, design: .rounded))
                 .foregroundStyle(GarageProTheme.textSecondary)
 
@@ -238,7 +232,7 @@ struct GuidedSwingSamplePreviewSection: View {
                 }
                 .buttonStyle(GarageSamplePreviewButtonStyle(isActive: player.isPlaying))
                 .disabled(player.canPreview == false && player.isPlaying == false)
-                .accessibilityHint(player.canPreview ? "Plays the four sample audition" : "Requires four present and decodable WAV files")
+                .accessibilityHint(player.canPreview ? "Plays the two-sample lift hill audition" : "Requires two present and decodable WAV files")
             }
         }
         .padding(.vertical, 4)

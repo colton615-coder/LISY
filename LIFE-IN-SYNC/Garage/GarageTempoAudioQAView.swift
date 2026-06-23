@@ -7,7 +7,7 @@ struct GarageTempoAudioQAView: View {
     @StateObject private var samplePreviewPlayer = GuidedSwingSamplePreviewPlayer()
     @State private var mode = GarageTempoInstrumentMode.metronome
     @State private var clickProfile = GarageMetronomeClickProfile.woodblock
-    @State private var guidedProfile = GarageGuidedSwingProfile.cleanAscendingRailWarm
+    @State private var guidedProfile = GarageGuidedSwingProfile.premiumLiftHill
     @State private var beatsPerMinute = 60.0
     @State private var restInterval = 5.0
     @State private var showsSwingCapture = false

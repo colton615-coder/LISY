@@ -1,0 +1,71 @@
+{
+  "kit_id": "guided_swing_premium_lift_hill_no_exhale",
+  "status": "candidate_1_approved_for_live_integration",
+  "fallback_policy": "none",
+  "sample_rate_hz": 44100,
+  "channels": 1,
+  "bit_depth": 24,
+  "notes": [
+    "No exhale, breath, wind, downswing sweep, synthetic transition, or generated impact layer is part of this kit.",
+    "The renderer owns silence between chain stop and impact.",
+    "Production files were split from the measured external no-exhale Candidate 01 composite."
+  ],
+  "candidate_source": {
+    "path": "/Users/colton/Desktop/LIFE-IN-SYNC Guided Swing Audio QA/Premium Lift Hill No Exhale Candidate 01/premium_lift_hill_no_exhale_candidate_01.wav",
+    "sha256": "7504c0b6706c050b20765875f045ee80a31f41c6404c2bd9b2eb228fcd9927f2",
+    "format": "mono 44.1 kHz 24-bit PCM WAV",
+    "duration_seconds": 2.48,
+    "timing": {
+      "chain_lift_seconds": "0.000-1.500",
+      "silence_seconds": "1.500-2.000",
+      "impact_start_seconds": 2.0,
+      "impact_peak_seconds": 2.006644
+    }
+  },
+  "assets": [
+    {
+      "role": "backswing_chain_lift",
+      "filename": "backswing_premium_lift_hill.wav",
+      "sha256": "3308eccd7f8907d46c7def8c75e58454c74913a23787678ca2fe8b7ceb69a06f",
+      "duration_seconds": 1.5,
+      "source_file": "/Users/colton/Downloads/171510__esperar__rollercoaster-ratchet.wav",
+      "source_sha256": "df8513792242c7db2a47dbbe545b61b8af0431f79a5e2b4d8e2140fa3f91316f",
+      "source_url": "https://freesound.org/people/esperar/sounds/171510/",
+      "source_author": "esperar",
+      "source_license": "Creative Commons 0",
+      "source_format": "mono 44.1 kHz 16-bit PCM WAV",
+      "source_duration_seconds": 18.715283,
+      "selected_source_range_seconds": "11.350-12.850",
+      "edits": [
+        "extracted selected source range",
+        "applied light smoothing and chain shaping from Candidate 01",
+        "applied rising load envelope",
+        "applied short de-click fade at chain stop",
+        "peak matched conservatively"
+      ]
+    },
+    {
+      "role": "impact_golf_swing",
+      "filename": "impact_golf_swing.wav",
+      "sha256": "af1a645b299b98e01529af9b9b17aeea33bf490ea3dd066d2f971764711cf6c0",
+      "duration_seconds": 0.48,
+      "source_file": "/Users/colton/Downloads/816986__luisa_sanchez__golf-swing.wav",
+      "source_sha256": "6a7d770081690a0b7959f6ddba641ff853c494757c7af0bba02540739a919e90",
+      "source_url": "https://freesound.org/people/Luisa_Sanchez/sounds/816986/",
+      "source_author": "Luisa_Sanchez",
+      "source_license": "Creative Commons 0",
+      "source_format": "mono 44.1 kHz 24-bit PCM WAV",
+      "source_duration_seconds": 0.658435,
+      "source_audible_onset_seconds": 0.155351,
+      "source_peak_seconds": 0.20381,
+      "selected_source_range_seconds": "0.198-0.658",
+      "candidate_peak_seconds_after_impact": 0.006644,
+      "edits": [
+        "trimmed leading pre-strike motion so strike lands at impact",
+        "applied short de-click fades",
+        "peak matched conservatively",
+        "preserved natural strike and tail without added layers"
+      ]
+    }
+  ]
+}

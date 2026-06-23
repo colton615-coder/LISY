@@ -14,7 +14,7 @@ struct GarageTempoBuilderView: View {
     @AppStorage("garage.tempoBuilder.bpm") private var guidedSwingBPM = 60.0
     @AppStorage("garage.tempoBuilder.metronomeStartSound") private var startClickRawValue = GarageMetronomeClickProfile.woodblock.rawValue
     @AppStorage("garage.tempoBuilder.metronomeImpactSound") private var impactClickRawValue = GarageMetronomeClickProfile.brightSignal.rawValue
-    @AppStorage("garage.tempoBuilder.guidedSound") private var guidedRawValue = GarageGuidedSwingProfile.cleanAscendingRailWarm.rawValue
+    @AppStorage("garage.tempoBuilder.guidedSound") private var guidedRawValue = GarageGuidedSwingProfile.premiumLiftHill.rawValue
     @AppStorage("garage.tempoBuilder.restInterval") private var restInterval = 5.0
     @AppStorage("garage.tempoBuilder.haptics") private var hapticsEnabled = true
 

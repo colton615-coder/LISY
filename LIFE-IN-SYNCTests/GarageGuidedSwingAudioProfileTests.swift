@@ -2,41 +2,41 @@ import Testing
 @testable import LIFE_IN_SYNC
 
 struct GarageGuidedSwingAudioProfileTests {
-    @Test func cleanAscendingRailIsTheDefaultAndMigratesLegacySelections() {
-        #expect(GarageGuidedSwingAudioProfileLibrary.defaultProfile.id == .cleanAscendingRailWarm)
-        #expect(GarageGuidedSwingAudioProfileLibrary.profile(for: .cleanAscendingRailWarm).displayName == "Clean Ascending Rail Warm")
+    @Test func premiumLiftHillIsTheDefaultAndMigratesLegacySelections() {
+        #expect(GarageGuidedSwingAudioProfileLibrary.defaultProfile.id == .premiumLiftHill)
+        #expect(GarageGuidedSwingAudioProfileLibrary.profile(for: .premiumLiftHill).displayName == "Premium Lift Hill")
 
         let legacyRawValues = [
-            "cleanAscendingRail", "tourWhip", "heavySteel", "glassLine", "airCut",
-            "digitalVector", "rangeWood", "powerTour", "heavyCoil", "whipLine"
+            "cleanAscendingRail", "cleanAscendingRailWarm", "cleanAscendingRailLow",
+            "tourWhip", "heavySteel", "glassLine", "airCut", "digitalVector",
+            "rangeWood", "powerTour", "heavyCoil", "whipLine"
         ]
         for rawValue in legacyRawValues {
-            #expect(GarageGuidedSwingProfile.migrated(from: rawValue) == .cleanAscendingRailWarm)
+            #expect(GarageGuidedSwingProfile.migrated(from: rawValue) == .premiumLiftHill)
         }
     }
 
-    @Test func warmIsDefaultAndQAContainsExactlyTwoTunedVariants() {
-        #expect(GarageGuidedSwingProfile.qaListeningOrder == [.cleanAscendingRailWarm, .cleanAscendingRailLow])
-        #expect(GarageGuidedSwingProfile.qaListeningOrder.map(\.engineProfile) == [.cleanAscendingRailWarm, .cleanAscendingRailLow])
+    @Test func qaContainsOnlyPremiumLiftHill() {
+        #expect(GarageGuidedSwingProfile.qaListeningOrder == [.premiumLiftHill])
+        #expect(GarageGuidedSwingProfile.qaListeningOrder.map(\.engineProfile) == [.premiumLiftHill])
     }
 
-    @Test func tunedRailsKeepSilentTopAndTail() {
-        for profile in [TempoSoundIdentityProfile.cleanAscendingRailWarm, .cleanAscendingRailLow] {
-            let plan = profile.eventPlan
+    @Test func premiumLiftHillUsesTwoAssetsAndNoGeneratedFallback() {
+        let plan = TempoSoundIdentityProfile.premiumLiftHill.eventPlan
 
-            #expect(plan[.top].synthesisGain == 0)
-            #expect(plan[.top].silenceWindow == 0...1)
-            #expect(plan[.tail].synthesisGain == 0)
-            #expect(plan[.build].synthesisGain > plan[.downswing].synthesisGain)
-            #expect(plan[.impact].synthesisGain > 0)
-        }
-    }
-
-    @Test func tunedRailsUseTheApprovedLowerRegisters() {
-        #expect(TempoSoundIdentityProfile.cleanAscendingRailWarm.eventPlan[.build].pitch == .rising(from: 180, to: 360))
-        #expect(TempoSoundIdentityProfile.cleanAscendingRailLow.eventPlan[.build].pitch == .rising(from: 140, to: 280))
-        #expect(TempoSoundIdentityProfile.cleanAscendingRailWarm.eventPlan[.impact].pitch == .fixed(300))
-        #expect(TempoSoundIdentityProfile.cleanAscendingRailLow.eventPlan[.impact].pitch == .fixed(230))
+        #expect(plan[.build].assetName == "backswing_premium_lift_hill")
+        #expect(plan[.impact].assetName == "impact_golf_swing")
+        #expect(plan[.build].synthesisGain == 0)
+        #expect(plan[.top].synthesisGain == 0)
+        #expect(plan[.downswing].synthesisGain == 0)
+        #expect(plan[.impact].synthesisGain == 0)
+        #expect(plan[.tail].synthesisGain == 0)
+        #expect(plan[.top].silenceWindow == 0...1)
+        #expect(plan[.downswing].silenceWindow == 0...1)
+        #expect(TempoSoundIdentityProfile.requiredAssetNames == [
+            "backswing_premium_lift_hill",
+            "impact_golf_swing"
+        ])
     }
 
     @Test func profileIDsAreUniqueAndComplete() {
@@ -57,7 +57,7 @@ struct GarageGuidedSwingAudioProfileTests {
         }
     }
 
-    @Test func profilesContainUsableScaffoldMetadata() {
+    @Test func profilesContainUsableMetadata() {
         for profile in GarageGuidedSwingAudioProfileLibrary.all + GarageGuidedSwingAudioProfileLibrary.legacyProfiles {
             #expect(profile.displayName.isEmpty == false)
             #expect(profile.shortDescription.isEmpty == false)
@@ -66,32 +66,5 @@ struct GarageGuidedSwingAudioProfileTests {
             #expect(profile.layers.allSatisfy { (0...1).contains($0.relativeIntensity) })
             #expect(profile.isFinalMasteredAudio == false)
         }
-    }
-
-    @Test func cleanAscendingRailProducesBoundedDistinctAudioPhases() {
-        let phases: [TempoSoundPhase] = [.build, .top, .downswing, .impact, .tail]
-        let rendered = Dictionary(uniqueKeysWithValues: phases.map { phase in
-            let samples = (0..<512).map { index in
-                let progress = Double(index) / 511
-                return GarageCleanAscendingRailSynthesis.sample(
-                    phase: phase,
-                    progress: progress,
-                    primaryPhase: progress * .pi * 18,
-                    bodyPhase: progress * .pi * 9,
-                    isSpeaker: true
-                )
-            }
-            return (phase, samples)
-        })
-
-        #expect(rendered[.build]!.contains { abs($0) > 0.01 })
-        #expect(rendered[.impact]!.contains { abs($0) > 0.01 })
-        #expect(rendered[.top]!.allSatisfy { $0 == 0 })
-        #expect(rendered[.tail]!.allSatisfy { $0 == 0 })
-        #expect(rendered.values.flatMap { $0 }.allSatisfy { abs($0) < 0.96 })
-
-        let buildTailEnergy = rendered[.build]!.suffix(128).map { abs($0) }.reduce(0, +)
-        let impactTailEnergy = rendered[.impact]!.suffix(128).map { abs($0) }.reduce(0, +)
-        #expect(buildTailEnergy > impactTailEnergy * 2)
     }
 }

@@ -335,21 +335,12 @@ enum GarageMetronomeClickProfile: String, CaseIterable, Identifiable {
 }
 
 enum GarageGuidedSwingProfile: String, CaseIterable, Identifiable {
-    case cleanAscendingRail
-    case cleanAscendingRailWarm
-    case cleanAscendingRailLow
+    case premiumLiftHill
 
     var id: String { rawValue }
 
     var audioProfileID: GarageGuidedSwingAudioProfileID {
-        switch self {
-        case .cleanAscendingRail:
-            return .cleanAscendingRail
-        case .cleanAscendingRailWarm:
-            return .cleanAscendingRailWarm
-        case .cleanAscendingRailLow:
-            return .cleanAscendingRailLow
-        }
+        .premiumLiftHill
     }
 
     var audioProfile: GarageGuidedSwingAudioProfile {
@@ -368,22 +359,19 @@ enum GarageGuidedSwingProfile: String, CaseIterable, Identifiable {
         TempoSoundIdentityProfile(audioProfileID: audioProfileID)
     }
 
-    static let qaListeningOrder: [Self] = [.cleanAscendingRailWarm, .cleanAscendingRailLow]
+    static let qaListeningOrder: [Self] = [.premiumLiftHill]
 
     static func migrated(from rawValue: String) -> Self {
         switch rawValue {
-        case Self.cleanAscendingRailWarm.rawValue, GarageGuidedSwingAudioProfileID.cleanAscendingRailWarm.rawValue:
-            return .cleanAscendingRailWarm
-        case Self.cleanAscendingRailLow.rawValue, GarageGuidedSwingAudioProfileID.cleanAscendingRailLow.rawValue:
-            return .cleanAscendingRailLow
-        case Self.cleanAscendingRail.rawValue,
-             GarageGuidedSwingAudioProfileID.cleanAscendingRail.rawValue:
-            return .cleanAscendingRailWarm
+        case Self.premiumLiftHill.rawValue, GarageGuidedSwingAudioProfileID.premiumLiftHill.rawValue:
+            return .premiumLiftHill
+        case "cleanAscendingRail", "cleanAscendingRailWarm", "cleanAscendingRailLow":
+            return .premiumLiftHill
         case "tourWhip", "heavySteel", "glassLine", "airCut", "digitalVector", "rangeWood",
              "powerTour", "heavyCoil", "whipLine":
-            return .cleanAscendingRailWarm
+            return .premiumLiftHill
         default:
-            return .cleanAscendingRailWarm
+            return .premiumLiftHill
         }
     }
 }
@@ -432,49 +420,37 @@ struct TempoSoundEventPlan: Equatable {
 }
 
 enum TempoSoundIdentityProfile: String, CaseIterable, Identifiable {
-    case cleanAscendingRail
-    case cleanAscendingRailWarm
-    case cleanAscendingRailLow
+    case premiumLiftHill
 
     var id: String { rawValue }
 
     init(audioProfileID: GarageGuidedSwingAudioProfileID) {
         switch audioProfileID {
-        case .cleanAscendingRail:
-            self = .cleanAscendingRail
-        case .cleanAscendingRailWarm:
-            self = .cleanAscendingRailWarm
-        case .cleanAscendingRailLow:
-            self = .cleanAscendingRailLow
+        case .premiumLiftHill:
+            self = .premiumLiftHill
         }
     }
 
     var eventPlan: TempoSoundEventPlan {
         switch self {
-        case .cleanAscendingRail, .cleanAscendingRailWarm:
+        case .premiumLiftHill:
             return TempoSoundEventPlan(
                 phases: [
-                    .build: .generated(gain: 0.76, pitch: .rising(from: 180, to: 360), attack: 0.055, release: 0.10),
+                    .build: .sample(name: "backswing_premium_lift_hill", gain: 1, attack: 0, release: 0),
                     .top: .silent,
-                    .downswing: .generated(gain: 0.44, pitch: .rising(from: 320, to: 380), attack: 0.06, release: 0.70),
-                    .impact: .generated(gain: 0.48, pitch: .fixed(300), attack: 0.03, release: 0.94),
+                    .downswing: .silent,
+                    .impact: .sample(name: "impact_golf_swing", gain: 1, attack: 0, release: 0),
                     .tail: .silent
                 ],
-                outputGain: 0.88
-            )
-        case .cleanAscendingRailLow:
-            return TempoSoundEventPlan(
-                phases: [
-                    .build: .generated(gain: 0.80, pitch: .rising(from: 140, to: 280), attack: 0.055, release: 0.10),
-                    .top: .silent,
-                    .downswing: .generated(gain: 0.46, pitch: .rising(from: 250, to: 310), attack: 0.06, release: 0.70),
-                    .impact: .generated(gain: 0.50, pitch: .fixed(230), attack: 0.03, release: 0.94),
-                    .tail: .silent
-                ],
-                outputGain: 0.90
+                outputGain: 1
             )
         }
     }
+
+    static let requiredAssetNames = [
+        "backswing_premium_lift_hill",
+        "impact_golf_swing"
+    ]
 }
 
 private extension TempoSoundPhasePlan {
@@ -489,6 +465,23 @@ private extension TempoSoundPhasePlan {
             assetGain: 0,
             synthesisGain: gain,
             pitch: pitch,
+            attack: attack,
+            release: release,
+            silenceWindow: nil
+        )
+    }
+
+    static func sample(
+        name: String,
+        gain: Double,
+        attack: Double,
+        release: Double
+    ) -> Self {
+        Self(
+            assetName: name,
+            assetGain: gain,
+            synthesisGain: 0,
+            pitch: .silent,
             attack: attack,
             release: release,
             silenceWindow: nil
@@ -742,11 +735,7 @@ private struct TempoSoundAssetLibrary {
     let samplesByName: [String: [Float]]
 
     static func load() -> Self {
-        let names = Set(
-            TempoSoundIdentityProfile.allCases.flatMap { identity in
-                identity.eventPlan.phases.values.compactMap(\.assetName)
-            }
-        )
+        let names = Set(TempoSoundIdentityProfile.requiredAssetNames)
         let samples = names.reduce(into: [String: [Float]]()) { result, name in
             guard let url = sampleURL(for: name), let sample = loadSample(at: url) else {
 #if DEBUG
@@ -762,9 +751,20 @@ private struct TempoSoundAssetLibrary {
         return Self(samplesByName: samples)
     }
 
+    var isReady: Bool {
+        missingRequiredAssetNames.isEmpty
+    }
+
+    var missingRequiredAssetNames: [String] {
+        TempoSoundIdentityProfile.requiredAssetNames.filter {
+            guard let samples = samplesByName[$0] else { return true }
+            return samples.isEmpty
+        }
+    }
+
     private static func sampleURL(for name: String) -> URL? {
-        Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "Metronome_Audio")
-            ?? Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "Garage/Metronome_Audio")
+        Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "GuidedSwing_Audio")
+            ?? Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "Garage/GuidedSwing_Audio")
             ?? Bundle.main.url(forResource: name, withExtension: "wav")
     }
 
@@ -792,7 +792,7 @@ private final class ElasticSlingshotRenderState {
     private var configuration = ElasticSlingshotRenderConfiguration(
         beatsPerMinute: 75,
         recipe: ElasticSlingshotRecipe(),
-        soundProfile: .cleanAscendingRailWarm,
+        soundProfile: .premiumLiftHill,
         metronomeStartProfile: .woodblock,
         metronomeImpactProfile: .brightSignal,
         outputRouteFamily: .headphones,
@@ -1034,6 +1034,11 @@ private final class ElasticSlingshotRenderState {
         let rawSample: Double
         if configuration.instrumentMode == .metronome {
             rawSample = 0
+        } else if configuration.soundProfile == .premiumLiftHill {
+            rawSample = premiumLiftHillSample(
+                at: relativeFrame,
+                configuration: configuration
+            )
         } else {
             switch phase(for: relativeFrame, configuration: configuration) {
             case let .takeback(progress):
@@ -1053,6 +1058,48 @@ private final class ElasticSlingshotRenderState {
 
         let guideSample = slowTempoGuideSample(at: relativeFrame, configuration: configuration)
         return (rawSample + guideSample) * playbackEnvelope(at: frame, configuration: configuration)
+    }
+
+    private func premiumLiftHillSample(
+        at relativeFrame: AVAudioFramePosition,
+        configuration: ElasticSlingshotRenderConfiguration
+    ) -> Double {
+        let totalFrames = max(frames(for: configuration.totalDuration), 1)
+        let loopFrames = max(frames(for: configuration.loopDuration), totalFrames)
+        let cycleFrame: AVAudioFramePosition
+        switch configuration.mode {
+        case .continuous:
+            cycleFrame = relativeFrame % loopFrames
+        case .oneCycle:
+            cycleFrame = relativeFrame
+        }
+
+        let topFrame = max(frames(for: configuration.takebackDuration), 1)
+        let impactFrame = max(frames(for: configuration.totalDuration), topFrame)
+
+        if cycleFrame < topFrame {
+            guard let chain = identitySamples["backswing_premium_lift_hill"], chain.isEmpty == false else {
+                return 0
+            }
+            let progress = Double(cycleFrame) / Double(max(topFrame - 1, 1))
+            let index = min(Int((progress * Double(chain.count - 1)).rounded()), chain.count - 1)
+            let routeGain = configuration.outputRouteFamily == .speaker ? 1.08 : 1.0
+            return Double(chain[index]) * routeGain
+        }
+
+        if cycleFrame < impactFrame {
+            return 0
+        }
+
+        guard let impact = identitySamples["impact_golf_swing"], impact.isEmpty == false else {
+            return 0
+        }
+        let impactSampleFrame = Int(cycleFrame - impactFrame)
+        guard impactSampleFrame >= 0, impactSampleFrame < impact.count else {
+            return 0
+        }
+        let routeGain = configuration.outputRouteFamily == .speaker ? 1.04 : 1.0
+        return Double(impact[impactSampleFrame]) * routeGain
     }
 
     private func updatePlaybackProgress(
@@ -1301,13 +1348,15 @@ private final class ElasticSlingshotRenderState {
             progress: progress,
             duration: duration
         ) * phasePlan.assetGain
-        let generated = guidedTrainerGeneratedSample(
-            phase: phase,
-            progress: progress,
-            pitch: phasePlan.pitch,
-            profile: profile,
-            isSpeaker: routeFamily == .speaker
-        )
+        let generated = phasePlan.synthesisGain > 0
+            ? guidedTrainerGeneratedSample(
+                phase: phase,
+                progress: progress,
+                pitch: phasePlan.pitch,
+                profile: profile,
+                isSpeaker: routeFamily == .speaker
+            )
+            : 0
 
         return impactSoftLimit((asset + (generated * phasePlan.synthesisGain)) * envelope * plan.outputGain)
     }
@@ -1363,18 +1412,6 @@ private final class ElasticSlingshotRenderState {
         isSpeaker: Bool
     ) -> Double {
         let frequency = identityFrequency(pitch, progress: progress)
-        if profile == .cleanAscendingRail || profile == .cleanAscendingRailWarm || profile == .cleanAscendingRailLow {
-            let primaryPhase = voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)
-            let bodyPhase = voiceState.advanceSecondary(frequency: frequency * 0.5, sampleRate: sampleRate)
-            return GarageCleanAscendingRailSynthesis.sample(
-                phase: phase,
-                progress: progress,
-                primaryPhase: primaryPhase,
-                bodyPhase: bodyPhase,
-                isSpeaker: isSpeaker
-            )
-        }
-
         switch phase {
         case .build:
             return guidedLoadTone(frequency: frequency, progress: progress, profile: profile, isSpeaker: isSpeaker)
@@ -1399,7 +1436,7 @@ private final class ElasticSlingshotRenderState {
         let addressProgress = normalizedSegment(progress, start: 0, end: 0.14)
         let bedProgress = normalizedSegment(progress, start: 0.075, end: 1)
         let character: (rise: Double, body: Double, support: Double, air: Double, supportRatio: Double, output: Double, speakerGain: Double) = switch profile {
-        case .cleanAscendingRail, .cleanAscendingRailWarm, .cleanAscendingRailLow: (1, 0, 0, 0, 2, 0, 1)
+        case .premiumLiftHill: (1, 0, 0, 0, 2, 0, 1)
         }
         let supportPhase = voiceState.advanceSecondary(frequency: frequency * character.supportRatio, sampleRate: sampleRate)
         let addressPulse = guidedAddressPulse(phase: supportPhase, progress: addressProgress)
@@ -1426,7 +1463,7 @@ private final class ElasticSlingshotRenderState {
     ) -> Double {
         let phase = voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)
         let character: (body: Double, upper: Double, transient: Double, ratio: Double, output: Double, speakerGain: Double) = switch profile {
-        case .cleanAscendingRail, .cleanAscendingRailWarm, .cleanAscendingRailLow: (0, 0, 0, 2, 0, 1)
+        case .premiumLiftHill: (0, 0, 0, 2, 0, 1)
         }
         let upperPhase = voiceState.advanceSecondary(frequency: frequency * character.ratio, sampleRate: sampleRate)
         let transient = voiceState.nextNoiseSample() * character.transient * exp(-112 * progress)
@@ -1446,7 +1483,7 @@ private final class ElasticSlingshotRenderState {
     ) -> Double {
         let phase = voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)
         let character: (curve: Double, body: Double, upper: Double, air: Double, ratio: Double, output: Double, speakerGain: Double) = switch profile {
-        case .cleanAscendingRail, .cleanAscendingRailWarm, .cleanAscendingRailLow: (0.5, 0, 0, 0, 2, 0, 1)
+        case .premiumLiftHill: (0.5, 0, 0, 0, 2, 0, 1)
         }
         let upperPhase = voiceState.advanceSecondary(frequency: frequency * character.ratio, sampleRate: sampleRate)
         let acceleration = pow(min(max(progress, 0), 1), character.curve)
@@ -1466,7 +1503,7 @@ private final class ElasticSlingshotRenderState {
     ) -> Double {
         let phase = voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)
         let character: (decay: Double, body: Double, upper: Double, transient: Double, ratio: Double, output: Double, speakerGain: Double) = switch profile {
-        case .cleanAscendingRail, .cleanAscendingRailWarm, .cleanAscendingRailLow: (54, 0, 0, 0, 2, 0, 1)
+        case .premiumLiftHill: (54, 0, 0, 0, 2, 0, 1)
         }
         let upperPhase = voiceState.advanceSecondary(frequency: frequency * character.ratio, sampleRate: sampleRate)
         let decay = exp(-character.decay * progress)
@@ -1485,7 +1522,7 @@ private final class ElasticSlingshotRenderState {
     ) -> Double {
         let phase = voiceState.advanceOscillator(frequency: frequency, sampleRate: sampleRate)
         let character: (decay: Double, tone: Double, air: Double) = switch profile {
-        case .cleanAscendingRail, .cleanAscendingRailWarm, .cleanAscendingRailLow: (8, 0, 0)
+        case .premiumLiftHill: (8, 0, 0)
         }
         let decay = exp(-character.decay * progress)
         let air = voiceState.nextNoiseSample() * character.air
@@ -1544,6 +1581,7 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
     private let sampleRate: Double = 44_100
     private let renderState: ElasticSlingshotRenderState
     private let sourceNode: AVAudioSourceNode
+    private let guidedAssetLibrary: TempoSoundAssetLibrary
     private var isPrepared = false
     private var previewStopTask: Task<Void, Never>?
     private var fadeStopTask: Task<Void, Never>?
@@ -1552,6 +1590,7 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
     init() {
         let sampleLibrary = GarageMetronomeSampleLibrary.load()
         let identityLibrary = TempoSoundAssetLibrary.load()
+        self.guidedAssetLibrary = identityLibrary
         let renderState = ElasticSlingshotRenderState(
             sampleRate: sampleRate,
             metronomeSamples: sampleLibrary.samplesByProfile,
@@ -1593,6 +1632,7 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
         previewStopTask = nil
         fadeStopTask?.cancel()
         fadeStopTask = nil
+        guard canStart(instrumentMode: instrumentMode) else { return }
         guard prepareIfNeeded() else { return }
         renderState.start(
             beatsPerMinute: beatsPerMinute,
@@ -1623,6 +1663,7 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
         previewStopTask = nil
         fadeStopTask?.cancel()
         fadeStopTask = nil
+        guard canStart(instrumentMode: instrumentMode) else { return }
         guard prepareIfNeeded() else { return }
         renderState.silence()
         renderState.start(
@@ -1714,6 +1755,18 @@ final class ElasticSlingshotAudioEngine: ObservableObject {
         let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
         let usesBuiltInSpeaker = outputs.contains { $0.portType == .builtInSpeaker }
         renderState.setOutputRouteFamily(usesBuiltInSpeaker ? .speaker : .headphones)
+    }
+
+    private func canStart(instrumentMode: GarageTempoInstrumentMode) -> Bool {
+        guard instrumentMode != .metronome else { return true }
+        guard guidedAssetLibrary.isReady else {
+            renderState.silence()
+            playbackState = .stopped
+            let missingAssets = guidedAssetLibrary.missingRequiredAssetNames.joined(separator: ", ")
+            statusText = "Guided Swing assets missing: \(missingAssets)"
+            return false
+        }
+        return true
     }
 
     @discardableResult

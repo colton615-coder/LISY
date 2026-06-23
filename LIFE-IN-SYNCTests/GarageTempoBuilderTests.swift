@@ -32,24 +32,21 @@ struct GarageTempoBuilderTests {
         #expect(grouped.count == GarageMetronomeClickProfile.allCases.count)
     }
 
-    @Test func guidedProfilesContainOnlyTheApprovedRails() {
+    @Test func guidedProfilesContainOnlyPremiumLiftHill() {
         #expect(GarageGuidedSwingProfile.allCases == [
-            .cleanAscendingRail,
-            .cleanAscendingRailWarm,
-            .cleanAscendingRailLow
+            .premiumLiftHill
         ])
     }
 
-    @Test func guidedSoundIdentitiesUseGeneratedNativeLayers() {
+    @Test func guidedSoundIdentityUsesSamplesAndNoGeneratedFallback() {
         let phases: [TempoSoundPhase] = [.build, .top, .downswing, .impact, .tail]
         for profile in TempoSoundIdentityProfile.allCases {
-            #expect(phases.allSatisfy { profile.eventPlan[$0].assetName == nil })
-        }
-
-        for profile in [TempoSoundIdentityProfile.cleanAscendingRailWarm, .cleanAscendingRailLow] {
-            let rail = profile.eventPlan
-            #expect([TempoSoundPhase.build, .downswing, .impact].allSatisfy { rail[$0].synthesisGain > 0 })
-            #expect([TempoSoundPhase.top, .tail].allSatisfy { rail[$0].synthesisGain == 0 })
+            #expect(phases.allSatisfy { profile.eventPlan[$0].synthesisGain == 0 })
+            #expect(profile.eventPlan[.build].assetName == "backswing_premium_lift_hill")
+            #expect(profile.eventPlan[.impact].assetName == "impact_golf_swing")
+            #expect(profile.eventPlan[.top].assetName == nil)
+            #expect(profile.eventPlan[.downswing].assetName == nil)
+            #expect(profile.eventPlan[.tail].assetName == nil)
         }
     }
 
@@ -124,7 +121,7 @@ struct GarageTempoBuilderTests {
             page: page,
             beatsPerMinute: beatsPerMinute,
             recipe: ElasticSlingshotRecipe(),
-            guidedSound: .cleanAscendingRailWarm,
+            guidedSound: .premiumLiftHill,
             startClick: .woodblock,
             impactClick: .brightSignal,
             hapticsEnabled: false
