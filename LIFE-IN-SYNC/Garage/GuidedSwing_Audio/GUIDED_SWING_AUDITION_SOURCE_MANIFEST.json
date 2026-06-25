@@ -1,0 +1,37 @@
+{
+  "manifest_name": "Guided Swing DEBUG Audition Source Manifest",
+  "scope": "DEBUG-only Guided Swing audition assets. These files do not replace the live Guided Swing profile.",
+  "date_accessed": "2026-06-25",
+  "assets": [
+    {
+      "filename": "cable_winch_backswing.wav",
+      "source_url": "https://commons.wikimedia.org/wiki/File:IDRIJA,_ANTHONY%60S_SHAFT;_A_WINCH_FOR_LOWERING_WOOD.webm",
+      "source_media_url": "https://upload.wikimedia.org/wikipedia/commons/5/51/IDRIJA%2C_ANTHONY%60S_SHAFT%3B_A_WINCH_FOR_LOWERING_WOOD.webm",
+      "author_source_name": "Sounds of Changes",
+      "license": "Creative Commons Attribution 3.0 Unported (CC BY 3.0)",
+      "attribution_text": "IDRIJA, ANTHONY`S SHAFT; A WINCH FOR LOWERING WOOD by Sounds of Changes, licensed under CC BY 3.0.",
+      "notes": "Selected as the first Cable Winch backswing candidate because it is real winch material with steady mechanical pull energy and lower toy/carnival character than the Premium Lift Hill baseline.",
+      "editing_trimming_conversion": "Downloaded the Wikimedia Commons media source, converted to WAV, extracted a 1.70 second excerpt from 28.60s to 30.30s, downmixed stereo to mono, applied 22ms fade in and 55ms fade out, and peak-normalized to 0.78 for DEBUG audition playback.",
+      "sha256": "c8055cca72ed045f300ffab64713d61daf656f312c316e77992ba3e5b843d7df"
+    },
+    {
+      "filename": "cable_winch_impact.wav",
+      "source_url": "https://commons.wikimedia.org/wiki/File:IDRIJA,_ANTHONY%60S_SHAFT;_A_WINCH_FOR_LOWERING_WOOD.webm",
+      "source_media_url": "https://upload.wikimedia.org/wikipedia/commons/5/51/IDRIJA%2C_ANTHONY%60S_SHAFT%3B_A_WINCH_FOR_LOWERING_WOOD.webm",
+      "author_source_name": "Sounds of Changes",
+      "license": "Creative Commons Attribution 3.0 Unported (CC BY 3.0)",
+      "attribution_text": "IDRIJA, ANTHONY`S SHAFT; A WINCH FOR LOWERING WOOD by Sounds of Changes, licensed under CC BY 3.0.",
+      "notes": "Selected as the first Cable Winch impact candidate because it is a short dry mechanical accent from the same real winch source and should serve as a compact non-cartoon confirmation cue.",
+      "editing_trimming_conversion": "Downloaded the Wikimedia Commons media source, converted to WAV, extracted a 0.28 second excerpt from 16.80s to 17.08s, downmixed stereo to mono, applied 2ms fade in and 45ms fade out, and peak-normalized to 0.68 for DEBUG audition playback.",
+      "sha256": "eef1daf10606a44e683a7b64e888ed53cddba609614bb189388d5904f8ec5f00"
+    }
+  ],
+  "sources_rejected": [
+    {
+      "source_url": "https://commons.wikimedia.org/wiki/File:IDRIJA,_ANTHONY%60S_SHAFT;_A_WINCH_FOR_A_WOOD_TRANSPORT,_CALLED_%22JOY%22.webm",
+      "author_source_name": "Sounds of Changes",
+      "license": "Creative Commons Attribution 3.0 Unported (CC BY 3.0)",
+      "reason_rejected": "Legally usable, but its strongest transient windows measured brighter and noisier than the selected source, making it a weaker first fit for the dry restrained Cable Winch target."
+    }
+  ]
+}
