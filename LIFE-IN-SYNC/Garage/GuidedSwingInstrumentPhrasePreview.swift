@@ -213,33 +213,218 @@ struct GuidedSwingSamplePreviewAssetResolver {
 enum GuidedSwingAuditionManifestValidator {
     static func isValid(data: Data, for lane: GuidedSwingAuditionLane) -> Bool {
         guard
-            let object = try? JSONSerialization.jsonObject(with: data),
-            JSONSerialization.isValidJSONObject(object)
+            let manifest = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            JSONSerialization.isValidJSONObject(manifest)
         else {
             return false
         }
 
-        let searchableText = collectText(from: object).joined(separator: "\n").lowercased()
-        let requiredFiles = lane.requiredSlots.map { "\($0.assetName).wav".lowercased() }
-        let hasRequiredFiles = requiredFiles.allSatisfy { searchableText.contains($0) }
-        let hasSource = searchableText.contains("source")
-        let hasLicense = searchableText.contains("license")
-        return hasRequiredFiles && hasSource && hasLicense
+        return hasValidSchemaVersion(in: manifest)
+            && stringValue(manifest["scope"]) == "debug_only_guided_swing_audition"
+            && packet(in: manifest, for: lane).map { isValid(packet: $0, for: lane) } == true
     }
 
-    private static func collectText(from object: Any) -> [String] {
-        if let string = object as? String {
-            return [string]
+    private static func packet(in manifest: [String: Any], for lane: GuidedSwingAuditionLane) -> [String: Any]? {
+        guard let packets = manifest["candidate_packets"] as? [[String: Any]] else { return nil }
+        return packets.first { stringValue($0["lane_id"]) == lane.id.rawValue }
+    }
+
+    private static func isValid(packet: [String: Any], for lane: GuidedSwingAuditionLane) -> Bool {
+        guard
+            hasNonEmptyString(packet["packet_id"]),
+            stringValue(packet["lane_id"]) == lane.id.rawValue,
+            hasNonEmptyString(packet["display_name"]),
+            ["proposed", "rejected", "approved_for_debug_audition"].contains(stringValue(packet["status"]) ?? ""),
+            stringValue(packet["scope"]) == "debug_only_guided_swing_audition",
+            stringValue(packet["install_policy"]) == "not_live_guided_swing",
+            stringValue(packet["fallback_policy"]) == "none",
+            stringValue(packet["source_material_type"]) == "recorded_sample",
+            let slots = packet["required_slots"] as? [[String: Any]],
+            let timing = packet["timing"] as? [String: Any],
+            let source = packet["source"] as? [String: Any],
+            let sourceFile = packet["source_file"] as? [String: Any],
+            let edits = packet["edits"] as? [[String: Any]],
+            let finalAssets = packet["final_assets"] as? [[String: Any]],
+            let tasteReview = packet["taste_review"] as? [String: Any],
+            let legalReview = packet["legal_review"] as? [String: Any]
+        else {
+            return false
         }
-        if let dictionary = object as? [String: Any] {
-            return dictionary.flatMap { key, value in
-                [key] + collectText(from: value)
+
+        return requiredSlotsAreValid(slots, for: lane)
+            && timingIsValid(timing)
+            && sourceIsValid(source)
+            && sourceFileIsValid(sourceFile)
+            && editsAreValid(edits, for: lane)
+            && finalAssetsAreValid(finalAssets, for: lane)
+            && tasteReviewIsValid(tasteReview)
+            && legalReviewIsValid(legalReview)
+    }
+
+    private static func hasValidSchemaVersion(in manifest: [String: Any]) -> Bool {
+        guard let schemaVersion = stringValue(manifest["schema_version"]) else { return false }
+        return schemaVersion.isEmpty == false
+    }
+
+    private static func requiredSlotsAreValid(_ slots: [[String: Any]], for lane: GuidedSwingAuditionLane) -> Bool {
+        let requiredSlots = slots.filter { boolValue($0["required"]) == true }
+        guard requiredSlots.count == lane.requiredSlots.count else { return false }
+
+        return lane.requiredSlots.allSatisfy { laneSlot in
+            let expectedFilename = "\(laneSlot.assetName).wav"
+            let expectedRole = manifestRole(for: laneSlot.role)
+            guard let slot = requiredSlots.first(where: { stringValue($0["filename"]) == expectedFilename }) else {
+                return false
             }
+            return stringValue(slot["role"]) == expectedRole
+                && boolValue(slot["required"]) == true
+                && numberValue(slot["offset_seconds"]) != nil
+                && positiveNumberValue(slot["duration_target_seconds"]) != nil
+                && numberValue(slot["gain_db"]) != nil
         }
-        if let array = object as? [Any] {
-            return array.flatMap(collectText(from:))
+    }
+
+    private static func timingIsValid(_ timing: [String: Any]) -> Bool {
+        positiveNumberValue(timing["backswing_duration_seconds"]) != nil
+            && positiveNumberValue(timing["top_silence_duration_seconds"]) != nil
+            && positiveNumberValue(timing["impact_offset_seconds"]) != nil
+            && positiveNumberValue(timing["impact_trim_duration_seconds"]) != nil
+    }
+
+    private static func sourceIsValid(_ source: [String: Any]) -> Bool {
+        hasNonEmptyString(source["source_url"])
+            && hasNonEmptyString(source["direct_media_url"])
+            && hasNonEmptyString(source["author"])
+            && hasNonEmptyString(source["publisher_or_library"])
+            && hasNonEmptyString(source["license_name"])
+            && stringValue(source["license_name"])?.localizedCaseInsensitiveContains("unknown") == false
+            && hasNonEmptyString(source["license_url"])
+            && boolValue(source["attribution_required"]) != nil
+            && hasNonEmptyString(source["attribution_text"])
+            && boolValue(source["redistribution_allowed"]) == true
+    }
+
+    private static func sourceFileIsValid(_ sourceFile: [String: Any]) -> Bool {
+        hasNonEmptyString(sourceFile["original_filename"])
+            && isSHA256(sourceFile["source_sha256"])
+            && hasNonEmptyString(sourceFile["format"])
+            && sourceFile.keys.contains("sample_rate_hz")
+            && sourceFile.keys.contains("channels")
+            && sourceFile.keys.contains("bit_depth")
+            && positiveNumberValue(sourceFile["duration_seconds"]) != nil
+    }
+
+    private static func editsAreValid(_ edits: [[String: Any]], for lane: GuidedSwingAuditionLane) -> Bool {
+        lane.requiredSlots.allSatisfy { laneSlot in
+            let expectedRole = manifestRole(for: laneSlot.role)
+            guard let edit = edits.first(where: { stringValue($0["role"]) == expectedRole }) else {
+                return false
+            }
+            return numberValue(edit["source_start_seconds"]) != nil
+                && positiveNumberValue(edit["source_end_seconds"]) != nil
+                && numberValue(edit["final_trim_start_seconds"]) != nil
+                && positiveNumberValue(edit["final_trim_end_seconds"]) != nil
+                && numberValue(edit["fade_in_seconds"]) != nil
+                && numberValue(edit["fade_out_seconds"]) != nil
+                && hasNonEmptyString(edit["conversion_notes"])
+                && hasNonEmptyString(edit["normalization_notes"])
+                && hasNonEmptyString(edit["downmix_notes"])
         }
-        return []
+    }
+
+    private static func finalAssetsAreValid(_ finalAssets: [[String: Any]], for lane: GuidedSwingAuditionLane) -> Bool {
+        lane.requiredSlots.allSatisfy { laneSlot in
+            let expectedFilename = "\(laneSlot.assetName).wav"
+            let expectedRole = manifestRole(for: laneSlot.role)
+            guard let asset = finalAssets.first(where: { stringValue($0["filename"]) == expectedFilename }) else {
+                return false
+            }
+            return stringValue(asset["role"]) == expectedRole
+                && isSHA256(asset["sha256"])
+                && positiveNumberValue(asset["duration_seconds"]) != nil
+                && hasNonEmptyString(asset["format"])
+                && numberValue(asset["peak_target_dbfs"]) != nil
+                && numberValue(asset["peak_result_dbfs"]) != nil
+                && hasNonEmptyString(asset["afinfo_checked_date"])
+        }
+    }
+
+    private static func tasteReviewIsValid(_ review: [String: Any]) -> Bool {
+        guard
+            hasNonEmptyString(review["intended_character"]),
+            hasNonEmptyString(review["guided_swing_fit_reason"]),
+            hasNonEmptyString(review["physical_iphone_listening_status"]),
+            hasNonEmptyString(review["taste_reviewed_by"]),
+            hasNonEmptyString(review["taste_reviewed_date"]),
+            let risks = review["rejected_character_risks"] as? [String]
+        else {
+            return false
+        }
+
+        let requiredRisks = [
+            "childish",
+            "toy-like",
+            "arcade",
+            "sci-fi sweep",
+            "oscillator drone",
+            "raw clank/snap/thump collage",
+            "noisy impact stack",
+            "wind/breath/exhale",
+            "metronome-like click bed",
+            "filled top silence"
+        ]
+        let normalizedRisks = Set(risks.map { $0.lowercased() })
+        return requiredRisks.allSatisfy { normalizedRisks.contains($0) }
+    }
+
+    private static func legalReviewIsValid(_ review: [String: Any]) -> Bool {
+        guard
+            let decision = stringValue(review["license_decision"]),
+            ["accepted_for_debug_audition", "rejected", "needs_review"].contains(decision),
+            hasNonEmptyString(review["reason"]),
+            hasNonEmptyString(review["legal_reviewed_by"]),
+            hasNonEmptyString(review["legal_reviewed_date"])
+        else {
+            return false
+        }
+        return true
+    }
+
+    private static func manifestRole(for role: GuidedSwingAuditionSlotRole) -> String {
+        switch role {
+        case .backswingBuild: "backswing"
+        case .impact: "impact"
+        }
+    }
+
+    private static func hasNonEmptyString(_ value: Any?) -> Bool {
+        guard let string = stringValue(value) else { return false }
+        return string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
+    private static func stringValue(_ value: Any?) -> String? {
+        value as? String
+    }
+
+    private static func boolValue(_ value: Any?) -> Bool? {
+        value as? Bool
+    }
+
+    private static func numberValue(_ value: Any?) -> Double? {
+        if let number = value as? NSNumber {
+            return number.doubleValue
+        }
+        return value as? Double
+    }
+
+    private static func positiveNumberValue(_ value: Any?) -> Double? {
+        guard let number = numberValue(value), number > 0 else { return nil }
+        return number
+    }
+
+    private static func isSHA256(_ value: Any?) -> Bool {
+        guard let string = stringValue(value) else { return false }
+        return string.range(of: "^[a-fA-F0-9]{64}$", options: .regularExpression) != nil
     }
 }
 
