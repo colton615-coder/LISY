@@ -872,6 +872,21 @@ private struct GarageGuidedSwingTimeline: View {
                 in: proxy.size
             )
             let impactPoint = GarageGuidedSwingArcGeometry.point(at: 1, in: proxy.size)
+            let addressLabelPoint = GarageGuidedSwingLandmark.safePosition(
+                anchoredAt: startPoint,
+                yOffset: 30,
+                in: proxy.size
+            )
+            let topLabelPoint = GarageGuidedSwingLandmark.safePosition(
+                anchoredAt: topPoint,
+                yOffset: -26,
+                in: proxy.size
+            )
+            let impactLabelPoint = GarageGuidedSwingLandmark.safePosition(
+                anchoredAt: impactPoint,
+                yOffset: 30,
+                in: proxy.size
+            )
             let impactActive = isPlaying && state.elapsedInCycle >= schedule.impactOffset
 
             ZStack {
@@ -903,11 +918,11 @@ private struct GarageGuidedSwingTimeline: View {
                 )
 
                 GarageGuidedSwingLandmark(title: "Address", isActive: state.activeBeat == 1 && isResting == false, alignment: .center)
-                    .position(x: startPoint.x, y: startPoint.y + 30)
+                    .position(x: addressLabelPoint.x, y: addressLabelPoint.y)
                 GarageGuidedSwingLandmark(title: "Top", isActive: state.activeBeat == 2 && isResting == false, alignment: .center)
-                    .position(x: topPoint.x, y: topPoint.y - 26)
+                    .position(x: topLabelPoint.x, y: topLabelPoint.y)
                 GarageGuidedSwingLandmark(title: "Impact", isActive: impactActive, alignment: .center)
-                    .position(x: impactPoint.x, y: impactPoint.y + 30)
+                    .position(x: impactLabelPoint.x, y: impactLabelPoint.y)
 
                 if isResting, countdownValue == nil {
                     Circle()
@@ -1171,9 +1186,24 @@ private struct GarageGuidedSwingLandmark: View {
     let title: String
     let isActive: Bool
     let alignment: HorizontalAlignment
+    private static let visualWidth: CGFloat = 76
+    private static let visualHeight: CGFloat = 38
+    private static let safeEdgePadding: CGFloat = 8
 
     private var accentColor: Color {
         title == "Address" ? GaragePremiumPalette.mintText : GaragePremiumPalette.gold
+    }
+
+    static func safePosition(anchoredAt anchor: CGPoint, yOffset: CGFloat, in size: CGSize) -> CGPoint {
+        let horizontalInset = min((visualWidth / 2) + safeEdgePadding, size.width / 2)
+        let verticalInset = min((visualHeight / 2) + safeEdgePadding, size.height / 2)
+        let maxX = max(horizontalInset, size.width - horizontalInset)
+        let maxY = max(verticalInset, size.height - verticalInset)
+
+        return CGPoint(
+            x: min(max(anchor.x, horizontalInset), maxX),
+            y: min(max(anchor.y + yOffset, verticalInset), maxY)
+        )
     }
 
     var body: some View {
@@ -1193,7 +1223,9 @@ private struct GarageGuidedSwingLandmark: View {
                 .font(.system(size: 10, weight: isActive ? .heavy : .semibold, design: .rounded))
                 .tracking(1.5)
                 .foregroundStyle(isActive ? accentColor : GarageProTheme.textSecondary.opacity(0.84))
+                .lineLimit(1)
         }
+        .frame(width: Self.visualWidth, height: Self.visualHeight)
         .animation(.easeInOut(duration: 0.18), value: isActive)
     }
 }
