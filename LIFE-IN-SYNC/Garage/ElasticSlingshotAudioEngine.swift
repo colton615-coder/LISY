@@ -501,6 +501,42 @@ private extension TempoSoundPhasePlan {
 
 typealias ElasticSlingshotSoundProfile = TempoSoundIdentityProfile
 
+enum PremiumLiftHillPlaybackTuning {
+    static let impactAudibleDuration: TimeInterval = 0.32
+
+    static func backswingSampleProgress(_ progress: Double) -> Double {
+        pow(clamped(progress), 0.94)
+    }
+
+    static func backswingGain(progress: Double, routeFamily: GarageTempoOutputRouteFamily) -> Double {
+        let progress = clamped(progress)
+        let entrance = smoothstep(progress / 0.08)
+        let lift = 0.58 + (0.42 * smoothstep(progress))
+        let finalRestraint = 1 - (0.08 * smoothstep((progress - 0.86) / 0.14))
+        let routeGain = routeFamily == .speaker ? 1.04 : 0.98
+        return entrance * lift * finalRestraint * routeGain
+    }
+
+    static func impactGain(elapsedTime: TimeInterval, routeFamily: GarageTempoOutputRouteFamily) -> Double {
+        guard elapsedTime >= 0, elapsedTime < impactAudibleDuration else { return 0 }
+        let attack = smoothstep(elapsedTime / 0.008)
+        let tailStart: TimeInterval = 0.12
+        let tailProgress = clamped((elapsedTime - tailStart) / (impactAudibleDuration - tailStart))
+        let tail = 1 - smoothstep(tailProgress)
+        let routeGain = routeFamily == .speaker ? 1.02 : 0.96
+        return attack * tail * routeGain
+    }
+
+    private static func clamped(_ value: Double) -> Double {
+        min(max(value, 0), 1)
+    }
+
+    private static func smoothstep(_ value: Double) -> Double {
+        let value = clamped(value)
+        return value * value * (3 - (2 * value))
+    }
+}
+
 private enum ElasticSlingshotPlaybackMode {
     case continuous
     case oneCycle
@@ -667,7 +703,7 @@ enum GarageCleanAscendingRailSynthesis {
     }
 }
 
-private enum GarageTempoOutputRouteFamily {
+enum GarageTempoOutputRouteFamily {
     case speaker
     case headphones
 }
@@ -1082,9 +1118,13 @@ private final class ElasticSlingshotRenderState {
                 return 0
             }
             let progress = Double(cycleFrame) / Double(max(topFrame - 1, 1))
-            let index = min(Int((progress * Double(chain.count - 1)).rounded()), chain.count - 1)
-            let routeGain = configuration.outputRouteFamily == .speaker ? 1.08 : 1.0
-            return Double(chain[index]) * routeGain
+            let sampleProgress = PremiumLiftHillPlaybackTuning.backswingSampleProgress(progress)
+            let index = min(Int((sampleProgress * Double(chain.count - 1)).rounded()), chain.count - 1)
+            let gain = PremiumLiftHillPlaybackTuning.backswingGain(
+                progress: progress,
+                routeFamily: configuration.outputRouteFamily
+            )
+            return impactSoftLimit(Double(chain[index]) * gain)
         }
 
         if cycleFrame < impactFrame {
@@ -1098,8 +1138,12 @@ private final class ElasticSlingshotRenderState {
         guard impactSampleFrame >= 0, impactSampleFrame < impact.count else {
             return 0
         }
-        let routeGain = configuration.outputRouteFamily == .speaker ? 1.04 : 1.0
-        return Double(impact[impactSampleFrame]) * routeGain
+        let elapsedTime = TimeInterval(impactSampleFrame) / sampleRate
+        let gain = PremiumLiftHillPlaybackTuning.impactGain(
+            elapsedTime: elapsedTime,
+            routeFamily: configuration.outputRouteFamily
+        )
+        return impactSoftLimit(Double(impact[impactSampleFrame]) * gain)
     }
 
     private func updatePlaybackProgress(

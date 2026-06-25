@@ -39,6 +39,20 @@ struct GarageGuidedSwingAudioProfileTests {
         ])
     }
 
+    @Test func premiumLiftHillPlaybackTuningKeepsApexSilentAndImpactCompact() {
+        #expect(PremiumLiftHillPlaybackTuning.backswingGain(progress: 0, routeFamily: .speaker) == 0)
+        #expect(PremiumLiftHillPlaybackTuning.backswingGain(progress: 0.75, routeFamily: .speaker) >
+            PremiumLiftHillPlaybackTuning.backswingGain(progress: 0.25, routeFamily: .speaker))
+        #expect(PremiumLiftHillPlaybackTuning.backswingGain(progress: 1, routeFamily: .speaker) <
+            PremiumLiftHillPlaybackTuning.backswingGain(progress: 0.84, routeFamily: .speaker))
+
+        #expect(PremiumLiftHillPlaybackTuning.impactGain(elapsedTime: 0.006, routeFamily: .speaker) >
+            PremiumLiftHillPlaybackTuning.impactGain(elapsedTime: 0, routeFamily: .speaker))
+        #expect(PremiumLiftHillPlaybackTuning.impactGain(elapsedTime: 0.18, routeFamily: .speaker) <
+            PremiumLiftHillPlaybackTuning.impactGain(elapsedTime: 0.08, routeFamily: .speaker))
+        #expect(PremiumLiftHillPlaybackTuning.impactGain(elapsedTime: 0.32, routeFamily: .speaker) == 0)
+    }
+
     @Test func profileIDsAreUniqueAndComplete() {
         let profiles = GarageGuidedSwingAudioProfileLibrary.all + GarageGuidedSwingAudioProfileLibrary.legacyProfiles
         let ids = profiles.map(\.id)
